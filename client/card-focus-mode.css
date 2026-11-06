@@ -1,0 +1,22 @@
+/* Focus Mode fills the viewport with the card face color, with Back at top left and Full Screen at top right. The ~530px text column is centered.
+   Its layer sits above card dialogs (111) and below editor menus (150–160). */
+.card-focus-mode { position: fixed; inset: 0; z-index: 120; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; background: var(--canvas); color: var(--ink); }
+.card-focus-mode:focus { outline: none; }
+.card-focus-mode-back, .card-focus-mode-screen { position: fixed; top: 16px; display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; padding: 0; border: 1px solid transparent; border-radius: 4px; background: transparent; color: var(--muted); cursor: pointer; transition: background-color var(--motion-feedback), color var(--motion-feedback); }
+.card-focus-mode-back { left: 16px; border-color: var(--line); }
+.card-focus-mode-screen { right: 24px; }
+/* 2026-11-06: the 20 px marks keep their look, but the pointer target grows to 32 px around them. */
+.card-focus-mode-back::before, .card-focus-mode-screen::before { content: ''; position: absolute; inset: -6px; }
+.card-focus-mode-back:hover, .card-focus-mode-screen:hover { background: var(--hover); color: var(--ink); }
+.card-focus-mode-back:focus-visible, .card-focus-mode-screen:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.card-focus-mode-column { width: min(530px, calc(100% - 96px)); margin: 0 auto; padding: 56px 0 96px; }
+
+/* The card's own reading and edit form, without the sheet's frame: one rule set, no second editor. */
+.card-focus-mode > .card-focus-mode-column > .card-preview-reading.card-content-reading { padding: 0; }
+.card-focus-mode .card-edit-hint-row, .card-focus-mode .card-edit-footer { padding-inline: 0; }
+/* 2026-11-06: Preview is a ghost link; its label sits on the text column and only the hover fill hangs 8 px outside. */
+.card-focus-mode .card-edit-footer { margin-left: -8px; }
+.card-focus-mode .card-edit-box { margin: 0; padding: 0; border: 0; border-radius: 0; background: transparent; }
+
+@media (max-width: 640px) { .card-focus-mode-column { width: calc(100% - 32px); padding-top: 48px; } }
+@media (prefers-reduced-motion: reduce) { .card-focus-mode-back, .card-focus-mode-screen { transition: none; } }

@@ -1,0 +1,35 @@
+﻿<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=1280, initial-scale=1">
+  <title>Deckmate — a local Markdown project board for teams of people and AI agents</title>
+  <!-- 2026-11-05: GitHub link preview, 1280×640; rendered by `npm run shots` from docs/social-cards.png. -->
+  <style>
+    @font-face { font-family: "Source Sans 3"; src: url('../assets/fonts/source-sans-3/SourceSans3-latin-wght.woff2'); font-weight: 200 900; }
+    @font-face { font-family: "Geist Mono"; src: url('../assets/fonts/geist/GeistMono-Medium.ttf'); font-weight: 500; }
+    :root { color-scheme: dark; --sidebar: #27242f; --ink: #edeef2; --muted: #cdc8dc; --mint: #a8eedf; --mint-ground: #0f3a35; --mint-edge: #2a8a7b; }
+    * { box-sizing: border-box; }
+    body { margin: 0; width: 1280px; height: 640px; overflow: hidden; background: var(--sidebar); color: var(--ink); font-family: "Source Sans 3", sans-serif; text-align: center; }
+    header { display: flex; align-items: center; justify-content: center; gap: 18px; padding-top: 30px; }
+    .logo { width: 62px; height: 62px; }
+    h1 { margin: 0; font-size: 62px; font-weight: 650; line-height: 1; letter-spacing: -.025em; }
+    .slogan { margin: 12px 0 6px; color: var(--ink); font-size: 32px; font-weight: 600; line-height: 1.15; }
+    .tagline { margin: 0 0 14px; color: var(--muted); font-size: 20px; line-height: 1.2; }
+    code { display: inline-block; padding: 7px 16px; border: 1px solid var(--mint-edge); border-radius: 8px; background: var(--mint-ground); color: var(--mint); font: 500 23px/1.2 "Geist Mono", monospace; }
+    .cards { position: absolute; left: 0; right: 0; top: 262px; bottom: 0; overflow: hidden; }
+    .cards img { position: absolute; left: 50%; top: 0; width: 1200px; transform: translateX(-50%); }
+    .cards::after { content: ""; position: absolute; inset: 0; background: linear-gradient(90deg, var(--sidebar), transparent 6%, transparent 94%, var(--sidebar)), linear-gradient(transparent 82%, var(--sidebar)); }
+  </style>
+</head>
+<body>
+  <header>
+    <img class="logo" src="../assets/logo/deckmate-256.png" alt="Deckmate logo">
+    <h1>Deckmate</h1>
+  </header>
+  <p class="slogan">You hold all the cards.</p>
+  <p class="tagline">A local Markdown project board for teams of people and AI agents.</p>
+  <code>npx deckmate</code>
+  <div class="cards"><img src="social-cards.png" alt="Cards of the sample project: two golden Heroes and tasks with owners, effort and progress"></div>
+</body>
+</html>

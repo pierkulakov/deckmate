@@ -1,0 +1,140 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: write
+      packages: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: package.json
+          cache: npm
+          cache-dependency-path: package-lock.json
+          registry-url: https://registry.npmjs.org
+      - name: Validate release version and notes
+        id: release
+        run: |
+          node --input-type=module <<'NODE'
+          import { readFileSync, writeFileSync, appendFileSync } from 'node:fs';
+          const { version } = JSON.parse(readFileSync('package.json', 'utf8'));
+          if (process.env.GITHUB_REF_NAME !== `v${version}`) {
+            throw new Error('The tag must match the version in package.json.');
+          }
+          const changelog = readFileSync('CHANGELOG.md', 'utf8');
+          const section = changelog.split(/^## /m).find((entry) => entry.startsWith(`[${version}] - `));
+          if (!section || !section.includes('\n')) {
+            throw new Error(`CHANGELOG.md needs a dated [${version}] release section.`);
+          }
+          const notes = section.slice(section.indexOf('\n') + 1).trim();
+          if (!notes) throw new Error('Release notes must not be empty.');
+          writeFileSync('release-notes.md', `${notes}\n`);
+          appendFileSync(process.env.GITHUB_OUTPUT, `version=${version}\n`);
+          NODE
+      - name: Validate publication access
+        env:
+          REPOSITORY_PRIVATE: ${{ github.event.repository.private }}
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          if [[ "$REPOSITORY_PRIVATE" != "false" ]]; then
+            echo "::error::Open the repository before publishing a public release."
+            exit 1
+          fi
+          if [[ -z "$NODE_AUTH_TOKEN" ]]; then
+            echo "::error::Configure the NPM_TOKEN repository secret before pushing a release tag."
+            exit 1
+          fi
+          npm whoami --registry=https://registry.npmjs.org
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+      - name: Pack release
+        id: package
+        run: |
+          npm pack --ignore-scripts --json > package-info.json
+          node --input-type=module <<'NODE'
+          import { readFileSync, appendFileSync } from 'node:fs';
+          const [artifact] = JSON.parse(readFileSync('package-info.json', 'utf8'));
+          appendFileSync(process.env.GITHUB_OUTPUT, `filename=${artifact.filename}\n`);
+          NODE
+      - name: Check published npm artifact
+        id: npm
+        run: |
+          node --input-type=module <<'NODE'
+          import { readFileSync, appendFileSync } from 'node:fs';
+          const [artifact] = JSON.parse(readFileSync('package-info.json', 'utf8'));
+          const response = await fetch(`https://registry.npmjs.org/${encodeURIComponent(artifact.name)}/${encodeURIComponent(artifact.version)}`, { signal: AbortSignal.timeout(30000) });
+          let published = false;
+          if (response.status !== 404) {
+            if (!response.ok) throw new Error(`npm registry check failed: HTTP ${response.status}.`);
+            const existing = await response.json();
+            if (!artifact.integrity || existing.dist?.integrity !== artifact.integrity) {
+              throw new Error('This npm version already exists with different package bytes. Publish a new version instead.');
+            }
+            published = true;
+            console.log('The identical npm artifact is already published; resuming the remaining release steps.');
+          }
+          appendFileSync(process.env.GITHUB_OUTPUT, `published=${published}\n`);
+          NODE
+      - name: Build container
+        id: container
+        env:
+          VERSION: ${{ steps.release.outputs.version }}
+        run: |
+          image="ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/deckmate"
+          docker build --pull --label "org.opencontainers.image.source=https://github.com/${GITHUB_REPOSITORY}" --label "org.opencontainers.image.revision=${GITHUB_SHA}" --label "org.opencontainers.image.version=${VERSION}" --tag "${image}:${VERSION}" .
+          printf 'image=%s\n' "$image" >> "$GITHUB_OUTPUT"
+      - name: Publish npm package
+        if: steps.npm.outputs.published == 'false'
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          PACKAGE_FILE: ${{ steps.package.outputs.filename }}
+          VERSION: ${{ steps.release.outputs.version }}
+        run: |
+          npm_tag=latest
+          if [[ "$VERSION" == *-* ]]; then npm_tag=next; fi
+          npm publish "$PACKAGE_FILE" --access public --provenance --tag "$npm_tag"
+      - name: Publish container
+        env:
+          GH_TOKEN: ${{ github.token }}
+          IMAGE: ${{ steps.container.outputs.image }}
+          VERSION: ${{ steps.release.outputs.version }}
+        run: |
+          printf '%s' "$GH_TOKEN" | docker login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
+          docker push "${IMAGE}:${VERSION}"
+          if [[ "$VERSION" != *-* ]]; then
+            docker tag "${IMAGE}:${VERSION}" "${IMAGE}:latest"
+            docker push "${IMAGE}:latest"
+          fi
+          docker logout ghcr.io
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PACKAGE_FILE: ${{ steps.package.outputs.filename }}
+          VERSION: ${{ steps.release.outputs.version }}
+        run: |
+          prerelease=()
+          if [[ "$VERSION" == *-* ]]; then prerelease+=(--prerelease); fi
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" "$PACKAGE_FILE" --clobber
+          else
+            gh release create "$GITHUB_REF_NAME" "$PACKAGE_FILE" --verify-tag --title "Deckmate ${VERSION}" --notes-file release-notes.md "${prerelease[@]}"
+          fi

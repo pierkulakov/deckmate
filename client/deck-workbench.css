@@ -1,0 +1,121 @@
+/* The open deck uses one 36px rail, one left slot and a compact card grid. */
+.catalog-workbench { min-width: 0; }
+/* Every deck header button shares a green tooltip with an arrow. */
+.deck-header-hint { z-index: 160; max-width: 340px; padding: 6px 10px; border: .67px solid var(--mint-edge, var(--line)); border-radius: 6px; background: var(--mint, var(--accent-soft)); color: var(--mint-ink, var(--ink)); font-size: 12px; line-height: 16px; box-shadow: var(--shadow); }
+.deck-header-hint svg { fill: var(--mint, var(--accent-soft)); }
+/* Shortcut chips in a hint: the global kbd keycap, white on the mint tooltip so the key reads as a key. */
+.deck-header-hint-keys { display: inline-flex; align-items: center; gap: 2px; margin-left: 8px; vertical-align: middle; }
+.deck-header-hint kbd { background: #fff; color: var(--mint-ink, var(--ink)); }
+.deck-header-hint-note { display: block; margin-top: 2px; opacity: .8; }
+/* My Cards sits before search as a compact toggle: accent fill when pressed, outline when idle. */
+.deck-open-toolbar .deck-mine-toggle { flex-shrink: 0; height: 24px; margin-left: auto; padding: 0 7px; border: .67px solid color-mix(in srgb, var(--accent) 60%, var(--line)); border-radius: 4px; color: var(--ink); font-size: 12px; font-weight: 700; line-height: 14px; letter-spacing: .12px; }
+.deck-open-toolbar .deck-mine-toggle:hover:not(:disabled) { background: var(--hover); }
+.deck-open-toolbar .deck-mine-toggle[aria-pressed="true"] { border-color: transparent; background: var(--violet-fill, var(--accent)); color: var(--violet-fill-ink, var(--surface)); }
+/* The watch icon fills when watching the deck; active guardian and automation controls use the accent color. */
+.deck-open-toolbar .deck-watch-toggle[aria-pressed="true"] { color: var(--accent); }
+.deck-open-toolbar .deck-watch-toggle[aria-pressed="true"] svg { fill: color-mix(in srgb, var(--accent) 32%, transparent); }
+.deck-open-toolbar .deck-guardians-toggle.is-active, .deck-open-toolbar .deck-automation-toggle.is-active { color: var(--accent); }
+.deck-open-toolbar .deck-delete-toggle:hover:not(:disabled) { color: var(--danger); }
+/* Guardian, automation and deletion panels share the deck type menu's styling. 2026-11-06: menus and dialogs of the deck surface lift with
+   the theme's --shadow (DESIGN: menus and dialogs), so each theme keeps its own depth. */
+.deck-settings-menu { z-index: 150; width: min(420px, calc(100vw - 24px)); max-height: min(560px, var(--radix-dropdown-menu-content-available-height)); padding: 0 0 16px; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; border: 1px solid var(--line); border-radius: 10px; color: var(--ink); background: var(--surface); box-shadow: var(--shadow); transform-origin: var(--radix-dropdown-menu-content-transform-origin); animation: overlay-pop var(--motion-spring-quick) var(--ease-spring-quick); }
+.deck-settings-heading { margin: 0; padding: 14px 18px 12px; border-bottom: 1px solid var(--line); font-size: 15px; font-weight: 600; letter-spacing: -.2px; }
+.deck-settings-note { margin: 10px 0 0; color: var(--muted); font-size: 12px; line-height: 1.6; }
+.deck-settings-menu > .deck-settings-note { margin-inline: 18px; }
+.deck-settings-section { padding: 12px 18px 0; }
+.deck-settings-section + .deck-settings-section { margin-top: 12px; border-top: 1px solid var(--line); padding-top: 14px; }
+.deck-settings-section-title { display: block; font-size: 13px; font-weight: 600; }
+.deck-settings-field { display: flex; flex-direction: column; gap: 5px; margin-top: 10px; font-size: 12px; color: var(--muted); }
+.deck-settings-field input, .deck-settings-field select, .deck-settings-field textarea { width: 100%; padding: 6px 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--ground); color: var(--ink); font: inherit; }
+.deck-settings-field textarea { resize: vertical; min-height: 84px; font-family: var(--mono, monospace); }
+.deck-settings-row { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, .8fr) minmax(0, 1fr); gap: 10px; }
+.deck-settings-check { display: flex; align-items: center; gap: 7px; margin-top: 10px; font-size: 12px; color: var(--ink); accent-color: var(--accent); }
+.deck-settings-list { display: flex; flex-direction: column; gap: 2px; margin: 10px 18px 0; max-height: 240px; overflow-y: auto; }
+.deck-settings-option { display: flex; align-items: center; gap: 9px; padding: 6px 8px; border-radius: 6px; font-size: 13px; accent-color: var(--accent); }
+.deck-settings-option:hover { background: var(--hover); }
+.deck-settings-name { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.deck-settings-kind { flex-shrink: 0; color: var(--muted); font-size: 11px; }
+.deck-settings-error { margin: 10px 18px 0; padding: 8px 10px; border-radius: 6px; background: var(--warning-bg); color: var(--danger); font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; }
+.deck-settings-actions { display: flex; justify-content: flex-end; gap: 8px; margin: 14px 18px 0; }
+.deck-automation-menu { width: min(460px, calc(100vw - 24px)); }
+.deck-delete-menu { width: min(360px, calc(100vw - 24px)); }
+@media (prefers-reduced-motion: reduce) { .deck-settings-menu { animation: none; } }
+
+.catalog-workbench.has-action-rail { --deck-rail-width: 36px; display: grid; grid-template-columns: var(--deck-rail-width) minmax(0, 1fr); gap: 12px; align-items: start; }
+/* The rail has 32px buttons every 44px with a thin violet edge; Add Card is filled.
+   The first button starts 6px down to align with the 44px grid header. Info, Order, Tags and Activity turn mint while their panel is open and only then (2026-11-05: a lit button means an open panel). */
+.deck-action-rail { position: sticky; top: var(--catalog-content-offset, 0px); display: flex; flex-direction: column; align-items: center; gap: 12px; padding-top: 6px; }
+.deck-action-rail button { position: relative; display: grid; place-items: center; width: 32px; height: 32px; padding: 0; border: 1px solid var(--button-line, var(--line)); border-radius: 4px; background: transparent; color: var(--button-ink, var(--muted)); transition: background-color var(--motion-feedback), color var(--motion-feedback), border-color var(--motion-feedback); }
+.deck-action-rail button:hover:not(:disabled) { background: var(--hover); }
+.deck-action-rail button[aria-pressed="true"] { border-color: var(--mint-edge, var(--accent)); background: var(--mint, var(--accent-soft)); color: var(--mint-ink, var(--accent)); }
+.deck-action-rail button[aria-pressed="true"]:hover:not(:disabled) { background: var(--mint-hover, var(--accent-soft)); }
+/* New Card is the only rail action without a panel state; read-only sources omit it, so :first-child would mark Info. */
+.deck-action-rail button:not([aria-pressed]) { border-color: transparent; background: var(--violet-fill, var(--accent)); color: var(--violet-fill-ink, var(--surface)); }
+.deck-action-rail button:not([aria-pressed]):hover:not(:disabled) { background: color-mix(in srgb, var(--violet-fill, var(--accent)) 86%, var(--surface)); }
+@media (max-width: 600px) {
+  .catalog-workbench.has-action-rail { --deck-rail-width: 32px; gap: 8px; }
+  .deck-action-rail { gap: 6px; padding-top: 7px; }
+  .deck-action-rail button { width: 30px; height: 30px; }
+}
+
+/* Info and Activity take the wide left slot; Ordering and Tags are narrow columns (deck-panels.css). */
+.deck-activity-sidebar { min-height: 250px; }
+
+/* Compact card parts: state mark above the satin footer, metrics and the owner medallion on its edge. */
+/* Bottom hints use a 16 px row: state on the left, a 10 px tag color dot on the right. */
+.deck-card-hints { display: flex; align-items: center; gap: 6px; min-height: 20px; margin-top: auto; padding-top: 4px; }
+.deck-card-hints:empty { display: none; }
+.deck-card-hints > .card-tag-pie { margin-left: auto; }
+.deck-card-state-mark { flex-shrink: 0; display: flex; color: var(--card-highlight); }
+/* The state icon is the Task's only state cue: the dark mint keeps 4.39:1 at .7; the light #2b9e7f needs full strength (3.33:1 on white). */
+:root.dark .deck-card-state-mark { opacity: .7; }
+.deck-card-task-metrics { display: flex; justify-content: space-between; align-items: center; min-height: 20px; font-size: 14px; font-weight: 600; }
+.deck-card-task-metrics > span { display: inline-flex; align-items: center; gap: 3px; min-width: 0; }
+.deck-card-task-metrics > span:first-child { max-width: 57%; }
+.deck-card-task-metrics strong { overflow: hidden; text-overflow: ellipsis; font: inherit; }
+.deck-card-task-metrics svg { flex-shrink: 0; width: 16px; height: 16px; }
+.deck-card-owner-medallion { position: absolute; z-index: 5; left: 50%; top: -14px; transform: translateX(-50%); border: 2px solid var(--metal-base, var(--card-metal)); border-radius: 50%; background: var(--card-face); }
+.deck-card-owner-medallion .card-owner-avatar { width: 23px; height: 23px; font-size: 9px; }
+
+/* Neighbor decks reuse the lower part of home tiles. The open deck stays bright; others are dimmed. A caret connects the open deck to its panel. */
+/* The shelf keeps the gallery's columns (16 px page + 12 px grid padding, 132 px covers 16 px apart), so an opened row moves straight up
+   into it (2026-11-05). 2026-11-06: the 132×180 cast cover shows its lower 96 px — the foot of the window, the title and the counters. */
+.deck-neighbor-rail { display: flex; align-items: flex-end; gap: 16px; height: 96px; overflow-x: auto; overflow-y: hidden; margin: 0 -16px; padding: 0 16px 0 28px; scrollbar-width: none; }
+/* Neighbor decks use 25% opacity so the page shows through; hover makes them opaque in 150 ms. */
+.deck-neighbor-rail > .catalog-deck-cover { flex: 0 0 132px; margin-top: -84px; margin-bottom: -2px; align-self: flex-end; transform: translateY(0); opacity: .25; transition: opacity var(--motion-feedback) ease-out, box-shadow var(--motion-feedback); }
+.deck-neighbor-rail > .catalog-deck-cover:hover:not(:disabled), .deck-neighbor-rail > .catalog-deck-cover:focus-visible { opacity: 1; }
+/* 2026-11-06: the shelf clips its covers at the bottom edge, so their focus ring is drawn inside the cover. */
+.deck-neighbor-rail > .catalog-deck-cover:focus-visible { outline-color: var(--deck-ink); outline-offset: -4px; }
+.deck-neighbor-rail > .catalog-deck-cover[aria-current="page"] { opacity: 1; }
+.deck-neighbor-rail > .catalog-deck-cover[aria-current="page"]::after { content: ''; position: absolute; bottom: -8px; left: calc(50% - 8px); border-inline: 8px solid transparent; border-bottom: 8px solid var(--sidebar); }
+/* Narrow screens keep the gallery's columns too: below 420 px the gallery starts at 16 px (2026-11-05). */
+@media (max-width: 420px) { .deck-neighbor-rail { padding-left: 16px; } }
+@media (prefers-reduced-motion: reduce) { .deck-neighbor-rail > .catalog-deck-cover { transition: none; } }
+
+/* The first group heading shares the 44px header row so cards align with the preview sheet. */
+.catalog-card-group-heading { min-height: 25px; }
+.catalog-card-group > .catalog-card-group-heading { min-height: 44px; margin-bottom: 0; }
+.catalog-results .catalog-card-group + .catalog-card-group { margin-top: 8px; }
+/* Group headings show the lane icon, name and dashed rule at rest. Add Card and effort appear while the group is hovered or contains focus. */
+/* 2026-11-06: in a narrow list column (card preview open at ~768px) the dashed rule gives way first; at an even share
+   the lane icon collapsed to 1px, "Medium3" lost its gap and the hidden group checkbox covered the name. */
+.catalog-group-rule { width: min(150px, 18vw); border-top: .67px dashed color-mix(in srgb, var(--muted) 55%, transparent); flex-shrink: 20; }
+.catalog-group-filter > svg, .catalog-card-group-heading .catalog-group-add { flex-shrink: 0; }
+.catalog-card-group-heading .catalog-group-add { width: 24px; height: 24px; padding: 0; border: 0; border-radius: 4px; color: var(--muted); background: transparent; opacity: 0; transition: opacity var(--motion-feedback), background-color var(--motion-feedback), color var(--motion-feedback); }
+.catalog-card-group-heading .catalog-group-add:hover:not(:disabled) { color: var(--ink); background: var(--hover); }
+.catalog-group-effort { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; font-variant-numeric: tabular-nums; white-space: nowrap; opacity: 0; transition: opacity var(--motion-feedback); }
+:is(.catalog-card-group:hover, .catalog-card-group:focus-within, .catalog-card-group-heading:hover, .catalog-card-group-heading:focus-within) :is(.catalog-group-add, .catalog-group-effort) { opacity: 1; }
+@media (hover: none) { .catalog-card-group-heading :is(.catalog-group-add, .catalog-group-effort) { opacity: 1; } }
+/* The checkbox overlaps the start of the name; hover or selection mode shifts the name right to reveal it. */
+.catalog-card-group > .catalog-card-group-heading .catalog-group-label { position: relative; }
+.catalog-card-group > .catalog-card-group-heading .catalog-group-select { position: absolute; left: 0; top: 50%; z-index: 2; translate: 0 -50%; transition: opacity var(--motion-feedback) ease-out; }
+.catalog-card-group > .catalog-card-group-heading .catalog-group-label > :not(.catalog-group-select) { position: relative; z-index: 1; background: var(--ground); transition: transform var(--motion-feedback) var(--ease-out); }
+.catalog-card-group > .catalog-card-group-heading:is(:hover, :focus-within, [data-selecting]) .catalog-group-label > :not(.catalog-group-select),
+.catalog-card-group > .catalog-card-group-heading:has(.catalog-group-select input:is(:checked, :indeterminate)) .catalog-group-label > :not(.catalog-group-select) { transform: translateX(24px); }
+/* 2026-11-06: the shifted name and count ran into the dashed rule, which showed through the gap between them ("High - 3 ---").
+   The rule now starts 24 px later with them and keeps its end, so Add Card and effort stay where they were. */
+.catalog-card-group > .catalog-card-group-heading > .catalog-group-rule { transition: transform var(--motion-feedback) var(--ease-out), clip-path var(--motion-feedback) var(--ease-out); }
+.catalog-card-group > .catalog-card-group-heading:is(:hover, :focus-within, [data-selecting]) > .catalog-group-rule,
+.catalog-card-group > .catalog-card-group-heading:has(.catalog-group-select input:is(:checked, :indeterminate)) > .catalog-group-rule { transform: translateX(24px); clip-path: inset(0 24px 0 0); }
+@media (prefers-reduced-motion: reduce) { .catalog-card-group > .catalog-card-group-heading :is(.catalog-group-label > *, .catalog-group-rule) { transition: none; } }
+@media (prefers-reduced-motion: reduce) { .deck-action-rail button { transition: none; } }

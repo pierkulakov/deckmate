@@ -1,0 +1,75 @@
+name: Bug report
+description: Something in Deckmate does not work as described
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report a bug. Deckmate is a local app — please never attach the real contents of your project folder unless the bug is about those exact contents.
+
+        For security matters follow the [security policy](https://github.com/pierkulakov/deckmate/security/policy) instead of this form.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: What did you expect to happen, and what happened instead?
+      placeholder: Opening deck X after renaming a card resets the filter, expected the filter to persist.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Minimal steps starting from a plain Deckmate run. Include the exact file paths or card IDs involved.
+      placeholder: |
+        1. Open Decks
+        2. …
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      description: Which part of Deckmate is affected? Pick the closest area.
+      options:
+        - UI — deck gallery / cards
+        - UI — editor / document preview
+        - UI — Hand / Sprint / Timeline / Vision
+        - Bulk actions / selection
+        - Journeys / templates
+        - Installation / CLI (npx deckmate / npm run project)
+        - HTTP API
+        - Parser / file write path
+        - Other
+    validations:
+      required: true
+  - type: dropdown
+    id: source-mode
+    attributes:
+      label: Data source
+      description: Where did it happen?
+      options:
+        - Sandbox copy (writable)
+        - Live project (read-only)
+        - Both / not sure
+    validations:
+      required: true
+  - type: input
+    id: os-node
+    attributes:
+      label: Environment
+      description: OS, Deckmate version, Node version (`node -v`), and how the app was started (npx / Docker / source / shortcut).
+      placeholder: Windows 11, Deckmate 0.1.0, Node v26.x, npx deckmate
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: Console output or entries from the log folder, if any. Redact paths you consider private.
+      render: shell
+  - type: textarea
+    id: context
+    attributes:
+      label: Anything else?
+      description: Screenshots, related issues, whether the problem appeared after an external file edit, and so on.

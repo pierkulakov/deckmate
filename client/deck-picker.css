@@ -1,0 +1,48 @@
+/* Open cards and New Card share a deck picker. The 24px pill has a .67px edge, 3px sides, 16px cover, 12/700 name and 16px chevron with 4px gaps; Open sits 12px to its right.
+   The 340px popover uses ground fill and radius 4, a 12/700 uppercase heading, 31px search, 36px space headings and 36px rows with 1px gaps. */
+.deck-picker { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.deck-picker-pill, .deck-picker-open { display: inline-flex; align-items: center; gap: 4px; min-width: 0; height: 24px; border-radius: 4px; background: transparent; color: var(--button-ink, var(--ink)); font-size: 12px; font-weight: 700; line-height: 14px; letter-spacing: .12px; white-space: nowrap; transition: background-color var(--motion-feedback), transform var(--motion-feedback) var(--ease-out); }
+.deck-picker-pill { max-width: 100%; padding: 0 3px; border: .67px solid var(--button-line, color-mix(in srgb, var(--accent) 60%, var(--line))); }
+.deck-picker-pill > svg, .deck-picker-open > svg { flex-shrink: 0; }
+/* 2026-11-06: the pill sits flush with the scrolling card panel edge, which cut an outer ring on the left. */
+.deck-picker-pill:focus-visible { outline-offset: -2px; }
+.deck-picker-name { min-width: 0; overflow: hidden; padding-left: 2px; text-overflow: ellipsis; }
+.deck-picker-open { flex-shrink: 0; padding: 0 8px 0 4px; border: 0; cursor: pointer; }
+.deck-picker-pill:hover:not(:disabled), .deck-picker-open:hover:not(:disabled), .deck-picker-pill[aria-expanded="true"] { background: var(--hover); }
+/* 2026-11-06: pressed follows .ui-button in styles.css — a 1px press rather than a second pressed color. */
+.deck-picker-pill:active:not(:disabled), .deck-picker-open:active:not(:disabled) { transform: translateY(1px); }
+.deck-picker-open:disabled { cursor: default; opacity: .5; }
+
+.deck-thumb { position: relative; display: inline-grid; flex: 0 0 16px; width: 16px; height: 16px; place-items: center; overflow: hidden; border-radius: 4px; background: var(--deck-color, var(--line)); color: var(--muted); box-shadow: var(--card-row-shadow, var(--card-shadow)); }
+.deck-thumb img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.deck-thumb.is-empty { background: var(--surface); }
+
+.deck-picker-popover { position: fixed; z-index: 120; display: flex; flex-direction: column; width: 340px; overflow: hidden; border-radius: 4px; background: var(--ground); color: var(--ink); box-shadow: var(--quick-settings-shadow, var(--shadow)); animation: overlay-pop var(--motion-spring-quick) var(--ease-spring-quick); }
+.deck-picker-popover:focus { outline: none; }
+.deck-choice { --deck-choice-bg: var(--ground); display: flex; flex: 1 1 auto; flex-direction: column; min-height: 0; }
+.deck-choice-body { display: flex; flex: 1 1 auto; flex-direction: column; gap: 8px; min-height: 0; padding: 12px 16px; }
+.deck-choice-title { flex-shrink: 0; overflow: hidden; margin: 0; color: var(--edit-hint); font-size: 12px; font-weight: 700; line-height: 14px; letter-spacing: .24px; text-transform: uppercase; white-space: nowrap; }
+.deck-choice-search { flex-shrink: 0; width: 100%; height: 31px; padding: 7px 13px; border: .67px solid var(--button-line, var(--edit-line)); border-radius: 4px; outline: none; background: var(--quick-settings-input, var(--edit-bg)); color: var(--violet-fill-ink, var(--ink)); font-size: 12px; line-height: 16px; }
+.deck-choice-search::placeholder { color: var(--muted); }
+.deck-choice-search::-webkit-search-cancel-button { appearance: none; }
+.deck-choice-list { position: relative; display: flex; flex: 1 1 auto; flex-direction: column; gap: 1px; min-height: 0; max-height: 320px; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: none; }
+.deck-choice-group { display: flex; flex-direction: column; gap: 1px; }
+.deck-choice-space { position: sticky; top: 0; z-index: 1; display: flex; flex: 0 0 36px; align-items: flex-end; gap: 4px; padding-bottom: 4px; background: var(--deck-choice-bg); color: var(--ink); font-size: 12px; font-weight: 700; line-height: 14px; letter-spacing: .12px; text-transform: uppercase; white-space: nowrap; }
+.deck-choice-space > span { flex-shrink: 0; }
+.deck-choice-space > span:last-child { flex-shrink: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.deck-choice-option { display: flex; flex: 0 0 36px; align-items: center; gap: 8px; min-width: 0; padding: 0 8px; border-radius: 4px; color: var(--ink); font-size: 14px; font-weight: 400; line-height: 16px; cursor: pointer; transition: background-color var(--motion-feedback), color var(--motion-feedback); }
+/* The green highlight starts on the current deck and follows arrow keys and the pointer. */
+.deck-choice-option[data-active="true"], .deck-choice-option[data-current="true"] { background: var(--toggle-on, var(--accent)); color: var(--quick-choice-ink); }
+.deck-choice-option[aria-disabled] { cursor: default; opacity: .5; }
+.deck-choice-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.deck-choice-kind { flex-shrink: 0; }
+.deck-choice-current { flex-shrink: 0; margin-left: auto; color: inherit; font-size: 12px; line-height: 14px; }
+.deck-choice-empty { margin: 8px 0; color: var(--muted); font-size: 12px; line-height: 1.6; }
+.deck-choice-hint { flex-shrink: 0; margin: 0; padding: 0 16px 8px; color: var(--edit-hint); font-size: 12px; line-height: 20px; }
+.deck-choice-confirm { height: 24px; margin: -3px 0; padding: 0 8px; border: 0; border-radius: 4px; background: transparent; color: var(--button-ink, var(--ink)); font-size: 12px; font-weight: 700; line-height: 14px; letter-spacing: .12px; vertical-align: middle; }
+.deck-choice-confirm:hover:not(:disabled) { background: var(--hover); }
+@media (prefers-reduced-motion: reduce) { .deck-picker-popover { animation: none; } .deck-choice-option { transition: none; } }
+
+.deck-choice-search:focus { border-color: var(--quick-settings-focus, var(--focus)); outline: 2px solid var(--focus); outline-offset: 2px; }
+.deck-choice-hint kbd { display: inline-block; min-width: 0; height: auto; padding: 1px 2px; border: .67px solid var(--quick-settings-key-line, var(--line)); border-radius: 4px; background: transparent; color: inherit; font-family: inherit; font-size: 10px; font-weight: 700; line-height: 10px; text-transform: uppercase; box-shadow: var(--quick-settings-key-shadow, var(--card-shadow)); }
+.deck-choice-confirm { width: 58px; }

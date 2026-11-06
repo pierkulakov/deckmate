@@ -1,0 +1,155 @@
+/* The full-width Your Hand panel has a done pile, seven numbered slots and tabs below. */
+.hand-view { padding: 12px 72px 72px 80px; }
+
+/* 2026-11-04: Hand tokens live with the owned surface; central declarations belong to the styles.css integration. */
+:root { --hand-panel-background: var(--hover); --hand-slot-background: color-mix(in srgb, var(--accent-soft) 20%, transparent); --hand-slot-ink: var(--ink); --hand-slot-line: var(--line); --hand-tab-ink: var(--muted); --hand-panel-muted: var(--muted); }
+/* Red and yellow due-date badges use shared tokens for both themes. */
+:root { --hand-due-now-face: var(--danger); --hand-due-now-ink: var(--count-face); --hand-due-soon-face: var(--gold-chip); --hand-due-soon-ink: var(--gold-chip-ink); }
+:root.dark { --hand-due-now-ink: var(--sidebar); }
+:root.dark { --hand-panel-background: #736784; --hand-slot-background: rgba(88, 36, 140, .2); --hand-slot-ink: var(--card-ink); --hand-slot-line: #563978; --hand-tab-ink: #d9cde3; }
+/* 2026-11-05: on the #736784 panel --muted is 3.45:1; only full ink reaches 4.5:1, so secondary text there keeps its rank by size. */
+:root.dark { --hand-panel-muted: var(--ink); }
+.hand-panel { --hand-panel-ink: var(--ink); position: relative; display: flex; flex-direction: column; border: 0.67px solid var(--ground); border-radius: 4px; background: var(--hand-panel-background); box-shadow: var(--shadow); }
+.hand-panel-corner { position: absolute; width: 16px; height: 16px; color: var(--focus); opacity: .55; pointer-events: none; }
+.hand-panel-corner-top-left { top: -1px; left: -1px; }
+.hand-panel-corner-top-right { top: -1px; right: -1px; }
+.hand-panel-corner-bottom-left { bottom: -1px; left: -1px; }
+.hand-panel-corner-bottom-right { bottom: -1px; right: -1px; }
+.hand-panel-body { display: flex; flex-direction: column; gap: 8px; padding: 12px 16px; }
+.hand-panel-header { display: flex; align-items: center; gap: 12px; min-height: 24px; }
+.hand-panel-title { margin: 0; font-size: 14px; font-weight: 700; line-height: 16px; color: var(--hand-panel-ink); }
+.hand-panel-effort { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; line-height: 12px; color: var(--hand-panel-ink); }
+/* The All Hands switch uses only theme tokens so its track and thumb work in the light theme. */
+.hand-all-toggle { position: relative; display: inline-flex; align-items: center; gap: 8px; margin-left: auto; color: var(--hand-panel-ink); font-size: 12px; font-weight: 600; cursor: pointer; }
+.hand-all-toggle input { position: absolute; width: 1px; height: 1px; margin: 0; opacity: 0; }
+.hand-all-track { display: inline-flex; align-items: center; width: 32px; height: 18px; padding: 2px; border: 0.67px solid var(--line); border-radius: 9px; background: var(--ground); transition: background var(--motion-feedback), border-color var(--motion-feedback); }
+.hand-all-thumb { width: 14px; height: 14px; border-radius: 50%; background: var(--muted); transition: translate var(--motion-feedback) var(--ease-out), background var(--motion-feedback); }
+.hand-all-toggle input:checked + .hand-all-track { border-color: var(--accent); background: var(--accent); }
+.hand-all-toggle input:checked + .hand-all-track .hand-all-thumb { translate: 14px 0; background: var(--surface); }
+.hand-all-toggle input:focus-visible + .hand-all-track { outline: 2px solid var(--focus); outline-offset: 1px; }
+.hand-member-picker select { height: 24px; padding: 0 24px 0 8px; border: 0.67px solid var(--line); border-radius: 4.8px; background: var(--ground); color: var(--ink); font-size: 12px; font-weight: 600; }
+
+/* All Hands uses one row per member in registry order (humans, then agents), with tiles sized as in the single hand. */
+.hand-all-list { display: flex; flex-direction: column; gap: 20px; }
+.hand-all-member { display: flex; flex-direction: column; gap: 8px; }
+.hand-all-member + .hand-all-member { border-top: 1px solid var(--line); padding-top: 16px; }
+.hand-all-member-heading { display: flex; align-items: center; gap: 8px; height: 28px; color: var(--hand-panel-ink); }
+.hand-all-member-heading h2 { margin: 0; font-size: 14px; font-weight: 600; line-height: 16px; }
+.hand-all-member-heading .card-owner-avatar { width: 28px; height: 28px; }
+.hand-all-member .hand-queue { margin: 0; }
+
+/* Slots are 115×147 with a 16px gap: done pile first, then slots 1–7 in hand order. A filled slot is draggable across its entire area. */
+.hand-slots { --tile-width: 115px; --tile-height: 147px; display: flex; flex-wrap: wrap; gap: 16px; }
+.hand-slot { width: 115px; height: 147px; flex: 0 0 115px; border: 0.67px solid var(--hand-slot-line); border-radius: 5px; background: var(--hand-slot-background); color: var(--hand-slot-ink); }
+.hand-slot-number { display: flex; align-items: center; justify-content: center; width: 100%; height: 100%; font-size: 24px; font-weight: 700; line-height: 32px; }
+.hand-slot.is-filled { border: 0; background: none; }
+.hand-slot.is-filled[role='button'] { cursor: grab; }
+.hand-slot.is-drag-source { position: relative; z-index: 1; border-radius: 5px; box-shadow: var(--shadow); outline: 2px solid var(--focus); outline-offset: 2px; cursor: grabbing; }
+.hand-slot-filled { width: 115px; height: 147px; }
+.hand-slot-done { position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; border-radius: 4px; padding: 8px; }
+.hand-slot-done-chip { display: grid; place-items: center; width: 32px; height: 32px; padding: 4px; border-radius: 50%; background: var(--hand-slot-background); }
+/* The check is centered; its label starts 16px below the 32px chip. */
+.hand-slot-done-label { position: absolute; top: calc(50% + 32px); left: 0; right: 0; font-size: 12px; font-weight: 700; line-height: 14px; letter-spacing: .12px; text-align: center; }
+.hand-slot-done-count { display: block; }
+
+/* Cards beyond the first seven use sortable queue rows with a handle and title below the panel. */
+.hand-queue { margin: 32px 0 0; }
+.hand-queue > strong { display: block; margin-bottom: 8px; font-size: 14px; font-weight: 700; color: var(--ink); }
+.hand-queue ul { display: flex; flex-direction: column; gap: 4px; margin: 0; padding: 0; list-style: none; }
+.hand-queue li { display: flex; align-items: baseline; gap: 4px; }
+.hand-queue li.is-drag-source { position: relative; z-index: 1; border-radius: 4px; box-shadow: var(--shadow); outline: 2px solid var(--focus); outline-offset: 1px; }
+.hand-queue-handle { flex: 0 0 auto; display: inline-flex; align-items: center; padding: 6px 3px; border: 0; border-radius: 4px; background: none; color: var(--muted); cursor: grab; }
+.hand-queue-handle:hover { background: var(--hover); color: var(--ink); }
+.hand-queue-open { display: flex; align-items: baseline; gap: 10px; flex: 1; min-width: 0; padding: 6px 10px; border: 0; border-radius: 4px; background: none; color: var(--ink); font-size: 12px; text-align: left; }
+.hand-queue-open:hover { background: var(--hover); }
+.hand-queue-open > span:not(.card-tags) { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.hand-queue-open > small { min-width: 0; max-width: 40%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); font-size: 11px; }
+.hand-panel .hand-queue-open > small, .hand-panel .hand-empty { color: var(--hand-panel-muted); }
+
+/* Tabs on a bottom rule: 38px tall, active marked with a 3px underline. */
+.hand-tabs { display: flex; align-items: flex-end; gap: 24px; margin: 32px 0 24px; border-bottom: 1px solid var(--line); }
+.hand-tab-list { display: flex; flex: 1; min-width: 0; flex-wrap: wrap; align-items: flex-end; gap: 12px 24px; }
+.hand-tab { display: flex; flex-shrink: 0; align-items: center; gap: 12px; height: 38px; padding: 8px 0; border: 0; background: none; box-shadow: inset 0 -3px 0 0 transparent; color: var(--hand-tab-ink); font-size: 14px; font-weight: 700; line-height: 14px; }
+.hand-tab:hover:not(.is-active) { color: var(--ink); }
+.hand-tab.is-active { color: var(--ink); box-shadow: inset 0 -3px 0 0 var(--focus); }
+/* A white count chip serves as the tab icon. */
+.hand-tab-count { position: relative; display: grid; place-items: center; min-width: 22px; height: 22px; padding: 4px 2px; border-radius: 3px 3px 0 0; background: var(--count-face); color: var(--count-ink); }
+.hand-tab-count::after { content: ''; position: absolute; top: 100%; left: 0; right: 0; height: 7px; border-radius: 0 0 3px 3px; background: var(--count-foot); }
+/* The Your due cards badge uses the state color of the most urgent cards. */
+.hand-tab-count.is-due-now { background: var(--hand-due-now-face); color: var(--hand-due-now-ink); }
+.hand-tab-count.is-due-now::after { background: color-mix(in srgb, var(--hand-due-now-face) 80%, var(--ground)); }
+.hand-tab-count.is-due-soon { background: var(--hand-due-soon-face); color: var(--hand-due-soon-ink); }
+.hand-tab-count.is-due-soon::after { background: color-mix(in srgb, var(--hand-due-soon-face) 80%, var(--ground)); }
+.hand-tab-empty { display: flex; align-items: center; gap: 8px; width: fit-content; margin-top: 24px; padding: 16px; border: 0.67px solid color-mix(in srgb, var(--focus) 55%, var(--ground)); border-radius: 4px; background: color-mix(in srgb, var(--accent-soft) 70%, var(--sidebar)); color: color-mix(in srgb, var(--focus) 20%, var(--ink)); }
+.hand-tab-empty p { margin: 0; font-size: 14px; line-height: 18px; }
+.hand-bookmarks { display: flex; flex-wrap: wrap; gap: 16px; padding-top: 24px; --tile-width: 115px; --tile-height: 147px; }
+
+/* Your due cards, Your Runs and Pinned Milestone use hand-style queue rows; Show all sits to the right of the tabs. */
+.hand-section { display: flex; flex-direction: column; gap: 16px; padding-top: 16px; }
+.hand-section-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 24px; }
+.hand-show-all { flex-shrink: 0; min-height: 24px; padding: 0 7px; border: 0.67px solid var(--line); border-radius: 4px; background: var(--ground); color: var(--ink); font-size: 12px; font-weight: 700; line-height: 14px; letter-spacing: .12px; }
+.hand-show-all:hover { background: var(--hover); }
+.hand-show-all[aria-pressed='true'] { border-color: var(--focus); color: color-mix(in srgb, var(--focus) 20%, var(--ink)); }
+.hand-group { display: flex; flex-direction: column; gap: 4px; }
+.hand-group-title { margin: 0; font-size: 12px; font-weight: 700; line-height: 14px; color: var(--muted); }
+.hand-group-title.is-due-now { color: var(--hand-due-now-face); }
+.hand-group-title.is-due-soon { color: var(--warning-ink); }
+.hand-row-list { display: flex; flex-direction: column; gap: 4px; margin: 0; padding: 0; list-style: none; }
+.hand-section-row { display: flex; align-items: center; gap: 10px; width: 100%; padding: 6px 10px; border: 0; border-radius: 4px; background: none; color: var(--ink); font-size: 12px; text-align: left; }
+.hand-section-row:hover { background: var(--hover); }
+.hand-row-owner { flex: 0 0 auto; display: inline-flex; }
+.hand-row-owner .card-owner-avatar { width: 18px; height: 18px; }
+.hand-row-title { flex: 0 1 auto; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-weight: 600; }
+.hand-section-row small { flex: 0 1 auto; min-width: 0; overflow: hidden; color: var(--muted); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.hand-section-row .hand-row-due { flex-shrink: 0; font-variant-numeric: tabular-nums; }
+/* Due dates use their group's red or yellow highlight. */
+.hand-row-due.is-due-now { color: var(--hand-due-now-face); font-weight: 700; }
+.hand-row-due.is-due-soon { color: var(--warning-ink); font-weight: 700; }
+.hand-run { display: flex; flex-direction: column; gap: 8px; padding: 12px 0; border-top: 1px solid var(--line); }
+.hand-section > .hand-run:first-child { border-top: 0; padding-top: 0; }
+.hand-run-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 10px; }
+.hand-run-name { padding: 0; border: 0; background: none; color: var(--ink); font-size: 14px; font-weight: 700; line-height: 16px; }
+.hand-run-name:hover { color: var(--focus); text-decoration: underline; }
+/* 2026-11-06: plain Hand buttons press 1px like the shared .ui-button; translate leaves the sortable row's transform alone. */
+.hand-queue-handle:active:not(:disabled), .hand-queue-open:active:not(:disabled), .hand-show-all:active:not(:disabled), .hand-section-row:active:not(:disabled), .hand-run-name:active:not(:disabled) { translate: 0 1px; }
+.hand-run-dates { color: var(--muted); font-size: 11px; }
+.hand-milestone-title { display: flex; flex-wrap: wrap; min-width: 0; overflow-wrap: anywhere; align-items: baseline; gap: 10px; margin: 0; font-size: 14px; font-weight: 700; line-height: 16px; color: var(--ink); }
+.hand-milestone-title small { color: var(--muted); font-size: 11px; font-weight: 400; }
+.hand-section .hand-empty { padding: 8px 0; }
+
+/* Team Hands keeps the 2026-11-03 per-member lists below the tabs. */
+.hand-member { padding: 22px 0 28px; border-top: 1px solid var(--line); }
+.hand-tab-panel > .hand-member:first-child { border-top: 0; padding-top: 8px; }
+.hand-member-heading { display: flex; align-items: center; gap: 9px; margin-bottom: 20px; }
+.hand-member-heading h2 { margin: 0; font-size: 16px; font-weight: 600; }
+.hand-member-kind { font-size: 11px; color: var(--muted); }
+.hand-count { margin-left: 4px; font: 12px 'Geist Mono', monospace; color: var(--muted); }
+.hand-empty { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.7; }
+.hand-cards { display: grid; grid-template-columns: repeat(auto-fill, 168px); align-items: stretch; gap: 18px; }
+.hand-card.sprint-task { width: 168px; min-height: 216px; margin: 0; }
+.hand-card .hand-card-open { display: flex; flex-direction: column; flex: 1; min-width: 0; padding: 0; border: 0; background: none; color: inherit; text-align: left; }
+.hand-card .hand-card-open:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
+.hand-card .sprint-task-body { flex: 1; min-width: 0; }
+.hand-card .sprint-task-body > strong { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.hand-card .sprint-task-owner > span { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.hand-card .sprint-task-owner .card-owner-avatar { flex-shrink: 0; width: 18px; height: 18px; }
+.hand-card.kind-hero { --card-metal: var(--hero-metal); --card-metal-ink: var(--hero-ink); --metal-sheen: var(--hero-sheen); }
+.hand-card.kind-doc { --card-metal: var(--doc-metal); }
+.hand-card-kind { display: inline-flex; align-items: center; gap: 4px; font-size: 10px; }
+@media (max-width: 900px) {
+  .hand-view { padding: 12px 16px 32px; }
+  .hand-panel-header { flex-wrap: wrap; }
+  .hand-cards { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 12px; }
+  .hand-card.sprint-task { width: 100%; }
+}
+@media (max-width: 600px) {
+  .hand-tabs { align-items: flex-end; gap: 12px; }
+  .hand-tab-list { gap: 8px 16px; }
+  .hand-section-toolbar { flex-wrap: wrap; }
+  .hand-section-row { flex-wrap: wrap; gap: 4px 10px; }
+  .hand-row-title { flex: 1 1 calc(100% - 28px); white-space: normal; overflow-wrap: anywhere; }
+}
+
+/* 2026-11-05: tags take their own width (up to 40%), so the deck label follows the title on every row. */
+.hand-queue-open > .card-tags { flex: 0 1 auto; max-width: 40%; }
+.hand-section-row .card-tags { max-width: 240px; }

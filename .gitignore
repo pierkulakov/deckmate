@@ -1,0 +1,14 @@
+node_modules/
+dist/
+*.tgz
+.vite/
+coverage/
+*.log
+.env
+.env.local
+tasks/.runs/
+.deckmate/
+.freetion/
+*.lnk
+.impeccable/review/
+.impeccable/cache/

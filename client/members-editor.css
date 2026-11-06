@@ -1,0 +1,43 @@
+/* The member registry opens from the More menu and uses only the theme tokens in styles.css. */
+.members-editor { position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%); z-index: 80;
+  display: flex; flex-direction: column; width: min(880px, calc(100vw - 32px)); max-height: min(82vh, 780px);
+  border: 1px solid var(--line); border-radius: 10px; background: var(--surface); color: var(--ink);
+  box-shadow: var(--shadow); animation: dialog-drop var(--motion-spring-firm) var(--ease-spring-firm); }
+.members-editor-header { display: flex; align-items: start; justify-content: space-between; gap: 12px;
+  padding: 17px 19px; border-bottom: 1px solid var(--line); }
+/* 2026-11-06: the title line is as tall as the 30 px close button, so the title and × share a centre line (the × sat 2.5 px
+   low); the description keeps its place with 0.5 px of margin. */
+.members-editor-header h2 { margin: 0; font-size: 17px; font-weight: 600; line-height: 30px; }
+.members-editor-header p { margin: .5px 0 0; max-width: 62ch; color: var(--muted); font-size: 11px; line-height: 1.6; }
+.members-editor-body { display: flex; flex-direction: column; gap: 13px; min-height: 0; padding: 16px 19px; overflow-y: auto; scrollbar-width: thin; }
+.members-editor-list { display: flex; flex-direction: column; gap: 8px; margin: 0; padding: 0; list-style: none; }
+.members-editor-row { display: grid; grid-template-columns: auto minmax(140px, 1.1fr) minmax(110px, .8fr) minmax(110px, .7fr) minmax(160px, 1.2fr) auto;
+  align-items: end; gap: 10px; padding: 10px 11px; border: 1px solid var(--line); border-radius: 7px; background: var(--ground); }
+/* 2026-11-06: rows align to the bottom of the 33 px fields; (33 − 30) / 2 keeps the 30 px avatar and remove button on the
+   fields' centre line (they sat 2.5 and 1.5 px high). */
+.members-editor-row .card-owner-avatar { width: 30px; height: 30px; margin-bottom: 1.5px; }
+.members-editor-field { display: flex; flex-direction: column; gap: 5px; min-width: 0; color: var(--muted); font-size: 10px; }
+.members-editor-field input, .members-editor-field select { width: 100%; min-width: 0; min-height: 33px;
+  border: 1px solid var(--line); border-radius: 5px; padding: 6px 9px; color: var(--ink); background: var(--surface); font: inherit; font-size: 12px; }
+.members-editor-field :is(input, select):focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.members-editor-id input { font-family: 'Geist Mono', monospace; font-size: 11px; }
+.members-editor-id-static { overflow-wrap: anywhere; color: var(--muted);
+  font-family: 'Geist Mono', monospace; font-size: 11px; line-height: 33px; white-space: nowrap; }
+.members-editor-remove { margin-bottom: 1.5px; color: var(--muted); }
+.members-editor-remove:hover:not(:disabled) { color: var(--danger); background: var(--hover); }
+/* The body is a scrolling flex column: without flex-shrink: 0 the button was the only child that shrank (18.5 of 30 px). */
+.members-editor-add { align-self: start; flex-shrink: 0; }
+.members-editor-note { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.6; }
+.members-editor-error { margin: 0; padding: 10px 12px; border-radius: 6px; color: var(--warning-ink); background: var(--warning-bg); font-size: 12px; line-height: 1.6; }
+.members-editor-errors { padding: 10px 12px; border-radius: 6px; color: var(--warning-ink); background: var(--warning-bg); font-size: 11px; line-height: 1.6; }
+.members-editor-errors p { margin: 0 0 5px; font-weight: 600; }
+.members-editor-errors ul { margin: 0; padding-left: 17px; }
+.members-editor-footer { display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 13px 19px; border-top: 1px solid var(--line); }
+.members-editor-hint { color: var(--muted); font-size: 11px; }
+.members-editor-actions { display: flex; align-items: center; gap: 9px; }
+@media (prefers-reduced-motion: reduce) { .members-editor { animation: none; } }
+@media (max-width: 860px) { .members-editor-row { grid-template-columns: auto minmax(0, 1fr) auto; }
+  .members-editor-name { grid-column: 2; } .members-editor-remove { grid-row: 1; grid-column: 3; }
+  .members-editor-id, .members-editor-id-static, .members-editor-kind, .members-editor-aliases { grid-column: 2 / -1; }
+  .members-editor-id-static { line-height: 1.4; white-space: normal; } }

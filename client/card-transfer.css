@@ -1,0 +1,133 @@
+/* 2026-11-04: card transfers change deck membership; source layout stays in place until save. */
+[data-card-transfer-enabled="true"] { cursor: grab; }
+[data-card-transfer-source="true"] { opacity: .45; }
+.is-card-transfer-active [data-card-transfer-enabled="true"] { cursor: grabbing; }
+.is-card-transfer-active .deck-card { transform: none !important; transition: none; }
+.card-transfer-handle { display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto; width: 24px; height: 24px; padding: 3px; border: 0; border-radius: 4px; color: var(--muted); background: transparent; cursor: grab; touch-action: none; }
+.card-transfer-handle:hover, .card-transfer-handle:focus-visible { color: var(--ink); background: var(--hover); }
+.card-transfer-handle:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
+.card-transfer-handle[aria-disabled="true"] { cursor: default; opacity: .35; }
+.deck-card > .card-transfer-handle { position: absolute; z-index: 6; right: 3px; top: 3px; width: 22px; height: 22px; color: var(--card-ink); background: var(--card-face); opacity: 0; }
+/* The pointer drags the whole tile (2026-11-04), so the grip shows only for keyboard drag; on hover it just hid the title's end. */
+.deck-card .card-transfer-handle:focus-visible { opacity: 1; }
+/* The deck dock (2026-11-06): rises from the bottom while a card is dragged; every deck is a small cover, the one under
+   the pointer lifts with a mint ring and the heading names it. One authored moment: the rise; the rest answers the pointer. */
+.card-transfer-targets { position: fixed; z-index: 130; left: 50%; bottom: 16px; width: min(1180px, calc(100vw - 32px)); max-height: min(272px, 40vh); overflow: hidden auto; padding: 12px 16px 14px; border: 1px solid color-mix(in srgb, var(--line) 80%, transparent); border-radius: 8px; color: var(--ink); background: var(--sidebar, var(--surface)); box-shadow: 0 -2px 0 color-mix(in srgb, var(--plum) 35%, transparent), 0 18px 40px rgb(8 6 14 / .55); translate: -50% 0; animation: transfer-dock-rise 240ms var(--ease-out, cubic-bezier(.16, 1, .3, 1)); scrollbar-width: thin; }
+@keyframes transfer-dock-rise { from { opacity: 0; translate: -50% 18px; } }
+.card-transfer-targets-heading { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 6px 16px; margin-bottom: 12px; }
+.card-transfer-destination { display: flex; align-items: baseline; gap: 8px; min-width: 0; margin: 0; font-size: 13px; line-height: 22px; }
+.card-transfer-destination > span:first-child { color: var(--muted); }
+.card-transfer-destination strong { overflow: hidden; color: var(--ink); font-size: 16px; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; animation: transfer-name-in 160ms var(--ease-out, ease-out); }
+.card-transfer-destination em { color: var(--muted); font-style: normal; opacity: .75; }
+.card-transfer-destination-space { color: var(--muted); font-size: 12px; }
+@keyframes transfer-name-in { from { opacity: 0; translate: 0 4px; } }
+.card-transfer-help { color: var(--muted); font-size: 12px; }
+.card-transfer-target-groups { display: flex; flex-wrap: wrap; gap: 14px 24px; }
+.card-transfer-target-group { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.card-transfer-space { color: var(--muted); font-size: 12px; font-weight: 600; line-height: 15px; }
+.card-transfer-target-row { display: flex; flex-wrap: wrap; gap: 10px; }
+.card-transfer-target { display: flex; flex-direction: column; gap: 5px; width: 104px; padding: 0; border: 0; background: none; color: var(--ink); font: inherit; text-align: left; transition: translate 160ms var(--ease-out, ease-out), opacity 160ms ease; }
+.card-transfer-thumb { position: relative; display: grid; place-items: center; width: 104px; height: 64px; overflow: hidden; border-radius: 5px; color: #f0eff5; box-shadow: inset 0 0 0 1px rgb(255 255 255 / .16), 0 2px 6px rgb(8 6 14 / .35); transition: box-shadow 160ms ease, scale 160ms var(--ease-out, ease-out); }
+.card-transfer-thumb img { width: 100%; height: 100%; object-fit: cover; image-rendering: pixelated; }
+.card-transfer-name { overflow: hidden; padding-inline: 2px; font-size: 12px; font-weight: 600; line-height: 15px; text-overflow: ellipsis; white-space: nowrap; }
+/* 2026-11-06: one rule (the solid ring of the first was always overridden), and the dashed edge sits on the thumb's own edge:
+   at −4 px the Unassigned slot read 8 px shorter than the deck covers beside it. */
+.card-transfer-target.is-none .card-transfer-thumb { color: var(--muted); background: transparent; outline: 1.5px dashed color-mix(in srgb, var(--muted) 55%, transparent); outline-offset: -1.5px; box-shadow: none; }
+.card-transfer-target.is-over { translate: 0 -6px; }
+.card-transfer-target.is-over .card-transfer-thumb { scale: 1.05; box-shadow: 0 0 0 2px var(--mint-edge, var(--focus)), 0 10px 22px rgb(8 6 14 / .5); }
+.card-transfer-target.is-over .card-transfer-name { color: var(--mint-edge, var(--ink)); }
+.card-transfer-target:disabled { opacity: .38; }
+.card-transfer-target.is-here { opacity: .6; }
+.card-transfer-here { position: absolute; left: 6px; bottom: 6px; padding: 1px 6px; border-radius: 3px; background: rgb(8 6 14 / .72); color: #f0eff5; font-size: 10px; font-weight: 700; line-height: 14px; }
+.card-transfer-targets.has-target .card-transfer-target:not(.is-over):not(:disabled) .card-transfer-thumb { opacity: .82; }
+.deck-neighbor-rail > button.is-transfer-compatible { opacity: .95; }
+.deck-neighbor-rail > button.is-transfer-over { outline: 3px solid var(--focus); outline-offset: 3px; opacity: 1; transform: none; }
+/* A row-sized chip follows the pointer, leaving the drop target visible; the target highlights itself. */
+.card-transfer-overlay { display: inline-flex; align-items: center; gap: 8px; width: max-content; max-width: min(340px, calc(100vw - 32px)); height: 34px; padding: 0 12px; border: 1px solid var(--focus); border-radius: 6px; color: var(--ink); background: var(--surface); box-shadow: 0 6px 16px #0b0e1a66; pointer-events: none; }
+.card-transfer-overlay > svg { flex: 0 0 auto; color: var(--muted); }
+.card-transfer-overlay > strong { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; font-weight: 500; }
+.card-transfer-overlay-count { flex: 0 0 auto; padding: 1px 6px; border-radius: 9px; background: var(--accent-soft); color: var(--ink); font-size: 11px; font-weight: 700; }
+/* Priority lanes accept dragged Task cards. */
+.catalog-card-group.is-drop-target, tbody.is-drop-target > tr > * { transition: background-color var(--motion-feedback), box-shadow var(--motion-feedback); }
+.catalog-card-group.is-drop-over { border-radius: 8px; background: color-mix(in srgb, var(--accent) 10%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 55%, transparent); }
+tbody.is-drop-over > tr > * { background: color-mix(in srgb, var(--accent) 10%, transparent); }
+tbody.is-drop-over > tr.catalog-table-group > th { box-shadow: inset 0 2px 0 var(--accent); }
+@media (hover: none) { .deck-card > .card-transfer-handle { opacity: 1; } }
+@media (max-width: 600px) { .card-transfer-targets { bottom: 8px; width: calc(100vw - 16px); padding: 10px; } .card-transfer-help { display: none; } .card-transfer-target, .card-transfer-thumb { width: 84px; } .card-transfer-thumb { height: 52px; } }
+@media (prefers-reduced-motion: reduce) { .card-transfer-overlay, .card-transfer-handle, .card-transfer-target, .card-transfer-thumb, .card-transfer-targets, .card-transfer-destination strong, .is-card-transfer-active .deck-card { animation: none; transition: none; } }
+
+.deck-card:has(> .card-family-trigger) > .card-transfer-handle { top: 23px; }
+
+/* 2026-11-05: pointer transfers use the card itself and targets in the existing navigation. */
+:root {
+  --card-drop-mint: #4cc9b0;
+  --card-drop-ink: #173d33;
+  --card-drop-tab: #416b9d;
+  --card-drop-target: #9074bb;
+  --card-drop-target-ink: #21182f;
+  --card-drop-panel: var(--ground);
+  --card-drop-current: var(--canvas);
+  --card-drop-placeholder: color-mix(in srgb, var(--muted) 20%, var(--ground));
+  --card-drop-shadow: 0 0 1px #0000003d, 0 2.5px 15px #0000003d;
+}
+:root.dark { --card-drop-panel: #27242f; --card-drop-current: #322f40; }
+.is-card-pointer-transfer [data-card-transfer-source="true"] { opacity: 1; background: var(--card-drop-placeholder); border-radius: 5px; box-shadow: none; }
+.is-card-pointer-transfer .deck-card-space[data-card-transfer-source="true"] > * { visibility: hidden; }
+.is-card-pointer-transfer .deck-table-row[data-card-transfer-source="true"] { border-left-color: transparent; }
+.is-card-pointer-transfer .deck-table-row[data-card-transfer-source="true"] > * { visibility: hidden; }
+.is-card-pointer-transfer .deck-neighbor-rail > button.is-transfer-compatible { opacity: 1; }
+.is-card-pointer-transfer .deck-neighbor-rail > button.is-transfer-over { outline-color: var(--card-drop-mint); }
+.is-card-pointer-transfer .catalog-card-group { position: relative; }
+.is-card-pointer-transfer .catalog-card-group.is-drop-over { background: transparent; box-shadow: none; }
+.is-card-pointer-transfer tbody.is-drop-over > tr > * { background: unset; box-shadow: none; }
+.is-card-pointer-transfer tbody.is-drop-over > tr.catalog-table-group > th { background: transparent; box-shadow: none; }
+/* 2026-11-05: a light mint fill and thin edge keep cards visible in the drop lane; a small chip shows the hint. */
+.card-group-drop-surface { position: absolute; inset: 0; z-index: 9; border-radius: 8px; pointer-events: none; text-align: center; transition: background-color var(--motion-feedback) ease-out, box-shadow var(--motion-feedback) ease-out; }
+.card-group-drop-surface > span { position: sticky; top: calc(var(--catalog-content-offset, 64px) + 12px); display: block; width: fit-content; max-width: 100%; margin: 12px auto 0; padding: 4px 10px; border-radius: 999px; background: var(--card-drop-mint); color: var(--card-drop-ink); font-size: 12px; font-weight: 600; line-height: 16px; box-shadow: 0 2px 8px #0c0a1333; visibility: hidden; }
+.is-drop-over > .card-group-drop-surface, .is-drop-over > .card-table-drop-layer .card-group-drop-surface { background: color-mix(in srgb, var(--card-drop-mint) 14%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--card-drop-mint) 70%, transparent); }
+.is-drop-over > .card-group-drop-surface > span, .is-drop-over > .card-table-drop-layer .card-group-drop-surface > span { visibility: visible; }
+.card-table-drop-layer { position: absolute; inset: 36px 0 0; z-index: 9; pointer-events: none; }
+.deck-table > tbody:not(:has(> .catalog-table-group)) > .card-table-drop-layer { top: 0; }
+.card-table-drop-layer > td { display: block; padding: 0; }
+.card-table-drop-layer .card-group-drop-surface > span { margin-top: 8px; }
+.card-group-drop-panel { position: fixed; z-index: 110; right: 0; bottom: 0; width: 240px; display: flex; flex-direction: column; gap: 8px; padding: 16px; overflow-y: auto; background: var(--card-drop-panel); box-shadow: var(--card-drop-shadow); }
+.card-group-drop-target { flex: 0 0 auto; height: 47px; min-height: 47px; width: 208px; padding: 10px 12px; border: 0; border-radius: 4px; background: var(--card-drop-target); color: var(--card-drop-target-ink); font: inherit; font-size: 14px; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.card-group-drop-target.is-current { background: var(--card-drop-current); color: var(--ink); }
+.card-group-drop-target:disabled:not(.is-current) { background: var(--card-drop-current); color: var(--muted); }
+.card-group-drop-target.is-over { background: var(--card-drop-mint); color: var(--card-drop-ink); }
+.global-tabs:has(> .card-drag-tabs) > button { display: none; }
+.card-drag-tabs { display: contents; }
+.global-tabs .card-drag-tab { white-space: normal; line-height: 16px; padding-inline: 12px; }
+.global-tabs .card-drag-tab:not(:disabled) { color: #fff; }
+.global-tabs .card-drag-tab:not(:disabled)::before { background: var(--card-drop-tab); }
+.global-tabs .card-drag-tab.is-over:not(:disabled) { color: var(--card-drop-ink); }
+.global-tabs .card-drag-tab.is-over:not(:disabled)::before { background: var(--card-drop-mint); }
+.global-tabs .card-drag-tab:disabled { opacity: .4; }
+.card-drag-deck-menu { position: fixed; z-index: 170; width: 280px; max-height: min(600px, calc(100dvh - 60px)); overflow-y: auto; padding: 12px; border-radius: 4px; color: var(--ink); background: var(--card-drop-panel); box-shadow: var(--card-drop-shadow); }
+.card-drag-space { display: flex; flex-direction: column; gap: 4px; margin-top: 12px; }
+.card-drag-space > span { padding: 4px 8px; color: var(--muted); font-size: 12px; }
+.card-drag-destination { display: block; width: 100%; min-height: 38px; padding: 8px 12px; border: 0; border-radius: 4px; text-align: left; font: inherit; color: var(--ink); background: var(--surface); }
+.card-drag-destination:disabled { opacity: .45; }
+.card-drag-destination.is-over, .card-drag-destination:hover:not(:disabled) { background: var(--card-drop-mint); color: var(--card-drop-ink); }
+.card-drop-deck-picker { position: fixed; z-index: 180; top: 50%; left: 50%; transform: translate(-50%, -50%); width: min(380px, calc(100vw - 32px)); max-height: calc(100dvh - 32px); display: flex; flex-direction: column; gap: 12px; padding: 20px; border-radius: 8px; background: var(--surface); box-shadow: var(--shadow); }
+.card-drop-deck-picker h2, .card-drop-deck-picker p { margin: 0; }
+.card-drop-deck-picker p { color: var(--muted); }
+.card-drop-deck-list { min-height: 0; overflow-y: auto; }
+.card-drag-face { position: relative; pointer-events: none; filter: drop-shadow(0 14px 14px #00000066); transform-origin: 50% 12%; transition: scale 160ms var(--ease-out, ease-out), opacity 160ms ease; }
+/* Over a deck (dock or neighbor cover) the tile shrinks toward the pointer, keeping the chosen deck in sight (2026-11-06). */
+.is-transfer-target-over .card-drag-face { scale: .42; opacity: .92; }
+.card-drag-face-content { position: relative; z-index: 1; width: 100%; height: 100%; }
+.card-drag-face .deck-card-space { width: 100%; height: 100%; }
+.card-drag-face .deck-card { width: 100%; height: 100%; transform: none !important; transition: none; }
+.card-drag-face .card-transfer-handle, .card-drag-face .catalog-card-checkbox, .card-drag-face .deck-table-select { visibility: hidden; }
+.card-drag-face .deck-table { min-width: 0; height: 100%; }
+.card-drag-face .deck-table-row { width: 100%; height: 100%; margin: 0; background: #fff; color: #2b2540; border-radius: 4px; --row-ink: #2b2540; --row-meta: #536078; --card-muted: #536078; }
+.card-drag-face .deck-table > tbody { height: 100%; }
+.card-drag-face .deck-table-row > td { min-width: 0; }
+.card-drag-face.is-stack::before, .card-drag-face.is-stack::after { content: ''; position: absolute; inset: 0; border-radius: 5px; background: var(--card-face); box-shadow: var(--card-shadow); }
+.card-drag-face.is-stack::before { transform: translate(8px, 8px); }
+.card-drag-face.is-stack::after { transform: translate(4px, 4px); }
+.card-drag-count { position: absolute; z-index: 2; top: -10px; right: -10px; min-width: 24px; height: 24px; padding-inline: 6px; border-radius: 12px; color: var(--card-drop-ink); background: var(--card-drop-mint); font: 700 13px/24px var(--font-sans); text-align: center; }
+@media (max-width: 600px) { .card-group-drop-panel { width: 152px; padding: 8px; } .card-group-drop-target { width: 136px; } }
+@media (prefers-reduced-motion: reduce) { .card-drag-face *, .card-drag-tab::before { transition: none; animation: none; } }
+@media (prefers-reduced-motion: reduce) { .card-group-drop-surface { transition: none; } }

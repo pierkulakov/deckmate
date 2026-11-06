@@ -1,0 +1,17 @@
+.git
+.github
+.agents
+.impeccable
+.env*
+.deckmate
+.freetion
+node_modules
+dist
+coverage
+tasks
+docs/screenshots
+docs/social-preview.png
+*.tgz
+*.log
+release-notes.md
+package-info.json

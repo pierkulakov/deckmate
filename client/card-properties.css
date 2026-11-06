@@ -1,0 +1,72 @@
+/* Properties shares the 379 px family column with 355 px of content. */
+.card-properties-panel { width: 379px; min-width: 0; max-width: 100%; padding: 12px 12px 32px; color: var(--ink); background: var(--canvas); font-size: 12px; line-height: 14px; }
+.card-properties-section { display: flex; flex-direction: column; gap: 12px; padding: 16px 0 24px; }
+.card-properties-section:first-child { padding-top: 0; }
+/* 2026-11-06: every heading row is as tall as its 24 px Pick control, so sections with and without Pick keep one rhythm. */
+.card-properties-heading { display: flex; align-items: center; gap: 8px; min-height: 24px; }
+.card-properties-heading h3 { margin: 0; font-size: 12px; font-weight: 700; line-height: 14px; letter-spacing: .24px; text-transform: uppercase; }
+.card-properties-clear { display: grid; place-items: center; width: 18px; height: 18px; padding: 0; border: 0; border-radius: 3px; color: var(--muted); background: transparent; }
+.card-properties-clear:hover:not(:disabled) { color: var(--ink); background: var(--hover); }
+.card-properties-pick { display: flex; align-items: center; justify-content: space-between; gap: 2px; flex: 0 0 54px; width: 54px; height: 24px; margin-left: auto; padding: 0 3px 0 5px; border: .67px solid var(--edit-line); border-radius: 4px; color: var(--edit-link); background: transparent; font-size: 12px; font-weight: 700; line-height: 14px; letter-spacing: .12px; text-align: left; }
+.card-properties-pick > span { flex-shrink: 0; white-space: nowrap; }
+.card-properties-pick > svg { flex-shrink: 0; }
+.card-properties-pick:hover:not(:disabled) { background: var(--hover); }
+.card-properties-owner-value { display: flex; align-items: center; min-height: 28px; }
+.card-properties-owner { display: inline-flex; align-items: center; gap: 4px; min-width: 0; height: 28px; padding: 0 8px; border: .67px solid var(--property-edge); border-radius: 4px; color: var(--edit-link); background: var(--canvas); font-size: 14px; font-weight: 700; line-height: 16px; }
+.card-properties-owner > span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.card-properties-owner:hover:not(:disabled) { background: var(--hover); }
+.card-properties-owner .card-owner-avatar { width: 20px; height: 20px; }
+.card-properties-value { margin: 0; min-height: 16px; color: var(--edit-hint); font-size: 14px; line-height: 16px; overflow-wrap: anywhere; }
+.card-properties-priorities { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; }
+.card-properties-priorities button { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; height: 59px; padding: 8px; border: .67px solid var(--property-edge); border-radius: 4px; color: var(--edit-link); background: var(--canvas); font-size: 12px; font-weight: 400; line-height: 14px; }
+.card-properties-priorities button:hover:not(:disabled):not([aria-pressed="true"]), .card-properties-effort-scale button:hover:not(:disabled):not([aria-pressed="true"]) { background: var(--hover); }
+/* 2026-11-06: light mode selects priority and effort with the selected tag chip below (white on the done green read at 3:1);
+   dark mode keeps the same mint through --mint. */
+.card-properties-priorities button[aria-pressed="true"], .card-properties-effort-scale button[aria-pressed="true"] { border-color: var(--mint-edge, var(--tag-chip-on-edge)); color: var(--mint-ink, var(--tag-chip-on-ink)); background: var(--mint, var(--tag-chip-on)); }
+/* 2026-11-04: selected controls keep their mint fill on hover so dark green text remains readable; --mint-hover is shared by every mint control. */
+.card-properties-priorities button[aria-pressed="true"]:hover:not(:disabled), .card-properties-effort-scale button[aria-pressed="true"]:hover:not(:disabled) { background: var(--mint-hover, color-mix(in srgb, var(--tag-chip-on) 80%, var(--tag-chip-on-edge))); }
+.card-properties-effort-form { display: flex; flex-direction: column; gap: 8px; }
+.card-properties-effort-values { display: flex; align-items: center; gap: 4px; }
+.card-properties-effort-scale { display: grid; flex: 1; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 4px; }
+.card-properties-effort-scale button { display: grid; place-items: center; height: 31px; padding: 0 8px; border: .67px solid var(--property-edge); border-radius: 4px; background: var(--canvas); color: var(--edit-link); font-size: 12px; font-weight: 400; line-height: 14px; font-variant-numeric: tabular-nums; }
+.card-properties-effort-custom { display: block; flex: 0 0 32px; width: 32px; }
+.card-properties-effort-custom input { width: 32px; min-width: 0; height: 31px; padding: 7px 5px; border: .67px solid var(--edit-line); border-radius: 4px; color: var(--edit-link); background: var(--edit-bg); font-size: 12px; font-weight: 400; line-height: 16px; text-align: center; }
+.card-properties-effort-draft-actions { display: flex; gap: 6px; }
+.card-properties-total { display: flex; align-items: baseline; justify-content: center; gap: 4px; margin: 0; color: var(--edit-hint); font-size: 11px; font-weight: 700; line-height: 12px; letter-spacing: .22px; }
+.card-properties-total strong { color: var(--ink); font-weight: 700; }
+.card-properties-date { display: flex; flex-direction: column; gap: 8px; }
+.card-properties-date input { width: 100%; min-height: 32px; padding: 4px 8px; border: 1px solid var(--line); border-radius: 4px; color: var(--ink); background: var(--canvas); }
+.card-properties-date > div { display: flex; gap: 6px; }
+.card-properties-tag-manager { position: relative; margin-left: auto; flex: 0 0 24px; width: 24px; height: 24px; }
+.card-properties-tag-manager > svg { position: absolute; z-index: 1; inset: 4.5px; pointer-events: none; color: var(--muted); }
+.card-properties-tag-manager .card-tag-control { display: block; margin: 0; padding: 0; }
+.card-properties-tag-manager .card-tag-control > .card-tags { display: none; }
+/* Keep TagPicker's real trigger and accessible label; only its visual presentation becomes a gear. */
+.card-properties-tag-manager .card-tag-open { display: block; width: 24px; height: 24px; min-height: 24px; padding: 0; margin: 0; border-radius: 4px; font-size: 0; color: transparent; }
+.card-properties-tag-manager .card-tag-open > svg { display: none; }
+.card-properties-error { color: var(--danger); }
+.card-properties-panel input { caret-color: var(--focus); }
+.card-properties-panel [aria-invalid="true"] { outline-color: var(--danger); }
+@media (max-width: 700px) { .card-properties-panel { width: 100%; } }
+/* Every project tag is a chip that toggles membership on click. --property-edge unifies owner, priority, effort and tag controls; #7d86a5 reaches 3:1 against the panel. */
+:root { --tag-chip-on: #d7f8eb; --tag-chip-on-edge: #74dcc8; --tag-chip-on-ink: #0c5547; --property-edge: #8b74a3; --tag-chip-off-ink: var(--ink); --tag-chip-off-hover: var(--hover); --tag-chip-remove: #edeef2; --tag-chip-remove-ink: #645c7e; }
+:root.dark { --tag-chip-on: #a8eedf; --tag-chip-on-edge: #74dcc8; --tag-chip-on-ink: #0c5547; --property-edge: #7d86a5; --tag-chip-off-ink: #e7dff7; --tag-chip-off-hover: #514a66; --tag-chip-remove: #514a66; --tag-chip-remove-ink: #bbc0d6; }
+.card-properties-info { display: grid; place-items: center; width: 18px; height: 18px; padding: 0; border: 0; border-radius: 3px; color: var(--muted); background: transparent; cursor: help; }
+.card-properties-info:hover { color: var(--ink); background: var(--hover); }
+.card-properties-info:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
+.card-properties-info-tip { z-index: 160; max-width: 260px; padding: 8px 10px; border-radius: 6px; color: var(--tag-foreground, var(--ink)); background: var(--tag-popover-background, var(--surface)); box-shadow: var(--shadow); font-size: 12px; line-height: 16px; animation: overlay-pop var(--motion-spring-quick) var(--ease-spring-quick); }
+.card-properties-tag-chips { display: flex; flex-wrap: wrap; gap: 4px; }
+.card-properties-tag-chip { position: relative; display: inline-flex; align-items: center; max-width: 100%; height: 24px; padding: 0 6px; overflow: hidden; border: .67px solid var(--property-edge); border-radius: 4px; color: var(--tag-chip-off-ink); background: transparent; font-size: 11px; font-weight: 700; line-height: 12px; white-space: nowrap; cursor: pointer; transition: background-color var(--motion-feedback) ease-out, border-color var(--motion-feedback) ease-out, color var(--motion-feedback) ease-out; }
+.card-properties-tag-chip-label { display: inline-flex; align-items: center; gap: 3px; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.card-properties-tag-chip-label .card-tag-emoji { font-size: 11px; }
+.card-properties-tag-chip-label .card-tag-icon { width: 12px; height: 12px; }
+.card-properties-tag-chip:hover:not(:disabled):not([aria-pressed="true"]) { background: var(--tag-chip-off-hover); }
+.card-properties-tag-chip[aria-pressed="true"] { border-color: var(--tag-chip-on-edge); color: var(--tag-chip-on-ink); background: var(--tag-chip-on); }
+.card-properties-tag-chip.is-personal[aria-pressed="true"] { font-weight: 600; }
+.card-properties-tag-chip-remove { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: var(--tag-chip-remove-ink); background: var(--tag-chip-remove); opacity: 0; pointer-events: none; transition: opacity var(--motion-feedback) ease-out; }
+.card-properties-tag-chip:is(:hover, :focus-visible):not(:disabled) > .card-properties-tag-chip-remove { opacity: 1; }
+.card-properties-tag-chip:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
+.card-properties-tag-chip:disabled { opacity: .5; cursor: default; }
+@media (prefers-reduced-motion: reduce) { .card-properties-tag-chip, .card-properties-tag-chip-remove { transition: none; } }
+.card-properties-error { margin: 0; font-size: 11px; line-height: 16px; overflow-wrap: anywhere; }
+.card-properties-panel > .card-properties-error { padding-top: 12px; }

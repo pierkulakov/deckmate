@@ -1,0 +1,20 @@
+/* Recurrence controls, 2026-11-05: use the shared planning form and theme palette. */
+.run-carry-fields { border: 0; padding: 0; margin: 0; }
+.run-carry-fields legend { padding: 0 0 12px; font-weight: 600; font-size: 13px; }
+.run-settings-note { color: var(--muted); font-size: 12px; line-height: 1.5; }
+.run-configuration-form { margin-top: 20px; }
+.run-configuration-form select { height: 36px; padding: 6px 10px; border: 1px solid var(--line); border-radius: 5px; background: var(--ground); color: var(--ink); font: inherit; }
+.run-configuration-form select:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.run-schedule-list { margin-top: 24px; border-top: 1px solid var(--line); padding-top: 16px; }
+.run-schedule-list h3 { font-size: 14px; margin: 0 0 12px; }
+.run-schedule-list > div { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding: 6px 0; font-size: 12px; }
+.run-schedule-list > div > span:not(.run-schedule-color), .run-schedule-list small { color: var(--muted); }
+.run-schedule-list > div > strong, .run-schedule-list > div > span:not(.run-schedule-color) { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.run-schedule-list > div > .ui-button { flex-shrink: 0; }
+.run-schedule-color { width: 10px; height: 10px; border-radius: 2px; flex-shrink: 0; }
+/* 2026-11-05: the schedule form is a project band and three groups; the narrow settings dialog stacks the groups, the calendar's «Set up Runs» popover lays them out in columns. */
+.run-form-band { padding: 12px 16px; border-radius: 4px; background: var(--planning-popover-band, var(--ground)); }
+.run-form-band .deck-panel-switch-row { height: 18px; font-size: 12px; text-transform: uppercase; }
+.planning-popover .run-form-band { padding: 16px 24px; border-radius: 0; }
+.run-form-columns, .run-form-columns > div { display: flex; flex-direction: column; gap: 18px; min-width: 0; }
+.run-form-color { display: flex; flex-direction: column; gap: 6px; font-size: 13px; }

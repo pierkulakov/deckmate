@@ -1,0 +1,72 @@
+/* Interactive Doc questions stay on the same card and use shared theme tokens. */
+/* The amber question badge matches the Doc kind badge and shows an icon and count. */
+.catalog-card-open-questions { position: relative; display: inline-flex; flex: 0 0 auto; align-items: center; gap: 3px; height: 18px;
+  padding: 0 6px 0 4px; border-radius: 9px; background: var(--kind-doc-bg); color: var(--card-metal-ink);
+  font: 700 11px/1 var(--font-sans); white-space: nowrap; box-shadow: 0 1px 2px #0003; }
+.catalog-card-open-questions.has-warning::after { content: ''; position: absolute; top: -2px; right: -2px; width: 7px; height: 7px;
+  border: 1.5px solid var(--kind-doc-bg); border-radius: 50%; background: var(--danger); }
+.catalog-card-doc .deck-card-identity { gap: 4px; }
+.catalog-card-doc .deck-card-identity > strong { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.open-questions { margin: 4px 16px 20px; color: var(--ink); }
+/* Reading needs a negative margin for Edit; after questions, TagPicker stays in normal flow to avoid overlap. */
+.card-preview-panel > .open-questions + .card-tag-control { margin: 0 16px 10px; }
+.open-questions-heading { display: flex; align-items: center; gap: 8px; min-height: 28px; margin-bottom: 8px; }
+.open-questions-heading h3 { margin: 0; font-size: 14px; font-weight: 700; line-height: 20px; }
+.open-questions-count { display: inline-flex; align-items: center; justify-content: center; min-width: 22px; height: 22px;
+  padding: 0 6px; border-radius: 11px; background: var(--accent-soft); color: var(--focus);
+  font: 600 11px/1 'Geist Mono', monospace; font-variant-numeric: tabular-nums; }
+.open-question-warnings { display: grid; gap: 5px; margin: 0 0 8px; padding: 10px 12px; list-style: none;
+  border-radius: 6px; background: var(--warning-bg); color: var(--warning-ink); }
+.open-question-warnings li { display: flex; align-items: flex-start; gap: 6px; font-size: 11px; line-height: 1.5; }
+.open-question-warnings svg { flex: 0 0 auto; margin-top: 2px; }
+.open-questions-empty { margin: 0; padding: 13px 14px; border: 1px dashed var(--line); border-radius: 6px;
+  background: var(--surface); color: var(--muted); font-size: 13px; line-height: 20px; }
+.open-questions-list { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; }
+.open-question { padding: 12px 14px 10px; border: 1px solid var(--line); border-radius: 6px;
+  background: var(--surface); box-shadow: var(--card-shadow); transition: border-color var(--motion-feedback), box-shadow var(--motion-feedback); }
+.open-question:focus-within { border-color: var(--focus); }
+.open-question-row { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; }
+.open-question-text { min-width: 0; margin: 0; color: var(--ink); font-size: 14px; line-height: 20px; overflow-wrap: anywhere; }
+.open-question-actions { display: flex; flex-wrap: wrap; justify-content: flex-start; gap: 4px; }
+.open-question-actions .ui-button { flex: 0 0 auto; height: 28px; min-height: 28px; padding: 3px 8px; gap: 5px;
+  border-radius: 4px; color: var(--muted); font-size: 12px; font-weight: 500; line-height: 16px; }
+.open-question-actions .ui-button:hover:not(:disabled) { background: var(--hover); color: var(--ink); }
+.open-question-actions .ui-button:active:not(:disabled) { background: var(--accent-soft); }
+.open-question-actions .ui-button.open-question-task { background: var(--accent-soft); color: var(--focus); }
+.open-question-actions .ui-button.open-question-task:hover:not(:disabled) { background: var(--hover); color: var(--accent); }
+.open-question-answer { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line); }
+.open-question-answer textarea { display: block; width: 100%; min-height: 76px; resize: vertical; padding: 9px 10px;
+  border: 1px solid var(--line); border-radius: 5px; outline: none; background: var(--ground); color: var(--ink);
+  caret-color: var(--ink); font: 14px/20px var(--font-sans); transition: border-color var(--motion-feedback), background-color var(--motion-feedback); }
+.open-question-answer textarea:hover:not(:disabled) { border-color: var(--muted); }
+.open-question-answer textarea:focus-visible { border-color: var(--focus); outline: 2px solid var(--focus); outline-offset: 1px; }
+.open-question-answer textarea:disabled { opacity: .65; }
+.open-question-answer textarea::placeholder { color: var(--muted); }
+.open-question-answer-footer { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.open-question-answer-footer > span { flex: 1 1 100%; color: var(--muted); font-size: 10px; line-height: 1.5; }
+.open-question-error { margin: 8px 0 0; padding: 8px 10px; border-radius: 4px; background: var(--warning-bg);
+  color: var(--danger); font-size: 11px; line-height: 1.5; overflow-wrap: anywhere; }
+.open-questions-readonly { margin: 8px 0 0; padding: 12px 14px; border: 1px solid var(--line); border-radius: 6px;
+  background: var(--surface); color: var(--muted); font-size: 11px; line-height: 1.6; }
+
+.open-questions-overlay { position: fixed; inset: 0; z-index: 120; background: color-mix(in srgb, var(--sidebar) 68%, transparent);
+  backdrop-filter: blur(2px); animation: backdrop-fade var(--motion-spring-firm) ease-out; }
+.open-questions-dialog { position: fixed; top: 50%; left: 50%; z-index: 121; width: min(390px, calc(100vw - 32px));
+  max-height: calc(100dvh - 48px); overflow-y: auto; transform: translate(-50%, -50%); padding: 14px;
+  border: 1px solid var(--line); border-radius: 8px; outline: none; background: var(--surface); color: var(--ink);
+  box-shadow: var(--shadow); animation: dialog-drop var(--motion-spring-firm) var(--ease-spring-firm); }
+.open-questions-dialog-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.open-questions-dialog-heading h2 { margin: 0; font-size: 16px; font-weight: 700; line-height: 24px; }
+.open-questions-dialog-heading .ui-button { width: 26px; height: 26px; color: var(--muted); }
+.open-questions-dialog-question { margin: 8px 0 14px; color: var(--muted); font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; }
+.open-questions-dialog-fields { display: grid; gap: 10px; }
+.open-questions-dialog-fields label { display: grid; gap: 5px; }
+.open-questions-dialog-fields label > span { color: var(--muted); font-size: 10px; font-weight: 600; }
+.open-questions-dialog-fields select { width: 100%; min-height: 36px; padding: 7px 9px; border: 1px solid var(--line);
+  border-radius: 4px; background: var(--surface); color: var(--ink); font: 12px var(--font-sans); }
+.open-questions-dialog-note { margin: 12px 0 0; color: var(--muted); font-size: 10px; line-height: 1.5; }
+.open-questions-dialog-footer { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 6px; margin-top: 14px; }
+.open-questions-dialog-footer > span { flex: 1 1 120px; color: var(--muted); font-size: 9px; }
+
+@media (prefers-reduced-motion: reduce) { .open-questions-overlay, .open-questions-dialog { animation: none; } }

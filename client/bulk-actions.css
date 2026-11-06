@@ -1,0 +1,45 @@
+.bulk-actions { display: inline-flex; align-items: center; gap: 2px; min-width: 0; }
+.bulk-actions .bulk-action-button { flex-shrink: 0; }
+.card-selection-bar .bulk-actions .bulk-action-effort { width: 34px; min-width: 34px; height: 32px; padding: 1px 3px; flex-direction: column; gap: 0; }
+.bulk-action-effort small { max-width: 34px; overflow: hidden; text-overflow: ellipsis; font-size: 9px; line-height: 11px; font-variant-numeric: tabular-nums; }
+.card-selection-bar .bulk-action-button[data-active] { box-shadow: inset 0 0 0 1px #d5f5e980; }
+.bulk-action-feedback { max-width: 190px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; }
+.bulk-more-menu { z-index: 155; width: 220px; max-height: min(520px, var(--radix-dropdown-menu-content-available-height)); overflow-y: auto; padding: 6px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); color: var(--ink); box-shadow: var(--shadow); scrollbar-width: thin; animation: overlay-pop var(--motion-spring-quick) var(--ease-spring-quick); }
+.bulk-more-item { display: flex; align-items: center; gap: 9px; min-height: 32px; padding: 6px 8px; border-radius: 4px; font-size: 12px; outline: none; cursor: pointer; }
+.bulk-more-item[data-highlighted] { background: var(--accent-soft); box-shadow: inset 0 0 0 1px var(--focus); }
+.bulk-more-item[data-disabled] { opacity: .45; cursor: default; }
+.bulk-more-separator { height: 1px; margin: 5px 0; background: var(--line); }
+.bulk-actions-dialog { position: fixed; z-index: 160; top: max(64px, 14vh); left: 50%; transform: translateX(-50%); width: min(440px, calc(100vw - 24px)); max-height: calc(100dvh - 88px); overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); color: var(--ink); box-shadow: var(--shadow); animation: dialog-drop var(--motion-spring-firm) var(--ease-spring-firm); }
+.bulk-dialog-header { position: sticky; top: 0; z-index: 1; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 15px 17px; border-bottom: 1px solid var(--line); background: var(--surface); }
+.bulk-dialog-header h2 { margin: 0; font-size: 17px; font-weight: 600; }
+.bulk-dialog-header p { margin: 4px 0 0; color: var(--muted); font-size: 11px; }
+.bulk-dialog-body { display: flex; flex-direction: column; gap: 14px; min-width: 0; margin: 0; padding: 18px; border: 0; font-size: 13px; line-height: 1.6; }
+.bulk-dialog-body > p { margin: 0; }
+.bulk-dialog-body > .ui-button { align-self: start; }
+.bulk-field { display: flex; flex-direction: column; gap: 6px; min-width: 0; color: var(--muted); font-size: 12px; }
+.bulk-field input, .bulk-field select, .bulk-field textarea { width: 100%; min-width: 0; min-height: 35px; border: 1px solid var(--line); border-radius: 5px; padding: 7px 9px; color: var(--ink); background: var(--ground); font: inherit; }
+.bulk-field textarea { resize: vertical; }
+.bulk-field :is(input,select,textarea):focus-visible, .bulk-search:focus-within { outline: 2px solid var(--focus); outline-offset: 2px; }
+.bulk-search { display: flex; align-items: center; gap: 8px; min-width: 0; padding: 7px 9px; border: 1px solid var(--line); border-radius: 5px; color: var(--muted); background: var(--ground); }
+.bulk-search > svg { flex-shrink: 0; }
+.bulk-search input { width: 100%; min-width: 0; border: 0; outline: none; background: transparent; color: var(--ink); font-size: 12px; }
+.bulk-current, .bulk-help { color: var(--muted); font-size: 11px; line-height: 1.6; overflow-wrap: anywhere; }
+.bulk-current { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bulk-pick-list { display: flex; flex-direction: column; gap: 3px; max-height: 250px; overflow-y: auto; scrollbar-width: thin; }
+.bulk-pick-option { display: flex; align-items: center; gap: 9px; width: 100%; min-height: 36px; padding: 7px 8px; border: 1px solid transparent; border-radius: 5px; color: var(--ink); background: transparent; text-align: left; font: inherit; font-size: 12px; cursor: pointer; }
+.bulk-pick-option > span:not(.card-owner-avatar) { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.bulk-pick-option > small { color: var(--muted); font-size: 10px; }
+.bulk-pick-option > svg { flex-shrink: 0; }
+.bulk-pick-option .card-owner-avatar { width: 24px; height: 24px; }
+.bulk-pick-option:hover:not(:disabled), .bulk-pick-option[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--line); }
+.bulk-pick-option:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
+.bulk-mode-choice, .bulk-tabs { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 15px; }
+.bulk-mode-choice label { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; }
+.bulk-checkboxes { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px 12px; padding: 0; margin: 0; border: 0; }
+.bulk-checkboxes legend { margin-bottom: 12px; color: var(--muted); font-size: 11px; }
+.bulk-checkboxes label { display: inline-flex; align-items: center; gap: 7px; font-size: 12px; }
+.bulk-mode-choice input { accent-color: var(--accent); }
+.bulk-tabs .ui-button[aria-pressed="true"] { background: var(--accent-soft); box-shadow: inset 0 0 0 1px var(--line); }
+.bulk-dialog-footer { position: sticky; bottom: 0; display: flex; align-items: center; justify-content: flex-end; gap: 9px; padding: 13px 18px; border-top: 1px solid var(--line); background: var(--surface); }
+.bulk-action-warning { display: flex; flex-direction: column; align-items: start; gap: 8px; padding: 10px 16px; margin: 0; color: var(--warning-ink); background: var(--warning-bg); font-size: 11px; line-height: 1.6; }
+@media (prefers-reduced-motion: reduce) { .bulk-actions-dialog { animation: none; } }

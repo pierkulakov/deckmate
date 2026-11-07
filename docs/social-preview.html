@@ -20,30 +20,40 @@
         radial-gradient(520px 360px at 1180px 640px, #74dcc833, transparent 70%),
         linear-gradient(160deg, #241f33, var(--night) 60%); }
     /* A faint pixel grid recalls the board and the pixel mark without competing with the cards. */
+    .stage::after { content: ""; position: absolute; inset: 0; pointer-events: none; background: radial-gradient(130% 120% at 50% 45%, transparent 55%, #0000008c); }
     .stage::before { content: ""; position: absolute; inset: 0; opacity: .35;
       background-image: radial-gradient(#ffffff26 1.2px, transparent 1.6px); background-size: 32px 32px; }
     .copy { position: absolute; left: 72px; top: 0; bottom: 0; width: 600px; display: flex; flex-direction: column; justify-content: center; }
     .brand { display: flex; align-items: center; gap: 22px; }
     .logo { width: 104px; height: 104px; image-rendering: pixelated; filter: drop-shadow(0 6px 18px #9258e5aa); }
-    h1 { margin: 0; font-size: 132px; font-weight: 750; line-height: .9; letter-spacing: -.035em; }
+    h1 { margin: 0; padding-bottom: 8px; font-size: 132px; font-weight: 750; line-height: .9; letter-spacing: -.035em;
+      background: linear-gradient(175deg, #ffffff 20%, #e9e0ff 55%, #b79cf2 100%); -webkit-background-clip: text; background-clip: text; color: transparent;
+      filter: drop-shadow(0 2px 0 #4b2f86) drop-shadow(0 10px 24px #0a0812cc); }
     .slogan { margin: 26px 0 0; font-size: 58px; font-weight: 750; line-height: 1; letter-spacing: -.015em;
-      background: linear-gradient(180deg, #fff2c8, var(--gold) 55%, #d8a944); -webkit-background-clip: text; background-clip: text; color: transparent;
+      background: linear-gradient(180deg, #fff6d6 8%, #f7d775 38%, #e5a93a 62%, #f9dc86 82%, #c98d2a); -webkit-background-clip: text; background-clip: text; color: transparent;
       filter: drop-shadow(0 3px 12px #e5b65055); }
     .tagline { margin: 22px 0 28px; color: var(--muted); font-size: 31px; font-weight: 550; line-height: 1.2; }
     .tagline b { color: var(--ink); font-weight: 700; }
-    code { align-self: flex-start; padding: 9px 22px; border: 2px solid var(--mint-edge); border-radius: 10px; background: var(--mint-ground);
+    code { align-self: flex-start; padding: 9px 22px; border: 2px solid transparent; border-radius: 12px;
+      background: linear-gradient(160deg, #123f3a, #0b2724) padding-box, linear-gradient(120deg, #a8eedf, #74dcc8 40%, #9258e5) border-box;
       color: var(--mint); font: 500 32px/1.2 "Geist Mono", monospace; box-shadow: 0 0 28px #74dcc833; }
     code::before { content: "$ "; color: #74dcc8aa; }
-    .cards { position: absolute; left: 670px; top: 70px; width: 600px; height: 540px; }
+    .cards { position: absolute; left: 670px; top: 70px; width: 600px; height: 540px; perspective: 1300px; }
+    .fan { position: absolute; inset: 0; transform-style: preserve-3d; transform: rotateX(12deg) rotateY(-14deg) rotateZ(2deg); }
+    /* A soft floor shadow anchors the floating hand. */
+    .floor { position: absolute; left: 60px; right: 0; bottom: 6px; height: 90px; border-radius: 50%; background: radial-gradient(closest-side, #000000b0, transparent); filter: blur(6px); }
     .card { position: absolute; left: 185px; top: 150px; width: 230px; height: 294px; overflow: hidden; border-radius: 12px;
-      transform-origin: 50% 165%; box-shadow: 0 18px 40px #07060ccc, 0 0 0 1px #ffffff1a; }
+      transform-origin: 50% 165%; box-shadow: 0 30px 50px #07060cdd, 0 0 0 1px #ffffff26; }
+    /* Glare across the card face gives the matte top a lacquered, premium finish. */
+    .card::after { content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
+      background: linear-gradient(118deg, #ffffff38 0%, #ffffff10 28%, transparent 42%, transparent 70%, #ffffff14 86%, transparent 100%); }
     .card img { position: absolute; top: -16px; left: calc(-16px - 262px * var(--i)); width: 1310px; height: 326px; }
-    .card.hero { box-shadow: 0 18px 40px #07060ccc, 0 0 0 2px #f5c24c, 0 0 46px #e5b650aa; }
-    .c0 { transform: rotate(-30deg) translateY(14px); z-index: 1; }
-    .c1 { transform: rotate(-15deg) translateY(-4px); z-index: 2; }
-    .c2 { transform: translateY(-34px) scale(1.08); z-index: 5; }
-    .c3 { transform: rotate(15deg) translateY(-4px); z-index: 3; }
-    .c4 { transform: rotate(30deg) translateY(14px); z-index: 4; }
+    .card.hero { box-shadow: 0 30px 50px #07060cdd, 0 0 0 2px #f9dc86, 0 0 0 4px #b8822a, 0 0 70px #f0bd55cc; }
+    .c0 { transform: rotate(-30deg) translateY(14px) translateZ(-40px); }
+    .c1 { transform: rotate(-15deg) translateY(-4px) translateZ(-10px); }
+    .c2 { transform: translateY(-40px) translateZ(70px) scale(1.04); }
+    .c3 { transform: rotate(15deg) translateY(-4px) translateZ(10px); }
+    .c4 { transform: rotate(30deg) translateY(14px) translateZ(20px); }
     /* Pixel sparkles in the mark's pip shape. */
     .spark { position: absolute; width: 24px; height: 24px; background: var(--c); image-rendering: pixelated;
       clip-path: polygon(50% 0, 62% 38%, 100% 50%, 62% 62%, 50% 100%, 38% 62%, 0 50%, 38% 38%); filter: drop-shadow(0 0 8px var(--c)); }
@@ -61,11 +71,14 @@
       <code>npx deckmate</code>
     </section>
     <div class="cards" aria-label="Five real cards from the sample project, fanned like a hand">
+      <div class="floor"></div>
+      <div class="fan">
       <div class="card c0" style="--i: 2"><img src="social-cards.png" alt=""></div>
       <div class="card c1 hero" style="--i: 1"><img src="social-cards.png" alt=""></div>
       <div class="card c2 hero" style="--i: 0"><img src="social-cards.png" alt="Moonwake Lantern, a golden Hero card"></div>
       <div class="card c3" style="--i: 3"><img src="social-cards.png" alt=""></div>
       <div class="card c4" style="--i: 4"><img src="social-cards.png" alt="A task owned by an AI agent"></div>
+      </div>
     </div>
     <i class="spark" style="--c: #f5c24c; left: 1206px; top: 64px"></i>
     <i class="spark" style="--c: #a8eedf; left: 690px; top: 92px; width: 16px; height: 16px"></i>

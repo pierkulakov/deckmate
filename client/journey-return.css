@@ -1,0 +1,9 @@
+/* The return-reason prompt sits below the Journey card's state buttons and records step pitfalls. Use theme tokens only. */
+.journey-return { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 8px 10px; margin: 10px 16px 0; padding: 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); color: var(--ink); font-size: 12px; line-height: 1.5; }
+.journey-return-reason { grid-column: 1 / -1; display: flex; flex-direction: column; gap: 5px; color: var(--muted); }
+.journey-return-reason input { width: 100%; height: 30px; padding: 0 9px; border: 1px solid var(--line); border-radius: 4px; background: var(--canvas); color: var(--ink); font-size: 13px; }
+.journey-return-reason input:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
+.journey-return-lesson { display: inline-flex; align-items: center; gap: 6px; color: var(--ink); cursor: pointer; }
+.journey-return-lesson input { margin: 0; }
+.journey-return-lesson:has(input:disabled) { color: var(--muted); cursor: default; }
+.journey-return-actions { display: flex; justify-content: flex-end; gap: 6px; }

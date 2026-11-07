@@ -1,0 +1,468 @@
+@import "tailwindcss";
+/* Shared tag styles keep project labels readable in both themes. */
+:root {
+  --tag-background: #1c1a24;
+  --tag-foreground: #ffffff;
+  --tag-glyph-background: #e2dcee;
+  --tag-popover-background: #322f40;
+  --tag-personal-foreground: #7443a6;
+  --tag-personal-on-card: #dac0ff;
+  --tag-personal-on-tint: #532776;
+  --tag-radius: 2.4px;
+  --tag-height: 16px;
+  --tag-font-size: 12px;
+  --tag-line-height: 14px;
+  --tag-name-padding: 6px;
+  --tag-glyph-width: 19px;
+  --tag-compact-height: 14px;
+  --tag-compact-font-size: 11px;
+  --tag-compact-line-height: 12px;
+  --tag-compact-padding: 4px;
+  --tag-compact-glyph-width: 17px;
+  --tag-gap: 8px;
+  --tag-dot-size: 10px;
+}
+:root.dark { --tag-personal-foreground: #dac0ff; }
+/* Source Sans 3 (OFL 1.1, Adobe; fontsource-variable 5.2.9) is the interface font. */
+@font-face { font-family: 'Source Sans 3'; src: url('../assets/fonts/source-sans-3/SourceSans3-latin-wght.woff2') format('woff2-variations'); font-weight: 200 900; font-display: swap; unicode-range: U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD; }
+@font-face { font-family: 'Source Sans 3'; src: url('../assets/fonts/source-sans-3/SourceSans3-cyrillic-wght.woff2') format('woff2-variations'); font-weight: 200 900; font-display: swap; unicode-range: U+0301,U+0400-045F,U+0490-0491,U+04B0-04B1,U+2116; }
+@font-face { font-family: 'Geist Mono'; src: url('../assets/fonts/geist/GeistMono-Regular.ttf'); font-weight: 400; font-display: swap; }
+/* Medium serves the 500 tile numbers of DESIGN.md; with synthesis off, 600 and 700 requests resolve to it instead of Regular. */
+@font-face { font-family: 'Geist Mono'; src: url('../assets/fonts/geist/GeistMono-Medium.ttf'); font-weight: 500; font-display: swap; }
+/* Roboto Mono (OFL 1.1, fontsource-variable 5.2.9) is the card editor's monospace font. */
+@font-face { font-family: 'Roboto Mono Variable'; src: url('../assets/fonts/roboto-mono/RobotoMono-latin-wght.woff2') format('woff2-variations'); font-weight: 100 700; font-display: swap; unicode-range: U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD; }
+@font-face { font-family: 'Roboto Mono Variable'; src: url('../assets/fonts/roboto-mono/RobotoMono-cyrillic-wght.woff2') format('woff2-variations'); font-weight: 100 700; font-display: swap; unicode-range: U+0301,U+0400-045F,U+0490-0491,U+04B0-04B1,U+2116; }
+
+:root { color-scheme: light; --font-sans: 'Source Sans 3', sans-serif; --canvas: #f4eef9; --surface: #fdfaff; --ground: #eee6f4; --sidebar: #e9e0f2; --ink: #2f2440; --muted: #6b587b; --line: #d5c5e5; --hover: #e8d9f3; --accent: #7443a6; --accent-soft: #ecdaf8; --focus: #8251ba; --danger: #b64267; --warning-bg: #f9edcf; --warning-ink: #80531c; --mark-back: #a184e0; --mark-front: #6538a3; --mark-pip: #e8ad2e; --edit-bg: #fbf8ff; --edit-line: #a38acb; --edit-link: #4a3a63; --edit-cancel: #b64267; --edit-hint: #6b587b; --edit-save: #7a5aae; --plum: #9c6acf; --champagne: #cb973c; --shadow: 0 8px 28px #30243812; --panel-gradient: linear-gradient(145deg, color-mix(in srgb, var(--surface) 93%, var(--plum)), var(--surface) 72%); --chrome-gradient: linear-gradient(120deg, color-mix(in srgb, var(--sidebar) 92%, var(--plum)), var(--sidebar) 58%, color-mix(in srgb, var(--sidebar) 96%, var(--champagne))); --tab-gradient: linear-gradient(145deg, color-mix(in srgb, var(--surface) 88%, var(--plum)), var(--surface) 75%); font-family: var(--font-sans); font-synthesis: none; }
+/* Dark is the default theme. */
+:root.dark { color-scheme: dark; --canvas: #322f40; --surface: #39354a; --ground: #27242f; --sidebar: #1c1a24; --chrome: #27242f; --ink: #edeef2; --muted: #cdc8dc; --line: #4a4560; --hover: #443f59; --accent: #9258e5; --accent-soft: #442b5d; --focus: #b79cf2; --danger: #ff8a80; --warning-bg: #4a3a22; --warning-ink: #fde793; --plum: #9258e5; --champagne: #f7e18e; --shadow: 0 10px 28px #0c0a1366; --scrim: color-mix(in srgb, #11151f 38%, transparent);
+  --tab-idle: #6e6884; --tab-idle-ink: var(--count-face); --tab-ink: #e2dcee; --mint: #a8eedf; --mint-ink: #0c5547; --mint-edge: #74dcc8; --mint-hover: #b2f0e3; --quote-bg: #0f3a35; --quote-bar: #a8eedf; --quote-edge: #2a8a7b; --hero-glow: #e5b65066; --hero-chip: #f4e4b8; --hero-step-empty: #24180a42; --gold-chip-ink: #9d5f00; --mark-back: #7a52d6; --mark-front: #b08af3; --mark-pip: #f5c24c;
+  /* Card edit-mode tokens. */
+  /* 2026-11-06: Save takes the --button-line violet #8362b1: white text on #9074bb reached 3.89:1, now 4.88:1. */
+  --edit-bg: #2e1e34; --edit-line: #a38acb; --edit-link: #e7dff7; --edit-cancel: #e7a9ab; --edit-hint: #e3dff0; --edit-save: #8362b1;
+  --panel-gradient: linear-gradient(var(--surface), var(--surface)); --chrome-gradient: linear-gradient(var(--chrome), var(--chrome)); --tab-gradient: linear-gradient(var(--canvas), var(--canvas));
+  --card-face: #322f40; --card-ink: #f9f9fa; --card-muted: #cdc8dc; --card-edge: #4a4560; --card-metal: #c6bee3; --card-metal-ink: #2b2540; --card-highlight: #7fd9c7; --hero-metal: #d8a944; --card-shadow: 0 2px 6px #0c0a1355; --card-hover-shadow: 0 6px 16px #0c0a1377;
+  /* Family panel tokens for Hero and Sub Cards; the light theme falls back to base tokens. */
+  --card-strip: #968db6; --hero-strip: #e5b650; --card-icon-line: #5b5572; --card-meta-ink: #e3dff0; --button-line: #8362b1; --card-current-ring: #63e6cfd9; --card-row-shadow: 0 0 1px #0000003d, 0 1.5px 9px #0000003d;
+  /* Journey tokens cover the sea, step waves and hazard frame; the light theme falls back to base tokens. */
+  --journey-sea: #083051; --journey-bar: #0d4065; --journey-zone: #0e2847; --journey-wave-back: #245575; --journey-wave-mid: #447b88; --journey-wave-front: #6298a3; --journey-wave-ground: #0c1624;
+  --journey-band: #4b3168; --journey-stripe: #d6b23a; --journey-field: #00243d; --journey-preview: #2b123d; --journey-scrim: #4b4f5ae6; --violet-fill: #704d9e; --danger-fill: #b8394a;
+  /* Ordering, Tags and action-rail tokens; the light theme falls back to base tokens. */
+  --button-ink: #e7dff7; --violet-fill-ink: #f1ebfc; --toggle-off: #514a66; --toggle-on: #2fae97; --toggle-knob: #ffffff; --toggle-knob-shadow: 0 1.6px 1.6px #0000001a, 0 1.6px 8px #0000000d; --panel-box-line: #736b8f; }
+/* Shared card material keeps the same identity in Decks, Board and Hand. */
+/* Light cards use a #fff face, .67 px #cdc8dc edge, #2a2440 text and #cdc8dc Task band. Dark cards keep their dark face. Image overlays use a fixed pair (--overlay-*). */
+/* 2026-11-06: --scrim backs every dialog. The light theme veils the page with the palette's violet-black (as Deck settings does), so the page under a dialog stays lilac instead of turning cold gray; the dark theme overrides it with a navy veil. --scrim-heavy is the image viewer's near-black field in both themes. */
+:root { --card-face: #ffffff; --card-ink: #2a2440; --card-muted: #514a66; --card-edge: #cdc8dc; --card-metal: #cdc8dc; --card-metal-ink: #40465a; --overlay-ink: #f9f9fa; --overlay-face: #322f40; --hero-metal: #e8c062; --hero-ink: #24180a; --hero-sheen: #fff2c8; --hero-strip: #bf8f34; --hero-chip: #f4e4b8; --hero-step-empty: #fcf9ea99; --doc-metal: #9bd4c7; --accepted-metal: #34a865; --accepted-metal-ink: #ffffff; --card-highlight: #2b9e7f; --card-shadow: 0 5px 12px #18213624; --card-hover-shadow: 0 9px 20px #18213638; --kind-hero-bg: #f4e7c6; --kind-hero-ink: #876125; --kind-task-bg: #c5d9ed; --kind-task-ink: #1d4873; --kind-doc-bg: #f6e3a6; --kind-doc-ink: #9d5f00; --quote-bg: #e2f7ef; --quote-bar: #2fae97; --quote-edge: #74dcc8; --count-face: #ffffff; --count-foot: #e2dcee; --count-ink: #4c5060; --cover-window: #1c1a24; --motion-feedback: 150ms; --scrim: color-mix(in srgb, #24182d 40%, transparent); --scrim-heavy: #080b12cc; --busy-dim-delay: 300ms; --motion-material: 220ms; --ease-out: cubic-bezier(.16, 1, .3, 1); }
+/* 2026-11-06: Decks home. The cover rim lights the deck color the same in both themes; the lift and the pulse strip follow the page. */
+:root { --cover-rim: inset 0 1px 0 rgb(255 255 255 / .32), inset 0 0 0 1px rgb(255 255 255 / .1); --cover-lift: 0 1px 0 rgb(48 36 56 / .2), 0 10px 20px -10px rgb(48 36 56 / .5); --cover-progress: #a6f2c8;
+  --pulse-face: var(--surface); --pulse-bar: #52917a; --pulse-today: #2b9e7f; --pulse-track: #e8dff0; }
+:root.dark { --cover-lift: 0 1px 0 rgb(0 0 0 / .45), 0 10px 20px -10px rgb(0 0 0 / .6); --pulse-face: #2c2937; --pulse-bar: #5f9f85; --pulse-today: #a8eedf; --pulse-track: #39354a; }
+/* 2026-11-07: one elevation ladder for the full-screen layers. The stray 1000–1201 values (document preview, attach
+   subcards, shortcuts help, attachment viewer, card-parent-picker) joined the regular 0–181 scale, and the ? help
+   rose above the dialogs it used to tie with (1100/1101); the image viewer stays the top layer. */
+:root { --z-preview-overlay: 200; --z-preview-pane: 201; --z-attach-overlay: 210; --z-attach-dialog: 211; --z-parent-picker: 215; --z-help-overlay: 220; --z-help-panel: 221; --z-viewer-overlay: 230; --z-viewer: 231; }
+* { box-sizing: border-box; }
+body { margin: 0; color: var(--ink); background: var(--canvas); font-size: 14px; -webkit-font-smoothing: antialiased; }
+/* 2026-11-05: selected green rows need dark ink; light-theme accent rows need light ink. */
+:root { --quick-choice-ink: var(--surface); --link-ink: var(--accent); }
+/* 2026-11-06: gold chips (card links, activity cards, the Hand due-soon count) keep one gold face in both themes. With the token only
+   in dark, a light due-soon count lost its face, and the warning-pair fallback of links read as near-white beside white count chips.
+   Light ink is the warning ink (5.4:1 on the gold); dark keeps its own ink. */
+:root { --gold-chip: #fde793; --gold-chip-ink: var(--warning-ink); }
+/* 2026-11-05: checkboxes are 16 px with radius 4, a 1 px edge, mint checked fill, violet hover glow and an animated check.
+   WCAG 1.4.11 requires at least 3:1: dark edges use #8a91ab instead of #645c7e, and both themes use #2b9e7f with a white check (#e8fbf3 on #2fae97 reached only 2.4:1). */
+:root { --check-face: #ffffff; --check-edge: #8b74a3; --check-on-face: #2b9e7f; --check-on-edge: #23876b; --check-on-mark: #ffffff; --check-glow: #8251ba80; --check-inset: #33333306;
+  --check-mark-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M2.4 6.3 4.9 8.7 9.6 3.5' fill='none' stroke='%23000' stroke-width='1.9' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  --check-dash-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M3 6h6' fill='none' stroke='%23000' stroke-width='1.9' stroke-linecap='round'/%3E%3C/svg%3E"); }
+:root.dark { --check-face: #322f40; --check-edge: #8a91ab; --check-on-face: #2b9e7f; --check-on-edge: #4cc9b0; --check-on-mark: #ffffff; --check-glow: #a38acbb3; --check-inset: #0000000c; }
+/* One checkbox for the app. Layout and the disabled dimming sit at zero specificity (:where), so a place that hides the box until
+   hover or pins it absolutely keeps doing so; the look keeps its weight over container rules for text inputs. The deck-settings
+   and hand switches (role=switch) keep their own track. */
+:where(input[type="checkbox"]:not([role="switch"])) { display: inline-grid; place-content: center; flex: 0 0 auto; box-sizing: border-box; width: 16px; height: 16px; margin: 0; padding: 0; vertical-align: middle; cursor: pointer; }
+:where(input[type="checkbox"]:not([role="switch"])):disabled { cursor: default; opacity: .5; }
+input[type="checkbox"]:not([role="switch"]) { appearance: none; border: 1px solid var(--check-edge); border-radius: 4px; background: var(--check-face); color: var(--check-on-mark); box-shadow: 0 -1px 1px 0 var(--check-inset) inset, 0 0 6px 1px transparent; transition: background-color var(--motion-feedback) ease-out, border-color var(--motion-feedback) ease-out, box-shadow var(--motion-feedback) ease-out, opacity var(--motion-feedback) ease-out; }
+input[type="checkbox"]:not([role="switch"])::before { content: ""; width: 12px; height: 12px; background: currentColor; -webkit-mask: var(--check-mark-icon) center / contain no-repeat; mask: var(--check-mark-icon) center / contain no-repeat; opacity: 0; transform: scale(.25); transition: opacity 300ms cubic-bezier(.2, .9, .3, 1.5), transform 300ms cubic-bezier(.2, .9, .3, 1.5); }
+input[type="checkbox"]:not([role="switch"]):is(:checked, :indeterminate) { border-color: var(--check-on-edge); background: var(--check-on-face); }
+input[type="checkbox"]:not([role="switch"]):checked::before { opacity: 1; transform: scale(1); }
+input[type="checkbox"]:not([role="switch"]):indeterminate::before { -webkit-mask-image: var(--check-dash-icon); mask-image: var(--check-dash-icon); opacity: 1; transform: scale(1); }
+input[type="checkbox"]:not([role="switch"]):hover:not(:disabled) { box-shadow: 0 -1px 1px 0 var(--check-inset) inset, 0 0 6px 1px var(--check-glow); }
+input[type="checkbox"]:not([role="switch"]):is(:checked, :indeterminate):hover:not(:disabled) { box-shadow: 0 -1px 1px 0 var(--check-inset) inset, 0 0 10px 2px var(--check-glow); }
+input[type="checkbox"]:not([role="switch"]):focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
+@media (prefers-reduced-motion: reduce) { input[type="checkbox"]:not([role="switch"]), input[type="checkbox"]:not([role="switch"])::before { transition: none; } }
+/* Windows contrast themes force backgrounds away, so the drawn mark would vanish: hand the box back to the system. */
+@media (forced-colors: active) { input[type="checkbox"]:not([role="switch"]) { appearance: auto; } input[type="checkbox"]:not([role="switch"])::before { content: none; } }
+:root.dark { --quick-choice-ink: var(--sidebar); --link-ink: var(--edit-link); }
+button, input, textarea, select { font: inherit; }
+button { cursor: pointer; }
+button:disabled { cursor: default; opacity: .5; transition: opacity var(--motion-feedback) var(--busy-dim-delay); }
+button, a { -webkit-tap-highlight-color: transparent; }
+a { color: inherit; }
+:focus-visible { outline: 2px solid var(--focus); outline-offset: 3px; }
+button, a { transition: background-color var(--motion-feedback), color var(--motion-feedback), border-color var(--motion-feedback), opacity var(--motion-feedback); }
+::selection { background: var(--accent-soft); }
+.dark ::selection { background: var(--accent); color: var(--surface); }
+:root { scrollbar-color: var(--line) var(--canvas); scrollbar-width: thin; }
+/* 2026-11-05: flat key-hint chips invert to dark ink in light mode; a light chip reached only 1.05:1 on light fields.
+   Top-bar tabs keep a mid-tone idle fill with light text, accent hover and page-color active fill with ink. */
+:root { --kbd-face: var(--ink); --kbd-ink: var(--surface); --tab-idle: var(--muted); --tab-idle-ink: var(--surface); --tab-ink: var(--ink); --tab-hover: var(--accent); --tab-hover-ink: var(--surface); }
+:root.dark { --kbd-face: #eceef3; --kbd-ink: #27242f; --tab-hover: var(--hover); --tab-hover-ink: var(--ink); }
+kbd { display: inline-flex; align-items: center; justify-content: center; min-width: 16px; height: 16px; padding: 0 4px; border: 0; border-radius: 3px; background: var(--kbd-face); color: var(--kbd-ink); font: 600 10px/1 var(--font-sans); letter-spacing: .02em; vertical-align: middle; box-shadow: none; white-space: nowrap; }
+.dark { scrollbar-color: #66718a #222838; }
+.dark .button-outline:hover:not(:disabled), .dark .source-switch:hover { border-color: #505967; }
+.dark .button-default:hover:not(:disabled) { background: var(--focus); color: var(--sidebar); opacity: 1; }
+.ui-button { transition: background-color var(--motion-feedback), color var(--motion-feedback), border-color var(--motion-feedback), filter var(--motion-feedback), transform var(--motion-feedback) var(--ease-out); }
+/* 2026-11-06: a deck write disables every tile for ~20-40 ms; delaying the dim keeps short writes from flashing the view, while the disabled attribute still blocks double clicks. */
+.ui-button:disabled { transition: opacity var(--motion-feedback) var(--busy-dim-delay), background-color var(--motion-feedback), color var(--motion-feedback), border-color var(--motion-feedback), filter var(--motion-feedback); }
+.ui-button:active:not(:disabled) { transform: translateY(1px); }
+.app-shell { display: grid; grid-template-columns: minmax(0, 1fr); height: 100dvh; }
+.workspace { min-width: 0; display: flex; flex-direction: column; overflow: hidden; }
+.topbar { height: 58px; flex-shrink: 0; border-bottom: 1px solid var(--line); padding: 0 26px; display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.breadcrumb { display: flex; align-items: center; gap: 12px; font-size: 12px; min-width: 0; white-space: nowrap; }
+.topbar-actions { display: flex; align-items: center; gap: 10px; }
+.source-switch { display: flex; align-items: center; gap: 7px; white-space: nowrap; border: 1px solid var(--line); border-radius: 5px; padding: 6px 9px; font-size: 11px; color: var(--muted); background: transparent; }
+.source-switch.sandbox { background: var(--warning-bg); color: var(--warning-ink); border-color: transparent; }
+.source-switch:hover { border-color: var(--muted); }
+.workspace-main { overflow: auto; min-height: 0; flex: 1; scroll-behavior: smooth; scroll-padding-top: 32px; scrollbar-gutter: stable; } /* Reserve scrollbar space so the layout stays stable when it appears. */
+/* 2026-11-06: an empty open deck has no scrollbar; reserving its gutter left a blank strip beside the full-width toolbar. */
+.workspace-main:has(> .catalog-view.is-deck-open) { scrollbar-gutter: auto; }
+/* 2026-11-05: the fixed notifications corner publishes the height it covers (Notifications.tsx); the scroll end clears it, so the last
+   rows scroll out from under it. Vision's canvas fills the view, and its side panel clears the corner instead (workspace.css). */
+.workspace-main:not(:has(> .vision-workspace)) { padding-bottom: var(--notifications-clearance, 0px); }
+.readonly-banner, .error-banner, .notice { background: var(--warning-bg); color: var(--warning-ink); padding: 11px 26px; font-size: 12px; line-height: 1.6; }
+.readonly-banner button { margin-left: 16px; border: 0; background: none; text-decoration: underline; }
+.error-banner { display: flex; justify-content: space-between; align-items: center; color: var(--danger); }
+.notice { border-radius: 5px; padding: 12px 16px; margin-bottom: 20px; }
+.markdown { line-height: 1.72; font-size: 14px; overflow-wrap: anywhere; }
+.markdown p { margin: 0 0 10px; }
+.markdown strong { font-weight: 600; }
+.markdown ul, .markdown ol { margin: 7px 0 14px; padding-left: 23px; }
+.markdown ul { list-style-type: disc; }
+.markdown ol { list-style-type: decimal; }
+.markdown li { padding-left: 2px; margin: 5px 0; }
+.markdown li > p { margin: 0 0 5px; }
+.markdown a { color: var(--link-ink); text-decoration: underline; text-decoration-color: color-mix(in srgb, var(--link-ink) 35%, transparent); text-underline-offset: 3px; }
+.markdown a:hover { text-decoration-color: var(--accent); }
+.markdown h3 { font-size: 17px; margin: 20px 0 10px; font-weight: 600; }
+.markdown h4, .markdown h5, .markdown h6 { font-size: 15px; margin: 20px 0 8px; font-weight: 600; }
+/* Markdown quotes render as callouts: dark green fill, a mint bar, a thin green edge and full-strength text. */
+.markdown blockquote { margin: 14px 0; padding: 10px 14px 10px 12px; border: .67px solid var(--quote-edge); border-left: 5px solid var(--quote-bar); border-radius: 4px; background: var(--quote-bg); color: var(--ink); }
+.markdown blockquote > :first-child { margin-top: 0; } .markdown blockquote > :last-child { margin-bottom: 0; }
+.markdown code { font-family: 'Geist Mono', monospace; font-size: .85em; background: var(--ground); padding: 2px 4px; border-radius: 3px; }
+.markdown pre { margin: 14px 0; overflow: auto; background: var(--ground); padding: 16px; border-radius: 5px; line-height: 1.6; }
+.markdown pre code { padding: 0; }
+.markdown hr { margin: 25px 0; border: 0; border-top: 1px solid var(--line); }
+.markdown img { max-width: 100%; height: auto; border-radius: 4px; }
+.table-scroll { overflow-x: auto; margin: 14px 0; }
+/* Whole words set each column's minimum (.markdown's anywhere-wrap squeezed short columns to a letter); a wide table scrolls. */
+.markdown table { width: 100%; border-collapse: collapse; font-size: 12px; overflow-wrap: break-word; }
+.markdown td { border: 1px solid var(--line); padding: 8px 10px; vertical-align: top; }
+.markdown tr:first-child td { background: var(--ground); font-weight: 500; }
+.markdown li.check-item { position: relative; list-style: none; }
+.markdown li.check-item > input { position: absolute; left: -22px; top: calc((1lh - 16px) / 2); font-size: inherit; line-height: inherit; }
+/* Read-only text keeps the state readable; only form checkboxes dim when disabled. */
+.markdown li.check-item > input:disabled { opacity: 1; }
+.markdown li.check-item.is-toggleable > p { cursor: pointer; }
+.markdown li.check-item.is-toggleable:has(> p:hover) > input:not(:checked) { box-shadow: 0 -1px 1px 0 var(--check-inset) inset, 0 0 6px 1px var(--check-glow); }
+.markdown li.check-item.is-toggleable:has(> p:hover) > input:checked { box-shadow: 0 -1px 1px 0 var(--check-inset) inset, 0 0 10px 2px var(--check-glow); }
+.ui-button { display: inline-flex; align-items: center; justify-content: center; gap: 7px; border-radius: 5px; border: 1px solid transparent; font-weight: 500; white-space: nowrap; }
+.button-default { background: var(--violet-fill, var(--accent)); color: var(--violet-fill-ink, var(--surface)); }
+.button-default:hover:not(:disabled) { opacity: .9; }
+.button-outline { background: var(--surface); border-color: var(--line); color: var(--ink); }
+.button-ghost { background: transparent; color: inherit; }
+.button-ghost:hover:not(:disabled), .button-outline:hover:not(:disabled) { background: var(--hover); }
+.button-size-default { height: 36px; padding: 0 14px; font-size: 13px; }
+.button-size-sm { height: 30px; padding: 0 9px; font-size: 11px; }
+.button-size-icon { width: 30px; height: 30px; padding: 0; }
+.dropdown { background: var(--surface); color: var(--ink); border: 1px solid var(--line); border-radius: 7px; padding: 5px; min-width: 190px; box-shadow: var(--shadow); z-index: 50; animation: overlay-pop var(--motion-spring-quick) var(--ease-spring-quick); }
+.dropdown-label { font-size: 10px; color: var(--muted); padding: 7px 8px; }
+.dropdown-item { display: flex; align-items: center; gap: 8px; border-radius: 4px; padding: 8px; font-size: 12px; cursor: pointer; outline: none; }
+/* 2026-11-06: --hover alone sits at 1.2:1 on the menu surface, too faint to follow by keyboard; the inset focus line is the
+   one the selection and bulk menus already use. */
+.dropdown-item[data-highlighted] { background: var(--hover); box-shadow: inset 0 0 0 1px var(--focus); }
+.dropdown-item[data-disabled] { opacity: .45; pointer-events: none; }
+.menu-check { margin-left: auto; }
+.menu-caption { color: var(--muted); font-size: 10px; margin-left: 15px; }
+.destructive { color: var(--danger); }
+.status-badge { font-size: 10px; display: inline-flex; align-items: center; gap: 5px; padding: 3px 6px; border-radius: 3px; white-space: nowrap; }
+.status-dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: currentColor; flex-shrink: 0; }
+/* 2026-11-07: the status palette became tokens so the deck-overview chips (deck-summary.css) reuse the exact badge colors.
+   Dark cancelled gets its own value now: #b0aca6 reaches 6.7:1 on the dark badge ground, where the light gray sat at 2.3:1.
+   Light cancelled #64645f keeps 4.9:1 on --ground (the old #858580 measured 3.3:1 on the page). */
+:root { --status-planned: #6b6571; --status-discuss: #755a83; --status-iteration: #536a88; --status-working: #806437; --status-review: #90585b; --status-accepted: #4e6e5b; --status-cancelled: #64645f; }
+:root.dark { --status-planned: #a3a9b5; --status-discuss: #c9b6d7; --status-iteration: #a8b8cf; --status-working: #d8bd8d; --status-review: #d7a3a0; --status-accepted: #a7c0ad; --status-cancelled: #b0aca6; }
+.status-planned { color: var(--status-planned); }
+.status-discuss { color: var(--status-discuss); }
+.status-iteration { color: var(--status-iteration); }
+.status-working { color: var(--status-working); }
+.status-review { color: var(--status-review); }
+.status-accepted { color: var(--status-accepted); }
+.status-cancelled { color: var(--status-cancelled); }
+.status-badge.status-discuss { background: #efe8f2; }
+.status-badge.status-iteration { background: #e8edf3; }
+.status-badge.status-working { background: #f3eadb; }
+.status-badge.status-review { background: #f4e6e3; }
+.status-badge.status-accepted { background: #e6eee8; }
+.status-badge.status-planned { background: var(--ground); }
+.dark .status-badge { background: var(--ground); }
+/* Sprint/Hand task bands wear the light metal face in both themes (card-material.css), so their state dots use one fixed
+   mid-tone set; the theme-aware --status-* tokens above would wash out on that light band in dark mode. */
+/* 2026-11-07: the card drag preview is a light row in both themes, so its three colors are theme-independent. */
+:root { --drag-face: #ffffff; --drag-face-ink: #2b2540; --drag-face-meta: #536078; }
+:root { --band-state-discuss: #8c5fa6; --band-state-iteration: #4d6f9c; --band-state-working: #b07a1f; --band-state-review: #b4565c; --band-state-accepted: #2f8a5e; }
+.board-main { background: var(--ground); }
+.deck-view { max-width: 1450px; margin: 0 auto; padding: 35px 42px 60px; }
+.deck-heading { display: flex; justify-content: space-between; align-items: end; gap: 24px; margin-bottom: 34px; }
+.deck-heading h1 { font-size: 28px; line-height: 1.25; font-weight: 600; letter-spacing: -.7px; margin: 0 0 12px; }
+.deck-heading p { color: var(--muted); font-size: 12px; margin: 0; }
+.deck-grid { --tile-width: 115px; --tile-height: 147px; display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, var(--tile-width)), var(--tile-width))); gap: 16px; align-items: start; }
+.deck-card-space { perspective: 850px; padding: 0; }
+/* 2026-11-06: the tile tilts as one flat sheet; no child has a 3D transform, so transform-style: preserve-3d was dead
+   (frames of the done impact with and without it matched in both themes). */
+.deck-card { height: var(--tile-height); width: var(--tile-width); max-width: 100%; position: relative; isolation: isolate; display: flex; flex-direction: column; color: var(--card-ink); background: var(--card-face); border: 1px solid var(--card-edge); border-radius: 5px; transform: rotateX(var(--tilt-x)) rotateY(var(--tilt-y)); box-shadow: 0 2px 6px color-mix(in srgb, var(--card-face) 18%, transparent); transition: transform var(--motion-material) var(--ease-out), box-shadow var(--motion-material), border-color var(--motion-feedback); }
+/* Mint #63e6cf highlights dark cards but reaches only 1.28:1 on white; light cards use --card-highlight at 3.33:1. */
+/* 2026-11-06: the token lives on :root, not on .deck-grid: card tiles in Hand sit outside the grid, and there the undefined
+   token dropped the focus outline and turned the hover/focus edge into currentColor. */
+:root { --tile-highlight: var(--card-highlight); }
+:root.dark { --tile-highlight: #63e6cf; }
+/* Mint shows on hover and keyboard focus only; a mouse click must not leave the card glowing. */
+.deck-card-space:hover .deck-card:where(:not(:has(.deck-card-open:disabled))), .deck-card:has(:focus-visible) { border-color: var(--tile-highlight); box-shadow: 0 0 0 1px color-mix(in srgb, var(--tile-highlight) 44%, transparent), 0 0 12px color-mix(in srgb, var(--tile-highlight) 19%, transparent); }
+.deck-card-open { position: relative; z-index: 2; display: flex; flex-direction: column; flex: 1; min-height: 0; width: 100%; text-align: left; border: 0; background: none; color: inherit; padding: 8px 7px 5px; border-radius: 4px 4px 0 0; }
+.deck-card-title { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; font-weight: 500; font-size: 14px; line-height: 17px; letter-spacing: -.2px; overflow-wrap: anywhere; }
+/* The satin finish, border tone and glare underlay come from card-material.css; the matte top stays flat. */
+.deck-card-band { position: relative; isolation: isolate; z-index: 2; flex-shrink: 0; color: var(--card-metal-ink); border-radius: 0 0 4px 4px; padding: 3px 7px; border-top: 1px solid; }
+/* Completion belongs to the footer; hover/selection and the Hero strip keep their own meaning. */
+.deck-state-accepted > .deck-card-band { --metal-base: var(--accepted-metal); --card-metal-ink: var(--accepted-metal-ink); }
+.deck-card-identity { display: flex; align-items: center; justify-content: space-between; margin-bottom: 3px; color: inherit; }
+.deck-card-identity strong { font-family: 'Geist Mono', monospace; font-size: 14px; font-weight: 500; line-height: 1; color: inherit; }
+/* 2026-11-06: the tile's mint edge above is the one focus ring; an outline on the open button framed only the title area
+   inside it and doubled the ring. */
+.deck-card-open:focus-visible { outline: none; }
+.deck-card > .card-family-trigger { position: absolute; z-index: 5; top: 0; inset-inline: 0; width: 100%; max-width: none; height: 20px; min-height: 20px; padding: 3px 7px; border: 0; border-radius: 4px 4px 0 0; background: linear-gradient(100deg, var(--hero-metal), color-mix(in srgb, var(--hero-metal) 94%, var(--hero-sheen))); color: var(--hero-ink); font-size: 12px; font-weight: 600; line-height: 14px; transition: filter var(--motion-feedback); }
+.deck-card > .card-family-trigger:hover:not(:disabled) { filter: brightness(1.06); }
+.deck-card > .card-family-trigger:focus-visible { outline: 2px solid var(--hero-ink); outline-offset: -2px; }
+.deck-card:has(> .card-family-trigger) .deck-card-open { padding-top: 25px; }
+@media (max-width: 760px) { .deck-view { padding: 27px 20px 40px; } .deck-heading { align-items: start; flex-direction: column; gap: 18px; } }
+@media (prefers-reduced-motion: reduce) { .deck-card { transform: none !important; } .deck-card > .card-family-trigger { transition: none; } }
+.inline-error { color: var(--danger); padding: 8px 12px; font-size: 12px; }
+.dialog-overlay { position: fixed; inset: 0; background: var(--scrim); z-index: 70; animation: backdrop-fade var(--motion-spring-firm) ease-out; }
+.loading-state, .empty-state { display: flex; align-items: center; flex-direction: column; padding: 150px 20px; color: var(--muted); gap: 15px; }
+.empty-state h1 { font-size: 26px; color: var(--ink); }
+/* 2026-11-06: preflight leaves h2 at body size, so a section's empty state (Hand without members, a failed section) read as
+   two equal lines; the title takes the 16/700 of the Timeline "Nothing selected" plate and the description stays centered. */
+.empty-state h2 { margin: 0; color: var(--ink); font-size: 16px; font-weight: 700; line-height: 1.3; }
+.empty-state p { max-width: 56ch; margin: 0; line-height: 1.5; text-align: center; }
+.spin { animation: spin 1s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+@media (max-width: 760px) { .topbar-actions { gap: 3px; }.source-switch { font-size: 10px; padding: 6px; }.source-switch > svg:first-child { display: none; }.readonly-banner { padding: 10px 15px; }.readonly-banner button { margin-left: 0; display: block; } }
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; scroll-behavior: auto !important; } }
+
+/* Independent spaces and typed decks; card contents remain sourced from Markdown (2026-11-03). */
+.visually-hidden { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
+.catalog-view { max-width: 1600px; }
+.catalog-heading { align-items: center; margin-bottom: 20px; }
+.catalog-heading h1 { margin-bottom: 7px; overflow-wrap: anywhere; }
+.catalog-heading-actions, .catalog-updating { display: flex; align-items: center; gap: 10px; }
+.catalog-updating { color: var(--muted); font-size: 11px; white-space: nowrap; }
+.catalog-search { display: flex; align-items: center; gap: 9px; flex: 1 1 260px; min-width: 0; border: 1px solid var(--line); border-radius: 6px; padding: 0 11px; color: var(--muted); background: var(--surface); }
+.catalog-search:focus-within { outline: 2px solid var(--focus); outline-offset: 2px; }
+.catalog-search > svg { flex-shrink: 0; }
+.catalog-search input { background: transparent; border: 0; color: var(--ink); min-width: 0; width: 100%; height: 37px; outline: none; font-size: 12px; caret-color: var(--ink); }
+.catalog-search input::placeholder { color: var(--muted); opacity: 1; }
+.catalog-field input:not([type="color"]), .catalog-field select, .catalog-field textarea { color: var(--ink); background: var(--surface); border: 1px solid var(--line); border-radius: 5px; font-size: 12px; padding: 9px 10px; min-height: 37px; max-width: 100%; caret-color: var(--ink); }
+.catalog-field select:hover { border-color: var(--muted); }
+.catalog-space { margin-bottom: 36px; }
+.catalog-space-heading { display: flex; align-items: center; justify-content: space-between; gap: 14px; margin-bottom: 22px; padding-bottom: 10px; border-bottom: 1px solid var(--line); }
+.catalog-space-heading h2 { margin: 0; min-width: 0; }
+.catalog-space-heading h2 > button { display: flex; align-items: center; gap: 9px; border: 0; background: transparent; color: var(--ink); padding: 5px 0; font-size: 15px; text-align: left; }
+.catalog-space-heading h2 > button > span { font-weight: 500; overflow-wrap: anywhere; }
+.catalog-space-heading h2 > button > svg { flex-shrink: 0; color: var(--muted); }
+.catalog-space-heading small { color: var(--muted); font-size: 11px; font-weight: 400; white-space: nowrap; margin-left: 5px; }
+.catalog-space-empty, .catalog-empty { color: var(--muted); font-size: 13px; line-height: 1.7; padding: 24px 0; margin: 0; max-width: 70ch; }
+.catalog-results { min-width: 0; }
+/* Opened card: the strongest mint ring; hover and focus stay at 1px / 12px (see .deck-card). */
+.catalog-card-grid .deck-card.is-selected { border-color: var(--tile-highlight); box-shadow: 0 0 0 2px color-mix(in srgb, var(--tile-highlight) 85%, transparent), 0 0 18px color-mix(in srgb, var(--tile-highlight) 38%, transparent); }
+.catalog-card-doc .deck-card-band { --metal-base: var(--doc-metal); }
+.catalog-card-doc .deck-card-identity strong { font-family: var(--font-sans); }
+.catalog-card-hero .deck-card-band { --metal-base: var(--hero-metal); --card-metal-ink: var(--hero-ink); }
+/* 2026-11-06: a Hero whose Sub Cards are all finished wears the done band; its progress steps turn white on the green. */
+.catalog-card-hero.is-family-done > .deck-card-band { --metal-base: var(--accepted-metal); --card-metal-ink: var(--accepted-metal-ink); --metal-sheen: #ffffff; }
+.catalog-card-hero.is-family-done .sub-card-progress-segment { background-color: rgb(255 255 255 / .9); }
+.catalog-card-progress { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 10px; line-height: 14px; }
+.catalog-create-form { border: 1px solid var(--line); background: var(--panel-gradient); border-radius: 8px; padding: 20px; margin-bottom: 28px; }
+.catalog-create-form > header { display: flex; justify-content: space-between; align-items: center; gap: 16px; margin-bottom: 17px; }
+.catalog-create-form h2 { font-size: 18px; font-weight: 500; margin: 0; }
+.catalog-create-form fieldset { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; border: 0; padding: 0; margin: 0; }
+.catalog-field { display: flex; flex-direction: column; gap: 7px; min-width: 0; color: var(--muted); font-size: 12px; line-height: 1.4; }
+.catalog-field input, .catalog-field select, .catalog-field textarea { width: 100%; }
+.catalog-field textarea { resize: vertical; min-height: 70px; }
+.catalog-field-wide { grid-column: 1 / -1; }
+.catalog-form-actions { display: flex; align-items: center; justify-content: end; gap: 9px; margin-top: 18px; }
+.catalog-form-help { color: var(--muted); font-size: 12px; line-height: 1.6; margin: 15px 0 0; max-width: 70ch; }
+.catalog-error, .catalog-notice { color: var(--warning-ink); background: var(--warning-bg); border-radius: 6px; padding: 13px 15px; margin: 0 0 20px; font-size: 12px; line-height: 1.6; }
+.catalog-error { display: flex; align-items: center; justify-content: space-between; gap: 16px; color: var(--danger); }
+.catalog-error > span { overflow-wrap: anywhere; }
+.catalog-error > button { flex-shrink: 0; }
+.catalog-saved-warning { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.catalog-saved-warning > span { flex: 1 1 250px; }
+.catalog-warnings { margin-top: 28px; color: var(--warning-ink); font-size: 12px; line-height: 1.6; }
+.catalog-warnings summary { cursor: pointer; }
+.catalog-warnings li { overflow-wrap: anywhere; }
+.catalog-source { margin-top: 32px; padding-top: 18px; border-top: 1px solid var(--line); color: var(--muted); font-size: 11px; line-height: 1.6; }
+.dark .catalog-field input:disabled, .dark .catalog-field select:disabled, .dark .catalog-field textarea:disabled { color: #9299a7; background: #262b35; opacity: 1; }
+.dark .catalog-field select:hover, .dark .catalog-search:hover, .dark .catalog-track-picker select:hover:not(:disabled), .dark .global-search-field:hover:not(:focus-within) { border-color: #505967; }
+@media (max-width: 760px) { .catalog-heading { gap: 18px; align-items: stretch; } .catalog-heading-actions { justify-content: space-between; } .catalog-search { flex-basis: 100%; } .catalog-space-heading { gap: 5px; } .catalog-space-heading h2 > button { font-size: 13px; gap: 6px; flex-wrap: wrap; } .catalog-space-heading small { font-size: 10px; } .catalog-space-heading > button { flex-shrink: 0; } .catalog-create-form { padding: 16px; } .catalog-create-form fieldset { grid-template-columns: minmax(0, 1fr); } .catalog-error { align-items: start; flex-direction: column; } }
+
+
+/* Custom covers and compact open-deck layout. */
+.deck-card-band > *:not(.deck-card-owner-medallion) { position: relative; z-index: 1; }
+.catalog-space-actions { display: flex; align-items: center; gap: 5px; }
+.space-preset-form { max-width: 600px; }
+.space-preset-form .space-preset-options { display: flex; flex-direction: column; gap: 4px; }
+.space-preset-option { display: flex; align-items: start; gap: 10px; border-radius: 5px; padding: 11px 8px; cursor: pointer; }
+.space-preset-option:hover { background: var(--hover); }
+.space-preset-option input { margin: 3px 0 0; width: 17px; height: 17px; accent-color: var(--accent); flex-shrink: 0; }
+.space-preset-option > svg { margin-top: 1px; flex-shrink: 0; }
+.space-preset-option > span { display: flex; flex-direction: column; gap: 6px; }
+.space-preset-option strong { font-size: 15px; font-weight: 500; }
+.space-preset-option > span > span { color: var(--muted); font-size: 13px; line-height: 1.5; }
+.space-preset-form .space-custom-fields { margin-top: 17px; }
+/* 2026-11-03: the open-deck header is one 44px row at every width; the selection bar replaces it in the same slot. */
+.deck-open-toolbar { display: flex; align-items: center; gap: 8px; min-height: 53px; margin: 0 -16px 12px; padding: 0 16px; border: 0; border-radius: 0; background: var(--sidebar); }
+.deck-open-toolbar h1 { flex: 0 1 auto; min-width: 0; margin: 0; overflow: hidden; font-size: 22px; font-weight: 700; line-height: 28px; text-overflow: ellipsis; white-space: nowrap; }
+/* Journey and deck actions follow the title; search stays at the far right. */
+.deck-open-toolbar .deck-open-tools { display: contents; }
+/* My Cards carries the margin-left:auto that pushes the right group to the edge, so the search keeps none (2026-11-04). */
+.deck-open-toolbar .deck-toolbar-search { flex: 0 1 300px; max-width: 300px; height: 30px; border: .67px solid var(--line); border-radius: 4.8px; background: var(--ground); }
+.deck-open-toolbar .deck-journey-button { height: 32px; gap: 4px; padding: 0 9px 0 5px; border: .67px solid var(--mint-edge, var(--line)); border-radius: 4px; background: var(--mint, var(--accent-soft)); color: var(--mint-ink, var(--ink)); font-size: 14px; font-weight: 700; }
+.deck-open-toolbar .deck-journey-button:hover:not(:disabled) { background: color-mix(in srgb, var(--mint, var(--accent-soft)) 88%, white); }
+.deck-open-toolbar > span { font-size: 11px; color: var(--muted); white-space: nowrap; }
+.deck-open-toolbar > svg, .deck-open-toolbar > button { flex-shrink: 0; }
+.deck-open-tools { display: flex; align-items: center; gap: 4px; min-width: 0; margin-left: auto; }
+.deck-open-tools > .ui-button { flex-shrink: 0; }
+/* Ordering, Filters and Activity share the Info spacing: no panel box, first line centered in the 44px header row. */
+.deck-summary { position: sticky; top: var(--catalog-content-offset, 0px); min-width: 0; max-height: calc(var(--catalog-scroll-height, 100dvh) - var(--catalog-content-offset, 0px) - 12px); padding: 11px 14px 16px 2px; overflow: auto; overscroll-behavior: contain; scrollbar-width: thin; }
+/* 2026-11-06: below 1180 the search starts at 120px and grows into what the title leaves (up to its 300px), so the title
+   is cut only when it cannot fit at all ("World & props" stays whole at 1024); below 1000 one row cannot hold title,
+   tools and search, so the tools take a second row inside the same sidebar header and wrap there instead of pushing
+   the page into horizontal scroll. */
+@media (max-width: 1180px) { .deck-open-toolbar .deck-toolbar-search { flex: 1 1 120px; min-width: 120px; } }
+@media (max-width: 1000px) {
+  .deck-open-toolbar { flex-wrap: wrap; padding-block: 10px 8px; }
+  .deck-open-toolbar .deck-open-tools { display: flex; flex: 1 1 100%; flex-wrap: wrap; gap: 8px; margin-left: 0; }
+  .deck-open-toolbar .deck-toolbar-search { margin-left: 0; }
+}
+@media (max-width: 600px) { .deck-open-toolbar > span { display: none; } }
+
+/* Resizable work panels and real Journey templates, 2026-11-03. */
+.catalog-resize-handle { position: relative; align-self: stretch; min-height: 100px; cursor: col-resize; touch-action: none; user-select: none; border-radius: 4px; }
+.catalog-resize-handle > span { position: absolute; top: 0; bottom: 0; left: 3px; width: 1px; background: var(--line); transition: background-color 160ms; }
+.catalog-resize-handle:hover > span, .catalog-resize-handle:focus-visible > span { background: var(--focus); }
+/* 2026-11-06: keyboard focus widens the handle line instead of framing the whole column with a second ring. */
+.catalog-resize-handle:focus-visible { outline: none; }
+.catalog-resize-handle:focus-visible > span { left: 2px; width: 3px; }
+.catalog-view-toggle, .catalog-panel-controls { display: flex; align-items: center; gap: 4px; }
+.catalog-view.is-deck-open { max-width: none; padding: 12px 16px 40px; }
+/* 2026-11-05: in an open deck the columns run down to the footer line, so the divider and the sidebar scroller end on it
+   instead of stopping short; the breathing room moves inside the columns. */
+.catalog-view.is-deck-open > .catalog-source { margin-top: 0; }
+.catalog-view.is-deck-open .catalog-content-layout > :is(.catalog-results, .catalog-preview-slot) { padding-bottom: 24px; }
+.catalog-view-toggle { border: 1px solid var(--line); border-radius: 6px; padding: 1px; }
+.catalog-view-toggle button[aria-pressed="true"] { background: var(--accent-soft); color: var(--accent); }
+.dark .catalog-view-toggle button[aria-pressed="true"] { background: var(--violet-fill); color: var(--violet-fill-ink); }
+.catalog-table-group th > span { vertical-align: middle; }.catalog-group-count { margin-left: 8px; font: 10px 'Geist Mono', monospace; }
+.catalog-table-title { display: inline-flex; align-items: baseline; gap: 5px; min-width: 0; flex: 1 1 140px; }
+.catalog-table-title > svg { flex-shrink: 0; align-self: start; margin-top: 2px; color: var(--muted); }
+.catalog-table-title small { font: 10px 'Geist Mono', monospace; color: var(--muted); margin-right: 5px; }
+.catalog-reference { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; color: var(--muted); font: 10px 'Geist Mono', monospace; }
+.catalog-reference > a { text-decoration: none; }.catalog-reference > a:hover { color: var(--ink); text-decoration: underline; }.catalog-reference > button { width: 26px; height: 26px; }.catalog-reference > span { font: 11px var(--font-sans); }
+.journey-apply > header { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 18px; }
+.journey-apply { margin: 20px 0; border-block: 1px solid var(--line); padding: 18px 0; }
+.journey-apply h3 { font-size: 15px; font-weight: 500; margin: 0; }
+.journey-step-owner { color: var(--muted); font-size: 11px; line-height: 1.6; margin: 8px 0 12px; }
+.journey-markdown { font-size: 12px; margin-top: 14px; overflow-wrap: anywhere; }
+.journey-markdown .markdown { font-size: 12px; line-height: 1.7; }
+.journey-markdown .markdown pre { white-space: pre-wrap; }
+
+/* Catalog navigation keeps a card preview on the left. */
+.catalog-browser-navigation { display: grid; grid-template-columns: auto minmax(230px, 1fr) minmax(230px, 1fr); gap: 20px; border: 0; border-block: 1px solid var(--line); padding: 14px 0; margin: 0 0 20px; min-width: 0; }
+.catalog-nav-label { display: block; color: var(--muted); font-size: 10px; font-weight: 500; margin-bottom: 7px; }
+.catalog-nav-section > div, .catalog-track-picker > div { display: flex; align-items: center; gap: 5px; }
+.catalog-nav-section button { display: inline-flex; align-items: center; gap: 7px; padding: 7px 9px; border: 1px solid transparent; border-radius: 5px; background: transparent; color: var(--ink); font-size: 12px; white-space: nowrap; }
+.catalog-nav-section button > span { font: 10px 'Geist Mono', monospace; color: var(--muted); }
+.catalog-nav-section button:hover { background: var(--hover); }.catalog-nav-section button[aria-current="page"] { background: var(--violet-fill, var(--accent-soft)); border-color: var(--line); color: var(--violet-fill-ink, var(--accent)); }
+/* Active = the dark accent fill with light text, as the pressed My cards toggle; the muted count is 4.26:1 on that fill, so it takes the label ink. */
+:root.dark .catalog-nav-section button[aria-current="page"] > span { color: inherit; }
+.catalog-track-picker { min-width: 0; }.catalog-track-picker .catalog-nav-label span { margin-left: 8px; font-weight: 400; }
+.catalog-track-picker select { width: 100%; min-width: 0; height: 32px; padding: 4px 8px; color: var(--ink); border: 1px solid var(--line); border-radius: 5px; background: var(--surface); font-size: 12px; }
+.catalog-card-search-row { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin-bottom: 22px; }
+.catalog-track-context { display: flex; align-items: start; gap: 10px; margin-bottom: 18px; padding: 12px 14px; background: var(--panel-gradient); border: 1px solid var(--line); border-radius: 5px; font-size: 12px; }
+.catalog-track-context > div { flex: 1; }.catalog-track-context strong { font-weight: 500; }.catalog-track-context p { margin: 5px 0; color: var(--muted); }.catalog-track-context span { display: block; margin-top: 6px; font-size: 11px; color: var(--muted); }
+/* Decks render on the board ground (.board-main), so pinned underlays use --ground and stay invisible at rest. */
+.catalog-view[data-toolbar-sticky="true"] > .deck-open-toolbar { position: sticky; top: 0; z-index: 30; box-shadow: 0 5px 10px color-mix(in srgb, var(--ground) 75%, transparent); }
+.catalog-view[data-toolbar-sticky="true"] > .deck-open-toolbar::after,
+.catalog-view[data-selection-sticky="true"] > .catalog-selection-dock::after { content: ''; position: absolute; top: 100%; inset-inline: 0; height: 8px; background: var(--ground); pointer-events: none; }
+.deck-toolbar-search { flex: 0 1 260px; min-width: 64px; margin-left: 7px; padding-inline: 8px; }.deck-toolbar-search input { height: 29px; font-size: 11px; }
+.catalog-content-layout { display: grid; grid-template-columns: minmax(0, 1fr); align-items: start; gap: 8px; min-width: 0; }
+/* The card column is 503 px; below about 420 px, sheet actions wrap into the band. */
+.catalog-content-layout.has-summary, .catalog-content-layout.has-preview { grid-template-columns: minmax(min(420px, 100%), min(var(--left-panel-width, 503px), 62%)) 8px minmax(0, 1fr); }
+.catalog-preview-slot { min-width: 0; position: sticky; top: var(--catalog-content-offset, 0px); }
+.catalog-results-toolbar { position: sticky; top: var(--catalog-content-offset, 0px); z-index: 10; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 6px; min-height: 32px; padding-block: 3px; margin-bottom: 5px; background: var(--ground); box-shadow: 0 5px 8px var(--ground); }
+.catalog-results-toolbar::after { content: ''; position: absolute; top: 100%; inset-inline: 0; height: 5px; background: var(--ground); pointer-events: none; }
+.catalog-view-toggle .ui-button { height: 25px; padding-inline: 7px; font-size: 10px; }
+.catalog-panel-controls .ui-button { height: 26px; font-size: 10px; }.catalog-panel-controls .button-size-icon { width: 26px; }
+.catalog-result-summary { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 27px; color: var(--muted); font-size: 10px; margin-bottom: 4px; }.catalog-result-summary .ui-button { height: 24px; font-size: 10px; }
+/* 2026-11-06: selection overlaps the card corner so the title and family strip keep their full width; the light face matches the card-selection reference in both themes. */
+.catalog-card-checkbox { --check-face: #fff; position: absolute; z-index: 6; top: -6px; left: -6px; opacity: 0; cursor: pointer; transition: opacity var(--motion-feedback); }
+.deck-card-space:hover .catalog-card-checkbox, .deck-card:has(:focus-visible) .catalog-card-checkbox, .catalog-card-checkbox:checked { opacity: 1; }
+@media (hover: none) { .catalog-card-checkbox { opacity: 1; } }
+/* Same specificity as hover and .is-selected and later in the file: a checked card keeps its frame under the pointer. */
+.catalog-card-grid .deck-card.is-multi-selected { border-color: var(--check-on-edge); background: color-mix(in srgb, var(--card-face) 92%, var(--ground)); transform: translateY(2px); box-shadow: inset var(--card-shadow); }
+.catalog-card-grid .deck-card.is-multi-selected:has(.deck-card-open:focus-visible) { outline: 2px solid var(--focus); outline-offset: 3px; }
+.catalog-selection-dock { margin-bottom: 12px; background: var(--ground); }
+.catalog-view[data-selection-sticky="true"] > .catalog-selection-dock { position: sticky; top: var(--deck-sticky-offset, 0px); z-index: 20; }
+@media (max-width: 1000px) { .catalog-browser-navigation { grid-template-columns: auto 1fr; gap: 14px; }.catalog-track-picker { grid-column: 1 / -1; max-width: 480px; } }
+@media (max-width: 760px) { .catalog-content-layout.has-summary, .catalog-content-layout.has-preview { grid-template-columns: minmax(0, 1fr); }.catalog-content-layout > .catalog-resize-handle { display: none; }.catalog-preview-slot, .catalog-results-toolbar { position: static; }.deck-summary { position: static; max-height: none; overflow: visible; margin-bottom: 12px; padding-inline: 0; border-bottom: 1px solid var(--line); } }
+@media (max-width: 760px) { .catalog-results-toolbar::after { content: none; } }
+@media (max-width: 700px) {
+  .catalog-browser-navigation { grid-template-columns: minmax(0, 1fr); }.catalog-track-picker { grid-column: auto; }.catalog-nav-section > div { flex-wrap: wrap; }
+  .catalog-result-summary { flex-wrap: wrap; }
+}
+
+/* Quick Settings tokens; the light theme uses base semantic tokens. 2026-11-06: the picker popover sits on --ground over light panels
+   of nearly the same tone, so light mode needs the same 1 px ring and lift as deck settings; the soft --shadow left it edgeless. */
+:root { --quick-settings-shadow: var(--deck-settings-shadow); }
+:root.dark { --quick-settings-input: #250b35; --quick-settings-focus: #5ca6ff; --quick-settings-key-line: #40465a; --quick-settings-shadow: 0 0 1px #0000003d, 0 2.5px 15px #0000003d; --quick-settings-key-shadow: 0 2px 2px #0000003d; }
+
+/* 2026-11-05: deck settings use the existing light palette. All deck switches share one off-track token: muted in light mode (5.22:1 on ground), #514a66 from :root.dark in dark mode. */
+:root { --toggle-off: var(--muted); --deck-settings-toggle-line: var(--muted); --deck-settings-surface: var(--surface); --deck-settings-label: var(--ink); --deck-settings-input: var(--edit-bg); --deck-settings-input-ink: var(--ink); --deck-settings-focus: var(--focus); --deck-settings-preview: var(--ground); --deck-settings-art-row: var(--sidebar); --deck-settings-scrim: #24182d66; --deck-settings-shadow: 0 0 1px #3024383d, 0 2.5px 15px #3024383d; }
+:root.dark { --deck-settings-toggle-line: transparent; --deck-settings-surface: #322f40; --deck-settings-label: #e3dff0; --deck-settings-input: #250b35; --deck-settings-input-ink: #f1ebfc; --deck-settings-focus: #6695ec; --deck-settings-preview: #1c1a24; --deck-settings-art-row: #514a66cc; --deck-settings-scrim: #0c0a1380; --deck-settings-shadow: 0 0 1px #0000003d, 0 2.5px 15px #0000003d; }
+/* The logo opens a 336 px left menu over the page without dimming it: project at the top, 45 px app-action rows at the bottom and connection status in the footer. */
+.mission-control-trigger { width: 34px; height: 34px; padding: 0; }
+.mission-control-trigger .deckmate-mark { width: 24px; height: 24px; }
+.mission-control-overlay { position: fixed; inset: 0; z-index: 90; background: transparent; }
+.mission-control { position: fixed; inset: 0 auto 0 0; z-index: 91; display: flex; flex-direction: column; width: min(336px, 100vw); color: var(--ink); background: var(--sidebar); box-shadow: 0 0 1px #0000003d, 0 2.5px 15px #0000003d; --sheet-from: -100% 0; animation: sheet-slide var(--motion-spring-firm) var(--ease-spring-firm); }
+.mission-control:focus { outline: none; }
+/* 2026-11-06: the head repeats the 52px top bar so the mark stays exactly over the trigger's mark (13,14) and the bottom line continues the bar's line;
+   the 1px top padding balances the bottom border. */
+.mission-control-head { display: flex; align-items: center; gap: 10px; height: 52px; padding: 1px 10px 0 13px; border-bottom: 1px solid var(--line); }
+.mission-control-head .deckmate-mark { width: 24px; height: 24px; flex: 0 0 auto; }
+.mission-control-head h2 { flex: 1; margin: 0; font-size: 16px; font-weight: 600; }
+.mission-control-project { padding: 16px; }
+.mission-control-project > h2 { margin: 0 0 12px; color: var(--muted); font-size: 12px; font-weight: 700; line-height: 14px; letter-spacing: .24px; text-transform: uppercase; }
+.mission-control-project-row { display: flex; align-items: center; gap: 10px; padding: 8px; border-radius: 6px; background: var(--ground); }
+.mission-control-avatar { display: grid; place-items: center; flex: 0 0 32px; width: 32px; height: 32px; border: 1px solid var(--line); border-radius: 5px; background: var(--surface); font-weight: 600; }
+.mission-control-project-row div { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.mission-control-project-row strong { overflow: hidden; font-size: 14px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.mission-control-project-row span { color: var(--muted); font-size: 12px; }
+.mission-control-menu { display: flex; flex-direction: column; margin-top: auto; padding: 8px 0; border-top: 1px solid var(--line); }
+.mission-control-menu button { display: flex; align-items: center; gap: 12px; min-height: 45px; padding: 0 16px; border: 0; color: var(--ink); background: transparent; font-size: 15px; text-align: left; cursor: pointer; transition: background-color var(--motion-feedback) var(--ease-out); }
+.mission-control-menu button > svg { flex: 0 0 auto; color: var(--muted); }
+.mission-control-menu button > span { flex: 1; }
+.mission-control-menu button > small { color: var(--muted); font-size: 12px; }
+.mission-control-menu button:hover:not(:disabled) { background: var(--hover); }
+.mission-control-menu button:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
+/* The menu row sets cursor: pointer at the same weight as the global button:disabled, so only the cursor needs restoring. */
+.mission-control-menu button:disabled { cursor: default; }
+.mission-control-menu button.is-destructive, .mission-control-menu button.is-destructive > svg { color: var(--danger); }
+.mission-control-foot { display: flex; align-items: center; gap: 7px; padding: 12px 16px 14px; border-top: 1px solid var(--line); color: var(--muted); font-size: 11px; }
+@media (prefers-reduced-motion: reduce) { .mission-control { animation: none; } .mission-control-menu button { transition: none; } }

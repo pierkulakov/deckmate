@@ -1,0 +1,31 @@
+import { defineConfig } from 'vite';
+import tailwindcss from '@tailwindcss/vite';
+import { thirdPartyNoticesPlugin } from './tools/third-party-notices.ts';
+
+export default defineConfig({
+  root: 'client',
+  plugins: [tailwindcss(), thirdPartyNoticesPlugin()],
+  build: {
+    outDir: '../dist/client', emptyOutDir: true,
+    // 2026-11-05: packaged init copies these covers into the demo; data URLs cannot serve as source files.
+    assetsInlineLimit: filename => /[/\\]deck-art[/\\].+\.webp$/u.test(filename) ? false : undefined,
+    // 2026-11-06: the npm package ships this bundle, and the MIT, ISC, BSD and Apache code inside it requires its notices.
+    // A visible name outside .vite/ keeps the file in the package and easy to find.
+    // 2026-11-07: @radix-ui/*, fastdom, format and a few others carry no LICENSE in their tarball, so the
+    // supplement plugin fills their empty sections from assets/third-party-notices.json, adds notices
+    // for code embedded in prebuilt packages and fails on empty sections or undeclared embedded code.
+    license: { fileName: 'third-party-licenses.md' },
+    // 2026-11-07: Excalidraw, Mermaid and KaTeX are deliberately lazy-loaded vendor chunks of 1.1-1.8 MB,
+    // so the default 500 kB warning only restates a known trade-off on every build.
+    chunkSizeWarningLimit: 2000,
+    // 2026-11-07: Radix packages carry "use client" for Next.js; rolldown flags each copy as
+    // MODULE_LEVEL_DIRECTIVE, which is irrelevant to this app. Everything else still warns.
+    rolldownOptions: {
+      onwarn(warning, defaultHandler) {
+        if (warning.code === 'MODULE_LEVEL_DIRECTIVE' && warning.message.includes('"use client"')) return;
+        defaultHandler(warning);
+      },
+    },
+  },
+  server: { host: '127.0.0.1', port: 4318, strictPort: true },
+});

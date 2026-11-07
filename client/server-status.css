@@ -1,0 +1,59 @@
+/* Server status beside the logo (2026-11-05, choice C): one chip for connection and saving, details on hover or focus.
+   The slot keeps the width of the longest label so the tabs never move; the pill inside hugs the active label. */
+:root { --server-live: #2b9e7f; --server-wait: #a8661a; --server-off: #b64267; }
+:root.dark { --server-live: #4cc9b0; --server-wait: #f0b24a; --server-off: #ff8a80; }
+.is-live, .is-saved { --server-color: var(--server-live); }
+.is-saving { --server-color: var(--plum); }
+.is-reconnecting { --server-color: var(--server-wait); }
+.is-offline { --server-color: var(--server-off); }
+
+.server-status-slot { display: inline-grid; align-items: center; justify-items: start; }
+.server-status-slot > * { grid-area: 1 / 1; }
+.server-status-sizer { visibility: hidden; pointer-events: none; }
+.server-status-stack { display: grid; }
+.server-status-stack > span { grid-area: 1 / 1; }
+.server-status, .server-status-sizer { display: inline-flex; align-items: center; gap: 6px; padding: 3px 9px 3px 7px; }
+.server-status-stack, .server-status-labels { font-size: 12px; font-weight: 600; line-height: 1; white-space: nowrap; }
+.server-status { --server-fade: var(--motion-material); border-radius: 999px;
+  background: color-mix(in srgb, var(--server-color) 11%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--server-color) 24%, transparent);
+  cursor: default; outline: none; transition: background-color var(--server-fade) var(--ease-out), box-shadow var(--server-fade) var(--ease-out); }
+.server-status:focus-visible { outline: 2px solid var(--focus); outline-offset: 3px; }
+.server-status-dot { flex: 0 0 auto; width: 8px; height: 8px; border-radius: 50%; background: var(--server-color); transition: background-color var(--motion-material) var(--ease-out); }
+
+/* Every label occupies the same cell: the widest one sets the width, the active one fades and slides in. */
+.server-status-labels { display: grid; width: var(--label-width, auto); overflow: hidden; transition: width var(--motion-material) var(--ease-out); }
+.server-status-labels > span { grid-area: 1 / 1; justify-self: start; color: color-mix(in srgb, var(--server-color) 72%, var(--ink)); opacity: 0; transform: translateY(3px);
+  transition: opacity var(--motion-feedback) var(--ease-out), transform var(--motion-material) var(--ease-out), color var(--motion-material) var(--ease-out); }
+.server-status-labels > span.is-active { opacity: 1; transform: none; }
+
+.server-status.is-saving .server-status-dot { animation: server-status-breathe 900ms ease-in-out infinite; }
+.server-status.is-reconnecting .server-status-dot { animation: server-status-breathe 1.4s ease-in-out infinite; }
+.server-status.is-pinged .server-status-dot { animation: server-status-arrive 900ms var(--ease-out); }
+@keyframes server-status-breathe { 50% { opacity: .4; transform: scale(.78); } }
+@keyframes server-status-arrive {
+  from { box-shadow: 0 0 0 0 color-mix(in srgb, var(--server-live) 70%, transparent); }
+  to { box-shadow: 0 0 0 8px transparent; }
+}
+
+.server-status-card { z-index: 160; width: 288px; padding: 12px 14px 13px; border-radius: 8px; background: var(--surface); color: var(--ink); box-shadow: var(--shadow), 0 0 0 1px var(--line); font-size: 13px; transform-origin: var(--radix-tooltip-content-transform-origin); }
+.server-status-card[data-state='delayed-open'], .server-status-card[data-state='instant-open'] { animation: server-status-card-in var(--motion-feedback) var(--ease-out); }
+@keyframes server-status-card-in { from { opacity: 0; transform: translateY(-3px) scale(.98); } }
+.server-status-title { display: flex; align-items: center; gap: 8px; margin: 0 0 4px; font-size: 14px; font-weight: 700; }
+.server-status-detail { margin: 0 0 11px; color: var(--muted); line-height: 1.4; }
+.server-status-facts { display: grid; grid-template-columns: auto 1fr; gap: 5px 14px; margin: 0; padding-top: 10px; border-top: 1px solid var(--line); font-size: 12px; }
+.server-status-facts dt { color: var(--muted); }
+.server-status-facts dd { margin: 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.server-status-facts .is-number { font-family: 'Geist Mono', monospace; font-variant-numeric: tabular-nums; }
+
+/* 2026-11-06: below 1180 the label gives way with the source label and the search (workspace.css): its slot is
+   reserved at the longest label ("Reconnecting...", longer in Russian) and cut the Timeline tab at 1024. The dot keeps
+   the state at a glance; the hover card carries the full text, and the aria-label never depends on the labels. */
+@media (max-width: 1180px) {
+  .server-status-sizer, .server-status-labels { display: none; }
+  .server-status { padding: 3px 7px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .server-status, .server-status-dot, .server-status-labels, .server-status-labels > span { transition: none; }
+  .server-status.is-saving .server-status-dot, .server-status.is-reconnecting .server-status-dot, .server-status.is-pinged .server-status-dot, .server-status-card { animation: none !important; }
+}

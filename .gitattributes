@@ -1,0 +1,7 @@
+* text=auto eol=lf
+*.md text eol=lf
+*.ts text eol=lf
+*.tsx text eol=lf
+# 2026-11-06: bin/deckmate.mjs is published as is; a CRLF shebang ("node\r") fails on Linux and macOS
+# wherever the package manager does not rewrite it, so a pack from a Windows checkout must keep LF.
+*.mjs text eol=lf

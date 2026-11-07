@@ -1,0 +1,89 @@
+/* Live card nodes and the Smart Node widget render in Excalidraw embeddables; their tools live in the side panel. Use theme tokens, not local hex values. */
+
+/* --- Live nodes on the canvas ------------------------------------------------- */
+.deckmate-vision-card, .deckmate-vision-smart {
+  width: 100%; height: 100%; overflow: hidden; display: flex; flex-direction: column;
+  border-radius: 6px; border: 1px solid var(--card-edge); background: var(--card-face);
+  color: var(--card-ink); font-family: var(--font-sans); box-shadow: var(--card-shadow);
+}
+.deckmate-vision-card.is-missing { align-items: center; justify-content: center; gap: 6px; padding: 10px; font-size: 11px; color: var(--card-muted); }
+.deckmate-vision-card.is-missing code { font: 10px 'Geist Mono', monospace; overflow-wrap: anywhere; }
+
+.deckmate-card-kind { flex-shrink: 0; align-self: start; margin-top: 1px; padding: 1px 6px; border-radius: 3px; font-size: 9px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase;
+  background: var(--kind-task-bg); color: var(--kind-task-ink); }
+.deckmate-vision-card.kind-hero .deckmate-card-kind { background: var(--kind-hero-bg); color: var(--kind-hero-ink); }
+.deckmate-vision-card.kind-doc .deckmate-card-kind { background: var(--kind-doc-bg); color: var(--kind-doc-ink); }
+.deckmate-card-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; font-size: 13px; font-weight: 500; line-height: 1.35; letter-spacing: -.2px; overflow-wrap: anywhere; }
+.is-lane .deckmate-card-title { white-space: nowrap; }
+.is-full .deckmate-card-title { font-size: 15px; -webkit-line-clamp: 2; display: -webkit-box; -webkit-box-orient: vertical; }
+.deckmate-card-owner, .deckmate-card-effort, .deckmate-card-deck, .deckmate-card-muted, .deckmate-card-properties span {
+  flex-shrink: 0; font-size: 10px; color: var(--card-muted); }
+.deckmate-card-owner::before { content: '@'; }
+.deckmate-card-effort { font-family: 'Geist Mono', monospace; }
+.deckmate-card-owner, .deckmate-card-deck { min-width: 0; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.is-lane { flex-direction: row; align-items: center; gap: 8px; padding: 0 10px; }
+.is-lane .status-badge { margin-left: auto; }
+.is-lane .deckmate-card-owner { order: 3; }
+.is-mini { padding: 9px 10px; justify-content: space-between; }
+.is-full { padding: 11px 12px; gap: 7px; justify-content: start; }
+.deckmate-card-head { display: flex; align-items: start; gap: 7px; min-width: 0; }
+.deckmate-card-open { display: inline-flex; align-items: center; gap: 3px; flex-shrink: 0; padding: 2px 7px; border-radius: 4px;
+  background: var(--accent-soft); color: var(--accent); font-size: 10px; font-weight: 500; }
+.deckmate-card-meta { display: flex; align-items: center; gap: 8px; min-width: 0; flex-wrap: wrap; }
+.deckmate-card-excerpt { margin: 0; font-size: 11px; line-height: 1.55; color: var(--card-muted);
+  display: -webkit-box; -webkit-line-clamp: 6; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }
+.deckmate-card-properties { margin-top: auto; display: flex; gap: 10px; flex-wrap: wrap; border-top: 1px solid var(--card-edge); padding-top: 6px; }
+.is-mini .deckmate-card-properties { border: 0; padding: 0; margin: 0; }
+
+.deckmate-vision-smart { padding: 10px 12px; gap: 7px; justify-content: center; }
+.deckmate-smart-head { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.deckmate-smart-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; font-weight: 500; letter-spacing: -.2px; }
+.deckmate-smart-state { flex-shrink: 0; padding: 1px 6px; border-radius: 3px; background: var(--accent-soft); color: var(--accent); font-size: 10px; }
+.deckmate-smart-bar { position: relative; height: 10px; border-radius: 5px; background: var(--ground); border: 1px solid var(--card-edge); overflow: hidden; }
+.deckmate-smart-bar > span { position: absolute; inset: 0 auto 0 0; border-radius: 4px; background: var(--accepted-metal); transition: width var(--motion-material) var(--ease-out); }
+.deckmate-smart-caption { display: flex; align-items: baseline; gap: 8px; font-size: 11px; color: var(--card-muted); }
+.deckmate-smart-caption strong { font-family: 'Geist Mono', monospace; font-weight: 500; color: var(--card-ink); }
+.deckmate-smart-capped { margin-left: auto; font-size: 9px; border-radius: 3px; padding: 1px 5px; background: var(--warning-bg); color: var(--warning-ink); }
+.deckmate-smart-label { margin: 0; font-size: 9px; color: var(--card-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* --- Side panel: node tools --------------------------------------------------- */
+.vision-tools { display: flex; flex-direction: column; gap: 5px; margin-top: 22px; padding-top: 14px; border-top: 1px solid var(--line); }
+.vision-tools h3, .vision-text-refs h3 { display: flex; align-items: center; gap: 7px; margin: 0 0 4px; font-size: 12px; font-weight: 500; color: var(--ink); }
+.vision-tools h3 svg, .vision-text-refs h3 svg { color: var(--muted); }
+.vision-tools > p, .vision-tools small { font-size: 10px; line-height: 1.6; color: var(--muted); margin: 0 0 4px; }
+.vision-tool-row { display: flex; gap: 5px; align-items: center; }
+.vision-tool-row select { flex: 1; min-width: 0; }
+.vision-tool-row input { flex: 1; min-width: 0; }
+/* 2026-11-06: fields take the shared small button's 30 px height, so a row's select, input and button share one top and bottom line. */
+.vision-tools select, .vision-tools input { height: 30px; color: var(--ink); background: var(--surface); border: 1px solid var(--line); border-radius: 5px; padding: 0 8px; font-size: 11px; }
+.vision-tools .ui-button { flex-shrink: 0; }
+.vision-selected { display: flex; flex-direction: column; gap: 5px; margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--line); }
+.vision-selected h3 { margin: 0; font-size: 12px; font-weight: 500; }
+.vision-selected-row { display: flex; gap: 5px; align-items: center; font-size: 11px; color: var(--muted); }
+.vision-text-refs { display: flex; flex-direction: column; gap: 5px; margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--line); }
+.vision-ref-row { display: flex; align-items: center; gap: 7px; padding: 7px 9px; border: 1px solid var(--card-edge); border-radius: 5px;
+  background: var(--card-face); color: var(--card-ink); font-size: 11px; text-align: left; }
+.vision-ref-row:hover:not(:disabled) { border-color: var(--card-highlight); }
+.vision-ref-row small { display: block; margin-top: 3px; overflow: hidden; color: var(--card-muted); font-size: 9px; font-family: 'Geist Mono', monospace; text-overflow: ellipsis; white-space: nowrap; }
+.vision-ref-row > svg { flex-shrink: 0; margin-left: auto; color: var(--card-muted); }
+.vision-ref-kind { flex-shrink: 0; width: 18px; height: 18px; display: grid; place-items: center; border-radius: 4px;
+  background: var(--accent-soft); color: var(--accent); font: 600 10px 'Geist Mono', monospace; }
+.vision-ref-note { font-size: 10px; color: var(--muted); line-height: 1.6; margin: 2px 0 0; }
+
+/* --- Toolbar: access menu ----------------------------------------------------- */
+.vision-access { display: inline-flex; }
+.vision-access-state { font-size: 10px; color: var(--muted); }
+.vision-access-state.is-locked { color: var(--warning-ink); }
+
+.deckmate-vision-card > .card-tags { flex-shrink: 0; }
+.vision-lane-main { display: flex; flex: 1; flex-direction: column; gap: 3px; min-width: 0; }
+.vision-lane-main > .deckmate-card-title { flex: none; width: 100%; }
+.vision-lane-main > .card-tags { align-self: flex-start; }
+.vision-results > button > span, .vision-linked-list > button > span { display: block; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.vision-results small, .vision-linked-list small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.vision-ref-row > span:not(.vision-ref-kind) { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* 2026-11-06: while the remembered board is read, the canvas area shows the shared loading state instead of an empty board that
+   would be replaced a moment later; the padding is trimmed so the plate sits inside the canvas, not 150 px down the page.
+   The plate fades in after the busy delay, so a local read of a few dozen ms opens the board without a spinner blink. */
+.vision-loading { padding: 120px 20px; animation: backdrop-fade var(--motion-feedback) ease-out var(--busy-dim-delay) both; }

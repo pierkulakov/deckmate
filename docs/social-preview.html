@@ -1,0 +1,34 @@
+﻿<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=1280, initial-scale=1">
+  <title>Deckmate — a local Markdown project board for teams of people and AI agents</title>
+  <!-- 2026-11-05: GitHub link preview, 1280×640; rendered by `npm run shots` from docs/social-cards.png. -->
+  <style>
+    @font-face { font-family: "Source Sans 3"; src: url('../assets/fonts/source-sans-3/SourceSans3-latin-wght.woff2'); font-weight: 200 900; }
+    @font-face { font-family: "Geist Mono"; src: url('../assets/fonts/geist/GeistMono-Medium.ttf'); font-weight: 500; }
+    :root { color-scheme: dark; --sidebar: #27242f; --ink: #edeef2; --muted: #cdc8dc; --mint: #a8eedf; --mint-ground: #0f3a35; --mint-edge: #2a8a7b; }
+    * { box-sizing: border-box; }
+    body { margin: 0; width: 1280px; height: 640px; overflow: hidden; background: var(--sidebar); color: var(--ink); font-family: "Source Sans 3", sans-serif; text-align: center; }
+    header { display: flex; align-items: center; justify-content: center; gap: 18px; padding-top: 28px; }
+    .logo { width: 80px; height: 80px; }
+    h1 { margin: 0; font-size: 80px; font-weight: 650; line-height: 1; letter-spacing: -.025em; }
+    .slogan { margin: 10px 0 8px; color: var(--muted); font-size: 32px; font-weight: 600; line-height: 1.15; }
+    .tagline { margin: 0 0 12px; color: var(--ink); font-size: 44px; line-height: 1.12; }
+    code { display: inline-block; padding: 8px 20px; border: 1px solid var(--mint-edge); border-radius: 8px; background: var(--mint-ground); color: var(--mint); font: 500 36px/1.2 "Geist Mono", monospace; }
+    .cards { position: absolute; left: 80px; right: 80px; top: 352px; }
+    .cards img { display: block; width: 100%; height: auto; }
+  </style>
+</head>
+<body>
+  <header>
+    <img class="logo" src="../assets/logo/deckmate-256.png" alt="Deckmate logo">
+    <h1>Deckmate</h1>
+  </header>
+  <p class="slogan">You hold all the cards.</p>
+  <p class="tagline">A local Markdown project board<br>for teams of people and AI agents.</p>
+  <code>npx deckmate</code>
+  <div class="cards"><img src="social-cards.png" alt="Cards of the sample project: two golden Heroes and tasks with owners, effort and progress"></div>
+</body>
+</html>

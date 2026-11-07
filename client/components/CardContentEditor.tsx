@@ -1,0 +1,379 @@
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type MouseEvent, type ReactNode, type RefObject } from 'react';
+import { Check, LoaderCircle, Pencil, Play, RefreshCw, Trash2 } from 'lucide-react';
+import type { CardContent, CatalogCard, CatalogView } from '../../src/catalog-contracts.ts';
+import type { WorkspaceSnapshot } from '../../src/workspace-contracts.ts';
+import type { CatalogAction } from '../useCatalog.ts';
+import { parseEditorMarkdown, toggleEditorChecklist } from '../editor-checklists.ts';
+import { readCardDraft, removeCardDraft, writeCardDraft } from '../card-drafts.ts';
+import { Markdown } from './Markdown.tsx';
+import { TagTitlePrefix } from './CardTags.tsx';
+import { CardEditForm, composeDraft, splitDraft } from './CardEditForm.tsx';
+import { CardFocusMode } from './CardFocusMode.tsx';
+import { CatalogReferenceLink } from './JourneyPanel.tsx';
+import { Button } from './ui/button.tsx';
+import { defineText, textNow, useText } from '../i18n.ts';
+import '../card-editor.css';
+
+const text = defineText({
+  loadFailed: 'Could not load card content.',
+  invalidResponse: 'The server returned invalid card content.',
+  conflictLoadFailed: 'The conflict is preserved. Could not load the current text; the draft remains in the editor.',
+  unsaved: 'This card has unsaved changes',
+  continueEditing: 'Continue editing',
+  discardChanges: 'Discard changes',
+  draftNotKept: 'The browser could not keep the draft. Save it or cancel again to discard it.',
+  rebased: 'The current version is now the base. Your draft is unchanged and not yet written; click Save Card to save it.',
+  rebaseFailed: 'Could not load the current version. The draft and conflict are preserved.',
+  titleRequired: 'Enter the card title.',
+  tooLong: 'The title is limited to 1000 characters, the content to 200000 characters.',
+  notConfirmed: 'Changes not confirmed. The draft is preserved; check the catalog message.',
+  saveUnconfirmed: 'Could not confirm the save. The draft remains in the editor; try again after checking the source.',
+  editTitle: 'Edit title and content',
+  readOnly: 'This source is read-only. Choose sandbox to edit.',
+  loading: 'Loading content from Markdown…',
+  documentReadOnly: 'The document is read-only. ',
+  indexVersion: 'Showing the indexed version; editing is unavailable. ',
+  sourceUnavailable: 'The source is still unavailable.',
+  retry: 'Retry loading',
+  empty: 'Add a card description in Markdown using Edit.',
+  conflict: 'Content conflict',
+  conflictDescription: 'The source or catalog changed after editing started. The draft remains in the editor. Compare the versions and choose the current base before saving.',
+  yourDraft: 'Your draft',
+  currentText: 'Current text',
+  useCurrentBase: 'Use current base',
+  edit: 'Edit',
+  editCard: 'Edit Card',
+}, {
+  loadFailed: 'Не удалось загрузить содержимое карточки.',
+  invalidResponse: 'Сервер вернул некорректное содержимое карточки.',
+  conflictLoadFailed: 'Конфликт сохранён. Не удалось загрузить текущий текст; черновик остался в редакторе.',
+  unsaved: 'В карте есть несохранённые изменения',
+  continueEditing: 'Продолжить правку',
+  discardChanges: 'Отменить изменения',
+  draftNotKept: 'Браузер не смог сохранить черновик. Сохраните его или нажмите «Отмена» ещё раз, чтобы отменить.',
+  rebased: 'Актуальная версия выбрана как основа. Ваш черновик не изменён и ещё не записан; нажмите «Сохранить», чтобы сохранить его.',
+  rebaseFailed: 'Не удалось загрузить актуальную версию. Черновик и конфликт сохранены.',
+  titleRequired: 'Введите название карточки.',
+  tooLong: 'Название ограничено 1000 знаками, содержимое — 200000 знаками.',
+  notConfirmed: 'Изменения не подтверждены. Черновик сохранён; проверьте сообщение каталога.',
+  saveUnconfirmed: 'Не удалось подтвердить сохранение. Черновик остался в редакторе; повторите после проверки источника.',
+  editTitle: 'Редактировать название и содержимое',
+  readOnly: 'Источник открыт для чтения. Для правки выберите sandbox.',
+  loading: 'Загружаем содержимое из Markdown…',
+  documentReadOnly: 'Документ доступен только для чтения. ',
+  indexVersion: 'Показана версия из индекса; редактирование недоступно. ',
+  sourceUnavailable: 'Источник всё ещё недоступен.',
+  retry: 'Повторить загрузку',
+  empty: 'Добавьте описание карточки в Markdown через «Правку».',
+  conflict: 'Конфликт содержимого',
+  conflictDescription: 'Источник или каталог изменился после начала правки. Черновик остался в редакторе. Сравните версии и выберите актуальную основу перед сохранением.',
+  yourDraft: 'Ваш черновик',
+  currentText: 'Текущий текст',
+  useCurrentBase: 'Использовать актуальную основу',
+  edit: 'Правка',
+  editCard: 'Редактировать карту',
+});
+
+interface ContentBaseline extends CardContent { manifestHash: string }
+interface LoadFailure extends Error { status: number }
+
+async function fetchCardContent(cardId: string, source: WorkspaceSnapshot['source'], signal?: AbortSignal): Promise<CardContent> {
+  const response = await fetch(`/api/card-content?source=${source}&cardId=${encodeURIComponent(cardId)}`, { cache: 'no-store', signal });
+  const result: unknown = await response.json().catch(() => null);
+  if (!response.ok) {
+    const message = result && typeof result === 'object' && 'message' in result ? String(result.message) : textNow(text).loadFailed;
+    const failure = new Error(message) as LoadFailure;
+    failure.status = response.status;
+    throw failure;
+  }
+  if (!result || typeof result !== 'object' || !('cardId' in result) || !('title' in result) || !('markdown' in result) || !('sourceHash' in result)) {
+    throw new Error(textNow(text).invalidResponse);
+  }
+  return result as CardContent;
+}
+
+export function CardContentEditor({ card, catalog, snapshot, writable, pending, blocked, headingRef, onEdit, onEditingChange, titleActions, footerActions, bodyAfter, onOpenCard, focusMode = false, onFocusModeExit }: {
+  card: CatalogCard;
+  catalog: CatalogView;
+  snapshot: WorkspaceSnapshot;
+  writable: boolean;
+  pending: boolean;
+  blocked: boolean;
+  headingRef: RefObject<HTMLHeadingElement | null>;
+  onEdit: (action: CatalogAction) => Promise<boolean>;
+  onEditingChange: (editing: boolean) => void;
+  titleActions?: ReactNode;
+  footerActions?: ReactNode;
+  /** Read mode only: shown under the text, inside the sheet. */
+  bodyAfter?: ReactNode;
+  /** Read mode only: a click on a card reference chip opens that card. */
+  onOpenCard?: (card: CatalogCard) => void;
+  /** Focus Mode shares this reading and edit state across the whole viewport (CardFocusMode). */
+  focusMode?: boolean;
+  onFocusModeExit?: () => void;
+}) {
+  const baseline = useRef<ContentBaseline | null>(null);
+  const t = useText(text);
+  const inFlight = useRef(false);
+  const latestRevision = useRef({ sourceHash: card.sourceHash, manifestHash: catalog.manifestHash });
+  const [content, setContent] = useState<CardContent | null>(null);
+  const [currentContent, setCurrentContent] = useState<CardContent | null>(null);
+  const [loadFailure, setLoadFailure] = useState<LoadFailure | Error | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [editing, setEditing] = useState(false);
+  // The whole card is one plain Markdown text; its first line is the title.
+  const [draft, setDraft] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [conflict, setConflict] = useState(false);
+  const [notice, setNotice] = useState('');
+  // A draft kept by Cancel; the card shows the unsaved-changes banner until it is continued or discarded.
+  const [stashed, setStashed] = useState(() => readCardDraft(snapshot.source, card.id) !== null);
+  useEffect(() => { setStashed(readCardDraft(snapshot.source, card.id) !== null); }, [snapshot.source, card.id]);
+  latestRevision.current = { sourceHash: card.sourceHash, manifestHash: catalog.manifestHash };
+
+  const fallbackContent = useMemo<CardContent>(() => ({ cardId: card.id, title: card.title, markdown: card.markdown, sourceHash: card.sourceHash }), [card.id, card.title, card.markdown, card.sourceHash]);
+  // 2026-11-05: use this card's catalog copy until the file loads, preventing stale text and a one-frame layout collapse.
+  const shownContent = content?.cardId === card.id ? content : fallbackContent;
+  const tree = useMemo(() => parseEditorMarkdown(shownContent.markdown), [shownContent.markdown]);
+  const base = baseline.current;
+  const contentDirty = editing && base !== null && draft !== composeDraft(base.title, base.markdown);
+  const revisionChanged = editing && base !== null
+    && (base.sourceHash !== card.sourceHash || base.manifestHash !== catalog.manifestHash);
+  const hasConflict = editing && (conflict || revisionChanged);
+
+  useEffect(() => {
+    // 2026-11-03: watcher revisions refresh reading, but never replace an open draft.
+    if (editing || saving) return;
+    const controller = new AbortController();
+    let active = true;
+    setLoading(true);
+    setLoadFailure(null);
+    fetchCardContent(card.id, snapshot.source, controller.signal).then(result => {
+      if (active) setContent(result);
+    }).catch((failure: unknown) => {
+      if (active && !controller.signal.aborted) setLoadFailure(failure instanceof Error ? failure : new Error(String(failure)));
+    }).finally(() => { if (active) setLoading(false); });
+    return () => { active = false; controller.abort(); };
+  }, [card.id, card.sourceHash, snapshot.source, editing, saving]);
+
+  useEffect(() => { onEditingChange(contentDirty || saving); }, [contentDirty, saving, onEditingChange]);
+  useEffect(() => () => onEditingChange(false), [onEditingChange]);
+
+  // Focus Mode opens the card's editor once per entry; Save or Cancel returns to the rendered card.
+  // Layout phase: the reading view never flashes before the text box.
+  const editOnFocusEntry = useRef(false);
+  const wasFocusMode = useRef(focusMode);
+  const wasEditing = useRef(editing);
+  useLayoutEffect(() => { editOnFocusEntry.current = focusMode; }, [focusMode]);
+  useLayoutEffect(() => {
+    if (!focusMode || !editOnFocusEntry.current || loading) return;
+    editOnFocusEntry.current = false;
+    if (!editing) startEditing();
+  }, [focusMode, loading, editing]);
+  useEffect(() => {
+    // Focus never drops to <body> when the text box closes in Focus Mode or Focus Mode closes on the reading view:
+    // it goes to the title. An edit that stays open autofocuses its own text.
+    const textClosedInFocusMode = focusMode && wasEditing.current && !editing;
+    const focusModeClosedOnReading = wasFocusMode.current && !focusMode && !editing;
+    if (textClosedInFocusMode || focusModeClosedOnReading) headingRef.current?.focus({ preventScroll: true });
+    wasFocusMode.current = focusMode;
+    wasEditing.current = editing;
+  }, [focusMode, editing, headingRef]);
+
+  useEffect(() => {
+    if (!revisionChanged) return;
+    setConflict(true);
+    const controller = new AbortController();
+    fetchCardContent(card.id, snapshot.source, controller.signal).then(setCurrentContent).catch(() => {
+      if (!controller.signal.aborted) setNotice(textNow(text).conflictLoadFailed);
+    });
+    return () => controller.abort();
+  }, [revisionChanged, card.id, card.sourceHash, snapshot.source]);
+
+  function startEditing() {
+    if (!content || loading || loadFailure || !writable || pending || saving || inFlight.current || blocked) return;
+    if (stashed) { continueEditing(); return; }
+    baseline.current = { ...content, manifestHash: catalog.manifestHash };
+    setDraft(composeDraft(content.title, content.markdown));
+    setCurrentContent(null);
+    setConflict(false);
+    setNotice('');
+    setEditing(true);
+  }
+
+  function editFromBody(event: MouseEvent<HTMLDivElement>) {
+    if (event.defaultPrevented || event.button !== 0 || event.detail > 1) return;
+    if (event.target instanceof Element && event.target.closest('a, button, input, textarea, select, label, summary, audio, video, [role="button"], [contenteditable]')) return;
+    if (window.getSelection()?.isCollapsed === false) return;
+    startEditing();
+  }
+
+  async function reloadActual() {
+    const latest = await fetchCardContent(card.id, snapshot.source);
+    setContent(latest);
+    setLoadFailure(null);
+    return latest;
+  }
+
+  function finishEditing() {
+    baseline.current = null;
+    setEditing(false);
+    setConflict(false);
+    setCurrentContent(null);
+  }
+
+  async function cancelEditing() {
+    if (!editing || saving || pending) return;
+    // 2026-11-05: Cancel never asks. Changed text stays as a draft behind the unsaved-changes banner; a second Cancel
+    // after the browser refused to store it discards, as the notice says.
+    if (contentDirty && base && notice !== t.draftNotKept) {
+      if (!writeCardDraft(snapshot.source, card.id, { draft, baseline: base })) { setNotice(t.draftNotKept); return; }
+      setStashed(true);
+    }
+    // Discard optimistic checkbox content even if reloading the source later fails.
+    if (base) setContent({ cardId: base.cardId, title: base.title, markdown: base.markdown, sourceHash: base.sourceHash });
+    finishEditing();
+    setNotice('');
+  }
+
+  function continueEditing() {
+    const stored = readCardDraft(snapshot.source, card.id);
+    if (!stored) { setStashed(false); return; }
+    if (loading || !writable || pending || saving || inFlight.current || blocked) return;
+    // The draft keeps its own base revision: a file changed meanwhile opens as the usual content conflict.
+    baseline.current = stored.baseline;
+    setDraft(stored.draft);
+    setCurrentContent(null);
+    setConflict(false);
+    setNotice('');
+    setEditing(true);
+    removeCardDraft(snapshot.source, card.id);
+    setStashed(false);
+  }
+
+  function discardDraft() {
+    removeCardDraft(snapshot.source, card.id);
+    setStashed(false);
+  }
+
+  function leaveFocusMode() {
+    // Back never discards: an untouched draft closes, a changed one stays open in the card's editor.
+    if (editing && !saving && !contentDirty) finishEditing();
+    onFocusModeExit?.();
+  }
+
+  async function rebase() {
+    if (saving || pending) return;
+    try {
+      const latest = await fetchCardContent(card.id, snapshot.source);
+      // 2026-11-03: only this explicit action may replace the write revision; the draft stays untouched.
+      baseline.current = { ...latest, manifestHash: latestRevision.current.manifestHash };
+      setContent(latest);
+      setCurrentContent(latest);
+      setConflict(false);
+      setNotice(t.rebased);
+    } catch {
+      setNotice(t.rebaseFailed);
+    }
+  }
+
+  async function save() {
+    const base = baseline.current;
+    if (!editing || !base || !writable || pending || saving || inFlight.current || hasConflict) return;
+    inFlight.current = true;
+    const { title: draftTitle, markdown: draftMarkdown } = splitDraft(draft);
+    if (!draftTitle) { setNotice(t.titleRequired); inFlight.current = false; return; }
+    if (draftTitle.length > 1000 || draftMarkdown.length > 200000) { setNotice(t.tooLong); inFlight.current = false; return; }
+    await persistContent(base, draftTitle, draftMarkdown);
+  }
+
+  async function toggleTask(itemOffset: number, checked: boolean) {
+    if (!content || editing || loading || loadFailure || !writable || pending || saving || inFlight.current || blocked) return;
+    const draftMarkdown = toggleEditorChecklist(content.markdown, itemOffset, checked);
+    if (draftMarkdown === null || draftMarkdown === content.markdown) return;
+    const base = { ...content, manifestHash: catalog.manifestHash };
+    baseline.current = base;
+    setDraft(composeDraft(content.title, draftMarkdown));
+    setContent({ ...content, markdown: draftMarkdown });
+    setCurrentContent(null);
+    setConflict(false);
+    inFlight.current = true;
+    await persistContent(base, content.title, draftMarkdown);
+  }
+
+  async function persistContent(base: ContentBaseline, draftTitle: string, draftMarkdown: string) {
+    setSaving(true);
+    setNotice('');
+    try {
+      const saved = await onEdit({ action: 'update-card-content', cardId: card.id, title: draftTitle,
+        markdown: draftMarkdown, sourceHash: base.sourceHash, manifestHash: base.manifestHash });
+      if (saved) {
+        setContent({ cardId: card.id, title: draftTitle, markdown: draftMarkdown, sourceHash: base.sourceHash });
+        finishEditing();
+      } else {
+        // 2026-11-03: a failed quick checkbox edit becomes an explicit draft instead of disappearing.
+        setEditing(true);
+        const latest = latestRevision.current;
+        if (latest.sourceHash !== base.sourceHash || latest.manifestHash !== base.manifestHash) setConflict(true);
+        else setNotice(t.notConfirmed);
+      }
+    } catch {
+      setEditing(true);
+      setNotice(t.saveUnconfirmed);
+    } finally {
+      inFlight.current = false;
+      setSaving(false);
+    }
+  }
+
+  const comparison = currentContent ?? fallbackContent;
+  // Focus Mode shows only the card text: the sheet's actions, links and footer stay on the card.
+  const article = <article className={'card-preview-reading card-content-reading' + (editing ? ' is-editing' : '')}>
+    {!editing && <>
+      {stashed && <section className="card-draft-banner" aria-label={t.unsaved}>
+        <p>{t.unsaved}</p>
+        <div className="card-draft-banner-actions">
+          <Button type="button" size="sm" disabled={loading || !writable || pending || saving || blocked} onClick={continueEditing}><Play size={14} aria-hidden="true" />{t.continueEditing}</Button>
+          <Button type="button" size="sm" disabled={pending || saving} onClick={discardDraft}><Trash2 size={14} aria-hidden="true" />{t.discardChanges}</Button>
+        </div>
+      </section>}
+      <div className="card-content-heading"><h2 className="card-preview-title" ref={headingRef} tabIndex={-1}>{content && writable && !loadFailure ? <button type="button" className="card-title-edit" disabled={loading || pending || saving || blocked} onClick={startEditing} title={t.editTitle}><TagTitlePrefix tags={card.tags} definitions={catalog.projectTags} />{shownContent.title}</button> : <><TagTitlePrefix tags={card.tags} definitions={catalog.projectTags} />{shownContent.title}</>}</h2>
+        {!focusMode && titleActions}
+      </div>
+      {!writable && <p className="card-content-readonly">{t.readOnly}</p>}
+      {loading && <p className="visually-hidden" role="status">{t.loading}</p>}
+      {loadFailure && <div className="card-content-notice" role="status">
+        <p>{'status' in loadFailure && loadFailure.status === 422 ? t.documentReadOnly : t.indexVersion}{loadFailure.message}</p>
+        <Button type="button" variant="outline" size="sm" onClick={() => void reloadActual().catch(() => setNotice(t.sourceUnavailable))}><RefreshCw size={14} />{t.retry}</Button>
+      </div>}
+      <div className="card-preview-document" onClick={editFromBody}>
+        {shownContent.markdown.trim() ? <Markdown projectTags={catalog.projectTags} rawMarkdown={shownContent.markdown} tree={tree} source={snapshot.source} path={card.path} members={catalog.members} showChecklistCount
+          cards={catalog.cards} onOpenCard={onOpenCard}
+          onTaskToggle={content && writable && !loadFailure ? (offset, checked) => void toggleTask(offset, checked) : undefined}
+          taskToggleDisabled={loading || pending || saving || blocked} /> : <p className="card-content-empty">{t.empty}</p>}
+      </div>
+      {!focusMode && bodyAfter}
+      {notice && <p className="card-content-notice" role="status">{notice}</p>}
+      {!focusMode && <footer className="card-content-reading-footer">
+        <CatalogReferenceLink kind="c" id={card.id} source={snapshot.source} />
+        <div className="card-content-reading-actions">{footerActions}
+          {content && writable && <Button type="button" size="sm" className="card-content-edit-action" aria-label={t.editCard} disabled={loading || Boolean(loadFailure) || pending || saving || blocked} onClick={startEditing}><Pencil size={14} />{t.edit}</Button>}
+        </div>
+      </footer>}
+    </>}
+    {editing && <CardEditForm draft={draft} onDraftChange={setDraft} catalog={catalog} source={snapshot.source} path={card.path}
+      writable={writable} busy={pending || saving} saving={saving} blocked={hasConflict} hintActions={focusMode ? undefined : titleActions} notice={notice}
+      onSave={() => void save()} onCancel={() => void cancelEditing()}>
+      {hasConflict && <section className="card-content-conflict" aria-label={t.conflict}>
+        <p role="alert">{t.conflictDescription}</p>
+        <div className="card-content-conflict-columns">
+          <section><h3>{t.yourDraft}</h3><pre>{draft}</pre></section>
+          <section><h3>{t.currentText}</h3><pre>{comparison.title + '\n\n' + comparison.markdown}</pre></section>
+        </div>
+        <div className="card-content-conflict-actions"><Button type="button" variant="outline" size="sm" disabled={pending || saving} onClick={() => void rebase()}><RefreshCw size={14} />{t.useCurrentBase}</Button></div>
+      </section>}
+    </CardEditForm>}
+  </article>;
+  // The state above stays in this component, so a draft survives moving between the sheet and Focus Mode.
+  return focusMode ? <CardFocusMode title={shownContent.title} onBack={leaveFocusMode}>{article}</CardFocusMode> : article;
+}

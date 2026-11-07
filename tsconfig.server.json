@@ -1,0 +1,14 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "noEmitOnError": true,
+    "rewriteRelativeImportExtensions": true,
+    "rootDir": ".",
+    "outDir": "dist",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext"
+  },
+  "include": ["server", "src", "tools/project.ts", "tools/commands", "tools/deckmate-skills.ts", "tools/deckmate-run.ts"],
+  "exclude": ["client", "tests", "node_modules", "dist"]
+}

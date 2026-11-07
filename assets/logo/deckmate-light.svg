@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64" shape-rendering="crispEdges" role="img" aria-label="Deckmate">
+  <g transform="scale(2)">
+    <path fill="#A184E0" d="M6 7H7V27H23V28H21V30H6V28H4V9H6Z"/>
+    <path fill="#6538A3" d="M11 2H26V4H28V23H26V25H11V23H9V4H11Z"/>
+    <path fill="#E8AD2E" d="M18 10H19V11H20V12H21V13H22V14H21V15H20V16H19V17H18V16H17V15H16V14H15V13H16V12H17V11H18Z"/>
+  </g>
+</svg>

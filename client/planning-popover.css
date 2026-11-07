@@ -1,0 +1,54 @@
+/* Anchored planning forms and the shared color swatches: a calendar date cell, the Run schedule button, a Milestone page's pencil
+   (2026-11-05). Colors come only from shared tokens. */
+:root { --planning-popover: var(--surface); --planning-popover-band: var(--ground); --planning-field-line: var(--line); --planning-field-focus: var(--focus); --planning-swatch: var(--planning-popover); }
+:root.dark { --planning-popover: var(--canvas); --planning-popover-band: var(--sidebar); }
+.planning-popover-close { display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; width: 32px; height: 32px; margin: -5px -5px -5px 0; padding: 0; border: 0; border-radius: 4px; background: transparent; color: var(--button-ink, var(--accent)); cursor: pointer; }
+.planning-popover-close:hover:not(:disabled) { background: var(--hover); }
+/* Anchored forms: 4 px radius, the shared popover shadow, a 16/700 title row, a darker band for the project switch,
+   then two columns (Milestone, 418 px) or three (Run schedule, 869 px) of uppercase 11/700 labels over underlined fields. */
+.planning-popover { position: fixed; z-index: 120; width: min(418px, calc(100vw - 32px)); max-height: calc(100dvh - 32px); overflow: auto; border-radius: 4px; background: var(--planning-popover); color: var(--ink); box-shadow: var(--deck-settings-shadow, var(--shadow)); outline: none; }
+.planning-popover.is-wide { width: min(869px, calc(100vw - 32px)); }
+.planning-popover > header { display: flex; align-items: center; gap: 12px; padding: 16px 24px; }
+.planning-popover > header h2 { flex: 1; min-width: 0; margin: 0; overflow: hidden; font-size: 16px; font-weight: 700; line-height: 18px; text-overflow: ellipsis; white-space: nowrap; }
+.planning-popover-form fieldset { min-width: 0; margin: 0; padding: 0; border: 0; }
+.planning-popover-band { padding: 16px 24px; background: var(--planning-popover-band); }
+.planning-popover-band .deck-panel-switch-row { height: 18px; font-size: 12px; text-transform: uppercase; }
+.planning-popover-columns { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 24px; padding: 16px 24px 16px; }
+.planning-popover-columns > div { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+.planning-underline-field { display: flex; flex-direction: column; gap: 12px; font-size: 11px; font-weight: 700; line-height: 12px; text-transform: uppercase; }
+.planning-underline-field input:not([type='color']) { width: 100%; min-width: 0; height: 32px; padding: 0 0 8px; border: 0; border-bottom: 2px solid var(--planning-field-line); border-radius: 0; background: transparent; color: var(--ink); font: inherit; font-size: 16px; font-weight: 400; line-height: 21px; text-transform: none; outline: none; color-scheme: inherit; }
+.planning-underline-field input:not([type='color']):focus { border-bottom-color: var(--planning-field-focus); }
+.planning-popover-submit { align-self: flex-end; margin-top: auto; }
+.planning-popover .ui-button.planning-popover-submit { height: 32px; min-height: 32px; padding: 0 10px; border: 0; border-radius: 4px; background: var(--violet-fill, var(--accent)); color: var(--violet-fill-ink, var(--surface)); font-size: 14px; font-weight: 700; }
+/* 2026-11-06: the Run schedule form in the wide popover ends with the same 32 px primary action as the Milestone form beside it
+   (its colors and hover stay the shared .button-default ones); Cancel keeps the ghost look at the same height. */
+.planning-popover .run-configuration-form footer .ui-button { height: 32px; min-height: 32px; border-radius: 4px; font-size: 14px; }
+.planning-popover .run-configuration-form footer .ui-button[type='submit'] { padding: 0 10px; border: 0; font-weight: 700; }
+.planning-popover .ui-button.planning-popover-submit:hover:not(:disabled), .planning-popover .run-configuration-form footer .ui-button[type='submit']:hover:not(:disabled) { filter: brightness(1.12); }
+.planning-popover .error-banner { margin: 0; }
+/* The discard strip stands under the form it asks about; the dimmed form above waits inert (2026-11-05). */
+.planning-popover > .confirm-strip { margin: 0 24px 16px; }
+.planning-popover-body[inert] { opacity: .55; }
+.planning-popover button:focus-visible, .planning-popover input:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+/* Color swatches: 20 px frames with a 15 px chip, 6 px apart; the chosen one takes the field's focus line. */
+.planning-colors { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; text-transform: none; }
+.planning-color-swatch { position: relative; display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; padding: 2px; border: .67px solid var(--planning-field-line); border-radius: 4px; background: var(--planning-swatch); cursor: pointer; }
+.planning-color-swatch > span { display: inline-flex; align-items: center; justify-content: center; width: 15px; height: 15px; border-radius: 2px; color: var(--overlay-ink); }
+/* 2026-11-06: hover takes the edge halfway to the chosen swatch's focus line, so pointing reads before choosing. */
+.planning-color-swatch:hover { border-color: color-mix(in srgb, var(--planning-field-focus) 50%, var(--planning-field-line)); }
+.planning-color-swatch[aria-pressed='true'], .planning-color-custom.is-selected { border-color: var(--planning-field-focus); background: var(--accent-soft); }
+.planning-popover-close:active:not(:disabled), button.planning-color-swatch:active:not(:disabled) { translate: 0 1px; }
+.planning-colors .planning-color-custom input[type='color'] { width: 15px; height: 15px; padding: 0; border: 0; border-radius: 2px; background: conic-gradient(var(--danger), var(--champagne), var(--card-highlight), var(--accent), var(--plum), var(--danger)); cursor: pointer; }
+.planning-color-custom input::-webkit-color-swatch-wrapper { padding: 0; }
+.planning-color-custom input::-webkit-color-swatch { border: 0; border-radius: 2px; }
+.planning-color-custom:not(.is-selected) input::-webkit-color-swatch { opacity: 0; }
+.planning-color-custom:focus-within { outline: 2px solid var(--focus); outline-offset: 2px; }
+/* Run schedule form inside the wide popover: three columns, the schedule list below. */
+.planning-popover .run-configuration-form { margin: 0; padding: 0 0 16px; }
+.planning-popover .run-configuration-form > fieldset { gap: 0; }
+.planning-popover .run-form-columns { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 24px 48px; padding: 16px 24px 0; }
+.planning-popover .run-configuration-form > :not(fieldset) { margin-left: 24px; margin-right: 24px; }
+.planning-popover .run-schedule-list { margin: 0 24px 16px; }
+@media (max-width: 760px) {
+  .planning-popover-columns, .planning-popover .run-form-columns { grid-template-columns: minmax(0, 1fr); }
+}

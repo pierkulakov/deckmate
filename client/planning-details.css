@@ -1,0 +1,37 @@
+/* Inspector metadata and observed history, 2026-11-05. */
+.planning-description-panel { margin-bottom: 24px; min-width: 0; }
+.planning-run-goal { margin-bottom: 20px; }
+.planning-run-goal h3 { font-size: 12px; font-weight: 600; margin: 0 0 6px; }
+.planning-run-goal p { margin: 0; font-size: 14px; line-height: 1.6; overflow-wrap: anywhere; }
+.planning-cover-image { display: block; width: 100%; max-height: 220px; object-fit: cover; border-radius: 5px; margin-bottom: 16px; }
+.planning-description-markdown { overflow-wrap: anywhere; font-size: 14px; line-height: 1.6; }
+.planning-description-markdown > :first-child { margin-top: 0; }
+.planning-description-markdown img { max-width: 100%; height: auto; }
+.planning-detail-form { margin-bottom: 28px; }
+.planning-detail-form fieldset { display: flex; flex-direction: column; gap: 14px; min-width: 0; padding: 0; margin: 0; border: 0; }
+.planning-detail-form label:not(.planning-checkbox) { display: flex; flex-direction: column; gap: 6px; min-width: 0; color: var(--ink); font-size: 12px; }
+.planning-detail-form input:not([type='checkbox']), .planning-detail-form textarea { width: 100%; min-width: 0; padding: 7px 9px; border: 1px solid var(--line); border-radius: 4px; background: var(--canvas); color: var(--ink); font: inherit; }
+.planning-detail-form textarea { resize: vertical; line-height: 1.5; }
+.planning-detail-form small { color: var(--muted); line-height: 1.5; }
+.planning-detail-form :is(input:not([type='checkbox']), textarea, button):focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.planning-detail-form :is(input:not([type='checkbox']), textarea):disabled { opacity: .6; cursor: not-allowed; }
+.planning-detail-date { display: grid; grid-template-columns: 1fr 64px; gap: 14px; }
+.planning-detail-form input[type='color'] { height: 34px; padding: 4px; }
+.planning-detail-form footer { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
+.planning-detail-error { color: var(--danger); font-size: 12px; line-height: 1.5; }
+.planning-burndown { margin: 22px 0; }
+.planning-burndown h3 { margin: 0 0 8px; font-size: 12px; }
+.planning-burndown svg { display: block; width: 100%; overflow: visible; }
+.planning-burndown-axis { stroke: var(--line); stroke-width: 1; }
+.planning-burndown-line { fill: none; stroke: var(--planning-mint); stroke-width: 2; stroke-linejoin: round; }
+.planning-burndown-point { fill: var(--planning-mint); }
+.planning-burndown-label { fill: var(--muted); font: 10px var(--font-sans); }
+.planning-burndown figcaption { display: flex; justify-content: space-between; gap: 12px; color: var(--muted); font-size: 10px; }
+.planning-history-table { margin-top: 12px; width: 100%; border-collapse: collapse; font-size: 11px; font-variant-numeric: tabular-nums; }
+.planning-history-table th, .planning-history-table td { padding: 5px 0; text-align: right; border-bottom: 1px solid var(--line); }
+.planning-history-table th:first-child, .planning-history-table td:first-child { text-align: left; }
+.planning-history-table th { font-weight: 400; color: var(--muted); }
+.planning-burndown details { color: var(--muted); font-size: 11px; }
+.planning-burndown summary { cursor: pointer; margin-top: 12px; }
+.planning-burndown summary:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.planning-snapshot-note { margin: 0 0 16px; font-size: 12px; color: var(--muted); line-height: 1.5; }

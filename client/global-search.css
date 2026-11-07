@@ -1,0 +1,62 @@
+/* The global search field is 350×30 with ground fill and a 4.8px radius. */
+/* The tab strip scrolls with min-width: 0 so the search field keeps its 350px width. */
+.global-search { position: relative; flex: 0 0 350px; min-width: 180px; height: 30px; }
+.global-search-field { display: flex; align-items: center; gap: 12px; height: 100%; padding: 0 12px; border: .67px solid var(--line); border-radius: 4.8px; background: var(--ground); color: var(--muted); transition: border-color var(--motion-feedback); }
+.global-search-field:focus-within, .global-search-field.is-open { border-color: var(--focus); }
+.global-search-field.is-open { border-radius: 4.8px 4.8px 0 0; }
+.global-search-field > svg { flex-shrink: 0; }
+.global-search-field input { flex: 1; min-width: 0; height: 100%; border: 0; padding: 0; background: transparent; color: var(--ink); outline: none; caret-color: var(--ink); }
+.global-search-field input::placeholder { color: var(--muted); opacity: 1; }
+.global-search-field input::-webkit-search-cancel-button { -webkit-appearance: none; }
+.global-search-key { flex-shrink: 0; }
+/* Search results attach to the field at 350px wide with canvas fill. */
+.global-search-pop { position: absolute; top: 100%; left: 0; z-index: 61; display: flex; flex-direction: column; width: 100%; max-height: calc(100dvh - 60px); overflow: hidden; border: 0; border-radius: 0 0 4.8px 4.8px; background: var(--canvas); color: var(--ink); box-shadow: var(--shadow); animation: overlay-pop var(--motion-spring-quick) var(--ease-spring-quick); }
+.global-search-sections { min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 8px 12px; }
+.global-search-section-label { margin: 0 0 4px; color: var(--edit-hint, var(--muted)); font-size: 10px; font-weight: 700; line-height: 10px; letter-spacing: .2px; text-transform: uppercase; }
+.global-search-query { margin: 0; padding: 4px 8px; border-radius: 4px; background: var(--hover); font-size: 14px; font-weight: 400; line-height: 16px; overflow-wrap: anywhere; }
+.global-search-navigation { margin-top: 12px; padding-top: 12px; border-top: .67px solid var(--line); }
+.global-search-navigation .global-search-section-label { color: var(--mint, var(--accent)); }
+.global-search-results { margin: 0; padding: 0; list-style: none; overflow-x: hidden; overflow-y: auto; max-height: min(430px, 55vh); scrollbar-width: thin; }
+.global-search-row { display: flex; align-items: center; gap: 8px; width: 100%; min-width: 0; padding: 6px 8px; border: 0; border-radius: 4px; background: transparent; color: inherit; font-size: 12px; text-align: left; }
+.global-search-results > li[aria-selected="true"] > .global-search-row { background: var(--hover); }
+.global-search-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; }
+.global-search-kind { display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; width: 20px; height: 20px; border-radius: 50%; background: var(--kind-hero-bg); color: var(--kind-hero-ink); }
+.global-search-kind.is-task { background: var(--kind-task-bg); color: var(--kind-task-ink); }
+.global-search-kind.is-doc { background: var(--kind-doc-bg); color: var(--kind-doc-ink); }
+.global-search-deck { display: inline-flex; align-items: center; gap: 5px; flex-shrink: 1; min-width: 0; max-width: 132px; overflow: hidden; padding: 2px 7px 2px 6px; border-radius: 4px; background: color-mix(in srgb, var(--deck-color) 16%, transparent); color: var(--muted); font-size: 10px; white-space: nowrap; }
+.global-search-deck-dot { flex-shrink: 0; width: 8px; height: 8px; border-radius: 50%; background: var(--deck-color); }
+.global-search-row .card-owner-avatar { width: 20px; height: 20px; font-size: 8px; }
+.global-search-empty { margin: 0; padding: 13px 12px 11px; color: var(--muted); font-size: 12px; line-height: 1.6; }
+/* 2026-11-06: inside the sections a message starts on the row text line (8px), like the query and the result rows. */
+.global-search-sections .global-search-empty { padding-inline: 8px; }
+.global-search-total { padding-top: 0; }
+/* Navigation rows ($ID, gd:, gc:): the arrow circle keeps the kind-circle geometry, the label is muted. */
+.global-search-kind.is-nav { background: var(--hover); color: var(--muted); }
+.global-search-nav .global-search-title { font-weight: 400; }
+.global-search-nav-label { flex-shrink: 0; color: var(--muted); font-weight: 400; }
+.global-search-nav > .global-search-deck-dot { flex-shrink: 0; }
+.global-search-nav-note { margin: 0; padding: 9px 8px 4px; color: var(--muted); font-size: 12px; line-height: 1.6; }
+.global-search-syntax { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 6px; padding: 7px 12px; border-top: 1px solid var(--line); color: var(--muted); font-size: 10px; line-height: 1.5; }
+/* Active filters appear as pills below search: click removes one; Esc removes the last. */
+.global-search-pills { display: flex; align-items: center; flex-wrap: wrap; gap: 4px; margin: 0 0 8px; }
+.global-search-pill { display: inline-flex; align-items: center; gap: 4px; max-width: 100%; padding: 2px 4px 2px 8px; border: .67px solid var(--line); border-radius: 4px; background: var(--ground); color: var(--ink); font-size: 11px; line-height: 16px; }
+.global-search-pill > svg { flex-shrink: 0; color: var(--muted); }
+.global-search-pill > span { min-width: 0; overflow-wrap: anywhere; }
+.global-search-pill:hover { border-color: var(--focus); background: var(--hover); }
+/* The or pill toggles how multiple tag filters combine; it is not a removable filter. */
+.global-search-pill.is-toggle { padding: 2px 8px; background: transparent; color: var(--muted); font-weight: 500; }
+.global-search-pill.is-toggle.is-on { border-color: var(--focus); background: var(--accent-soft); color: var(--link-ink); }
+/* 2026-11-06: below 1180 the field narrows (workspace.css) but results keep their 350px column, growing leftwards from
+   the field's right edge, so titles and filters are not squeezed into a 150-240px strip. */
+@media (max-width: 1180px) { .global-search-pop { left: auto; right: 0; width: max(100%, 350px); border-top-left-radius: 4px; } }
+/* 2026-11-06: at its 150px floor (workspace.css) the field drops the "/" hint so the placeholder stays whole. */
+@media (max-width: 1000px) { .global-search { flex-shrink: 1; min-width: 150px; } .global-search-key { display: none; } }
+/* 2026-11-06: on phone widths the field sits too far left for a right-aligned 350px column; the results span the window
+   under the field instead (top: auto keeps the static position right below it). */
+@media (max-width: 480px) { .global-search-pop { position: fixed; top: auto; right: 8px; left: 8px; width: auto; max-height: calc(100dvh - 120px); } }
+@media (prefers-reduced-motion: reduce) { .global-search-pop { animation: none; } }
+
+.global-search-card-main { display: flex; flex: 1; min-width: 0; flex-direction: column; gap: 4px; }
+.global-search-card-main > .global-search-title { display: block; flex: none; width: 100%; }
+.global-search-card-meta { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
+.global-search-tag-filter, .global-search-tag-alternative { display: inline-flex; align-items: center; min-width: 0; gap: 4px; }

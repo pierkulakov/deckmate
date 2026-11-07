@@ -1,0 +1,35 @@
+/* Motion vocabulary, 2026-11-05. Springs (mass 1, tension/friction below) are sampled into linear() curves, so CSS plays
+   their overshoot and settle; durations are where each spring has settled.
+   Movement uses translate/scale/opacity only; the global reduced-motion rule in styles.css shortens all of it to .01 ms. */
+:root {
+  /* tension 500, friction 30: popovers, menus, tooltips — 6 % overshoot over a 20 px slide. */
+  --ease-spring-quick: linear(0, 0.036, 0.122, 0.239, 0.367, 0.498, 0.619, 0.728, 0.819, 0.895, 0.953, 0.996, 1.026, 1.045, 1.054, 1.058, 1.056, 1.052, 1.045, 1.038, 1.03, 1.023, 1.017, 1.011, 1);
+  --motion-spring-quick: 300ms;
+  /* tension 600, friction 44: dialogs and anything that carries content — no overshoot. */
+  --ease-spring-firm: linear(0, 0.043, 0.14, 0.261, 0.386, 0.504, 0.608, 0.697, 0.77, 0.829, 0.875, 0.911, 0.938, 0.958, 0.972, 0.982, 0.99, 0.994, 0.998, 1, 1);
+  --motion-spring-firm: 260ms;
+  /* tension 210, friction 20: toasts and feedback chips — a small 5 % pop. */
+  --ease-spring-pop: linear(0, 0.029, 0.102, 0.202, 0.315, 0.433, 0.545, 0.65, 0.742, 0.821, 0.886, 0.938, 0.978, 1.008, 1.028, 1.041, 1.047, 1.05, 1.049, 1.045, 1.04, 1.035, 1.029, 1.023, 1);
+  --motion-spring-pop: 420ms;
+  /* tension 2500, friction 90: side sheets and banners — fast and flat. */
+  --ease-panel: linear(0, 0.094, 0.279, 0.47, 0.634, 0.759, 0.849, 0.91, 0.949, 0.973, 0.987, 0.995, 0.999, 1.001, 1);
+  --motion-panel: 140ms;
+  /* easeOutQuart: scrolling and the deck transition. */
+  --ease-scroll: cubic-bezier(.25, 1, .5, 1);
+}
+
+/* Popovers come out of their anchor: 20 px from the side they are attached to. Radix sets data-side on its content. */
+[data-side="bottom"] { --overlay-from: 0 -20px; }
+[data-side="top"] { --overlay-from: 0 20px; }
+[data-side="left"] { --overlay-from: 20px 0; }
+[data-side="right"] { --overlay-from: -20px 0; }
+@keyframes overlay-pop { from { opacity: 0; translate: var(--overlay-from, 0 -20px); } }
+/* Dialogs drop 50 px from above over a fading backdrop. */
+@keyframes dialog-drop { from { opacity: 0; translate: 0 -50px; } }
+@keyframes backdrop-fade { from { opacity: 0; } }
+/* Side sheets slide in from the edge they live on: the right by default, --sheet-from: -100% 0 for the left. */
+@keyframes sheet-slide { from { opacity: 0; translate: var(--sheet-from, 100% 0); } }
+/* Toasts rise 15 px and grow from half size. */
+@keyframes toast-rise { from { opacity: 0; translate: 0 15px; scale: .5; } }
+/* Banners open their own height; interpolate-size lets the height run to auto. */
+@keyframes banner-reveal { from { opacity: 0; height: 0; padding-block: 0; margin-block: 0; } }

@@ -1,0 +1,51 @@
+/* The home catalog has one project row (48×48 add button, 16/700 name, tools on the right), 48px space headings and 24px gaps between deck rows. */
+.catalog-view.deck-gallery { max-width: none; padding: 12px 24px 40px 16px; }
+.deck-gallery .deck-gallery-header { display: flex; align-items: center; gap: 12px; min-height: 48px; margin: 0 0 16px; padding: 0; border: 0; }
+.deck-gallery .deck-gallery-project { display: flex; align-items: center; gap: 12px; min-width: 0; flex: 0 1 auto; }
+.deck-gallery .deck-gallery-add { width: 48px; height: 48px; flex: 0 0 48px; border-radius: 4px; border: .67px solid var(--line); background: var(--ground); color: var(--ink); }
+.deck-gallery .deck-gallery-add:hover:not(:disabled) { background: var(--hover); }
+.deck-gallery .deck-gallery-header h1 { margin: 0; font-size: 16px; font-weight: 700; line-height: 18px; letter-spacing: 0; color: var(--ink); overflow-wrap: anywhere; }
+.deck-gallery .catalog-heading-actions { display: flex; align-items: center; gap: 12px; flex: 1; justify-content: flex-end; min-width: 0; }
+.deck-gallery .deck-gallery-search { flex: 0 1 260px; min-width: 150px; }
+.deck-gallery .deck-gallery-search .catalog-search { height: 30px; padding-inline: 10px 4px; border: .67px solid var(--line); border-radius: 4px; background: var(--ground); }
+.deck-gallery .deck-gallery-search input { height: 28px; font-size: 13px; }
+.deck-gallery .deck-gallery-search input::-webkit-search-cancel-button { display: none; }
+.deck-gallery .deck-gallery-search button { display: grid; place-items: center; flex: 0 0 24px; width: 24px; height: 24px; padding: 0; border: 0; border-radius: 4px; background: transparent; color: var(--muted); }
+.deck-gallery .deck-gallery-search button:hover:not(:disabled) { background: var(--hover); color: var(--ink); }
+.deck-gallery .deck-gallery-search button:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
+.deck-gallery .deck-gallery-search-status { margin: -8px 0 12px; color: var(--muted); font-size: 12px; }
+/* Filters live in the project row: compact pills, no separate block. */
+.deck-gallery .catalog-browser-navigation { display: flex; align-items: center; gap: 4px; margin: 0; padding: 0; border: 0; }
+.deck-gallery .catalog-nav-section { display: flex; align-items: center; gap: 4px; }
+.deck-gallery .catalog-nav-section > div { display: flex; gap: 4px; }
+.deck-gallery .catalog-nav-section > .catalog-nav-label { display: none; }
+.deck-gallery .catalog-nav-section button { min-height: 30px; padding: 4px 9px; border-radius: 4px; font-size: 13px; }
+.deck-gallery .catalog-track-picker { display: flex; align-items: center; gap: 6px; margin-left: 8px; }
+.deck-gallery .catalog-track-picker .catalog-nav-label { display: none; }
+.deck-gallery .catalog-track-picker > div { display: flex; align-items: center; gap: 4px; min-width: 150px; max-width: 220px; }
+.deck-gallery .catalog-track-picker select { height: 30px; border-radius: 4px; background: var(--ground); font-size: 13px; }
+/* 2026-11-06: the select takes width: 100%, which squeezed the New track button to 25×30; it keeps the row's 30px square and 4px radius. */
+.deck-gallery .catalog-track-picker .ui-button { flex: 0 0 30px; border-radius: 4px; }
+/* Space headings are 48px with 12px padding; the 14/400 title and edit button sit together, with rows 12px apart. */
+.deck-gallery .catalog-spaces { display: flex; flex-direction: column; gap: 12px; }
+.deck-gallery .catalog-space { margin: 0; }
+.deck-gallery .catalog-space-heading { justify-content: flex-start; gap: 8px; min-height: 48px; margin: 0; padding: 12px; border: 0; border-radius: 0; background: none; }
+.deck-gallery .catalog-space-heading h2 > button { gap: 8px; min-height: 24px; padding: 0; font-size: 14px; font-weight: 400; line-height: 16px; color: var(--ink); }
+.deck-gallery .catalog-space-heading h2 > button > span { font-weight: 400; }
+.deck-gallery .catalog-space-actions { flex-shrink: 0; opacity: .7; transition: opacity var(--motion-feedback); }
+.deck-gallery .catalog-space-heading:hover .catalog-space-actions, .deck-gallery .catalog-space-actions:focus-within { opacity: 1; }
+.deck-gallery .catalog-space-actions .ui-button { width: 24px; min-height: 24px; height: 24px; }
+.deck-gallery .catalog-source { margin-top: 8px; }
+@media (max-width: 1100px) {
+  .deck-gallery .deck-gallery-header { flex-wrap: wrap; }
+  .deck-gallery .catalog-heading-actions { flex-basis: 100%; justify-content: flex-start; flex-wrap: wrap; }
+  /* 2026-11-06: under ~510px the scope pills and the track picker no longer share a line; the picker wraps whole
+     instead of pushing its New track button past the window edge. */
+  .deck-gallery .catalog-browser-navigation { flex-wrap: wrap; row-gap: 8px; }
+}
+@media (max-width: 420px) {
+  .catalog-view.deck-gallery { padding-inline: 12px; }
+  .deck-gallery .deck-gallery-search { flex-basis: 100%; }
+  .deck-gallery .catalog-track-picker { margin-left: 0; }
+}
+

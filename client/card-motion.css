@@ -1,0 +1,9 @@
+/* Applied only during an owned WAAPI transition; static cards keep no layer.
+   The outer wrapper moves, leaving its child's tilt and focus intact. */
+[data-card-layout-moving] { will-change: transform, opacity; }
+/* Own stacking context, so a removed card's fading copy (z-index -1) sits under the moving cards but above the page (2026-11-05). */
+[data-card-motion-root] { isolation: isolate; }
+
+@media (prefers-reduced-motion: reduce) {
+  [data-card-layout-moving] { will-change: auto; }
+}

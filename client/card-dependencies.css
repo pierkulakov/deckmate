@@ -1,0 +1,66 @@
+/* 2026-11-04: card dependencies and warnings use only the theme tokens in styles.css. */
+
+/* The gate icon shows incoming counts on the left, outgoing counts on the right and a state strip below. */
+.dependency-gate { display: inline-flex; align-items: center; gap: 4px; height: 20px; margin-left: auto; padding: 0 6px; border: 1px solid var(--line); border-radius: 4px; background: var(--surface); color: var(--muted); font: 10px 'Geist Mono', monospace; line-height: 1; }
+.dependency-gate:hover:not(:disabled) { border-color: var(--focus); color: var(--ink); background: var(--hover); }
+.dependency-gate:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
+.dependency-gate svg { flex-shrink: 0; }
+.dependency-gate.is-blocked { border-color: var(--danger); color: var(--danger); }
+.dependency-gate-bar { display: flex; gap: 2px; position: absolute; top: 100%; left: 1px; right: 1px; height: 2px; margin-top: 1px; }
+.dependency-gate { position: relative; }
+.dependency-gate-bar span { flex: 1 1 0; min-width: 2px; border-radius: 1px; background: var(--sub-card-state-planned, var(--muted)); }
+.dependency-gate-bar span[data-state="accepted"] { background: var(--sub-card-state-accepted, var(--accepted-metal)); }
+.dependency-gate-bar span[data-state="blocked"] { background: var(--sub-card-state-blocked, var(--danger)); }
+.dependency-gate-bar span[data-state="working"] { background: var(--sub-card-state-working, var(--champagne)); }
+.dependency-gate-bar span[data-state="review"] { background: var(--sub-card-state-review, var(--plum)); }
+
+/* Dependencies and History sit below Sub Cards in their own section with a 32 px gap. Their 24 px buttons use a violet edge and 12/700 text. */
+.card-family-card-tools { display: flex; align-items: center; gap: 4px; margin: 32px 0 0; }
+.card-family-card-tools .ui-button { height: 24px; min-height: 24px; padding: 0 7px; gap: 4px; border: 1px solid var(--button-line, color-mix(in srgb, var(--accent) 60%, var(--line))); border-radius: 4px; background: transparent; color: var(--edit-link); font-size: 12px; font-weight: 700; line-height: 14px; letter-spacing: .12px; }
+.card-family-card-tools .ui-button:hover:not(:disabled) { border-color: var(--button-line, color-mix(in srgb, var(--accent) 60%, var(--line))); background: var(--hover); }
+.card-family-card-tools .ui-button[aria-pressed="true"] { border-color: transparent; background: var(--accent); color: var(--surface); }
+.card-family-card-tools .dependency-gate { margin-left: 0; height: 24px; }
+.card-family-row-details .dependency-gate { height: 16px; }
+
+/* Dependencies section of the open card. */
+.card-dependencies { margin-top: 12px; padding: 12px; border: 1px solid var(--line); border-radius: 5px; background: var(--canvas); animation: family-reveal 150ms ease-out; }
+.card-dependencies-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 4px; }
+.card-dependencies-heading h3 { margin: 0; font-size: 12px; font-weight: 700; line-height: 18px; }
+.card-dependencies-note { margin: 4px 0 8px; color: var(--warning-ink); font-size: 11px; line-height: 1.5; }
+.card-dependencies-group { margin-top: 10px; }
+.card-dependencies-group > h4 { display: flex; align-items: baseline; gap: 6px; margin: 0 0 6px; color: var(--muted); font-size: 10px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; }
+.card-dependencies-group > h4 span { font: 10px 'Geist Mono', monospace; font-weight: 400; }
+.card-dependencies-rows { display: grid; gap: 4px; }
+.card-dependencies-row { display: flex; align-items: center; gap: 7px; min-width: 0; padding: 6px 8px; border: 1px solid var(--line); border-radius: 4px; background: var(--surface); }
+.card-dependencies-row > .dependency-card-title { flex: 1 1 auto; min-width: 0; border: 0; padding: 0; background: transparent; color: var(--ink); text-align: left; font-size: 12px; line-height: 1.4; cursor: pointer; overflow-wrap: anywhere; }
+.card-dependencies-row > .dependency-card-title:hover { color: var(--accent); text-decoration: underline; text-underline-offset: 3px; }
+.card-dependencies-row > .dependency-card-title:disabled { cursor: default; opacity: .65; }
+.card-dependencies-row .ui-button { flex-shrink: 0; width: 22px; height: 22px; min-height: 22px; padding: 3px; color: var(--muted); }
+.card-dependencies-row .ui-button:hover:not(:disabled) { color: var(--danger); background: var(--hover); }
+.dependency-state { display: inline-flex; flex-shrink: 0; align-items: center; }
+.dependency-state-none { color: var(--muted); font-size: 10px; }
+.card-dependencies-empty { margin: 0; color: var(--muted); font-size: 11px; line-height: 1.5; }
+.card-dependencies-add { margin-top: 6px; }
+.card-dependencies-add .ui-button { min-height: 25px; padding: 3px 8px; color: var(--muted); font-size: 11px; }
+.card-dependencies-search { display: flex; align-items: center; gap: 6px; margin-top: 6px; border: 1px solid var(--line); border-radius: 5px; padding: 0 8px; color: var(--muted); background: var(--surface); }
+.card-dependencies-search:focus-within { border-color: var(--focus); }
+.card-dependencies-search input { width: 100%; min-width: 0; border: 0; outline: 0; padding: 7px 0; background: transparent; color: var(--ink); font: inherit; font-size: 12px; }
+.card-dependencies-results { display: grid; gap: 4px; margin-top: 6px; }
+.card-dependencies-option { display: flex; align-items: center; gap: 7px; min-width: 0; padding: 6px 8px; border: 1px solid var(--line); border-radius: 4px; background: var(--surface); color: var(--ink); text-align: left; font-size: 12px; cursor: pointer; }
+.card-dependencies-option:hover:not(:disabled) { border-color: var(--card-highlight, var(--focus)); background: var(--accent-soft); }
+.card-dependencies-option strong { flex: 1 1 auto; min-width: 0; font-weight: 400; overflow-wrap: anywhere; }
+.card-dependencies-option small { flex-shrink: 0; color: var(--muted); font-size: 10px; }
+.card-dependencies-notice { margin: 8px 0 0; padding: 7px 9px; border: 1px solid var(--line); border-radius: 4px; background: var(--surface); color: var(--ink); font-size: 11px; line-height: 1.5; overflow-wrap: anywhere; }
+
+/* The warning lists unfinished incoming dependencies and offers Continue Anyway or Cancel. */
+.dependency-warning { display: flex; flex-direction: column; gap: 8px; margin: 10px 0 0; padding: 10px; border: 1px solid var(--danger); border-radius: 6px; background: var(--warning-bg); color: var(--warning-ink); }
+.dependency-warning-title { display: flex; align-items: start; gap: 7px; margin: 0; font-size: 12px; line-height: 1.5; }
+.dependency-warning-title svg { flex-shrink: 0; margin-top: 2px; }
+.dependency-warning-list { margin: 0; padding: 0; list-style: none; display: grid; gap: 4px; max-height: 150px; overflow: auto; scrollbar-width: thin; }
+.dependency-warning-list li { display: flex; flex-direction: column; gap: 2px; padding: 5px 7px; border-radius: 4px; background: color-mix(in srgb, var(--surface) 55%, transparent); font-size: 11px; line-height: 1.5; }
+.dependency-warning-list strong { font-weight: 500; overflow-wrap: anywhere; }
+.dependency-warning-list span { color: var(--muted); overflow-wrap: anywhere; }
+.dependency-warning-note { color: var(--muted); }
+.dependency-warning-actions { display: flex; justify-content: flex-end; gap: 6px; }
+
+@media (prefers-reduced-motion: reduce) { .card-dependencies { animation: none; } }

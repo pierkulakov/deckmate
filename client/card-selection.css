@@ -1,0 +1,40 @@
+/* 2026-11-03: selection takes the deck toolbar slot exactly, in one row; 2026-11-05: the whole 53px height of the slot, no strips above and below.
+   Bulk buttons fold into the existing More menu by the bar's own width, not the viewport. */
+.deck-open-toolbar.is-selection { align-items: stretch; padding: 0; gap: 0; border-bottom: 0; }
+.deck-open-toolbar.is-selection > .card-selection-bar { height: auto; }
+.card-selection-toolbar.card-selection-bar { --selection-ink: #f1fff9; --selection-muted: #d5f5e9; container: selection-bar / inline-size; display: flex; align-items: center; gap: 14px; width: 100%; min-width: 0; height: 44px; min-height: 44px; margin: 0; padding: 5px 12px; border: 0; border-radius: inherit; background: linear-gradient(100deg, #116d56, #14765f 70%, #16775f); color: var(--selection-ink); box-shadow: inset 0 -1px #ffffff16; }
+.card-selection-core, .card-selection-buttons { display: flex; flex: 0 1 auto; align-items: center; gap: 7px; min-width: 0; }
+.card-selection-count { flex: 0 1 auto; min-width: 0; margin: 0 3px 0 5px; overflow: hidden; color: var(--selection-ink); font-size: 12px; line-height: 18px; font-weight: 500; white-space: nowrap; text-overflow: ellipsis; }
+.card-selection-count > span { font-variant-numeric: tabular-nums; }
+.card-selection-bar .ui-button { flex-shrink: 0; min-height: 30px; height: 30px; border-radius: 4px; color: var(--selection-muted); background: transparent; box-shadow: none; transition: background-color var(--motion-feedback), color var(--motion-feedback), transform var(--motion-feedback) var(--ease-out); }
+.card-selection-bar .button-size-icon { width: 30px; min-width: 30px; padding: 6px; }
+.card-selection-bar .card-selection-all { min-height: 25px; height: 25px; padding: 0 8px; border: 1px solid #c7f7e74d; font-size: 11px; }
+.card-selection-bar .ui-button:hover:not(:disabled), .card-selection-bar .ui-button[data-state="open"] { background: #ffffff16; color: #fff; }
+.card-selection-bar .ui-button:focus-visible { outline: 2px solid #e4fff5; outline-offset: 2px; }
+.card-selection-bar .ui-button:disabled { color: #d5f5e9; opacity: .5; }
+.card-selection-divider { align-self: center; flex-shrink: 0; width: 1px; height: 22px; margin-inline: 7px; background: #d5f5e936; }
+.card-selection-status { display: block; flex: 1; min-width: 0; overflow: hidden; color: var(--selection-ink); font-size: 11px; line-height: 18px; white-space: nowrap; text-overflow: ellipsis; }
+.card-selection-status:empty { display: none; }
+/* Widths are the bar's content box: full row ≈ 890px, without secondary ≈ 762px, without narrow ≈ 506px. */
+@container selection-bar (max-width: 900px) { .card-selection-bar .bulk-action-secondary { display: none; } }
+@container selection-bar (max-width: 770px) { .card-selection-bar .bulk-action-narrow { display: none; } }
+@container selection-bar (max-width: 520px) { .card-selection-bar .bulk-action-button { display: none; } }
+@container selection-bar (max-width: 400px) {
+  .card-selection-core, .card-selection-buttons { gap: 3px; }
+  .card-selection-count { margin-inline: 2px; font-size: 11px; }
+  .card-selection-bar .card-selection-all { padding-inline: 6px; }
+  .card-selection-divider { display: none; }
+}
+.card-selection-menu { z-index: 150; width: min(320px, calc(100vw - 24px)); max-height: min(420px, var(--radix-dropdown-menu-content-available-height)); padding: 8px; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; border: 1px solid var(--line); border-radius: 8px; color: var(--ink); background: var(--surface); box-shadow: var(--shadow); transform-origin: var(--radix-dropdown-menu-content-transform-origin); animation: overlay-pop var(--motion-spring-quick) var(--ease-spring-quick); }
+.card-selection-menu-heading { padding: 6px 8px 3px; font-size: 13px; font-weight: 600; }
+.card-selection-menu-hint { margin: 0; padding: 0 8px 8px; color: var(--muted); font-size: 11px; line-height: 1.5; }
+.card-selection-menu-group { padding: 12px 8px 4px; color: var(--muted); font-size: 11px; font-weight: 500; }
+/* 2026-11-06: deck and track menu items share the More menu's 32 px rows and disabled fade (bulk-actions.css), the same bar's menus. */
+.card-selection-menu-item { display: flex; align-items: center; gap: 9px; min-height: 32px; padding: 6px 8px; border-radius: 4px; outline: none; color: var(--ink); font-size: 12px; line-height: 1.5; cursor: pointer; user-select: none; }
+.card-selection-menu-item > svg { flex-shrink: 0; color: var(--muted); }
+.card-selection-menu-item > span { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.card-selection-menu-item[data-highlighted] { background: var(--accent-soft); color: var(--ink); box-shadow: inset 0 0 0 1px var(--focus); }
+.card-selection-menu-item[data-disabled] { opacity: .45; cursor: default; }
+.card-selection-menu-error { margin: 8px 0 0; padding: 9px 8px; border-top: 1px solid var(--line); color: var(--warning-ink); font-size: 11px; line-height: 1.5; }
+@media (max-width: 600px) { .card-selection-toolbar.card-selection-bar { gap: 6px; padding-inline: 7px; } }
+@media (prefers-reduced-motion: reduce) { .card-selection-menu { animation: none; } .card-selection-bar .ui-button { transition: none; } }

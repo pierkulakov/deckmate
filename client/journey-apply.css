@@ -1,0 +1,58 @@
+.journey-apply.journey-apply-picker { margin: 0; padding: 24px; border: 0; color: var(--ink); }
+.journey-apply-picker > .journey-picker-heading { margin: 0 0 20px; }
+.journey-apply-picker .journey-picker-heading h3 { margin: 0; font-size: 21px; font-weight: 600; letter-spacing: -.4px; }
+.journey-picker-heading p { margin: 7px 0 0; color: var(--muted); font-size: 12px; line-height: 1.6; }
+.journey-picker-heading p strong { color: var(--ink); font-weight: 500; }
+.journey-picker-controls { display: flex; align-items: end; justify-content: space-between; gap: 12px; margin-bottom: 23px; }
+.journey-picker-controls > .catalog-field { width: min(320px, 65%); font-size: 11px; }
+/* 2026-11-06: the row aligns to the bottom of the 39 px Journey select; (39 − 30) / 2 puts "Select all" on the select's
+   centre line instead of 4.5 px below it. */
+.journey-picker-controls > .ui-button { margin-bottom: 4.5px; color: var(--muted); font-size: 11px; }
+.journey-picker-group-title { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; color: var(--muted); font-size: 12px; }
+.journey-picker-group-title::after { content: ''; width: 110px; border-top: 1px dashed var(--line); }
+.journey-picker-group-title small { font-size: 10px; font-variant-numeric: tabular-nums; }
+.journey-picker-grid { display: grid; grid-template-columns: repeat(auto-fill, 115px); gap: 14px; align-items: start; }
+.journey-step-card { display: flex; flex-direction: column; align-items: stretch; width: 115px; min-width: 0; height: 147px; overflow: hidden; padding: 0; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); color: var(--ink); text-align: left; font: inherit; cursor: pointer; transition: border-color 140ms ease, box-shadow 140ms ease; }
+.journey-step-card[aria-pressed="true"] { border-color: var(--accent); box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 55%, transparent); }
+.journey-step-card.is-inspected { box-shadow: 0 0 0 2px color-mix(in srgb, var(--focus) 35%, transparent); }
+.journey-step-card:hover:not(:disabled) { border-color: var(--accent); }
+.journey-step-card:focus-visible { outline: 2px solid var(--focus); outline-offset: 3px; }
+.journey-step-card:disabled { cursor: wait; opacity: .65; }
+.journey-step-card-top { display: flex; justify-content: space-between; align-items: center; gap: 5px; padding: 6px 7px 4px; color: var(--muted); font-size: 9px; }
+.journey-step-card-check { display: inline-flex; align-items: center; justify-content: center; width: 14px; height: 14px; border: 1px solid var(--line); border-radius: 4px; }
+.journey-step-card[aria-pressed="true"] .journey-step-card-check { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }
+.journey-step-card > strong { display: -webkit-box; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 3; padding-inline: 7px; color: var(--ink); font-size: 12px; font-weight: 500; line-height: 1.35; overflow-wrap: anywhere; }
+.journey-step-card-status { display: flex; align-items: center; gap: 4px; margin-top: auto; padding: 5px 7px; color: var(--muted); font-size: 9px; }
+.journey-step-card-deck { display: flex; align-items: center; gap: 5px; min-height: 27px; padding: 5px 7px; background: linear-gradient(110deg, color-mix(in srgb, var(--card-metal) 92%, white), var(--card-metal)); color: var(--card-metal-ink); font-size: 10px; }
+.journey-step-card-deck > svg { flex-shrink: 0; }
+.journey-step-card-deck > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.journey-step-card.is-applied { opacity: .7; }
+.journey-picker-details { margin-top: 20px; padding-top: 17px; border-top: 1px solid var(--line); }
+.journey-picker-details > header { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 13px; }
+.journey-picker-details h4 { margin: 0; font-size: 13px; font-weight: 600; overflow-wrap: anywhere; }
+.journey-picker-details > header > span { flex-shrink: 0; color: var(--muted); font-size: 10px; }
+.journey-picker-step-settings { display: flex; align-items: end; flex-wrap: wrap; gap: 14px; }
+.journey-picker-step-settings .catalog-field { width: min(320px, 100%); font-size: 11px; }
+/* 2026-11-06: as tall as the 39 px Target Deck select it stands beside, so the owner reads on the select's centre line. */
+.journey-picker-owner { display: inline-flex; align-items: center; gap: 6px; min-height: 39px; color: var(--muted); font-size: 11px; }
+.journey-picker-note { margin: 12px 0 0; color: var(--muted); font-size: 11px; line-height: 1.65; }
+.journey-picker-note > svg { display: inline; margin-right: 4px; vertical-align: -2px; }
+.journey-picker-instruction { margin-top: 14px; font-size: 12px; }
+.journey-picker-instruction > summary { width: fit-content; color: var(--muted); cursor: pointer; }
+.journey-picker-instruction > .journey-markdown { max-height: 220px; overflow: auto; margin-top: 10px; scrollbar-width: thin; }
+.journey-picker-error { margin: 14px 0 0; padding: 10px 12px; border-radius: 5px; background: var(--warning-bg); color: var(--warning-ink); font-size: 11px; line-height: 1.6; }
+.journey-picker-footer { display: flex; align-items: center; justify-content: flex-end; gap: 8px; margin-top: 24px; padding-top: 16px; border-top: 1px solid var(--line); }
+.journey-picker-footer > span { margin-right: auto; color: var(--muted); font-size: 11px; }
+.journey-picker-empty { display: flex; flex-direction: column; align-items: center; max-width: 390px; margin: 28px auto; text-align: center; }
+.journey-picker-empty-icon { display: flex; align-items: center; justify-content: center; width: 48px; height: 48px; margin-bottom: 14px; border-radius: 13px; background: var(--accent-soft); color: var(--accent); }
+.journey-picker-empty h4 { margin: 0; font-size: 16px; font-weight: 600; }
+.journey-picker-empty p { margin: 9px 0 18px; color: var(--muted); font-size: 12px; line-height: 1.7; }
+@media (max-width: 640px) {
+  .journey-apply.journey-apply-picker { padding: 18px; }
+  .journey-picker-controls { gap: 8px; }
+  .journey-picker-controls > .catalog-field { width: min(280px, 65%); }
+  .journey-picker-grid { gap: 12px; }
+  .journey-picker-footer { flex-wrap: wrap; }
+  .journey-picker-footer > span { width: 100%; }
+}
+@media (prefers-reduced-motion: reduce) { .journey-step-card { transition: none; } }

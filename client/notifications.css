@@ -1,0 +1,75 @@
+/* Notification stacks sit at the bottom right: Cards you own, Cards you watch and Due Cards. Use theme tokens so the light theme stays usable. */
+
+/* Anchoring the auto-height column to the bottom lets it grow upward as stacks arrive. */
+.notifications-corner { position: fixed; right: 12px; bottom: 12px; z-index: 60; display: flex; flex-direction: column; gap: 10px;
+  width: min(340px, calc(100vw - 24px)); max-height: calc(100dvh - 76px); pointer-events: none; }
+/* The corner column spans its width for every child; only the children themselves catch the pointer. */
+.notifications-corner > * { pointer-events: auto; }
+
+.notification-stack { display: flex; flex: 0 1 auto; flex-direction: column; min-height: 0; gap: 6px; padding: 10px 11px; border: 1px solid var(--line);
+  border-radius: 8px; background: var(--surface); color: var(--ink); box-shadow: var(--shadow);
+  animation: toast-rise var(--motion-spring-pop) var(--ease-spring-pop); }
+
+.notification-stack-header { display: flex; flex-shrink: 0; align-items: center; gap: 6px; color: var(--muted); }
+.notification-stack-header h3 { min-width: 0; overflow-wrap: anywhere; margin: 0; font-size: 11px; font-weight: 600; letter-spacing: .3px; text-transform: uppercase; }
+.notification-stack-header > svg, .notification-stack-count, .notification-stack-hint, .notification-hold-wrap { flex-shrink: 0; }
+.notification-stack-count { min-width: 18px; padding: 1px 5px; border-radius: 9px; background: var(--hover); color: var(--ink); font-size: 10px; font-weight: 600; text-align: center; font-variant-numeric: tabular-nums; }
+.notification-stack-hint { margin-left: auto; font-size: 10px; }
+
+/* The button clips its fill, so the hint bubble lives beside it in the wrapper. */
+.notification-hold-wrap { position: relative; display: inline-flex; margin-left: auto; }
+.notification-hold { position: relative; overflow: hidden; height: 22px; padding: 0 9px; border: 1px solid var(--line); border-radius: 5px;
+  background: transparent; color: var(--muted); font: inherit; font-size: 10px; font-weight: 600; cursor: pointer; touch-action: none; user-select: none;
+  transition: border-color var(--motion-feedback, 150ms), color var(--motion-feedback, 150ms); }
+.notification-hold:hover:not(:disabled), .notification-collapse:hover, .notification-pill:hover { border-color: var(--muted); color: var(--ink); }
+.notification-hold:focus-visible, .notification-collapse:focus-visible, .notification-pill:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
+.notification-hold:disabled { opacity: .45; cursor: default; }
+.notification-hold-fill { position: absolute; inset: 0; background: var(--accent-soft); transform: scaleX(0); transform-origin: left center; transition: transform 120ms ease-out; }
+.notification-hold.is-holding .notification-hold-fill { transform: scaleX(1); transition: transform var(--hold-ms, 800ms) linear; }
+.notification-hold.is-holding { color: var(--ink); border-color: var(--accent); }
+.notification-hold-label { position: relative; }
+.notification-hold-hint { position: absolute; z-index: 3; top: calc(100% + 7px); right: 0; width: max-content; max-width: 220px; padding: 4px 8px; border: .67px solid var(--line);
+  border-radius: 6px; background: var(--hover); color: var(--ink); font-size: 12px; font-weight: 600; line-height: 16px; box-shadow: var(--shadow); pointer-events: none;
+  animation: overlay-pop var(--motion-spring-quick) var(--ease-spring-quick); }
+.notification-hold-hint:empty { display: none; }
+.notification-hold-hint::before { content: ''; position: absolute; bottom: 100%; right: 20px; width: 8px; height: 8px; border-top: .67px solid var(--line); border-left: .67px solid var(--line);
+  background: var(--hover); transform: translateY(4px) rotate(45deg); }
+@media (prefers-reduced-motion: reduce) { .notification-hold-hint { animation: none; } }
+
+/* «Due Cards» folds into a pill with the count at the bottom right; the choice is kept per viewer (2026-11-05). */
+.notification-collapse { display: inline-grid; flex-shrink: 0; place-items: center; width: 22px; height: 22px; padding: 0; border: 1px solid var(--line); border-radius: 5px;
+  background: transparent; color: var(--muted); transition: border-color var(--motion-feedback), color var(--motion-feedback); }
+.notification-pill { display: inline-flex; flex-shrink: 0; align-self: flex-end; align-items: center; gap: 6px; height: 30px; padding: 0 8px 0 10px; border: 1px solid var(--line);
+  border-radius: 15px; background: var(--surface); color: var(--muted); box-shadow: var(--shadow); animation: toast-rise var(--motion-spring-pop) var(--ease-spring-pop);
+  transition: border-color var(--motion-feedback), color var(--motion-feedback); }
+
+/* Three stacks share the screen height with the workspace, so each list scrolls inside its own bound. */
+.notification-cards { display: flex; flex: 1 1 auto; flex-direction: column; min-height: 0; gap: 6px; margin: 0; padding: 0; list-style: none;
+  max-height: min(220px, 28dvh); overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; }
+.notification-card { display: flex; flex-direction: column; gap: 6px; width: 100%; padding: 9px 10px; border: 1px solid var(--line); border-radius: 6px;
+  background: var(--canvas); color: var(--ink); font: inherit; text-align: left; cursor: pointer;
+  transition: border-color var(--motion-feedback, 150ms), background-color var(--motion-feedback, 150ms); }
+.notification-card:hover { border-color: var(--muted); background: var(--hover); }
+.notification-card:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
+/* 2026-11-06: each stack already has its own panel and heading, so its color marks the heading icon once instead of a stripe on every card. */
+.notification-stack-watching .notification-stack-header > svg { color: var(--accent); }
+.notification-stack-due .notification-stack-header > svg { color: var(--champagne); }
+.notification-card-head { display: grid; gap: 2px; min-width: 0; }
+.notification-card-head strong { font-size: 13px; font-weight: 600; line-height: 1.35; overflow-wrap: anywhere; }
+.notification-card-head small { color: var(--muted); font-size: 10px; overflow-wrap: anywhere; }
+.notification-change { display: grid; gap: 2px; padding-left: 8px; border-left: 2px solid var(--line); }
+.notification-meta { color: var(--muted); font-size: 10px; overflow-wrap: anywhere; }
+.notification-line { font-size: 11px; line-height: 1.45; overflow-wrap: anywhere; }
+.notification-line-muted { color: var(--muted); }
+.notification-more { margin: 0; color: var(--muted); font-size: 10px; }
+
+.notifications-error { margin: 0; padding: 8px 10px; border-radius: 8px; background: var(--warning-bg); color: var(--danger); font-size: 11px; line-height: 1.5; overflow-wrap: anywhere; }
+.notifications-note { margin: 0; color: var(--muted); font-size: 11px; line-height: 1.5; overflow-wrap: anywhere; text-align: right; }
+.notifications-member { display: flex; align-items: center; justify-content: flex-end; gap: 6px; color: var(--muted); font-size: 11px; }
+/* Notes and the member picker take only their content width and carry the stack surface: as full-width transparent rows they took
+   clicks meant for the page underneath and floated 11 px text over cover art (2026-11-05). */
+.notifications-note, .notifications-member { align-self: flex-end; border-radius: 6px; background: var(--surface); box-shadow: var(--shadow); }
+.notifications-note { padding: 4px 8px; }
+.notifications-member { padding: 3px 3px 3px 8px; }
+.notifications-member select { border: 1px solid var(--line); border-radius: 5px; background: var(--surface); color: var(--ink); font: inherit; font-size: 11px; padding: 4px 6px; }
+.notifications-member select:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }

@@ -1,0 +1,69 @@
+/* A step uses a 521 px left panel with a 455 px card face, 24/700 title, Edit action, purple Effort/Priority band and an icon rail on the right. */
+.journey-step-overlay { position: fixed; inset: 0; z-index: 130; background: color-mix(in srgb, var(--surface) 88%, transparent); animation: backdrop-fade var(--motion-panel) ease-out; }
+.journey-step-sheet { position: fixed; inset: 0 auto 0 0; z-index: 131; display: flex; flex-direction: column; width: min(521px, 100vw); max-height: 100dvh; background: var(--ground); color: var(--ink); box-shadow: 12px 0 36px color-mix(in srgb, var(--sidebar) 30%, transparent); --sheet-from: -100% 0; animation: sheet-slide var(--motion-panel) var(--ease-panel); }
+.journey-step-sheet-header { display: flex; align-items: center; gap: 8px; height: 52px; padding: 0 15px 0 12px; flex-shrink: 0; }
+.journey-step-sheet-header h2 { margin: 0 auto 0 0; font-size: 12px; font-weight: 700; line-height: 14px; }
+.journey-step-sheet-header > .ui-button { width: 26px; height: 26px; min-height: 26px; color: var(--ink); }
+.journey-step-target { display: inline-flex; align-items: center; gap: 5px; min-width: 0; max-width: 60%; height: 24px; padding-left: 6px; border: .67px solid var(--line); border-radius: 4px; background: var(--canvas); color: var(--ink); }
+.journey-step-target > svg { flex-shrink: 0; color: var(--focus); }
+.journey-step-target select { min-width: 0; max-width: 100%; height: 22px; border: 0; padding: 0 4px 0 0; background: transparent; color: var(--ink); font-size: 12px; font-weight: 700; }
+.journey-step-target select option { background: var(--surface); }
+/* 2026-11-04: readOnly shows the template role in the same chip instead of the deck select — same type, no control. */
+.journey-step-target-name { min-width: 0; max-width: 100%; overflow: hidden; padding-right: 6px; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; font-weight: 700; line-height: 22px; }
+.journey-step-feedback { flex-shrink: 0; max-height: 35dvh; overflow: auto; border-top: 1px solid var(--line); }
+.journey-step-save-state { margin: 0; padding: 8px 13px; color: var(--muted); font-size: 12px; line-height: 1.5; }
+.journey-step-sheet-body { display: grid; grid-template-columns: minmax(0, 455px) 24px; align-items: start; column-gap: 13px; min-height: 0; flex: 1; overflow: auto; padding: 1px 15px 24px 13px; scrollbar-width: thin; scrollbar-color: var(--line) var(--ground); }
+.journey-step-document { display: flex; flex-direction: column; min-height: 570px; overflow: hidden; border-radius: 6px; background: var(--card-face); color: var(--card-ink); box-shadow: var(--card-shadow); }
+.journey-step-content { flex: 1; min-width: 0; padding: 16px 15px 8px; }
+.journey-step-title { margin: 0 0 10px; font-size: 24px; font-weight: 700; line-height: 30px; overflow-wrap: anywhere; }
+.journey-step-markdown .markdown, .journey-step-empty { color: color-mix(in srgb, var(--card-ink) 88%, var(--card-face)); font-size: 14px; line-height: 20.6px; }
+.journey-step-empty { margin: 0; color: var(--card-muted); }
+/* Edit mode reuses CardEditForm edge to edge, filling the face down to the band so Done stays where Edit was. */
+.journey-step-document.is-editing > .journey-step-content { display: flex; flex-direction: column; padding: 8px 0; }
+.journey-step-document.is-editing > .journey-step-content > :not(.card-edit) { margin-inline: 15px; }
+.journey-step-document.is-editing .card-edit, .journey-step-document.is-editing :is(.card-edit-text, .card-edit-preview) { flex: 1; }
+.journey-step-document.is-editing .card-edit-box { display: flex; flex: 1; flex-direction: column; }
+.journey-step-document.is-editing .card-edit-footer { padding-right: 10px; }
+/* The step face stays dark in the light theme, so the editor's light-theme inks for the hint and the footer links switch to card inks there. */
+:root:not(.dark) .journey-step-document.is-editing { --edit-hint: var(--card-muted); --edit-link: var(--card-ink); --edit-cancel: color-mix(in srgb, var(--danger) 40%, var(--card-ink)); }
+.journey-step-settings { margin-top: 14px; padding-top: 12px; border-top: 1px solid color-mix(in srgb, var(--card-ink) 14%, transparent); }
+.journey-step-owner { display: flex; align-items: center; gap: 16px; margin-bottom: 14px; }
+.journey-step-owner > span, .journey-step-dependencies legend { display: flex; align-items: center; gap: 7px; color: var(--card-muted); font-size: 12px; font-weight: 700; }
+.journey-step-owner > span { flex-shrink: 0; }
+.journey-step-owner select { min-width: 0; width: 100%; height: 28px; padding: 0 8px; border: .67px solid color-mix(in srgb, var(--card-ink) 22%, transparent); border-radius: 4px; background: var(--card-face); color: var(--card-ink); font-size: 14px; }
+.journey-step-dependencies { min-width: 0; margin: 0; padding: 0; border: 0; }
+.journey-step-dependencies legend { margin-bottom: 8px; padding: 0; }
+.journey-step-dependencies > p { margin: 0; color: var(--card-muted); font-size: 12px; }
+.journey-step-dependencies > label { display: flex; align-items: flex-start; gap: 8px; padding: 4px 0; font-size: 14px; line-height: 20px; }
+.journey-step-dependencies input { flex-shrink: 0; margin: 4px 0 0; }
+.journey-step-dependencies small { display: block; color: var(--card-muted); font-size: 12px; }
+.journey-step-dependencies input:disabled + span { color: var(--card-muted); }
+.journey-step-missing-dependency, .journey-step-field-error { color: var(--danger); }
+.journey-step-field-error { margin: 12px 0 0; font-size: 12px; line-height: 1.5; }
+.journey-step-edit-row { display: flex; justify-content: flex-end; padding: 0 10px 7px; }
+/* 2026-11-07: --card-ink is dark in light theme and reached ~2.2:1 on the violet fill; the shared button ink restores ≥4.5:1. */
+.journey-step-edit { height: 32px; min-width: 45px; padding: 0 9px; border: 0; border-radius: 4px; background: var(--violet-fill, var(--accent)); color: var(--violet-fill-ink, var(--surface)); font-size: 14px; font-weight: 700; line-height: 16px; }
+.journey-step-edit:hover:not(:disabled) { filter: brightness(1.12); }
+.journey-step-properties { display: flex; align-items: center; justify-content: space-between; gap: 14px; height: 46px; flex-shrink: 0; padding: 0 18px; background: var(--journey-band, color-mix(in srgb, var(--accent) 38%, var(--card-face))); color: var(--card-ink); }
+.journey-step-properties label { display: inline-flex; align-items: center; gap: 8px; color: var(--card-muted); }
+.journey-step-properties label > span:first-child { font-size: 10px; font-weight: 700; letter-spacing: .4px; text-transform: uppercase; }
+.journey-step-properties .journey-priority-icon { color: var(--card-ink); }
+.journey-step-properties input, .journey-step-properties select { height: 26px; padding: 0 4px; border: .67px solid transparent; border-radius: 4px; background: transparent; color: var(--card-ink); font-size: 14px; font-weight: 700; }
+.journey-step-properties input { width: 52px; font-variant-numeric: tabular-nums; }
+/* Priority uses an icon; an invisible native select overlays the label to preserve keyboard access. */
+.journey-step-priority { position: relative; border-radius: 4px; }
+.journey-step-priority select { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; }
+.journey-step-priority:hover, .journey-step-priority:focus-within { outline: .67px solid color-mix(in srgb, var(--card-ink) 35%, transparent); outline-offset: 3px; }
+.journey-step-properties select option { background: var(--surface); font-weight: 400; }
+.journey-step-properties :is(input, select):hover:enabled, .journey-step-properties :is(input, select):focus { border-color: color-mix(in srgb, var(--card-ink) 35%, transparent); }
+.journey-step-properties input::placeholder { color: var(--card-muted); }
+.journey-step-rail { display: flex; flex-direction: column; gap: 13px; }
+.journey-step-rail .ui-button { width: 24px; height: 24px; min-height: 24px; color: var(--ink); }
+.journey-step-rail .ui-button[aria-pressed="true"] { color: var(--focus); }
+.journey-step-rail .journey-step-delete:hover:not(:disabled) { color: var(--danger); }
+.journey-step-sheet :is(input, select):focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+@media (max-width: 440px) {
+  .journey-step-sheet-body { grid-template-columns: minmax(0, 1fr) 24px; padding-inline: 8px; column-gap: 8px; }
+  .journey-step-properties { gap: 8px; padding-inline: 12px; }
+  .journey-step-title { font-size: 21px; }
+}

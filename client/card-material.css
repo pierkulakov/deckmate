@@ -1,0 +1,90 @@
+/* 2026-11-03: One satin-metal finish for card footers; reading surfaces stay matte. */
+:root {
+  --sub-card-state-accepted: var(--accepted-metal);
+  --sub-card-state-working: var(--champagne);
+  --sub-card-state-review: var(--plum);
+  --sub-card-state-blocked: var(--danger);
+  --sub-card-state-planned: var(--muted);
+  /* Highlight tone of the satin; Hero surfaces tint it with --hero-sheen (2026-11-05). */
+  --metal-sheen: #fff8df;
+}
+.sub-card-progress { display: flex; gap: 2px; width: 100%; height: 8px; }
+.sub-card-progress-segment { display: block; flex: 1 1 0; min-width: 0; height: 100%; padding: 0; border: 0; border-radius: 2px; background-color: var(--sub-card-state-planned); }
+.sub-card-progress-segment[data-state="accepted"] { background-color: var(--sub-card-state-accepted); }
+.sub-card-progress-segment[data-state="working"] { background-color: var(--sub-card-state-working); }
+.sub-card-progress-segment[data-state="review"] { background-color: var(--sub-card-state-review); }
+.sub-card-progress-segment[data-state="blocked"] { background-color: var(--sub-card-state-blocked); }
+button.sub-card-progress-segment { cursor: pointer; }
+.deck-card-identity:has(.catalog-card-effort) { margin-bottom: 6px; }
+.deck-card-identity > .catalog-card-effort-icon { flex-shrink: 0; margin-right: 4px; }
+.deck-card-identity > .catalog-card-effort { margin-right: auto; font-weight: 700; line-height: 16px; }
+.deck-card-identity > .catalog-card-kind { font-family: var(--font-sans); }
+.catalog-card-hero > .deck-card-band { border-radius: 0 0 5px 5px; }
+/* One Hero band height in a row: the «No Sub Cards» line takes the bar's slot, 18 + 3 + 11 = 18 + 6 + 8 px. */
+.catalog-card-hero .deck-card-identity:has(+ .catalog-card-progress) { margin-bottom: 3px; }
+.catalog-card-hero .catalog-card-progress { line-height: 11px; }
+/* A Hero tile's unstarted steps use the Hero tint; --hero-step-empty distinguishes them from working steps. */
+.catalog-card-hero { --sub-card-state-planned: var(--hero-step-empty); --metal-sheen: var(--hero-sheen); }
+
+.deck-card > .deck-card-band,
+.card-preview-sheet > .card-preview-material-band,
+.sprint-task > .sprint-task-band,
+.journey-step-card > .journey-step-card-deck {
+  --material-base: var(--metal-base, var(--card-metal));
+  --material-low: color-mix(in srgb, var(--material-base) 92%, var(--card-metal-ink));
+  --material-high: color-mix(in srgb, var(--material-base) 84%, var(--metal-sheen));
+  position: relative;
+  isolation: isolate;
+  background-color: var(--material-base);
+  background-image: linear-gradient(112deg,
+    var(--material-low) 0%,
+    var(--material-base) 19%,
+    var(--material-high) 32%,
+    var(--material-base) 46%,
+    var(--material-low) 71%,
+    var(--material-high) 94%,
+    var(--material-base) 100%);
+  border-top-color: color-mix(in srgb, var(--material-base) 67%, var(--metal-sheen));
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--metal-sheen) 26%, transparent), inset 0 -1px 2px #17203916;
+}
+
+.deck-card > .deck-card-band::before,
+.card-preview-sheet > .card-preview-material-band::before,
+.sprint-task > .sprint-task-band::before,
+.journey-step-card > .journey-step-card-deck::before {
+  content: '';
+  position: absolute;
+  z-index: -1;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  background: linear-gradient(112deg, transparent 46%, color-mix(in srgb, var(--metal-sheen) 33%, transparent) 49%, color-mix(in srgb, var(--metal-sheen) 60%, transparent) 50%, color-mix(in srgb, var(--metal-sheen) 13%, transparent) 52%, transparent 55%);
+  background-size: 200% 100%;
+  background-position: var(--glare-x, 38%) 50%;
+  opacity: .18;
+  transition: opacity var(--motion-material) var(--ease-out), background-position var(--motion-material) var(--ease-out);
+}
+
+/* The shared underlay replaces the old overlay, so text and owner badges remain crisp. */
+
+@media (hover: hover) and (pointer: fine) {
+  .deck-card-space:hover > .deck-card:not(.is-multi-selected):has(.deck-card-open:not(:disabled)) > .deck-card-band::before,
+  .card-preview-sheet:hover > .card-preview-material-band::before,
+  .sprint-task:hover > .sprint-task-band::before,
+  .journey-step-card:not(:disabled):hover > .journey-step-card-deck::before {
+    opacity: .38;
+    background-position: var(--glare-x, 57%) 50%;
+  }
+}
+
+.deck-card:not(.is-multi-selected):has(:focus-visible) > .deck-card-band::before,
+.card-preview-material-band:focus-within::before,
+.sprint-task:focus-visible > .sprint-task-band::before,
+.journey-step-card:focus-visible > .journey-step-card-deck::before { opacity: .3; }
+
+@media (prefers-reduced-motion: reduce) {
+  .deck-card > .deck-card-band::before,
+  .card-preview-sheet > .card-preview-material-band::before,
+  .sprint-task > .sprint-task-band::before,
+  .journey-step-card > .journey-step-card-deck::before { display: none; transition: none; }
+}

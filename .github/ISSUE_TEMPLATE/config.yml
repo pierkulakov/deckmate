@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Questions and ideas
+    url: https://github.com/pierkulakov/deckmate/discussions
+    about: Discuss setup, workflows, and ideas before opening an issue.
+  - name: Security reports
+    url: https://github.com/pierkulakov/deckmate/security/policy
+    about: Follow the security policy to report vulnerabilities privately.

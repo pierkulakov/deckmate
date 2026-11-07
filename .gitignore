@@ -1,0 +1,28 @@
+node_modules/
+dist/
+*.tgz
+.vite/
+coverage/
+*.log
+.env
+.env.local
+# Local project board (2026-11-07: moved from /cards and /tasks into board/, see .env.local)
+/board/
+.deckmate/
+.freetion/
+*.lnk
+# Local Impeccable installation and working data
+/.impeccable/
+/.cursor/skills/impeccable/
+/.cursor/agents/impeccable-*.md
+/.opencode/skills/impeccable/
+/.opencode/commands/impeccable.md
+# Maintainer's local agent tooling (2026-11-07): not part of the public project
+/.claude/
+/.agents/
+/.mcp.json
+/CLAUDE.md
+/deckmate-claude/
+# Release workflow scratch files
+/release-notes.md
+/package-info.json

@@ -1,0 +1,94 @@
+/* Calendar panel: 660 px wide under the 52 px top bar, a 40 px header (14/700 title, 24 px outlined schedule button, 24 px ×),
+   then years: an 80 px heading block with a 22/700 year, months two per row with 1 px seams. A month has 16 px top and bottom
+   padding, a 16/700 name 24 px above 35 × 35 day cells (14/400), 10/700 caps weekdays, and ISO week numbers (10/700, faded)
+   hanging 19 px left of the days. Past months sink to the sidebar tone; the current month's name and ring take the focus color;
+   the current week is a mint-tinted row, as the current week on the Timeline scale; weekends lean to the focus color; today is bold.
+   Colors come only from shared tokens. */
+:root {
+  --calendar-panel: var(--ground); --calendar-header-ink: var(--ink); --calendar-month: var(--surface); --calendar-month-past: var(--sidebar);
+  --calendar-ring: var(--line); --calendar-ring-past: color-mix(in srgb, var(--line) 60%, var(--sidebar)); --calendar-ring-current: var(--focus);
+  --calendar-name: var(--ink); --calendar-name-past: var(--muted); --calendar-name-current: var(--focus);
+  --calendar-day: color-mix(in srgb, var(--ink) 82%, var(--calendar-month)); --calendar-weekend: color-mix(in srgb, var(--focus) 70%, var(--calendar-day)); --calendar-today: var(--ink);
+  --calendar-weekday: var(--muted); --calendar-week-number: var(--muted); --calendar-week-number-fade: 1;
+  --calendar-week-band: color-mix(in srgb, var(--planning-mint) 18%, var(--calendar-month));
+  --calendar-add: var(--violet-fill, var(--accent)); --calendar-add-ink: var(--violet-fill-ink, var(--surface)); --calendar-tile-ink: var(--overlay-ink);
+}
+/* Dark months sit on the canvas tone; every other calendar color follows the shared tokens above.
+   2026-11-06: week numbers fade only as far as 4.5:1 allows: .72 in the dark theme (half opacity gave 3.19:1); light muted
+   needs its full color on the light months. */
+:root.dark { --calendar-month: var(--canvas); --calendar-week-number-fade: .72; }
+.planning-calendar-panel { position: fixed; z-index: 90; top: 52px; right: 0; bottom: 0; display: flex; flex-direction: column; width: min(660px, 100vw); background: var(--calendar-panel); box-shadow: var(--shadow); animation: planning-calendar-in var(--motion-material, 220ms) var(--ease-out, ease-out); }
+@keyframes planning-calendar-in { from { transform: translateX(100%); } }
+@media (prefers-reduced-motion: reduce) { .planning-calendar-panel { animation: none; } }
+.planning-calendar-panel-header { display: flex; flex: 0 0 auto; align-items: center; gap: 8px; height: 40px; padding: 8px 12px; border-bottom: .67px solid var(--line); }
+.planning-calendar-panel-header h2 { flex: 1; min-width: 0; margin: 0; overflow: hidden; color: var(--calendar-header-ink); font-size: 14px; font-weight: 700; line-height: 16px; text-overflow: ellipsis; white-space: nowrap; }
+.planning-calendar-setup { display: inline-flex; align-items: center; gap: 4px; height: 24px; padding: 0 7px 0 3px; border: .67px solid var(--button-line, var(--accent)); border-radius: 4px; background: transparent; color: var(--button-ink, var(--accent)); font-size: 12px; font-weight: 700; line-height: 14px; cursor: pointer; }
+.planning-calendar-setup[aria-pressed='true'], .planning-calendar-setup:hover:not(:disabled) { background: var(--hover); }
+.planning-calendar-close { display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; width: 24px; height: 24px; padding: 0; border: 0; border-radius: 4px; background: transparent; color: var(--button-ink, var(--accent)); cursor: pointer; }
+.planning-calendar-close:hover:not(:disabled) { background: var(--hover); }
+/* 2026-11-06: plain header buttons press 1px like the shared .ui-button; translate leaves any transform alone. */
+.planning-calendar-setup:active:not(:disabled), .planning-calendar-close:active:not(:disabled) { translate: 0 1px; }
+.planning-calendar-panel .error-banner { margin: 8px 12px; }
+.planning-calendar-years { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-gutter: stable; }
+.planning-calendar-year h3 { display: flex; align-items: flex-end; height: 80px; margin: 0; padding: 12px 16px; color: var(--calendar-header-ink); font-size: 22px; font-weight: 700; line-height: 28px; }
+.planning-calendar-months { display: grid; grid-template-columns: 1fr 1fr; gap: 1px; padding-bottom: 1px; }
+.planning-calendar-month { display: flex; justify-content: center; padding: 16px 0; background: var(--calendar-month); box-shadow: 0 0 0 1px var(--calendar-ring); }
+.planning-calendar-month.is-past { background: var(--calendar-month-past); box-shadow: 0 0 0 1px var(--calendar-ring-past); }
+.planning-calendar-month.is-current { position: relative; z-index: 1; box-shadow: 0 0 0 1px var(--calendar-ring-current); }
+.planning-calendar-month-body { display: flex; flex-direction: column; gap: 14px; width: 245px; }
+.planning-calendar-month h4 { margin: 0; padding-left: 8px; color: var(--calendar-name); font-size: 16px; font-weight: 700; line-height: 18px; text-transform: capitalize; }
+.planning-calendar-month.is-past h4 { color: var(--calendar-name-past); }
+.planning-calendar-month.is-current h4 { color: var(--calendar-name-current); }
+.planning-calendar-month table { width: 264px; margin-left: -19px; border-collapse: collapse; table-layout: fixed; }
+.planning-calendar-month thead td { width: 19px; }
+.planning-calendar-month thead th { height: 10px; padding: 0 0 0; color: var(--calendar-weekday); font-size: 10px; font-weight: 700; line-height: 10px; text-align: center; text-transform: uppercase; }
+.planning-calendar-month tbody th { padding: 0 8px 0 0; color: var(--calendar-week-number); font-size: 10px; font-weight: 700; line-height: 10px; text-align: right; opacity: var(--calendar-week-number-fade); font-variant-numeric: tabular-nums; }
+.planning-calendar-month td { position: relative; width: 35px; height: 35px; padding: 0; color: var(--calendar-day); font-size: 14px; line-height: 35px; text-align: center; font-variant-numeric: tabular-nums; }
+.planning-calendar-month tr.is-current-week > td { background: var(--calendar-week-band); }
+/* 2026-11-06: 35 px cells land on half pixels at 150 % zoom and every other seam showed the month through the band;
+   a 1 px shadow under the next cell closes the seam without widening the band past Sunday. */
+.planning-calendar-month tr.is-current-week > td:not(:last-child) { box-shadow: 1px 0 0 var(--calendar-week-band); }
+.planning-calendar-month td.is-weekend { color: var(--calendar-weekend); }
+.planning-calendar-month td.is-today { color: var(--calendar-today); font-weight: 700; }
+.planning-calendar-day { position: relative; display: block; width: 100%; height: 100%; padding: 0; border: 0; border-radius: 4px; background: transparent; color: inherit; font: inherit; line-height: inherit; }
+button.planning-calendar-day { cursor: pointer; }
+.planning-calendar-add { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; border-radius: 4px; background: var(--calendar-add); color: var(--calendar-add-ink); opacity: 0; transition: opacity var(--motion-feedback) var(--ease-out); }
+button.planning-calendar-day:hover:not(:disabled) .planning-calendar-add, button.planning-calendar-day:focus-visible .planning-calendar-add { opacity: 1; }
+button.planning-calendar-day:disabled { cursor: wait; }
+/* Milestone dates are tiles in the Milestone's color with a 16/700 number: light, or dark --hero-ink on light colors. */
+.planning-calendar-milestone { display: block; width: 35px; height: 35px; padding: 0; border: 0; border-radius: 3px; color: var(--calendar-tile-ink); font-size: 16px; font-weight: 700; line-height: 1.1; text-shadow: 0 1px 1px color-mix(in srgb, var(--sidebar) 60%, transparent); cursor: pointer; transition: filter var(--motion-feedback) var(--ease-out); }
+.planning-calendar-milestone.is-dark-ink { color: var(--hero-ink); text-shadow: none; }
+.planning-calendar-milestone:hover:not(:disabled) { filter: brightness(1.12); }
+.planning-calendar-milestone:active:not(:disabled) { filter: brightness(.96); }
+.planning-calendar-milestone:disabled { cursor: wait; }
+.planning-calendar-milestone.is-movable { cursor: grab; touch-action: none; }
+/* A carried Milestone: the tile stays as a faint mark at its old day, a solid copy follows the pointer above everything,
+   the day under the pointer gets the focus outline, and the whole page shows the grabbing hand without selecting text. */
+.planning-calendar-milestone.is-drag-source { opacity: .35; }
+.planning-calendar-ghost { position: fixed; z-index: 140; top: 0; left: 0; display: flex; align-items: center; justify-content: center; box-shadow: var(--shadow); pointer-events: none; will-change: transform; }
+.planning-calendar-month td.is-drop-target::after { content: ""; position: absolute; inset: 1px; border-radius: 4px; background: color-mix(in srgb, var(--focus) 22%, transparent); box-shadow: inset 0 0 0 2px var(--focus); pointer-events: none; }
+:root.is-carrying-milestone, :root.is-carrying-milestone * { cursor: grabbing !important; user-select: none; }
+/* While a tile is carried, the day under the pointer shows only the drop outline: no add tile, no hover card of another Milestone. */
+:root.is-carrying-milestone .planning-calendar-add, :root.is-carrying-milestone .planning-milestone-card { visibility: hidden; }
+.planning-calendar-panel button:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+/* Hover card of a Milestone date: title and past tag, due date with workdays, progress, cards, then the click/drag hint. */
+.planning-milestone-card { z-index: 130; display: flex; flex-direction: column; gap: 12px; width: 340px; max-width: calc(100vw - 24px); padding: 12px 0 0; border-radius: 4px; background: var(--planning-popover); color: var(--ink); box-shadow: var(--deck-settings-shadow, var(--shadow)); font-size: 12px; }
+.planning-milestone-card > section { display: flex; flex-direction: column; gap: 8px; padding: 0 12px; }
+.planning-milestone-card header { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.planning-milestone-card header strong { flex: 1; min-width: 0; overflow: hidden; font-size: 14px; text-overflow: ellipsis; white-space: nowrap; }
+.planning-milestone-card-tag { flex-shrink: 0; padding: 2px 6px; border-radius: 3px; background: var(--planning-popover-band); color: var(--muted); font-size: 11px; font-weight: 700; }
+.planning-milestone-card p { display: flex; align-items: baseline; gap: 8px; margin: 0; }
+.planning-milestone-card p > span { color: var(--muted); font-size: 11px; font-weight: 700; text-transform: uppercase; }
+.planning-milestone-card p > small { margin-left: auto; color: var(--muted); font-size: 11px; }
+.planning-milestone-card .planning-progress { border-radius: 3px; }
+.planning-milestone-card-count { color: var(--muted); }
+.planning-milestone-card > footer { padding: 8px 12px; border-radius: 0 0 4px 4px; background: var(--planning-popover-band); color: var(--muted); line-height: 1.4; }
+
+/* 2026-11-06: one month keeps every weekday and week number visible on phones; header actions keep their own row. */
+@media (max-width: 600px) {
+  .planning-calendar-months { grid-template-columns: minmax(0, 1fr); }
+  .planning-calendar-panel-header { display: grid; grid-template-columns: minmax(0, 1fr) 32px; height: auto; min-height: 40px; }
+  .planning-calendar-panel-header h2 { grid-column: 1; white-space: normal; }
+  .planning-calendar-setup { grid-column: 1; grid-row: 2; justify-self: start; height: 32px; }
+  .planning-calendar-close { grid-column: 2; grid-row: 1; width: 32px; height: 32px; }
+}

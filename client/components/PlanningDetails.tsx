@@ -1,0 +1,151 @@
+import { useEffect, useMemo, useState, type FormEvent } from 'react';
+import { Pencil } from 'lucide-react';
+import type { CatalogView, MilestoneRecord, RunRecord } from '../../src/catalog-contracts.ts';
+import type { DataSource } from '../../src/workspace-contracts.ts';
+import { markdownParser } from '../../src/markdown-model.ts';
+import { validPlanningCover } from '../../src/planning-cover.ts';
+import { attachmentFileUrl } from '../attachments.ts';
+import { defineText, useText } from '../i18n.ts';
+import { Button } from './ui/button.tsx';
+import { Markdown } from './Markdown.tsx';
+import type { SavePlanning } from './TimelineView.tsx';
+import '../planning-details.css';
+
+const text = defineText({
+  edit: 'Edit details', title: 'Title', goal: 'Goal', date: 'Date', color: 'Color',
+  projectOnly: 'Only for this project', description: 'Description', cover: 'Cover image',
+  coverHint: 'Project-relative image path or HTTPS URL.', noDescription: 'Add a description to explain this plan.',
+  emptyDescription: 'No description.',
+  save: 'Save details', saving: 'Saving…', cancel: 'Cancel',
+  conflict: 'The file changed. Your draft remains in this form. Load the saved details to replace this draft before editing again.',
+  loadSaved: 'Load saved details',
+  missing: 'This plan was removed. Your draft is kept; cancel to return to Timeline.',
+  failed: 'Could not save the details. Your draft is kept.',
+  coverInvalid: 'Use an HTTPS image URL or a project-relative path without “..”.',
+  coverUnavailable: 'The cover image could not be loaded.',
+}, {
+  edit: 'Изменить сведения', title: 'Название', goal: 'Цель', date: 'Дата', color: 'Цвет',
+  projectOnly: 'Только для этого проекта', description: 'Описание', cover: 'Обложка',
+  coverHint: 'Путь к изображению внутри проекта или HTTPS-ссылка.', noDescription: 'Добавьте описание этого плана.',
+  emptyDescription: 'Описания нет.',
+  save: 'Сохранить сведения', saving: 'Сохраняем…', cancel: 'Отмена',
+  conflict: 'Файл изменился. Черновик остался в форме. Загрузите сохранённые сведения вместо черновика, прежде чем продолжить правку.',
+  loadSaved: 'Загрузить сохранённые сведения',
+  missing: 'Этот план удалён. Черновик сохранён; отмените правку, чтобы вернуться в Timeline.',
+  failed: 'Не удалось сохранить сведения. Черновик сохранён.',
+  coverInvalid: 'Укажите HTTPS-ссылку или путь внутри проекта без «..».',
+  coverUnavailable: 'Не удалось загрузить обложку.',
+});
+
+type Plan = { kind: 'run'; record: RunRecord } | { kind: 'milestone'; record: MilestoneRecord };
+interface Draft { title: string; date: string; color: string; projectSpecific: boolean; description: string; cover: string }
+
+function valuesOf(plan: Plan): Draft {
+  return {
+    title: plan.kind === 'run' ? plan.record.goal : plan.record.title,
+    date: plan.kind === 'milestone' ? plan.record.date : '',
+    color: plan.kind === 'milestone' ? plan.record.color : '',
+    projectSpecific: plan.kind === 'milestone' && Boolean(plan.record.projectSpecific),
+    description: plan.record.description ?? '', cover: plan.record.cover ?? '',
+  };
+}
+
+function coverSource(value: string, source: DataSource): string | undefined {
+  if (!value || !validPlanningCover(value)) return undefined;
+  return /^https:\/\//iu.test(value) ? value : attachmentFileUrl(source, value);
+}
+
+/** A conflict keeps the draft visible but requires explicitly loading the current record before another edit (2026-11-05). */
+export function PlanningDetails({ plan, catalog, source, writable, pending, onSave, onDirtyChange }: {
+  plan: Plan; catalog: CatalogView; source: DataSource; writable: boolean; pending: boolean;
+  onSave?: SavePlanning; onDirtyChange: (dirty: boolean) => void;
+}) {
+  const t = useText(text);
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(() => valuesOf(plan));
+  const [initialDraft, setInitialDraft] = useState(() => valuesOf(plan));
+  const [base, setBase] = useState(catalog);
+  const [conflict, setConflict] = useState<CatalogView | null>(null);
+  const [message, setMessage] = useState<keyof typeof text.en | null>(null);
+  const [serverError, setServerError] = useState<string | null>(null);
+  const [imageFailed, setImageFailed] = useState(false);
+  const descriptionTree = useMemo(() => markdownParser.parse(plan.record.description ?? ''), [plan.record.description]);
+  const image = coverSource(plan.record.cover ?? '', source);
+  const dirty = editing && JSON.stringify(draft) !== JSON.stringify(initialDraft);
+  const missing = plan.kind === 'run'
+    ? !catalog.runs?.some(record => record.id === plan.record.id)
+    : !catalog.milestones?.some(record => record.id === plan.record.id);
+  useEffect(() => { onDirtyChange(dirty); }, [dirty, onDirtyChange]);
+  useEffect(() => () => onDirtyChange(false), [onDirtyChange]);
+  useEffect(() => { setImageFailed(false); }, [image]);
+  useEffect(() => {
+    if (!dirty) return;
+    const warnBeforeLeaving = (event: BeforeUnloadEvent) => { event.preventDefault(); event.returnValue = ''; };
+    window.addEventListener('beforeunload', warnBeforeLeaving);
+    return () => window.removeEventListener('beforeunload', warnBeforeLeaving);
+  }, [dirty]);
+
+  function begin() {
+    const initial = valuesOf(plan);
+    setDraft(initial); setInitialDraft(initial); setBase(catalog); setConflict(null); setMessage(null); setServerError(null); setEditing(true);
+  }
+  function change<Key extends keyof Draft>(key: Key, value: Draft[Key]) {
+    setDraft(previous => ({ ...previous, [key]: value }));
+  }
+  function loadSaved() {
+    if (!conflict || pending) return;
+    const savedRun = conflict.runs?.find(item => item.id === plan.record.id);
+    const savedMilestone = conflict.milestones?.find(item => item.id === plan.record.id);
+    let initial: Draft;
+    if (plan.kind === 'run' && savedRun) initial = valuesOf({ kind: 'run', record: savedRun });
+    else if (plan.kind === 'milestone' && savedMilestone) initial = valuesOf({ kind: 'milestone', record: savedMilestone });
+    else { setMessage('missing'); return; }
+    setDraft(initial); setInitialDraft(initial);
+    setBase(conflict); setConflict(null); setMessage(null); setServerError(null);
+  }
+  async function save(event: FormEvent) {
+    event.preventDefault();
+    if (!onSave || pending || !writable || conflict || missing || !dirty) return;
+    setServerError(null);
+    const cover = draft.cover.trim();
+    if (!validPlanningCover(cover)) { setMessage('coverInvalid'); return; }
+    const details = { description: draft.description, cover };
+    const record = plan.kind === 'run' ? base.runs?.find(item => item.id === plan.record.id) : base.milestones?.find(item => item.id === plan.record.id);
+    if (!record) { setMessage('missing'); return; }
+    const result = plan.kind === 'run'
+      ? await onSave({ action: 'update-run', runsHash: base.runsHash ?? '', run: { ...record as RunRecord, ...details, goal: draft.title.trim() } })
+      : await onSave({ action: 'update-milestone', milestonesHash: base.milestonesHash ?? '', milestone: { ...record as MilestoneRecord, ...details,
+        title: draft.title.trim(), date: draft.date, color: draft.color, projectSpecific: draft.projectSpecific } });
+    if (result.ok) { setEditing(false); setMessage(null); }
+    else if (result.revisions) { setConflict(result.revisions); setMessage('conflict'); }
+    else if (result.message) { setMessage(null); setServerError(result.message); }
+    else setMessage('failed');
+  }
+
+  if (editing) return <form className="planning-detail-form" onSubmit={event => void save(event)}>
+    <fieldset disabled={pending || !writable}>
+      <label>{plan.kind === 'run' ? t.goal : t.title}<input autoFocus required maxLength={plan.kind === 'run' ? 200 : 120} value={draft.title} onChange={event => change('title', event.target.value)} /></label>
+      {plan.kind === 'milestone' && <>
+        <div className="planning-detail-date"><label>{t.date}<input type="date" min="0001-01-01" max="9999-12-31" required value={draft.date} onChange={event => change('date', event.target.value)} /></label>
+          <label>{t.color}<input type="color" value={draft.color} onChange={event => change('color', event.target.value)} /></label></div>
+        <label className="planning-checkbox"><input type="checkbox" checked={draft.projectSpecific} onChange={event => change('projectSpecific', event.target.checked)} />{t.projectOnly}</label>
+      </>}
+      <label>{t.description}<textarea rows={5} maxLength={10000} value={draft.description} onChange={event => change('description', event.target.value)} /></label>
+      <label>{t.cover}<input maxLength={2000} value={draft.cover} onChange={event => change('cover', event.target.value)} /><small>{t.coverHint}</small></label>
+    </fieldset>
+    {missing ? <p className="planning-detail-error" role="alert">{t.missing}</p> : message && <p className="planning-detail-error" role="alert">{t[message]}</p>}
+    {serverError && <p className="planning-detail-error" role="alert">{serverError}</p>}
+    {conflict && !missing && <Button type="button" size="sm" variant="outline" disabled={pending} onClick={loadSaved}>{t.loadSaved}</Button>}
+    <footer><Button type="button" size="sm" variant="ghost" disabled={pending} onClick={() => setEditing(false)}>{t.cancel}</Button>
+      <Button type="submit" size="sm" variant="outline" disabled={pending || !writable || Boolean(conflict) || missing || !dirty || !draft.title.trim()}>{pending ? t.saving : t.save}</Button></footer>
+  </form>;
+
+  return <section className="planning-description-panel">
+    {plan.kind === 'run' && !plan.record.configurationId && <div className="planning-run-goal"><h3>{t.goal}</h3><p>{plan.record.goal}</p></div>}
+    {image && !imageFailed && <img className="planning-cover-image" src={image} alt="" loading="lazy" onError={() => setImageFailed(true)} />}
+    {imageFailed && <p className="planning-stat-note">{t.coverUnavailable}</p>}
+    {plan.record.description ? <div className="planning-description-markdown"><Markdown tree={descriptionTree} source={source} path={plan.kind === 'run' ? 'tasks/deckmate-runs.md' : 'tasks/deckmate-milestones.md'} /></div>
+      : <p className="planning-stat-note">{writable ? t.noDescription : t.emptyDescription}</p>}
+    {onSave && writable && <Button size="sm" variant="ghost" disabled={pending} onClick={begin}><Pencil size={14} />{t.edit}</Button>}
+  </section>;
+}

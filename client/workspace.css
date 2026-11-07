@@ -1,0 +1,93 @@
+.app-shell.global-shell { grid-template-columns: minmax(0, 1fr); }
+/* A single 52px chrome row holds the rail button, trapezoid tabs on the page edge and actions on the right. */
+.topbar.global-topbar { height: 52px; padding: 0 16px 0 0; gap: 16px; flex-wrap: nowrap; align-items: stretch; border-bottom: 0; background: var(--chrome-gradient); box-shadow: inset 0 -1px 0 var(--line); }
+/* 2026-11-05: the rail keeps 80 px and grows when the server status shows a label, so tabs move instead of being covered. */
+.global-topbar .breadcrumb { width: auto; min-width: 80px; flex: 0 0 auto; justify-content: flex-start; padding: 0 12px 0 8px; gap: 8px; position: relative; }
+.global-topbar .topbar-actions { margin-left: auto; align-self: center; }
+/* The violet card and gold pip share the palette in tools/render-logo.mjs. */
+.deckmate-mark { flex: 0 0 auto; }
+.deckmate-mark-back { fill: var(--mark-back); } .deckmate-mark-front { fill: var(--mark-front); } .deckmate-mark-pip { fill: var(--mark-pip); }
+.global-tabs { display: flex; align-items: flex-end; flex: 1 1 auto; min-width: 0; gap: 0; overflow-x: auto; overflow-y: hidden; scrollbar-width: none; }
+.global-tabs button { flex: 0 1 190px; min-width: 76px; height: 40px; margin-right: -14px; border: 0; background: transparent; color: var(--tab-idle-ink); padding: 0 clamp(12px, 1.6vw, 24px); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; position: relative; font-size: 15px; font-weight: 700; line-height: 15px; z-index: 0; isolation: isolate; transition: color var(--motion-feedback), transform var(--motion-feedback) var(--ease-out); }
+/* 2026-11-06: the overlap pulls only between neighbours; on the last tab it pushed 14px past the strip, so once the tabs shrank
+   (Timeline actions, windows below ~1300px) the strip scrolled and cut the last trapezoid's slanted edge. */
+.global-tabs button:last-child { margin-right: 0; }
+.global-tabs button::before { content: ''; position: absolute; inset: 0 7px; z-index: -1; background: var(--tab-idle); clip-path: polygon(6% 0, 94% 0, 100% 100%, 0 100%); border-radius: 6px 6px 0 0; box-shadow: inset 0 1px 0 var(--tab-idle); transition: background-color var(--motion-feedback); }
+.global-tabs button:hover:not(:disabled)::before { background: var(--tab-hover); }
+.global-tabs button:hover:not(:disabled) { color: var(--tab-hover-ink); }
+.global-tabs button:focus-visible { outline-offset: -4px; }
+.global-tabs button.selected, .global-tabs button.selected:hover:not(:disabled) { color: var(--tab-ink); z-index: 1; }
+.global-tabs button.selected::before, .global-tabs button.selected:hover:not(:disabled)::before { background: var(--canvas); }
+.global-tabs button:active:not(:disabled) { transform: translateY(1px); }
+.planning-view { padding: 28px 36px 48px; }
+.vision-toolbar select, .vision-toolbar input { color: var(--ink); background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 7px 10px; }
+.sprint-task { display: flex; flex-direction: column; width: 100%; padding: 0; margin-bottom: 12px; text-align: left; overflow: hidden; background: var(--card-face); border: 1px solid var(--card-edge); border-radius: 8px; color: var(--card-ink); box-shadow: var(--card-shadow); transition: border-color var(--motion-feedback), box-shadow var(--motion-material); }
+.sprint-task:hover, .sprint-task:focus-visible { border-color: var(--card-highlight); box-shadow: var(--card-hover-shadow); }
+.sprint-task-parent { display: flex; align-items: center; gap: 5px; width: 100%; min-width: 0; padding: 5px 11px; background: linear-gradient(110deg, color-mix(in srgb, var(--hero-metal) 90%, var(--hero-sheen)), var(--hero-metal)); color: var(--hero-ink); font-size: 11px; font-weight: 500; }
+.sprint-task-parent > svg { flex-shrink: 0; }.sprint-task-parent > span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sprint-task-body { display: flex; flex-direction: column; gap: 9px; min-height: 110px; padding: 13px 12px; }
+.sprint-task strong { font-size: 13px; font-weight: 500; line-height: 1.5; overflow-wrap: anywhere; }
+.sprint-task small { color: var(--card-muted); font-size: 10px; overflow-wrap: anywhere; }
+.sprint-task-owner { display: flex; align-items: center; gap: 5px; color: var(--card-muted); font-size: 10px; margin-top: auto; }.sprint-task-owner > svg { flex-shrink: 0; }
+.sprint-task-band { display: flex; align-items: center; justify-content: space-between; gap: 6px; width: 100%; padding: 7px 10px; background: linear-gradient(110deg, color-mix(in srgb, var(--card-metal) 92%, white), var(--card-metal) 55%, color-mix(in srgb, var(--card-metal) 92%, #364057)); color: var(--card-metal-ink); }
+/* 2026-11-05: badges on the light metal band use band ink without a tile; only the dot carries state color.
+   Extra specificity overrides .dark .status-badge and .dark .status-* to prevent a dark tile on the band. */
+.sprint-task > .sprint-task-band .status-badge { color: inherit; background: transparent; padding: 0; font-size: 10px; }
+.sprint-task > .sprint-task-band .status-badge .status-dot { background: var(--band-state-dot, currentColor); }
+.sprint-task-band .status-discuss { --band-state-dot: var(--band-state-discuss); } .sprint-task-band .status-iteration { --band-state-dot: var(--band-state-iteration); }
+.sprint-task-band .status-working { --band-state-dot: var(--band-state-working); } .sprint-task-band .status-review { --band-state-dot: var(--band-state-review); }
+.sprint-task-band .status-accepted { --band-state-dot: var(--band-state-accepted); }.sprint-task-band > svg { flex-shrink: 0; }
+.sprint-task-effort { display: inline-flex; align-items: center; gap: 4px; margin-left: auto; font: 11px 'Geist Mono', monospace; }
+.vision-workspace { display: flex; flex-direction: column; height: 100%; min-height: 480px; }
+.vision-toolbar { background: var(--panel-gradient); display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 12px 20px; border-bottom: 1px solid var(--line); }
+.vision-toolbar input { width: 210px; }
+/* A fixed width: the select no longer grows from «New board» to the longest title when the board list arrives, pushing the title field. */
+.vision-toolbar select { width: 220px; }
+.vision-save-state { font-size: 11px; color: var(--muted); margin-right: auto; }
+.vision-body { display: grid; grid-template-columns: minmax(0, 1fr) 270px; flex: 1; min-height: 0; }
+.vision-canvas { min-height: 400px; min-width: 0; }
+/* 2026-11-05: the side panel is Vision's scroll owner, so it clears the fixed notifications corner (Notifications.tsx, styles.css). */
+.vision-links { padding: 18px 14px calc(18px + var(--notifications-clearance, 0px)); overflow-y: auto; border-left: 1px solid var(--line); background: var(--ground); }
+.vision-links h2 { display: flex; align-items: center; gap: 8px; margin: 0 0 12px; font-size: 14px; font-weight: 500; }
+.vision-links p { font-size: 11px; line-height: 1.65; color: var(--muted); }
+.vision-search { display: flex; align-items: center; gap: 7px; border: 1px solid var(--line); border-radius: 5px; padding: 8px; margin-top: 18px; }
+.vision-search:focus-within { border-color: var(--focus); }
+.vision-search input { border: 0; background: none; min-width: 0; width: 100%; color: var(--ink); font-size: 12px; outline: none; }
+.vision-results, .vision-linked-list { display: flex; flex-direction: column; gap: 5px; margin-top: 14px; }
+.vision-results button, .vision-linked-list button { display: flex; text-align: left; gap: 7px; align-items: center; justify-content: space-between; padding: 10px; color: var(--card-ink); background: var(--card-face); border: 1px solid var(--card-edge); border-radius: 6px; font-size: 12px; }
+.vision-results button:hover, .vision-linked-list button:hover { border-color: var(--card-highlight); }
+.vision-results small, .vision-linked-list small { display: block; margin-top: 5px; color: var(--card-muted); font-size: 10px; overflow-wrap: anywhere; }
+.vision-empty { margin-top: 24px; }
+/* 2026-11-04: narrow windows keep every tab reachable — the source label and the search give way first. */
+@media (max-width: 1180px) {
+  .global-topbar .source-switch span { display: none; }
+  .global-topbar .global-search { flex-basis: 240px; }
+}
+/* 2026-11-06: below 1000 the search sits at its 150px floor, so Timeline's three extra actions still leave whole tabs. */
+@media (max-width: 1000px) {
+  .global-topbar .global-search { flex-basis: 150px; }
+}
+/* 2026-11-06: below 860 one 52px row cannot hold the rail, four tabs and Timeline's actions; the tabs take their own
+   full-width row (order 3) and shrink from 190px only when that row is full, and the action cluster wraps instead of
+   running past the window edge. */
+@media (max-width: 860px) {
+  .topbar.global-topbar { height: auto; flex-wrap: wrap; gap: 0 8px; }
+  .global-topbar .breadcrumb, .global-topbar .topbar-actions { min-height: 52px; }
+  .global-topbar .topbar-actions { flex-wrap: wrap; justify-content: flex-end; }
+  .global-tabs { order: 3; flex-basis: 100%; padding-left: 8px; }
+}
+/* 2026-11-06: on phone widths Timeline's three actions and the search need the whole first row; the rail steps down
+   beside the tabs, so every view keeps the same two rows and switching tabs never changes the bar's height. */
+@media (max-width: 480px) {
+  .global-topbar .topbar-actions { order: -1; flex: 1 1 100%; min-width: 0; flex-wrap: nowrap; padding-left: 8px; }
+  .global-topbar .global-search { flex: 1 1 150px; min-width: 0; }
+  .global-topbar .breadcrumb { min-height: 0; padding-right: 4px; }
+  .global-tabs { flex: 1 1 0; padding-left: 0; }
+}
+@media (max-width: 760px) {
+  .planning-view { padding: 22px 16px; }
+  .vision-body { grid-template-columns: minmax(0, 1fr); overflow-y: auto; }
+  .vision-links { border-left: 0; border-top: 1px solid var(--line); max-height: 250px; }
+  .vision-toolbar input { width: 150px; }
+  .vision-save-state { display: none; }
+}

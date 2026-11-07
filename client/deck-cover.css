@@ -1,0 +1,83 @@
+/* 2026-11-06: the cast cover, 132×180 — one material in the gallery, the shelf above an open deck, the drag overlay and the
+   settings preview. A lit rim and a soft lift instead of a printed band: a sunken art window, the kind as a glass dot in its
+   corner, the title on the deck color, raised counters and a progress lip at the bottom edge. */
+.catalog-deck-grid { display: grid; grid-template-columns: repeat(auto-fill, 132px); gap: 16px; padding: 0 12px 12px; }
+.catalog-pile-decks { display: contents; }
+
+/* --deck-band is the deck color, darkened by coverStyle only where the title would fall below 4.5:1. The title sits on a flat
+   plateau of exactly that color (34–78% of the 165deg line covers the two title lines), so the guarantee holds; only the
+   top corner lightens from the deck's own color and the foot below the title darkens. */
+.catalog-deck-cover { --deck-face: var(--deck-band, var(--deck-color)); --cover-edge: color-mix(in srgb, var(--tile-highlight) 76%, var(--ink)); position: relative; isolation: isolate; display: flex; flex-direction: column; width: 132px; height: 180px; padding: 5px; border: 0; border-radius: 9px; color: var(--deck-ink, #fff); text-align: center;
+  background: linear-gradient(165deg, color-mix(in srgb, var(--deck-color) 86%, white) 0%, var(--deck-face) 34%, var(--deck-face) 78%, color-mix(in srgb, var(--deck-face) 76%, black) 100%);
+  box-shadow: var(--cover-rim), var(--cover-lift); transition: filter var(--motion-material) var(--ease-out); }
+/* 2026-11-06: light lives on its own layer, so the crisp rim and feathered halo fade together without repainting the face.
+   The same layer survives the settings-button handoff and the frozen gallery used when opening a deck. */
+.catalog-deck-cover[data-deck-cover]::before { content: ''; position: absolute; inset: 0; z-index: 3; border-radius: inherit; pointer-events: none; opacity: 0;
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--tile-highlight) 30%, white), inset 0 0 0 1px color-mix(in srgb, var(--tile-highlight) 25%, transparent),
+    0 0 0 var(--cover-ring-size, 1px) var(--cover-edge),
+    0 1px 8px 1px color-mix(in srgb, var(--tile-highlight) 22%, transparent), 0 4px 24px -4px color-mix(in srgb, var(--tile-highlight) 32%, transparent);
+  transition: opacity var(--motion-feedback) ease-out; }
+.catalog-cover-item:where(:hover, :focus-within) > .catalog-deck-cover:not(:disabled)::before,
+.catalog-deck-cover:is(:hover, :focus-visible, .is-transition-hover, [aria-current="page"]):not(:disabled)::before { opacity: 1; }
+.catalog-deck-cover[aria-current="page"] { --cover-ring-size: 2px; }
+/* Keyboard focus uses one separated contour in the same mint material, rather than stacking two colored rings. */
+.catalog-deck-cover:where([data-deck-cover]):focus-visible { --cover-ring-size: 0px; outline-color: var(--cover-edge); }
+.catalog-deck-cover:active:not(:disabled)::before { opacity: .65; }
+
+.catalog-cover-art { position: relative; display: grid; place-items: center; flex: 0 0 92px; height: 92px; overflow: hidden; border-radius: 5px; background: var(--cover-window); color: color-mix(in srgb, var(--deck-color) 55%, white); }
+/* A deck without art keeps its tone in the window instead of a black hole. */
+.catalog-cover-art.is-symbol { background: radial-gradient(120% 95% at 30% 15%, color-mix(in srgb, var(--deck-color) 62%, var(--cover-window)), var(--cover-window) 72%); }
+.catalog-cover-art > svg { stroke-width: 1.5; opacity: .9; }
+.catalog-cover-art > img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; image-rendering: pixelated; }
+/* The window is sunk into the face: an inner edge and a shade at its bottom, drawn above the image. */
+.catalog-cover-art::after { content: ''; position: absolute; inset: 0; z-index: 1; border-radius: inherit; box-shadow: inset 0 0 0 1px rgb(0 0 0 / .38), inset 0 -18px 16px -12px rgb(0 0 0 / .5); pointer-events: none; }
+.catalog-cover-minimal .catalog-cover-art { flex-basis: 46px; height: 46px; }
+.catalog-cover-kinds { position: absolute; top: 5px; left: 5px; z-index: 2; display: flex; gap: 3px; }
+.catalog-cover-kind-badge { display: grid; place-items: center; width: 17px; height: 17px; border-radius: 50%; background: rgb(18 16 26 / .58); color: #fff; box-shadow: 0 0 0 1px rgb(255 255 255 / .16); backdrop-filter: blur(3px); }
+.catalog-cover-kind-badge > svg { stroke-width: 2.2; }
+
+/* Chrome lays a centered clamp's ellipsis up to 5 px past the box: clip only the third line, so «…» shows whole inside the margin. */
+.catalog-cover-title { position: relative; z-index: 1; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow-x: visible; overflow-y: clip; margin: 9px 6px 0; padding-bottom: 1px; font: 600 13px/15px var(--font-sans); color: var(--deck-ink, #fff); text-shadow: 0 1px 0 rgb(0 0 0 / .18); overflow-wrap: anywhere; }
+.catalog-cover-foot { display: flex; justify-content: center; margin-top: auto; padding-bottom: 10px; }
+/* Raised counters: a white face on a 2 px foot; the accepted Task count is green. */
+.catalog-cover-counts { display: inline-flex; gap: 5px; }
+.catalog-cover-count { display: grid; place-items: center; min-width: 24px; height: 20px; padding: 0 6px; border-radius: 4px; background: var(--count-face); color: var(--count-ink); font: 500 12px/1 'Geist Mono', monospace; font-variant-numeric: tabular-nums; box-shadow: 0 2px 0 var(--count-foot), 0 3px 6px -2px rgb(0 0 0 / .35); }
+.catalog-cover-count.is-accepted { background: var(--accepted-metal); color: var(--accepted-metal-ink); box-shadow: 0 2px 0 color-mix(in srgb, var(--accepted-metal) 62%, black), 0 3px 6px -2px rgb(0 0 0 / .35); }
+/* Accepted Tasks of all Tasks; decks without Tasks have no lip. */
+.catalog-cover-progress { position: absolute; left: 10px; right: 10px; bottom: 4px; height: 3px; overflow: hidden; border-radius: 2px; background: rgb(0 0 0 / .28); }
+.catalog-cover-progress > span { display: block; height: 100%; border-radius: inherit; background: var(--cover-progress); }
+
+/* The whole tile is the drag handle; its empty slot marks the drop position while dragging. */
+.catalog-cover-item { position: relative; width: 132px; height: 180px; touch-action: none; }
+.catalog-cover-item.is-dragging { border-radius: 9px; background: rgb(0 0 0 / .16); box-shadow: inset 0 0 0 1px var(--line); }
+.catalog-cover-item.is-dragging > * { visibility: hidden; }
+.catalog-spaces.is-dragging .catalog-deck-cover { transition: none; pointer-events: none; }
+.catalog-spaces.is-dragging .catalog-deck-cover::before { opacity: 0; transition: none; }
+.catalog-spaces.is-dragging .catalog-cover-settings { display: none; }
+.catalog-spaces.is-dragging, .catalog-spaces.is-dragging * { cursor: grabbing; }
+.catalog-cover-settings { position: absolute; top: 9px; right: 9px; z-index: 5; display: grid; place-items: center; width: 24px; height: 24px; padding: 0; border: 0; border-radius: 4px; color: #fff; background: rgb(18 16 26 / .62); opacity: 0; transition: opacity var(--motion-feedback), background-color var(--motion-feedback); }
+.catalog-cover-item:hover .catalog-cover-settings, .catalog-cover-item:focus-within .catalog-cover-settings { opacity: 1; }
+.catalog-cover-settings:hover:not(:disabled) { background: rgb(18 16 26 / .9); }
+.cover-drag-overlay { width: 132px; height: 180px; transform: none; transition: none; pointer-events: none; box-shadow: var(--cover-rim), 0 14px 28px rgb(0 0 0 / .45); }
+
+/* An empty Add Deck tile ends each shelf; it is also the drop target after the last deck. */
+.catalog-add-deck { display: grid; place-items: center; width: 132px; height: 180px; padding: 12px; border: .67px solid var(--tab-idle, var(--line)); border-radius: 9px; background: transparent; color: var(--muted); font-size: 14px; line-height: 20px; }
+/* 2026-11-06: the hover tint follows the ink, so it stays a faint lift in dark and still shows on the light page (white vanished there). */
+.catalog-add-deck:hover:not(:disabled) { background: color-mix(in srgb, var(--ink) 4%, transparent); color: var(--ink); border-color: var(--muted); }
+
+/* The pile closes a space: a fan of the piled decks' colors with their count. Opened, the decks spread out after it, dimmed
+   until hovered, and the fan stays in place as the Collapse control, so focus never jumps. */
+.catalog-pile { position: relative; width: 112px; height: 180px; padding: 0; border: 0; border-radius: 9px; background: transparent; color: var(--overlay-ink); }
+.catalog-pile-fan { position: absolute; inset: 0; pointer-events: none; }
+.catalog-pile-fan > span { position: absolute; left: 17px; top: 16px; width: 78px; height: 150px; border-radius: 8px; background: linear-gradient(165deg, color-mix(in srgb, var(--deck-color) 80%, white), color-mix(in srgb, var(--deck-color) 70%, black)); box-shadow: var(--cover-rim), 0 8px 16px -8px rgb(0 0 0 / .6); opacity: .88; transform: rotate(var(--fan)); transform-origin: 50% 100%; transition: transform var(--motion-material) var(--ease-out), opacity var(--motion-material) var(--ease-out); }
+.catalog-pile:is(:hover:not(:disabled), :focus-visible) .catalog-pile-fan > span { transform: rotate(calc(var(--fan) * 1.8)); opacity: 1; }
+.catalog-pile[aria-expanded="true"] .catalog-pile-fan > span { transform: rotate(calc(var(--fan) * .4)); opacity: .55; }
+.catalog-pile-label { position: absolute; inset: auto 8px 50px; display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 4px; border-radius: 4px; background: var(--overlay-face); }
+.catalog-pile-label > strong { font: 500 22px/1 'Geist Mono', monospace; font-variant-numeric: tabular-nums; }
+.catalog-pile-label > span { font-size: 11px; font-weight: 600; line-height: 13px; }
+.catalog-pile[aria-expanded="true"] .catalog-pile-label { inset-block-end: 68px; gap: 6px; }
+.catalog-cover-item.is-piled .catalog-cover-art { filter: saturate(.5); }
+.catalog-cover-item.is-piled:is(:hover, :focus-within) .catalog-cover-art { filter: none; }
+
+@media (max-width: 420px) { .catalog-deck-grid { padding-inline: 4px; } }
+@media (prefers-reduced-motion: reduce) { .catalog-deck-cover::before, .catalog-pile-fan > span { transition: none; } }

@@ -90,7 +90,10 @@ describe.skipIf(!browserPath)('CardPreview Quick Settings (browser)', () => {
     await server.warmupRequest('/tests/fixtures/card-preview-quick-settings.tsx').catch(() => {});
     const port = await freePort();
     profile = await mkdtemp(path.join(tmpdir(), 'deckmate-quick-settings-'));
+    // 2026-11-09: a headless Chrome on a Linux CI runner sees no pointing device and reports (hover: none), where the
+    // tile ribbon stays pinned at rest by design; the suite tests the desktop pointer, so it declares a fine hovering one.
     browser = spawn(browserPath!, ['--headless=new', '--disable-gpu', '--no-first-run', '--no-default-browser-check',
+      '--blink-settings=primaryHoverType=2,availableHoverTypes=2,primaryPointerType=4,availablePointerTypes=4',
       `--remote-debugging-port=${port}`, `--user-data-dir=${profile}`, 'about:blank'], { stdio: 'ignore' });
     let target: string | undefined;
     for (let attempt = 0; attempt < 100 && !target; attempt++) {
@@ -277,6 +280,27 @@ describe.skipIf(!browserPath)('CardPreview Quick Settings (browser)', () => {
         x: new DOMMatrix(getComputedStyle(layer, '::before').transform).m41 };
     })()`);
   }
+  // 2026-11-09: polling with a 2s ceiling instead of fixed delays — a CI runner can be several times slower than a desktop.
+  async function reflectionWhen(selector: string, accept: (value: Awaited<ReturnType<typeof reflection>>) => boolean, timeout = 2000) {
+    const started = Date.now();
+    let value = await reflection(selector);
+    while (!accept(value) && Date.now() - started < timeout) {
+      await delay(40);
+      value = await reflection(selector);
+    }
+    return value;
+  }
+  async function reflectionSettled(selector: string, timeout = 2000) {
+    const started = Date.now();
+    let value = await reflection(selector);
+    while (Date.now() - started < timeout) {
+      await delay(120);
+      const next = await reflection(selector);
+      if (next.x === value.x) return next;
+      value = next;
+    }
+    return value;
+  }
 
   // 2026-11-08: the open card's band glows softly at rest and drifts towards the pointer (author's reference).
   it('.card-preview-material-band keeps a soft glow at rest and drifts towards the pointer', async () => {
@@ -322,37 +346,38 @@ describe.skipIf(!browserPath)('CardPreview Quick Settings (browser)', () => {
   // 2026-11-08: the tile ribbon follows the author's reference video: it rests beyond the right edge, sweeps in once,
   // moves against the pointer horizontally (with the tilt) and sweeps back out on leave.
   it.each(['.deck-card-space'])('%s ribbon sweeps in, follows the tilt, holds while paused and sweeps out on leave', async selector => {
+    // Without a hovering fine pointer the ribbon is pinned by design; fail on the environment, not on the motion.
+    expect(await evaluate(`matchMedia('(hover: hover) and (pointer: fine)').matches`)).toBe(true);
     await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 0, y: 0 });
     await render('hero');
-    await delay(100);
-    const rest = await reflection(selector);
+    const rest = await reflectionSettled(selector);
     expect(rest.display).not.toBe('none');
     expect(rest.opacity).toBe(1);
     // 2026-11-09: compositing hints never change with hover — layers made and dropped per hover made the ink jump.
     expect(rest.willChange).toBe('auto');
     expect(rest.layers).toMatch(/ \/ auto$/);
     await moveOver(selector, .2);
-    await delay(350);
-    const left = await reflection(selector);
+    await reflectionWhen(selector, value => value.x < rest.x - 60);
+    const left = await reflectionSettled(selector);
     expect(left.x).toBeLessThan(rest.x - 60);
     expect([left.willChange, left.layers]).toEqual([rest.willChange, rest.layers]);
     await moveOver(selector, .8);
-    await delay(700);
-    const right = await reflection(selector);
+    await reflectionWhen(selector, value => value.x < left.x - 30);
+    const right = await reflectionSettled(selector);
     expect(right.x).toBeLessThan(left.x - 30);
     await delay(1400);
     expect(await reflection(selector)).toEqual(right);
     await moveOver(selector, .3);
-    await delay(350);
-    const reversed = await reflection(selector);
+    const reversed = await reflectionWhen(selector, value => value.x > right.x + 20);
     expect(reversed.x).toBeGreaterThan(right.x + 20);
+    await reflectionSettled(selector);
+    const before = await reflection(selector);
     await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 0, y: 0 });
-    await delay(50);
-    const leaving = await reflection(selector);
-    expect(leaving.x).toBeGreaterThan(reversed.x);
-    expect(leaving.x).toBeLessThan(rest.x);
-    await delay(600);
-    const idle = await reflection(selector);
+    // The first sample that has moved is mid-sweep: the ribbon goes back to rest gradually, not in one jump.
+    const leaving = await reflectionWhen(selector, value => value.x > before.x + 1);
+    expect(leaving.x).toBeGreaterThan(before.x);
+    expect(leaving.x).toBeLessThan(rest.x - 1);
+    const idle = await reflectionWhen(selector, value => Math.abs(value.x - rest.x) < .05);
     expect(idle.x).toBeCloseTo(rest.x, 1);
     expect([idle.willChange, idle.layers]).toEqual([rest.willChange, rest.layers]);
   });

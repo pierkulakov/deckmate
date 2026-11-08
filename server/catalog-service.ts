@@ -46,6 +46,7 @@ const serviceText = defineText({
   guardiansUpdated: "Guardians updated",
   noGuardians: "Deck Guardians removed",
   automationUpdated: "Automation updated",
+  inboxCleared: "Inbox destination cleared: this deck no longer takes Tasks.",
   autoTagOff: "Auto-tag disabled; existing card tags were kept",
   journalSaveFailed: "Changes were saved, but the activity entry could not be saved. Do not repeat the change; check access to tasks/deckmate-activity.",
   journalUpdateFailed: "Changes were saved, but the activity journal was not updated.",
@@ -72,6 +73,7 @@ const serviceText = defineText({
   guardiansUpdated: "Обновлены стражи",
   noGuardians: "Стражи колоды сняты",
   automationUpdated: "Обновлена автоматизация",
+  inboxCleared: "Колода-приёмник Inbox снята: эта колода больше не принимает задачи.",
   autoTagOff: "Автотег выключен; теги на картах остались",
   journalSaveFailed: "Изменения сохранены, но запись журнала активности не удалось сохранить. Не повторяйте изменение; проверьте доступ к tasks/deckmate-activity.",
   journalUpdateFailed: "Изменения сохранены, но журнал активности не обновлён.",
@@ -517,6 +519,9 @@ export class CatalogService {
           // 2026-11-03: Journal is secondary; a logging failure must never turn a successful write into a retryable failure.
           try {
             const after = await readProjectCatalog(root);
+            if (edit.action === 'set-deck-kind' && before.inboxDeckId === edit.deckId && after.inboxDeckId == null) {
+              savedWarning = [savedWarning, serverText(serviceText).inboxCleared].filter(Boolean).join(' ');
+            }
             let affected: Set<string> | undefined;
             if (bulkOutcome) affected = new Set([...bulkOutcome.applied, ...bulkOutcome.pending, ...bulkOutcome.created ?? []]);
             else if ('cards' in edit) affected = new Set(edit.cards.map(card => card.cardId));

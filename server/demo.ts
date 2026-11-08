@@ -233,6 +233,7 @@ export async function initializeDemo(directory: string): Promise<void> {
   manifest.formatLanguage = 'en';
   manifest.spaces.push({ id: 'studio', title: 'Moonwake Studio', kind: 'custom', icon: 'box' });
   await createDecks(root, manifest);
+  manifest.inboxDeckId = 'production';
   manifest.members = [
     { id: 'maya', label: 'Maya Chen', kind: 'human', aliases: ['Maya'] },
     { id: 'leo', label: 'Leo Park', kind: 'human', aliases: ['Leo'] },

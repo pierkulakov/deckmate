@@ -1,4 +1,4 @@
-import { defineText, serverText } from './i18n.ts';
+import { defineText, serverLang, serverText, type Lang } from './i18n.ts';
 import { randomUUID } from 'node:crypto';
 import { realpath } from 'node:fs/promises';
 import type { RunRecord } from '../src/catalog-contracts.ts';
@@ -180,6 +180,77 @@ function activityLabels(formatLanguage: FormatLanguage): Record<string, string> 
     'set-card-dependencies': text.dependenciesChanged, 'card-unlocked': text.cardUnlocked,
     'reorder-hand': text.handReordered,
   };
+}
+
+// 2026-11-08: journal wording follows the project language, but its display follows the request language.
+// The raw event remains in the shared cache for notifications and metrics.
+const displayFields = defineText({
+  title: 'Title', state: 'State', deck: 'Deck', owner: 'Owner', tracks: 'Tracks', type: 'Type',
+  dependencies: 'Dependencies', effort: 'Effort', priority: 'Priority', tags: 'Tags', due: 'Due date',
+  bookmark: 'Bookmark', archive: 'Archive', deletion: 'Deletion', reason: 'Reason',
+  low: 'Low', medium: 'Medium', high: 'High',
+  unlockedSummary: 'Card unlocked',
+  unlocked: (names: string) => `all incoming dependencies accepted — ready to start (${names})`,
+}, {
+  title: 'Название', state: 'Статус', deck: 'Колода', owner: 'Исполнитель', tracks: 'Треки', type: 'Тип',
+  dependencies: 'Зависимости', effort: 'Оценка', priority: 'Приоритет', tags: 'Теги', due: 'Срок',
+  bookmark: 'Закладка', archive: 'Архив', deletion: 'Удаление', reason: 'Причина',
+  low: 'Низкий', medium: 'Средний', high: 'Высокий',
+  unlockedSummary: 'Карточка разблокирована',
+  unlocked: (names: string) => `все входящие зависимости приняты — можно начинать (${names})`,
+});
+
+/** Localize only known journal syntax, never arbitrary card titles, names or reasons. */
+export function displayActivityChange(change: string, lang: Lang): string {
+  if (lang !== 'ru') return change;
+  if (change === messages.en.cardCreated) return messages.ru.cardCreated;
+  if (change === messages.en.descriptionUpdated) return messages.ru.descriptionUpdated;
+  const unlocked = /^all incoming dependencies accepted — ready to start \(([\s\S]*)\)$/u.exec(change);
+  if (unlocked) return displayFields.ru.unlocked(unlocked[1]);
+  const separator = change.indexOf(': ');
+  if (separator < 0) return change;
+  const field = change.slice(0, separator);
+  const keys = ['title', 'state', 'deck', 'owner', 'tracks', 'type', 'dependencies', 'effort', 'priority', 'tags', 'due', 'bookmark', 'archive', 'deletion'] as const;
+  const key = keys.find(candidate => field === displayFields.en[candidate] || field === displayFields.ru[candidate]);
+  if (!key) return change;
+  let value = change.slice(separator + 2);
+  if (key === 'state') {
+    const match = /^(.*?) → (.*?)(?:\. (?:Reason|Причина): ([\s\S]*))?$/u.exec(value);
+    if (match) {
+      const label = (word: string) => {
+        const state = readCardState(word);
+        if (!state) return word;
+        const written = writeCardState(state, 'ru');
+        return written[0].toLocaleUpperCase('ru-RU') + written.slice(1);
+      };
+      value = `${label(match[1])} → ${label(match[2])}${match[3] === undefined ? '' : `. ${displayFields.ru.reason}: ${match[3]}`}`;
+    }
+  } else if (key === 'priority') {
+    value = value.split(' → ').map(word => {
+      const candidate = word.toLowerCase();
+      return candidate === 'low' || candidate === 'medium' || candidate === 'high' ? displayFields.ru[candidate] : word;
+    }).join(' → ');
+  }
+  return `${displayFields.ru[key]}: ${value}`;
+}
+
+function displayActivityEvent(event: DeckActivityEvent, lang: Lang): DeckActivityEvent {
+  if (lang !== 'ru') return event;
+  let summary = event.summary;
+  const english = activityLabels('en')[event.action];
+  const russian = activityLabels('ru')[event.action];
+  if (event.action === 'card-unlocked' && (summary === messages.en.cardUnlocked || summary === messages.ru.cardUnlocked)) summary = displayFields.ru.unlockedSummary;
+  else if (english && russian && summary === english) summary = russian;
+  else if (summary === messages.en.updatedCards) summary = messages.ru.updatedCards;
+  else if (summary === messages.en.projectTemplateApplied) summary = messages.ru.projectTemplateApplied;
+  else if (summary === messages.en.deckPiled) summary = messages.ru.deckPiled;
+  else if (summary === messages.en.deckShelved) summary = messages.ru.deckShelved;
+  const cards = [...event.cards].sort((first, second) => second.title.length - first.title.length);
+  const details = event.details.map(detail => {
+    const card = cards.find(candidate => detail.startsWith(candidate.title + ': '));
+    return card ? `${card.title}: ${displayActivityChange(detail.slice(card.title.length + 2), lang)}` : detail;
+  });
+  return { ...event, summary, details };
 }
 
 function cardChanges(previous: CatalogCard | undefined, current: CatalogCard, before: CatalogView, after: CatalogView, reason: string | undefined): string[] {
@@ -469,7 +540,7 @@ export async function readActivity(root: string, deckId: string, limit = 10, cur
   for await (const event of journalEntries(listing, files.slice(0, scanLimit))) {
     scanned += 1;
     if (!event) { if (!warnings.length) warnings.push(serverText(messages).unreadable); }
-    else if (event.deckIds.includes(deckId)) events.push(event);
+    else if (event.deckIds.includes(deckId)) events.push(displayActivityEvent(event, serverLang()));
     if (events.length >= pageSize) break;
   }
   return { events, nextCursor: scanned < files.length ? files[scanned - 1].split('/').at(-1)! : null, warnings };
@@ -494,7 +565,7 @@ export async function readCardActivity(root: string, cardId: string, limit = 20,
     if (events.length < pageSize) {
       scanned += 1;
       if (!event) { if (!warnings.length) warnings.push(serverText(messages).unreadable); }
-      else if (mentions(event)) events.push(event);
+      else if (mentions(event)) events.push(displayActivityEvent(event, serverLang()));
     }
     if (event && mentions(event)) earliest = event;
     if (cursor && events.length >= pageSize) break;

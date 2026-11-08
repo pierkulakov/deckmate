@@ -37,9 +37,9 @@ const importText = defineText({
 }, {
   rowLimit: "Импорт принимает от 1 до 5000 строк.",
   deckMissing: "Колода не найдена.",
-  kind: "тип карты — task, hero или doc",
+  kind: "тип карточки — task, hero или doc",
   title: "нужен заголовок — одна строка до 1000 символов",
-  markdown: "текст карты — строка до 200000 символов",
+  markdown: "текст карточки — строка до 200000 символов",
   owner: "исполнитель — одна строка до 120 символов",
   effort: "цена — число не меньше нуля",
   priority: "приоритет — high, medium или low",
@@ -48,12 +48,12 @@ const importText = defineText({
   tags: "теги — до 80 непустых строк без повторов",
   identifier: "ID должен быть вида card:<uuid>",
   duplicateRow: "такая же строка уже была выше в этом файле",
-  idUsedUnchanged: "ID уже занят другой карточкой — карта оставлена без изменений",
+  idUsedUnchanged: "ID уже занят другой карточкой — карточка оставлена без изменений",
   idUsed: "ID уже занят другой карточкой",
   rowName: (index: number) => `строка ${index + 1}`,
   incompatibleKind: (row: { kind: string }, deck: { title: string }) => `тип ${row.kind} не подходит колоде ${deck.title}`,
   saveUnconfirmed: (plan: { metadata: { title: string } }, error: unknown) => `Карточка «${plan.metadata.title}» сохранена, но запись не подтвердилась: ${error instanceof Error ? error.message : String(error)}`,
-  tagsUnsaved: (error: unknown) => `Карты созданы, но теги не записаны: ${error instanceof Error ? error.message : String(error)}. Повторный импорт того же файла дублей не создаст.`,
+  tagsUnsaved: (error: unknown) => `Карточки созданы, но теги не записаны: ${error instanceof Error ? error.message : String(error)}. Повторный импорт того же файла дублей не создаст.`,
 });
 
 

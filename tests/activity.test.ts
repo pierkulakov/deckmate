@@ -357,6 +357,44 @@ it('reads English and historic Russian journal fields while localizing generated
   }
 });
 
+it('localizes cached journal views and notifications without changing names, reasons or journal bytes', async () => {
+  const { root, app } = await appFixture();
+  const card = await seedCard(root, { title: 'State: the card' });
+  const event: DeckActivityEvent = { ...activityEvent(2), at: new Date().toISOString(), actorMemberId: 'another-member',
+    action: 'bulk-edit-cards', summary: 'Cards updated', cards: [{ id: card.id, title: card.title }],
+    details: [`${card.title}: Description updated`, `${card.title}: State: started → review. Reason: Owner: keep this`,
+      `${card.title}: Owner: Old Owner → Kimi`, `${card.title}: Effort: 1 → 2`, `${card.title}: Priority: low → high`,
+      `${card.title}: Due date: null → "2026-11-09"`, `${card.title}: Custom: untouched`] };
+  await appendActivity(root, event, 'en');
+  const filename = path.join(root, 'tasks/deckmate-activity', event.at.replace(/[-:.]/gu, '') + '-' + event.id + '.md');
+  const bytes = await readFile(filename);
+  for (const language of ['ru', 'en', 'ru']) {
+    const localizedHeaders = { ...headers, cookie: `deckmate-lang=${language}` };
+    const expected = language === 'ru' ? [
+      `${card.title}: Обновлено описание`, `${card.title}: Статус: В работе → Приёмка. Причина: Owner: keep this`,
+      `${card.title}: Исполнитель: Old Owner → Kimi`, `${card.title}: Оценка: 1 → 2`, `${card.title}: Приоритет: Низкий → Высокий`,
+      `${card.title}: Срок: null → "2026-11-09"`, `${card.title}: Custom: untouched`,
+    ] : event.details;
+    for (const url of ['/api/activity?source=sandbox&deckId=audio', `/api/card-activity?source=sandbox&cardId=${encodeURIComponent(card.id)}`]) {
+      const response = await app.inject({ url, headers: localizedHeaders });
+      expect(response.statusCode).toBe(200);
+      const found = response.json().events.find((item: DeckActivityEvent) => item.id === event.id);
+      expect(found.summary).toBe(language === 'ru' ? 'Карточки обновлены' : event.summary);
+      expect(found.details).toEqual(expected);
+      expect(found.cards).toEqual(event.cards);
+    }
+    const response = await app.inject({ url: '/api/notifications?source=sandbox&member=kimi', headers: localizedHeaders });
+    const stacks = response.json<NotificationsView>().stacks;
+    expect(stacks.map(stack => stack.title)).toEqual(language === 'ru'
+      ? ['Ваши карточки', 'Карточки под наблюдением', 'Карточки со сроком']
+      : ['Cards you own', 'Cards you watch', 'Due Cards']);
+    const lines = stacks[0].cards.find(item => item.cardId === card.id)!.changes[0].lines;
+    expect(lines).toContain(language === 'ru' ? 'Статус: В работе → Приёмка. Причина: Owner: keep this' : 'State: started → review. Reason: Owner: keep this');
+    expect(lines).toContain(language === 'ru' ? 'Срок: — → 2026-11-09' : 'Due date: — → 2026-11-09');
+    expect(await readFile(filename)).toEqual(bytes);
+  }
+});
+
 // 2026-11-06: journal scans read entries in parallel chunks and share parses by file bytes. Pages, the first-page
 // creation date and a rewritten entry must read exactly as the sequential scan did, across chunk boundaries.
 it('keeps deck pages and card history exact across read-ahead chunks and after an entry is rewritten', async () => {

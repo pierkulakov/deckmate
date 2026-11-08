@@ -24,7 +24,7 @@ const messages = defineText({
   cardNotFound: "Карточка не найдена.",
   dependencyHashRequired: "Для правки зависимостей нужна актуальная версия карточки. Обновите каталог и повторите действие.",
   legacyDependenciesReadOnly: "Зависимости legacy-карточки меняются правкой файла проекта; интерфейс их только читает.",
-  journeyDependenciesReadOnly: "Зависимости карты Journey задаёт сам Journey; отдельная правка недоступна.",
+  journeyDependenciesReadOnly: "Зависимости карточки Journey задаёт сам Journey; отдельная правка недоступна.",
   restoreCardFirst: "Сначала верните карточку из архива или удаления.",
   selfDependency: "Карточка не может ждать саму себя.",
 });

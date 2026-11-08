@@ -1,6 +1,15 @@
 .card-content-reading { display: flex; flex: 1; flex-direction: column; width: 100%; min-width: 0; }
+.card-edit-hints { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; min-width: 0; }
+.card-edit-insert { padding-inline: 0; }
+/* 2026-11-09: above the card focus mode (120), level with the editor command menu. */
+.card-edit-attachments { z-index: 160; width: min(340px, calc(100vw - 24px)); max-height: min(360px, var(--radix-dropdown-menu-content-available-height)); overflow-y: auto; }
+.card-edit-attachments-status { margin: 0; padding: 8px; color: var(--muted); font-size: 12px; line-height: 1.5; }
+.card-edit-attachment > svg { flex-shrink: 0; }
+.card-edit-attachment-info { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.card-edit-attachment-name { overflow-wrap: anywhere; }
+.card-edit-attachment-meta { color: var(--muted); font-size: 11px; overflow-wrap: anywhere; }
 .card-content-notice { color: var(--muted); font-size: 12px; line-height: 1.65; }
-.card-content-notice { padding: 11px 13px; border-radius: 6px; background: var(--warning-bg); color: var(--warning-ink); }
+.card-content-notice { padding: 4px 6px; border-radius: 0; background: var(--warning-bg); color: var(--warning-ink); }
 .card-content-heading { margin-bottom: 20px; }
 .card-content-heading .card-preview-title { margin-bottom: 0; }
 .card-content-reading-footer { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; margin-top: auto; padding-top: 24px; }

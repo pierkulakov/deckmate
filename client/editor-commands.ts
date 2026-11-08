@@ -39,6 +39,9 @@ const text = defineText({
   noDeck: 'No deck',
   image: 'Image',
   video: 'Video',
+  heading1: 'Heading 1', heading2: 'Heading 2', heading3: 'Heading 3', bullet: 'Bulleted list', numbered: 'Numbered list',
+  checkbox: 'Checkbox', quote: 'Quote', code: 'Code block', divider: 'Divider', table: 'Table 2×2', link: 'Link',
+  mention: 'Mention member', tag: 'Tag', emoji: 'Emoji', media: 'Image or video', human: 'Human', agent: 'Agent',
 }, {
   bulletDetail: '- пункт',
   numberedDetail: '1. пункт',
@@ -52,26 +55,29 @@ const text = defineText({
   noDeck: 'Без колоды',
   image: 'Изображение',
   video: 'Видео',
+  heading1: 'Заголовок 1', heading2: 'Заголовок 2', heading3: 'Заголовок 3', bullet: 'Маркированный список', numbered: 'Нумерованный список',
+  checkbox: 'Флажок', quote: 'Цитата', code: 'Блок кода', divider: 'Разделитель', table: 'Таблица 2×2', link: 'Ссылка',
+  mention: 'Упомянуть участника', tag: 'Тег', emoji: 'Эмодзи', media: 'Изображение или видео', human: 'Человек', agent: 'Агент',
 });
 
 function commands(): EditorCommand[] {
   const t = textNow(text);
   return [
-    { id: 'heading-1', label: 'Heading 1', detail: '#', icon: 'heading-1', keywords: 'h1 заголовок', insert: '# ' },
-    { id: 'heading-2', label: 'Heading 2', detail: '##', icon: 'heading-2', keywords: 'h2 заголовок', insert: '## ' },
-    { id: 'heading-3', label: 'Heading 3', detail: '###', icon: 'heading-3', keywords: 'h3 заголовок', insert: '### ' },
-    { id: 'bullet-list', label: 'Bulleted list', detail: t.bulletDetail, icon: 'bullet-list', keywords: 'ul список точки', insert: '- ' },
-    { id: 'numbered-list', label: 'Numbered list', detail: t.numberedDetail, icon: 'numbered-list', keywords: 'ol список номера', insert: '1. ' },
-    { id: 'checkbox', label: 'Checkbox', detail: '- [ ]', icon: 'checkbox', keywords: 'todo task чекбокс задача', insert: '- [ ] ' },
-    { id: 'quote', label: 'Quote', detail: t.quoteDetail, icon: 'quote', keywords: 'blockquote цитата', insert: '> ' },
-    { id: 'code', label: 'Code block', detail: '```', icon: 'code', keywords: 'код блок', insert: '```\n\n```', selection: [4, 4] },
-    { id: 'divider', label: 'Divider', detail: '---', icon: 'divider', keywords: 'hr разделитель', insert: '---\n' },
-    { id: 'table', label: 'Table 2×2', detail: t.tableDetail, icon: 'table', keywords: 'таблица', insert: '| A | B |\n| --- | --- |\n|   |   |\n|   |   |', selection: [2, 3] },
-    { id: 'link', label: 'Link', detail: t.linkDetail, icon: 'link', keywords: 'url ссылка', insert: `[${t.linkLabel}](https://)`, selection: [1, t.linkLabel.length + 1] },
-    { id: 'mention', label: 'Mention member', detail: t.mentionDetail, icon: 'member', keywords: 'упоминание участник', insert: '@' },
-    { id: 'tag', label: 'Tag', detail: t.tagDetail, icon: 'tag', keywords: 'тег метка', insert: '#' },
-    { id: 'emoji', label: 'Emoji', detail: ':', icon: 'emoji', keywords: 'эмодзи смайлик', insert: ':' },
-    { id: 'media', label: 'Image or video', detail: '!', icon: 'media', keywords: 'картинка видео изображение', insert: '!' },
+    { id: 'heading-1', label: t.heading1, detail: '#', icon: 'heading-1', keywords: 'heading 1 h1 заголовок', insert: '# ' },
+    { id: 'heading-2', label: t.heading2, detail: '##', icon: 'heading-2', keywords: 'heading 2 h2 заголовок', insert: '## ' },
+    { id: 'heading-3', label: t.heading3, detail: '###', icon: 'heading-3', keywords: 'heading 3 h3 заголовок', insert: '### ' },
+    { id: 'bullet-list', label: t.bullet, detail: t.bulletDetail, icon: 'bullet-list', keywords: 'bulleted list ul список точки', insert: '- ' },
+    { id: 'numbered-list', label: t.numbered, detail: t.numberedDetail, icon: 'numbered-list', keywords: 'numbered list ol список номера', insert: '1. ' },
+    { id: 'checkbox', label: t.checkbox, detail: '- [ ]', icon: 'checkbox', keywords: 'checkbox todo task чекбокс задача', insert: '- [ ] ' },
+    { id: 'quote', label: t.quote, detail: t.quoteDetail, icon: 'quote', keywords: 'quote blockquote цитата', insert: '> ' },
+    { id: 'code', label: t.code, detail: '```', icon: 'code', keywords: 'code block код блок', insert: '```\n\n```', selection: [4, 4] },
+    { id: 'divider', label: t.divider, detail: '---', icon: 'divider', keywords: 'divider hr разделитель', insert: '---\n' },
+    { id: 'table', label: t.table, detail: t.tableDetail, icon: 'table', keywords: 'table 2×2 таблица', insert: '| A | B |\n| --- | --- |\n|   |   |\n|   |   |', selection: [2, 3] },
+    { id: 'link', label: t.link, detail: t.linkDetail, icon: 'link', keywords: 'link url ссылка', insert: `[${t.linkLabel}](https://)`, selection: [1, t.linkLabel.length + 1] },
+    { id: 'mention', label: t.mention, detail: t.mentionDetail, icon: 'member', keywords: 'mention member упоминание участник', insert: '@' },
+    { id: 'tag', label: t.tag, detail: t.tagDetail, icon: 'tag', keywords: 'tag тег метка', insert: '#' },
+    { id: 'emoji', label: t.emoji, detail: ':', icon: 'emoji', keywords: 'emoji эмодзи смайлик', insert: ':' },
+    { id: 'media', label: t.media, detail: '!', icon: 'media', keywords: 'image or video картинка видео изображение', insert: '!' },
   ];
 }
 
@@ -100,7 +106,7 @@ export function getEditorOptions(trigger: EditorTrigger, catalog: CatalogView, m
   if (trigger.kind === 'command') return commands().filter(command => matchesQuery(`${command.label} ${command.keywords}`, trigger.query));
   if (trigger.kind === 'member') return (catalog.members ?? [])
     .filter(member => matchesQuery(`${member.label} ${member.id} ${member.aliases.join(' ')}`, trigger.query))
-    .map(member => ({ id: member.id, memberId: member.id, label: member.label, detail: member.kind === 'human' ? 'Human' : 'Agent', icon: 'member', insert: `@${member.label} ` }));
+    .map(member => ({ id: member.id, memberId: member.id, label: member.label, detail: member.kind === 'human' ? t.human : t.agent, icon: 'member', insert: `@${member.label} ` }));
   if (trigger.kind === 'tag') return collectProjectTags(catalog.cards, catalog.projectTags)
     .filter(tag => !/\s/u.test(tag.name) && matchesQuery(tag.name, trigger.query))
     .map(tag => ({ id: tag.name, label: `#${tag.name}`, detail: t.projectTag, icon: 'tag', insert: `#${tag.name} ` }));

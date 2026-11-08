@@ -15,8 +15,9 @@
 .card-history-event-body > p { margin: 0; font-size: 12px; line-height: 1.5; color: var(--ink); overflow-wrap: anywhere; }
 .card-history-details { margin: 5px 0 0; padding: 0; list-style: none; display: grid; gap: 3px; color: var(--muted); font-size: 11px; line-height: 1.55; }
 .card-history-details li { overflow-wrap: anywhere; }
-.card-history-details li > button { border: 0; padding: 0; background: transparent; color: var(--accent); text-align: left; font: inherit; text-decoration: underline; text-decoration-color: color-mix(in srgb, var(--accent) 35%, transparent); text-underline-offset: 3px; cursor: pointer; }
-.card-history-details li > button:hover { text-decoration-color: var(--accent); }
+/* 2026-11-08: the dark accent reads 2.94:1 on the history canvas (audit CP-10); the edit-link token stays above 4.5:1 on it in both themes. */
+.card-history-details li > button { border: 0; padding: 0; background: transparent; color: var(--edit-link); text-align: left; font: inherit; text-decoration: underline; text-decoration-color: color-mix(in srgb, var(--edit-link) 35%, transparent); text-underline-offset: 3px; cursor: pointer; }
+.card-history-details li > button:hover { text-decoration-color: var(--edit-link); }
 .card-history-more { margin: 10px 0 0; }
 .card-history-empty, .card-history-loading, .card-history-error { margin: 4px 0 0; color: var(--muted); font-size: 11px; line-height: 1.6; }
 .card-history-loading { display: flex; align-items: center; gap: 7px; }

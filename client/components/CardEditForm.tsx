@@ -1,10 +1,13 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode, type RefObject } from 'react';
-import { LoaderCircle } from 'lucide-react';
-import type { CatalogView } from '../../src/catalog-contracts.ts';
+import { FileText, Image, LoaderCircle, Paperclip } from 'lucide-react';
+import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
+import type { CardAttachment, CatalogView } from '../../src/catalog-contracts.ts';
 import type { DataSource } from '../../src/workspace-contracts.ts';
+import { attachmentMarkdown } from '../attachment-markdown.ts';
+import { fetchCardAttachments, formatAttachmentSize } from '../attachments.ts';
 import { parseEditorMarkdown, toggleEditorChecklist } from '../editor-checklists.ts';
 import { Markdown } from './Markdown.tsx';
-import { EditorCommandMenu } from './EditorCommandMenu.tsx';
+import { EditorCommandMenu, type EditorCommandHandle } from './EditorCommandMenu.tsx';
 import { defineText, useText } from '../i18n.ts';
 
 const text = defineText({
@@ -14,6 +17,12 @@ const text = defineText({
   preview: 'Preview',
   cancel: 'Cancel',
   save: 'Save',
+  insertAttachment: 'Insert attachment',
+  attachmentsLoading: 'Loading attachments…',
+  attachmentsEmpty: 'No attachments — add them in the attachments panel',
+  attachmentsFailed: 'Could not load attachments.',
+  retry: 'Try again',
+  attachmentMissing: 'File missing',
 }, {
   commandHintStart: 'Нажмите ',
   commandHintEnd: ', чтобы увидеть команды.',
@@ -21,6 +30,12 @@ const text = defineText({
   preview: 'Предпросмотр',
   cancel: 'Отмена',
   save: 'Сохранить',
+  insertAttachment: 'Вставить вложение',
+  attachmentsLoading: 'Загружаем вложения…',
+  attachmentsEmpty: 'Вложений нет — добавьте их в панели вложений',
+  attachmentsFailed: 'Не удалось загрузить вложения.',
+  retry: 'Повторить',
+  attachmentMissing: 'Файл отсутствует',
 });
 
 // Title and body travel as one text while editing; a leading '#' on the title line is optional.
@@ -37,13 +52,15 @@ export function splitDraft(text: string): { title: string; markdown: string } {
 
 // Cards and Journey steps share the same text editor:
 // hint row, one monospace Markdown box with the «/», «$», «#», «@» menus, footer Preview · Cancel Esc · Save Ctrl+Enter.
-export function CardEditForm({ draft, onDraftChange, catalog, source, path, writable, busy, saving = false, blocked = false,
+export function CardEditForm({ draft, onDraftChange, catalog, source, path, cardId, writable, busy, saving = false, blocked = false,
   saveLabel, textLabel, maxLength, hintActions, notice, cancelButton = true, confirmStrip, children, onSave, onCancel }: {
   draft: string;
   onDraftChange: (value: string) => void;
   catalog: CatalogView;
   source: DataSource;
   path?: string;
+  /** Only persisted cards have an attachment list; New Card and Journey instructions omit it. */
+  cardId?: string;
   writable: boolean;
   /** A write is in flight: the text and the footer wait for it. */
   busy: boolean;
@@ -68,6 +85,7 @@ export function CardEditForm({ draft, onDraftChange, catalog, source, path, writ
   const t = useText(text);
   const resolvedSaveLabel = saveLabel ?? t.save;
   const formRef = useRef<HTMLFormElement>(null);
+  const editorRef = useRef<EditorCommandHandle>(null);
   useTextFitsCard(formRef, draft, preview);
   const parts = splitDraft(draft);
   const textDisabled = !writable || busy || Boolean(confirmStrip);
@@ -87,7 +105,10 @@ export function CardEditForm({ draft, onDraftChange, catalog, source, path, writ
   }
 
   return <form ref={formRef} className="card-edit" onKeyDown={handleKeyDown} onSubmit={event => { event.preventDefault(); onSave(); }}>
-    <div className="card-edit-hint-row"><span className="card-edit-hint">{t.commandHintStart}<kbd>/</kbd> <kbd>Enter</kbd>{t.commandHintEnd}</span>{hintActions}</div>
+    <div className="card-edit-hint-row"><div className="card-edit-hints"><span className="card-edit-hint">{t.commandHintStart}<kbd>/</kbd> <kbd>Enter</kbd>{t.commandHintEnd}</span>
+      {cardId && path && <AttachmentInsertMenu key={`${source}:${cardId}`} source={source} cardId={cardId} disabled={textDisabled || preview}
+        onInsert={attachment => editorRef.current?.insert(attachmentMarkdown(path, attachment))} onFocusText={() => editorRef.current?.focus()} />}
+    </div>{hintActions}</div>
     {children}
     <div className="card-edit-box">
       {preview ? <div className="card-edit-preview"><h2 className="card-preview-title">{parts.title}</h2><Markdown tree={parseEditorMarkdown(parts.markdown)} rawMarkdown={parts.markdown} projectTags={catalog.projectTags} source={source} path={path} members={catalog.members} showChecklistCount cards={catalog.cards}
@@ -95,7 +116,7 @@ export function CardEditForm({ draft, onDraftChange, catalog, source, path, writ
           const updated = toggleEditorChecklist(parts.markdown, offset, checked);
           if (updated !== null) onDraftChange(draft.slice(0, draft.length - parts.markdown.length) + updated);
         }} /></div>
-        : <EditorCommandMenu value={draft} onChange={onDraftChange} catalog={catalog} disabled={textDisabled} label={textLabel} maxLength={maxLength} />}
+        : <EditorCommandMenu ref={editorRef} value={draft} onChange={onDraftChange} catalog={catalog} disabled={textDisabled} label={textLabel} maxLength={maxLength} />}
     </div>
     {notice && <p className="card-content-notice" role="status">{notice}</p>}
     {confirmStrip ?? <footer className="card-edit-footer">
@@ -106,6 +127,57 @@ export function CardEditForm({ draft, onDraftChange, catalog, source, path, writ
         <button type="submit" className="card-edit-save" disabled={!writable || busy || blocked || !parts.title}>{saving ? <><LoaderCircle size={14} className="spin" aria-hidden="true" /><span className="visually-hidden">{resolvedSaveLabel}</span></> : resolvedSaveLabel}</button></span>
     </footer>}
   </form>;
+}
+
+function AttachmentInsertMenu({ source, cardId, disabled, onInsert, onFocusText }: {
+  source: DataSource; cardId: string; disabled: boolean;
+  onInsert: (attachment: CardAttachment) => void; onFocusText: () => void;
+}) {
+  const t = useText(text);
+  const [open, setOpen] = useState(false);
+  const [files, setFiles] = useState<CardAttachment[] | null>(null);
+  const [failed, setFailed] = useState(false);
+  const [attempt, setAttempt] = useState(0);
+  const restoreTextFocus = useRef(true);
+  const visible = open && !disabled;
+  useEffect(() => {
+    if (!visible) return;
+    let active = true;
+    setFiles(null);
+    setFailed(false);
+    // 2026-11-09: reload on every opening so uploads made in the attachment panel appear without reopening the editor.
+    fetchCardAttachments(source, cardId).then(result => { if (active) setFiles(result.files); })
+      .catch(() => { if (active) setFailed(true); });
+    return () => { active = false; };
+  }, [visible, source, cardId, attempt]);
+  useEffect(() => { if (disabled) setOpen(false); }, [disabled]);
+
+  return <DropdownMenu.Root modal={false} open={visible} onOpenChange={next => {
+    if (next) { setFiles(null); setFailed(false); restoreTextFocus.current = true; }
+    setOpen(next);
+  }}>
+    <DropdownMenu.Trigger asChild><button type="button" className="card-edit-link card-edit-insert" disabled={disabled} title={t.insertAttachment}>
+      <Paperclip size={14} aria-hidden="true" />{t.insertAttachment}
+    </button></DropdownMenu.Trigger>
+    <DropdownMenu.Portal><DropdownMenu.Content className="dropdown card-edit-attachments" align="start" sideOffset={6} collisionPadding={12}
+      aria-label={t.insertAttachment} onKeyDown={event => event.stopPropagation()}
+      onEscapeKeyDown={event => { event.preventDefault(); event.stopPropagation(); setOpen(false); }}
+      onInteractOutside={() => { restoreTextFocus.current = false; }}
+      onCloseAutoFocus={event => { event.preventDefault(); if (restoreTextFocus.current) onFocusText(); }}>
+      <DropdownMenu.Label className="dropdown-label">{t.insertAttachment}</DropdownMenu.Label>
+      {failed ? <><p className="card-edit-attachments-status" role="alert">{t.attachmentsFailed}</p>
+        <DropdownMenu.Item className="dropdown-item" onSelect={event => { event.preventDefault(); setAttempt(value => value + 1); }}>{t.retry}</DropdownMenu.Item></>
+        : <>{files === null && <p className="card-edit-attachments-status" role="status">{t.attachmentsLoading}</p>}
+          {files?.length === 0 && <p className="card-edit-attachments-status" role="status">{t.attachmentsEmpty}</p>}
+          {files?.map(attachment => <DropdownMenu.Item key={attachment.file} className="dropdown-item card-edit-attachment" disabled={attachment.missing}
+            textValue={attachment.name} onSelect={() => onInsert(attachment)}>
+            {attachment.kind === 'image' ? <Image size={16} aria-hidden="true" /> : <FileText size={16} aria-hidden="true" />}
+            <span className="card-edit-attachment-info"><span className="card-edit-attachment-name">{attachment.name}</span>
+              <span className="card-edit-attachment-meta">{attachment.mime} · {formatAttachmentSize(attachment.bytes)}{attachment.missing && ` · ${t.attachmentMissing}`}</span></span>
+          </DropdownMenu.Item>)}
+        </>}
+    </DropdownMenu.Content></DropdownMenu.Portal>
+  </DropdownMenu.Root>;
 }
 
 const minimumTextHeight = 144;
@@ -128,9 +200,24 @@ function useTextFitsCard(formRef: RefObject<HTMLFormElement | null>, draft: stri
   }, [formRef]);
   useLayoutEffect(fit, [fit, draft, preview]);
   useEffect(() => {
-    window.addEventListener('resize', fit);
-    return () => window.removeEventListener('resize', fit);
-  }, [fit]);
+    const form = formRef.current;
+    if (!form) return;
+    let frame = 0;
+    function schedule() {
+      if (!frame) frame = requestAnimationFrame(() => { frame = 0; fit(); });
+    }
+    // 2026-11-08: the shell's measured cap can settle after the draft, and footer wrapping can change without a resize.
+    // Observe the panels even while mobile overflow is visible, so crossing the breakpoint uses the same fit.
+    const observer = new ResizeObserver(schedule);
+    const scroller = form.closest('.card-preview-panels') ?? cardScroller(form);
+    if (scroller) observer.observe(scroller);
+    observer.observe(form);
+    window.addEventListener('resize', schedule);
+    return () => {
+      observer.disconnect(); cancelAnimationFrame(frame);
+      window.removeEventListener('resize', schedule);
+    };
+  }, [fit, formRef]);
 }
 
 /** The nearest scrolling ancestor below the page itself. */

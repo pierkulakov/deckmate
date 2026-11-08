@@ -18,6 +18,8 @@ node scripts/prepare-deckmate.mjs
 
 The script runs `npm pack` in the deckmate repository (which builds `dist/`), writes the tgz into this folder, points `dependencies.deckmate` at it and runs `npm install`. By default it packs the repository one level up (this folder lives inside it); set `DECKMATE_REPO` to pack another checkout. Repeat it after every change to deckmate.
 
+For browser-based development of the main app, run `npm run dev` from the repository root instead: Vite serves the board at `http://127.0.0.1:4318/` with hot reload and proxies to the watched server. This does not run the Electron shell.
+
 ## Run
 
 ```sh
@@ -51,6 +53,7 @@ Both are in `%APPDATA%\Deckmate\`:
 - `main.js` — creates the window, finds a free port on `127.0.0.1`, forks the deckmate server as a `utilityProcess` and loads the board from it.
 - `preload.cjs` — exposes the `window.deckmateDesktop` bridge. Only the bundled launcher may call it.
 - `launcher/` — the start screen: open or create a project, pick from recent ones.
+- The board's project menu lists other recent projects for direct switching through the Desktop bridge; browser sessions do not have this bridge.
 - `build/` — application icons. `asar` is off, so the server files stay readable.
 
 ## Limitations

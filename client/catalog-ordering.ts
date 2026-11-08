@@ -9,9 +9,9 @@ const text = defineText({
   noState: 'No state', noRun: 'Not in Run', noMilestone: 'No milestone', noTags: 'Not tagged',
   noOwner: 'Unassigned', noHero: 'No Hero', noDeck: 'No deck', allCards: 'All Cards',
 }, {
-  heroes: 'Hero Cards', docs: 'Doc Cards', noPriority: 'Без приоритета', noEffort: 'Без Effort',
-  noState: 'Без состояния', noRun: 'Без Run', noMilestone: 'Без вехи', noTags: 'Без тегов',
-  noOwner: 'Без исполнителя', noHero: 'Без Hero', noDeck: 'Без колоды', allCards: 'Все карты',
+  heroes: 'Hero Cards', docs: 'Doc Cards', noPriority: 'Без приоритета', noEffort: 'Без оценки',
+  noState: 'Без состояния', noRun: 'Без Run', noMilestone: 'Без Milestone', noTags: 'Без тегов',
+  noOwner: 'Без исполнителя', noHero: 'Без Hero', noDeck: 'Без колоды', allCards: 'Все карточки',
 });
 
 /**

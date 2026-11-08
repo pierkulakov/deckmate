@@ -36,12 +36,12 @@
 :root { color-scheme: light; --font-sans: 'Source Sans 3', sans-serif; --canvas: #f4eef9; --surface: #fdfaff; --ground: #eee6f4; --sidebar: #e9e0f2; --ink: #2f2440; --muted: #6b587b; --line: #d5c5e5; --hover: #e8d9f3; --accent: #7443a6; --accent-soft: #ecdaf8; --focus: #8251ba; --danger: #b64267; --warning-bg: #f9edcf; --warning-ink: #80531c; --mark-back: #a184e0; --mark-front: #6538a3; --mark-pip: #e8ad2e; --edit-bg: #fbf8ff; --edit-line: #a38acb; --edit-link: #4a3a63; --edit-cancel: #b64267; --edit-hint: #6b587b; --edit-save: #7a5aae; --plum: #9c6acf; --champagne: #cb973c; --shadow: 0 8px 28px #30243812; --panel-gradient: linear-gradient(145deg, color-mix(in srgb, var(--surface) 93%, var(--plum)), var(--surface) 72%); --chrome-gradient: linear-gradient(120deg, color-mix(in srgb, var(--sidebar) 92%, var(--plum)), var(--sidebar) 58%, color-mix(in srgb, var(--sidebar) 96%, var(--champagne))); --tab-gradient: linear-gradient(145deg, color-mix(in srgb, var(--surface) 88%, var(--plum)), var(--surface) 75%); font-family: var(--font-sans); font-synthesis: none; }
 /* Dark is the default theme. */
 :root.dark { color-scheme: dark; --canvas: #322f40; --surface: #39354a; --ground: #27242f; --sidebar: #1c1a24; --chrome: #27242f; --ink: #edeef2; --muted: #cdc8dc; --line: #4a4560; --hover: #443f59; --accent: #9258e5; --accent-soft: #442b5d; --focus: #b79cf2; --danger: #ff8a80; --warning-bg: #4a3a22; --warning-ink: #fde793; --plum: #9258e5; --champagne: #f7e18e; --shadow: 0 10px 28px #0c0a1366; --scrim: color-mix(in srgb, #11151f 38%, transparent);
-  --tab-idle: #6e6884; --tab-idle-ink: var(--count-face); --tab-ink: #e2dcee; --mint: #a8eedf; --mint-ink: #0c5547; --mint-edge: #74dcc8; --mint-hover: #b2f0e3; --quote-bg: #0f3a35; --quote-bar: #a8eedf; --quote-edge: #2a8a7b; --hero-glow: #e5b65066; --hero-chip: #f4e4b8; --hero-step-empty: #24180a42; --gold-chip-ink: #9d5f00; --mark-back: #7a52d6; --mark-front: #b08af3; --mark-pip: #f5c24c;
+  --tab-idle: #6e6884; --tab-idle-ink: var(--count-face); --tab-ink: #e2dcee; --mint: #a8eedf; --mint-ink: #0c5547; --mint-edge: #74dcc8; --mint-hover: #b2f0e3; --quote-bg: #0f3a35; --quote-bar: #a8eedf; --quote-edge: #2a8a7b; --hero-glow: #e5b65066; --hero-chip: #f4e4b8; --hero-step-empty: #24180a42; --gold-chip-ink: #8a5300; --mark-back: #7a52d6; --mark-front: #b08af3; --mark-pip: #f5c24c;
   /* Card edit-mode tokens. */
   /* 2026-11-06: Save takes the --button-line violet #8362b1: white text on #9074bb reached 3.89:1, now 4.88:1. */
   --edit-bg: #2e1e34; --edit-line: #a38acb; --edit-link: #e7dff7; --edit-cancel: #e7a9ab; --edit-hint: #e3dff0; --edit-save: #8362b1;
   --panel-gradient: linear-gradient(var(--surface), var(--surface)); --chrome-gradient: linear-gradient(var(--chrome), var(--chrome)); --tab-gradient: linear-gradient(var(--canvas), var(--canvas));
-  --card-face: #322f40; --card-ink: #f9f9fa; --card-muted: #cdc8dc; --card-edge: #4a4560; --card-metal: #c6bee3; --card-metal-ink: #2b2540; --card-highlight: #7fd9c7; --hero-metal: #d8a944; --card-shadow: 0 2px 6px #0c0a1355; --card-hover-shadow: 0 6px 16px #0c0a1377;
+  --card-face: #322f40; --card-ink: #f9f9fa; --card-muted: #cdc8dc; --card-edge: #4a4560; --card-metal: #c6bee3; --card-metal-ink: #2b2540; --card-highlight: #7fd9c7; --hero-metal: #e8bd48; --card-shadow: 0 2px 6px #0c0a1355; --card-hover-shadow: 0 6px 16px #0c0a1377;
   /* Family panel tokens for Hero and Sub Cards; the light theme falls back to base tokens. */
   --card-strip: #968db6; --hero-strip: #e5b650; --card-icon-line: #5b5572; --card-meta-ink: #e3dff0; --button-line: #8362b1; --card-current-ring: #63e6cfd9; --card-row-shadow: 0 0 1px #0000003d, 0 1.5px 9px #0000003d;
   /* Journey tokens cover the sea, step waves and hazard frame; the light theme falls back to base tokens. */
@@ -52,7 +52,7 @@
 /* Shared card material keeps the same identity in Decks, Board and Hand. */
 /* Light cards use a #fff face, .67 px #cdc8dc edge, #2a2440 text and #cdc8dc Task band. Dark cards keep their dark face. Image overlays use a fixed pair (--overlay-*). */
 /* 2026-11-06: --scrim backs every dialog. The light theme veils the page with the palette's violet-black (as Deck settings does), so the page under a dialog stays lilac instead of turning cold gray; the dark theme overrides it with a navy veil. --scrim-heavy is the image viewer's near-black field in both themes. */
-:root { --card-face: #ffffff; --card-ink: #2a2440; --card-muted: #514a66; --card-edge: #cdc8dc; --card-metal: #cdc8dc; --card-metal-ink: #40465a; --overlay-ink: #f9f9fa; --overlay-face: #322f40; --hero-metal: #e8c062; --hero-ink: #24180a; --hero-sheen: #fff2c8; --hero-strip: #bf8f34; --hero-chip: #f4e4b8; --hero-step-empty: #fcf9ea99; --doc-metal: #9bd4c7; --accepted-metal: #34a865; --accepted-metal-ink: #ffffff; --card-highlight: #2b9e7f; --card-shadow: 0 5px 12px #18213624; --card-hover-shadow: 0 9px 20px #18213638; --kind-hero-bg: #f4e7c6; --kind-hero-ink: #876125; --kind-task-bg: #c5d9ed; --kind-task-ink: #1d4873; --kind-doc-bg: #f6e3a6; --kind-doc-ink: #9d5f00; --quote-bg: #e2f7ef; --quote-bar: #2fae97; --quote-edge: #74dcc8; --count-face: #ffffff; --count-foot: #e2dcee; --count-ink: #4c5060; --cover-window: #1c1a24; --motion-feedback: 150ms; --scrim: color-mix(in srgb, #24182d 40%, transparent); --scrim-heavy: #080b12cc; --busy-dim-delay: 300ms; --motion-material: 220ms; --ease-out: cubic-bezier(.16, 1, .3, 1); }
+:root { --card-face: #ffffff; --card-ink: #2a2440; --card-muted: #514a66; --card-edge: #cdc8dc; --card-metal: #cdc8dc; --card-metal-ink: #40465a; --overlay-ink: #f9f9fa; --overlay-face: #322f40; --hero-metal: #edc451; --hero-ink: #24180a; --hero-sheen: #fff4c2; --hero-strip: #bf8f34; --hero-chip: #f4e4b8; --hero-step-empty: #fcf9ea99; --doc-metal: #9bd4c7; --accepted-metal: #34a865; --accepted-metal-ink: #102016; --card-highlight: #2b9e7f; --card-shadow: 0 5px 12px #18213624; --card-hover-shadow: 0 9px 20px #18213638; --kind-hero-bg: #f4e7c6; --kind-hero-ink: #876125; --kind-task-bg: #c5d9ed; --kind-task-ink: #1d4873; --kind-doc-bg: #f6e3a6; --kind-doc-ink: #9d5f00; --quote-bg: #e2f7ef; --quote-bar: #2fae97; --quote-edge: #74dcc8; --count-face: #ffffff; --count-foot: #e2dcee; --count-ink: #4c5060; --cover-window: #1c1a24; --motion-feedback: 150ms; --scrim: color-mix(in srgb, #24182d 40%, transparent); --scrim-heavy: #080b12cc; --busy-dim-delay: 300ms; --motion-material: 220ms; --ease-out: cubic-bezier(.16, 1, .3, 1); }
 /* 2026-11-06: Decks home. The cover rim lights the deck color the same in both themes; the lift and the pulse strip follow the page. */
 :root { --cover-rim: inset 0 1px 0 rgb(255 255 255 / .32), inset 0 0 0 1px rgb(255 255 255 / .1); --cover-lift: 0 1px 0 rgb(48 36 56 / .2), 0 10px 20px -10px rgb(48 36 56 / .5); --cover-progress: #a6f2c8;
   --pulse-face: var(--surface); --pulse-bar: #52917a; --pulse-today: #2b9e7f; --pulse-track: #e8dff0; }
@@ -98,16 +98,30 @@ button:disabled { cursor: default; opacity: .5; transition: opacity var(--motion
 button, a { -webkit-tap-highlight-color: transparent; }
 a { color: inherit; }
 :focus-visible { outline: 2px solid var(--focus); outline-offset: 3px; }
+/* 2026-11-09: text entry shows focus by its caret and its own border; the global ring would draw a second frame around it
+   (author: «по каретке понятно, что от меня ожидают ввод»). Selects, checkboxes and buttons keep the ring. */
+:is(input:not([type="checkbox"], [type="radio"], [type="range"], [type="color"], [type="file"], [type="button"], [type="submit"], [type="reset"]), textarea):focus-visible { outline: none; }
 button, a { transition: background-color var(--motion-feedback), color var(--motion-feedback), border-color var(--motion-feedback), opacity var(--motion-feedback); }
 ::selection { background: var(--accent-soft); }
 .dark ::selection { background: var(--accent); color: var(--surface); }
-:root { scrollbar-color: var(--line) var(--canvas); scrollbar-width: thin; }
+/* 2026-11-08: scrollbar-width is not inherited, so every inner scrollport needs the shared material. */
+* { scrollbar-color: var(--line) transparent; scrollbar-width: thin; }
+@supports selector(::-webkit-scrollbar) {
+  /* Chromium ignores the custom parts when either standard property is non-auto, including local thin rules. */
+  * { scrollbar-color: auto !important; scrollbar-width: auto !important; }
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track, ::-webkit-scrollbar-corner { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--line); border-radius: 3px; }
+  ::-webkit-scrollbar-button { display: none; width: 0; height: 0; }
+  /* Scrollports that hide their bar on purpose (tab strip, neighbour shelf, panels with their own fade) keep it hidden;
+     a new hidden scrollport joins this list, or the reset above brings its bar back. */
+  :is(.global-tabs, .deck-neighbor-rail, .deck-choice-list, .card-properties-slot, .deck-summary.deck-narrow-panel) { scrollbar-width: none !important; }
+}
 /* 2026-11-05: flat key-hint chips invert to dark ink in light mode; a light chip reached only 1.05:1 on light fields.
    Top-bar tabs keep a mid-tone idle fill with light text, accent hover and page-color active fill with ink. */
 :root { --kbd-face: var(--ink); --kbd-ink: var(--surface); --tab-idle: var(--muted); --tab-idle-ink: var(--surface); --tab-ink: var(--ink); --tab-hover: var(--accent); --tab-hover-ink: var(--surface); }
 :root.dark { --kbd-face: #eceef3; --kbd-ink: #27242f; --tab-hover: var(--hover); --tab-hover-ink: var(--ink); }
 kbd { display: inline-flex; align-items: center; justify-content: center; min-width: 16px; height: 16px; padding: 0 4px; border: 0; border-radius: 3px; background: var(--kbd-face); color: var(--kbd-ink); font: 600 10px/1 var(--font-sans); letter-spacing: .02em; vertical-align: middle; box-shadow: none; white-space: nowrap; }
-.dark { scrollbar-color: #66718a #222838; }
 .dark .button-outline:hover:not(:disabled), .dark .source-switch:hover { border-color: #505967; }
 .dark .button-default:hover:not(:disabled) { background: var(--focus); color: var(--sidebar); opacity: 1; }
 .ui-button { transition: background-color var(--motion-feedback), color var(--motion-feedback), border-color var(--motion-feedback), filter var(--motion-feedback), transform var(--motion-feedback) var(--ease-out); }
@@ -122,7 +136,8 @@ kbd { display: inline-flex; align-items: center; justify-content: center; min-wi
 .source-switch { display: flex; align-items: center; gap: 7px; white-space: nowrap; border: 1px solid var(--line); border-radius: 5px; padding: 6px 9px; font-size: 11px; color: var(--muted); background: transparent; }
 .source-switch.sandbox { background: var(--warning-bg); color: var(--warning-ink); border-color: transparent; }
 .source-switch:hover { border-color: var(--muted); }
-.workspace-main { overflow: auto; min-height: 0; flex: 1; scroll-behavior: smooth; scroll-padding-top: 32px; scrollbar-gutter: stable; } /* Reserve scrollbar space so the layout stays stable when it appears. */
+/* 2026-11-08: contain absolute descendants (including accessible hidden text) in the workspace's own scroll area. */
+.workspace-main { position: relative; overflow: auto; min-height: 0; flex: 1; scroll-behavior: smooth; scroll-padding-top: 32px; scrollbar-gutter: stable; } /* Reserve scrollbar space so the layout stays stable when it appears. */
 /* 2026-11-06: an empty open deck has no scrollbar; reserving its gutter left a blank strip beside the full-width toolbar. */
 .workspace-main:has(> .catalog-view.is-deck-open) { scrollbar-gutter: auto; }
 /* 2026-11-05: the fixed notifications corner publishes the height it covers (Notifications.tsx); the scroll end clears it, so the last
@@ -226,9 +241,10 @@ kbd { display: inline-flex; align-items: center; justify-content: center; min-wi
 :root.dark { --tile-highlight: #63e6cf; }
 /* Mint shows on hover and keyboard focus only; a mouse click must not leave the card glowing. */
 .deck-card-space:hover .deck-card:where(:not(:has(.deck-card-open:disabled))), .deck-card:has(:focus-visible) { border-color: var(--tile-highlight); box-shadow: 0 0 0 1px color-mix(in srgb, var(--tile-highlight) 44%, transparent), 0 0 12px color-mix(in srgb, var(--tile-highlight) 19%, transparent); }
+.deck-card:has(.deck-card-open:focus-visible) { outline: 2px solid var(--focus); outline-offset: 3px; }
 .deck-card-open { position: relative; z-index: 2; display: flex; flex-direction: column; flex: 1; min-height: 0; width: 100%; text-align: left; border: 0; background: none; color: inherit; padding: 8px 7px 5px; border-radius: 4px 4px 0 0; }
 .deck-card-title { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; font-weight: 500; font-size: 14px; line-height: 17px; letter-spacing: -.2px; overflow-wrap: anywhere; }
-/* The satin finish, border tone and glare underlay come from card-material.css; the matte top stays flat. */
+/* The satin finish, shadowed seam and reflection overlay come from card-material.css; the matte top stays flat. */
 .deck-card-band { position: relative; isolation: isolate; z-index: 2; flex-shrink: 0; color: var(--card-metal-ink); border-radius: 0 0 4px 4px; padding: 3px 7px; border-top: 1px solid; }
 /* Completion belongs to the footer; hover/selection and the Hero strip keep their own meaning. */
 .deck-state-accepted > .deck-card-band { --metal-base: var(--accepted-metal); --card-metal-ink: var(--accepted-metal-ink); }
@@ -237,10 +253,11 @@ kbd { display: inline-flex; align-items: center; justify-content: center; min-wi
 /* 2026-11-06: the tile's mint edge above is the one focus ring; an outline on the open button framed only the title area
    inside it and doubled the ring. */
 .deck-card-open:focus-visible { outline: none; }
-.deck-card > .card-family-trigger { position: absolute; z-index: 5; top: 0; inset-inline: 0; width: 100%; max-width: none; height: 20px; min-height: 20px; padding: 3px 7px; border: 0; border-radius: 4px 4px 0 0; background: linear-gradient(100deg, var(--hero-metal), color-mix(in srgb, var(--hero-metal) 94%, var(--hero-sheen))); color: var(--hero-ink); font-size: 12px; font-weight: 600; line-height: 14px; transition: filter var(--motion-feedback); }
-.deck-card > .card-family-trigger:hover:not(:disabled) { filter: brightness(1.06); }
+.deck-card > .card-family-trigger { --material-position: absolute; position: absolute; z-index: 5; top: 0; inset-inline: 0; width: 100%; max-width: none; height: 18px; min-height: 18px; padding: 2px 2px 2px 7px; border: 0; border-radius: 4px 4px 0 0; color: var(--hero-ink); font-size: 9.5px; font-weight: 600; line-height: 14px; letter-spacing: 0; }
+/* 2026-11-08: reserve the checkbox's 10px intrusion plus 4px in every state, so affiliation never jumps on hover. */
+.deck-card:has(> .catalog-card-checkbox) > .card-family-trigger { padding-left: 14px; }
 .deck-card > .card-family-trigger:focus-visible { outline: 2px solid var(--hero-ink); outline-offset: -2px; }
-.deck-card:has(> .card-family-trigger) .deck-card-open { padding-top: 25px; }
+.deck-card:has(> .card-family-trigger) .deck-card-open { padding-top: 24px; }
 @media (max-width: 760px) { .deck-view { padding: 27px 20px 40px; } .deck-heading { align-items: start; flex-direction: column; gap: 18px; } }
 @media (prefers-reduced-motion: reduce) { .deck-card { transform: none !important; } .deck-card > .card-family-trigger { transition: none; } }
 .inline-error { color: var(--danger); padding: 8px 12px; font-size: 12px; }
@@ -282,7 +299,12 @@ kbd { display: inline-flex; align-items: center; justify-content: center; min-wi
 /* Opened card: the strongest mint ring; hover and focus stay at 1px / 12px (see .deck-card). */
 .catalog-card-grid .deck-card.is-selected { border-color: var(--tile-highlight); box-shadow: 0 0 0 2px color-mix(in srgb, var(--tile-highlight) 85%, transparent), 0 0 18px color-mix(in srgb, var(--tile-highlight) 38%, transparent); }
 .catalog-card-doc .deck-card-band { --metal-base: var(--doc-metal); }
-.catalog-card-doc .deck-card-identity strong { font-family: var(--font-sans); }
+/* 2026-11-08: Doc type stays left and questions right, leaving the centered Owner clear; attachments sit below it. */
+.catalog-card-doc .deck-card-identity { display: grid; grid-template-columns: 18px minmax(27px, 1fr) auto; min-height: 18px; }
+.deck-card-doc-kind { grid-column: 1; }
+.catalog-card-doc .deck-card-identity > .catalog-card-open-questions { grid-column: 3; }
+.catalog-card-doc .catalog-card-progress { display: flex; align-items: center; justify-content: space-between; gap: 4px; }
+.deck-card-doc-caption { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .catalog-card-hero .deck-card-band { --metal-base: var(--hero-metal); --card-metal-ink: var(--hero-ink); }
 /* 2026-11-06: a Hero whose Sub Cards are all finished wears the done band; its progress steps turn white on the green. */
 .catalog-card-hero.is-family-done > .deck-card-band { --metal-base: var(--accepted-metal); --card-metal-ink: var(--accepted-metal-ink); --metal-sheen: #ffffff; }
@@ -411,13 +433,23 @@ kbd { display: inline-flex; align-items: center; justify-content: center; min-wi
 .catalog-view-toggle .ui-button { height: 25px; padding-inline: 7px; font-size: 10px; }
 .catalog-panel-controls .ui-button { height: 26px; font-size: 10px; }.catalog-panel-controls .button-size-icon { width: 26px; }
 .catalog-result-summary { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 27px; color: var(--muted); font-size: 10px; margin-bottom: 4px; }.catalog-result-summary .ui-button { height: 24px; font-size: 10px; }
-/* 2026-11-06: selection overlaps the card corner so the title and family strip keep their full width; the light face matches the card-selection reference in both themes. */
+/* 2026-11-08: selection overlaps the corner; the family strip reserves its text inset above. */
 .catalog-card-checkbox { --check-face: #fff; position: absolute; z-index: 6; top: -6px; left: -6px; opacity: 0; cursor: pointer; transition: opacity var(--motion-feedback); }
 .deck-card-space:hover .catalog-card-checkbox, .deck-card:has(:focus-visible) .catalog-card-checkbox, .catalog-card-checkbox:checked { opacity: 1; }
+/* 2026-11-08 (NW-03): the 16px tile checkbox keeps its visible square and center; the ::after adds a transparent
+   24×24 target above the face (z-index 6); -5px covers the input's 1px border. On family cards the extra area reaches
+   only the trigger's reserved 14px inset. */
+.catalog-card-checkbox::after { content: ''; position: absolute; inset: -5px; }
 @media (hover: none) { .catalog-card-checkbox { opacity: 1; } }
-/* Same specificity as hover and .is-selected and later in the file: a checked card keeps its frame under the pointer. */
-.catalog-card-grid .deck-card.is-multi-selected { border-color: var(--check-on-edge); background: color-mix(in srgb, var(--card-face) 92%, var(--ground)); transform: translateY(2px); box-shadow: inset var(--card-shadow); }
+/* 2026-11-08: checked cards stay recessed under the pointer; the frame covers metal without blocking its controls.
+   Checking also flattens the hover tilt. The 220ms expo ease that follows the pointer made that read as icons jumping,
+   so the press settles over a longer, gentler curve. */
+.catalog-card-grid .deck-card.is-multi-selected { border-color: var(--check-on-edge); background: color-mix(in srgb, var(--check-on-face) 18%, var(--card-face)); transform: translateY(3px); box-shadow: inset 0 4px 8px -3px #0c0a1380; transition: transform 420ms cubic-bezier(.33, 1, .68, 1), box-shadow var(--motion-material), border-color var(--motion-feedback); }
+.catalog-card-grid .deck-card.is-multi-selected::after { content: ''; position: absolute; inset: -1px; z-index: 5; border: 2px solid var(--check-on-edge); border-radius: 5px; pointer-events: none; }
+.catalog-card-grid .deck-card.is-multi-selected > .deck-card-band { filter: saturate(.85) brightness(.92); }
+.catalog-card-grid .deck-card.is-multi-selected.is-selected { box-shadow: inset 0 4px 8px -3px #0c0a1380, 0 0 0 2px color-mix(in srgb, var(--tile-highlight) 85%, transparent), 0 0 18px color-mix(in srgb, var(--tile-highlight) 38%, transparent); }
 .catalog-card-grid .deck-card.is-multi-selected:has(.deck-card-open:focus-visible) { outline: 2px solid var(--focus); outline-offset: 3px; }
+@media (prefers-reduced-motion: reduce) { .catalog-card-grid .deck-card.is-multi-selected { transform: translateY(3px) !important; transition: none; } }
 .catalog-selection-dock { margin-bottom: 12px; background: var(--ground); }
 .catalog-view[data-selection-sticky="true"] > .catalog-selection-dock { position: sticky; top: var(--deck-sticky-offset, 0px); z-index: 20; }
 @media (max-width: 1000px) { .catalog-browser-navigation { grid-template-columns: auto 1fr; gap: 14px; }.catalog-track-picker { grid-column: 1 / -1; max-width: 480px; } }
@@ -436,12 +468,13 @@ kbd { display: inline-flex; align-items: center; justify-content: center; min-wi
 /* 2026-11-05: deck settings use the existing light palette. All deck switches share one off-track token: muted in light mode (5.22:1 on ground), #514a66 from :root.dark in dark mode. */
 :root { --toggle-off: var(--muted); --deck-settings-toggle-line: var(--muted); --deck-settings-surface: var(--surface); --deck-settings-label: var(--ink); --deck-settings-input: var(--edit-bg); --deck-settings-input-ink: var(--ink); --deck-settings-focus: var(--focus); --deck-settings-preview: var(--ground); --deck-settings-art-row: var(--sidebar); --deck-settings-scrim: #24182d66; --deck-settings-shadow: 0 0 1px #3024383d, 0 2.5px 15px #3024383d; }
 :root.dark { --deck-settings-toggle-line: transparent; --deck-settings-surface: #322f40; --deck-settings-label: #e3dff0; --deck-settings-input: #250b35; --deck-settings-input-ink: #f1ebfc; --deck-settings-focus: #6695ec; --deck-settings-preview: #1c1a24; --deck-settings-art-row: #514a66cc; --deck-settings-scrim: #0c0a1380; --deck-settings-shadow: 0 0 1px #0000003d, 0 2.5px 15px #0000003d; }
-/* The logo opens a 336 px left menu over the page without dimming it: project at the top, 45 px app-action rows at the bottom and connection status in the footer. */
+/* 2026-11-08: the 336 px desktop menu fills phone widths, so no clipped, apparently active chrome peeks out beside it. */
 .mission-control-trigger { width: 34px; height: 34px; padding: 0; }
 .mission-control-trigger .deckmate-mark { width: 24px; height: 24px; }
 .mission-control-overlay { position: fixed; inset: 0; z-index: 90; background: transparent; }
 .mission-control { position: fixed; inset: 0 auto 0 0; z-index: 91; display: flex; flex-direction: column; width: min(336px, 100vw); color: var(--ink); background: var(--sidebar); box-shadow: 0 0 1px #0000003d, 0 2.5px 15px #0000003d; --sheet-from: -100% 0; animation: sheet-slide var(--motion-spring-firm) var(--ease-spring-firm); }
 .mission-control:focus { outline: none; }
+@media (max-width: 480px) { .mission-control { width: 100vw; } }
 /* 2026-11-06: the head repeats the 52px top bar so the mark stays exactly over the trigger's mark (13,14) and the bottom line continues the bar's line;
    the 1px top padding balances the bottom border. */
 .mission-control-head { display: flex; align-items: center; gap: 10px; height: 52px; padding: 1px 10px 0 13px; border-bottom: 1px solid var(--line); }
@@ -450,10 +483,38 @@ kbd { display: inline-flex; align-items: center; justify-content: center; min-wi
 .mission-control-project { padding: 16px; }
 .mission-control-project > h2 { margin: 0 0 12px; color: var(--muted); font-size: 12px; font-weight: 700; line-height: 14px; letter-spacing: .24px; text-transform: uppercase; }
 .mission-control-project-row { display: flex; align-items: center; gap: 10px; padding: 8px; border-radius: 6px; background: var(--ground); }
-.mission-control-avatar { display: grid; place-items: center; flex: 0 0 32px; width: 32px; height: 32px; border: 1px solid var(--line); border-radius: 5px; background: var(--surface); font-weight: 600; }
 .mission-control-project-row div { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
 .mission-control-project-row strong { overflow: hidden; font-size: 14px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
 .mission-control-project-row span { color: var(--muted); font-size: 12px; }
+/* 2026-11-08: the avatar remains only on the current project row in a browser (no bridge); with the bridge both rows wear a tile. */
+.mission-control-avatar { display: grid; place-items: center; flex: 0 0 32px; width: 32px; height: 32px; border: 1px solid var(--line); border-radius: 5px; background: var(--surface); font-weight: 600; }
+/* 2026-11-08: a miniature deck cover per project — the same cast 165deg tile as the launcher's recent list
+   (desktop/launcher/launcher.css .recent-tile), 32×42 instead of 40×52 to fit the narrow menu panel. The dark
+   window is the cover token; the rim, lift and card shadow are the client's own cover material. */
+.mission-control-recent-tile { position: relative; overflow: hidden; flex: 0 0 32px; width: 32px; height: 42px; border-radius: 4px; background: linear-gradient(165deg, color-mix(in srgb, var(--tile) 78%, #ffffff), var(--tile) 55%, color-mix(in srgb, var(--tile) 70%, #000000)); box-shadow: var(--cover-rim), var(--card-shadow); }
+.mission-control-recent-tile::before { content: ''; position: absolute; left: 3px; right: 3px; top: 3px; height: 19px; border-radius: 2px; background: color-mix(in srgb, var(--cover-window) 82%, var(--tile)); }
+.mission-control-recent-tile::after { content: ''; position: absolute; left: 5px; bottom: 4px; width: 14px; height: 3px; border-radius: 1.5px; background: #ffffffb0; }
+/* A switch in flight spins over the tile in the covers' white ink, like the kind badges on deck covers. */
+.mission-control-recent-tile > .spin { position: absolute; inset: 0; margin: auto; color: #fff; }
+/* 2026-11-08: Deckmate Desktop's bridge adds the other recent projects under the current one. The bounded list scrolls
+   inside the panel so the app menu below stays on screen; hover/focus match the menu rows. */
+.mission-control-recent { display: flex; flex-direction: column; gap: 6px; margin-top: 10px; }
+.mission-control-recent-list { display: flex; flex-direction: column; gap: 4px; max-height: 244px; margin: 0; padding: 0; list-style: none; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; }
+.mission-control-recent-list .mission-control-project-row { width: 100%; border: 0; color: var(--ink); background: var(--ground); font: inherit; text-align: left; cursor: pointer; transition: background-color var(--motion-feedback) var(--ease-out); }
+.mission-control-recent-list .mission-control-project-row:hover:not(:disabled) { background: var(--hover); }
+.mission-control-recent-list .mission-control-project-row:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
+.mission-control-recent-list .mission-control-project-row:disabled { cursor: default; }
+.mission-control-recent-row > div { flex: 1; }
+/* 2026-11-08: time has its own line; unusually wide path glyphs wrap rather than clipping the preserved folder suffix again. */
+.mission-control-recent-path { overflow-wrap: anywhere; }
+/* The relative time reads as a number, so it takes the counters' mono face with tabular digits, as on the launcher.
+   No font: shorthand — the minifier reorders declarations, and the shorthand would reset font-variant-numeric after it. */
+.mission-control-recent-time { flex: 0 0 auto; color: var(--muted); font-family: 'Geist Mono', monospace; font-size: 12px; font-weight: 500; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.mission-control-recent-failure { margin: 0; color: var(--danger); font-size: 12px; line-height: 1.45; overflow-wrap: anywhere; }
+.mission-control-recent-open { display: inline-flex; align-items: center; gap: 6px; align-self: flex-start; margin: 0 0 0 8px; border: 0; padding: 2px 0; color: var(--muted); background: transparent; font-size: 12px; text-decoration: underline; text-decoration-color: color-mix(in srgb, currentColor 35%, transparent); text-underline-offset: 3px; cursor: pointer; }
+.mission-control-recent-open:hover:not(:disabled) { color: var(--ink); }
+.mission-control-recent-open:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.mission-control-recent-open:disabled { cursor: default; }
 .mission-control-menu { display: flex; flex-direction: column; margin-top: auto; padding: 8px 0; border-top: 1px solid var(--line); }
 .mission-control-menu button { display: flex; align-items: center; gap: 12px; min-height: 45px; padding: 0 16px; border: 0; color: var(--ink); background: transparent; font-size: 15px; text-align: left; cursor: pointer; transition: background-color var(--motion-feedback) var(--ease-out); }
 .mission-control-menu button > svg { flex: 0 0 auto; color: var(--muted); }
@@ -463,6 +524,6 @@ kbd { display: inline-flex; align-items: center; justify-content: center; min-wi
 .mission-control-menu button:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
 /* The menu row sets cursor: pointer at the same weight as the global button:disabled, so only the cursor needs restoring. */
 .mission-control-menu button:disabled { cursor: default; }
-.mission-control-menu button.is-destructive, .mission-control-menu button.is-destructive > svg { color: var(--danger); }
+.mission-control-menu button.is-destructive, .mission-control-menu button.is-destructive > svg { color: light-dark(#9c3358, var(--danger)); }
 .mission-control-foot { display: flex; align-items: center; gap: 7px; padding: 12px 16px 14px; border-top: 1px solid var(--line); color: var(--muted); font-size: 11px; }
 @media (prefers-reduced-motion: reduce) { .mission-control { animation: none; } .mission-control-menu button { transition: none; } }

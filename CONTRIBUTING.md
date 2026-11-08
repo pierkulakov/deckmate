@@ -33,6 +33,8 @@ npm test             # vitest suites
 npm run check        # optional parser cross-check; needs a project with Tools/board.py and Python
 npm run build        # production build
 npm start            # local server from dist/ (after npm run build) → http://127.0.0.1:4317/
+npm run dev          # HMR at http://127.0.0.1:4318/, server on 4317; accepts deckmate arguments
+npm run dev -- --data ../deckmate-demo
 npm run quiet -- <command>   # short output; the full log goes to .deckmate/quiet/
 ```
 

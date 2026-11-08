@@ -48,7 +48,7 @@
 .journey-mini { position: relative; display: flex; flex-direction: column; width: 115px; height: 146px; padding: 0; overflow: hidden; border: 0; border-radius: 5px; color: var(--card-ink); background: var(--card-face); box-shadow: var(--card-shadow); text-align: left; font: inherit; }
 .journey-mini > strong { display: -webkit-box; flex: 1 1 auto; min-height: 0; -webkit-line-clamp: 5; -webkit-box-orient: vertical; overflow: hidden; padding: 12px 8px 0; font-size: 14px; font-weight: 400; line-height: 17px; overflow-wrap: anywhere; }
 button.journey-mini { cursor: pointer; }
-button.journey-mini:hover:not(:disabled), .journey-mini[aria-pressed="true"] { box-shadow: 0 0 0 1px var(--focus), var(--card-hover-shadow); }
+button.journey-mini:hover:not(:disabled), .journey-mini[aria-pressed="true"] { box-shadow: 0 0 0 1px color-mix(in srgb, var(--tile-highlight) 70%, transparent), var(--card-hover-shadow); }
 button.journey-mini:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 .journey-mini-state { display: flex; flex-shrink: 0; padding: 0 8px 7px; color: var(--card-muted); }
 .journey-mini-band { display: flex; flex: 0 0 26px; align-items: center; justify-content: space-between; gap: 6px; padding: 0 8px; background: var(--journey-band, color-mix(in srgb, var(--accent) 38%, var(--card-face))); color: var(--card-ink); }

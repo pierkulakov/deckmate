@@ -25,6 +25,7 @@
 .server-status-labels > span { grid-area: 1 / 1; justify-self: start; color: color-mix(in srgb, var(--server-color) 72%, var(--ink)); opacity: 0; transform: translateY(3px);
   transition: opacity var(--motion-feedback) var(--ease-out), transform var(--motion-material) var(--ease-out), color var(--motion-material) var(--ease-out); }
 .server-status-labels > span.is-active { opacity: 1; transform: none; }
+:root:not(.dark) .server-status.is-live .server-status-labels > span.is-active { color: color-mix(in srgb, var(--server-live) 50%, var(--ink)); }
 
 .server-status.is-saving .server-status-dot { animation: server-status-breathe 900ms ease-in-out infinite; }
 .server-status.is-reconnecting .server-status-dot { animation: server-status-breathe 1.4s ease-in-out infinite; }

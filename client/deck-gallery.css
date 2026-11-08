@@ -29,9 +29,13 @@
 /* Space headings are 48px with 12px padding; the 14/400 title and edit button sit together, with rows 12px apart. */
 .deck-gallery .catalog-spaces { display: flex; flex-direction: column; gap: 12px; }
 .deck-gallery .catalog-space { margin: 0; }
-.deck-gallery .catalog-space-heading { justify-content: flex-start; gap: 8px; min-height: 48px; margin: 0; padding: 12px; border: 0; border-radius: 0; background: none; }
-.deck-gallery .catalog-space-heading h2 > button { gap: 8px; min-height: 24px; padding: 0; font-size: 14px; font-weight: 400; line-height: 16px; color: var(--ink); }
-.deck-gallery .catalog-space-heading h2 > button > span { font-weight: 400; }
+.deck-gallery .catalog-space-heading { align-items: flex-start; justify-content: flex-start; gap: 8px; min-height: 48px; margin: 0; padding: 12px; border: 0; border-radius: 0; background: none; }
+/* 2026-11-08: only the title wraps; icons and the pencil keep the first line's 24px axis. */
+.deck-gallery .catalog-space-heading h2 > button { align-items: flex-start; flex-wrap: nowrap; gap: 8px; max-width: 100%; min-height: 24px; padding: 0; font-size: 14px; font-weight: 400; line-height: 16px; color: var(--ink); }
+.deck-gallery .catalog-space-heading h2 > button > span { flex: 1; min-width: 0; padding-block: 4px; font-weight: 400; }
+.deck-gallery .catalog-space-heading h2 > button > svg { margin-top: 3.5px; }
+/* Search disables collapsing, not the heading's information. */
+.deck-gallery .catalog-space-heading h2 > button:disabled { opacity: 1; }
 .deck-gallery .catalog-space-actions { flex-shrink: 0; opacity: .7; transition: opacity var(--motion-feedback); }
 .deck-gallery .catalog-space-heading:hover .catalog-space-actions, .deck-gallery .catalog-space-actions:focus-within { opacity: 1; }
 .deck-gallery .catalog-space-actions .ui-button { width: 24px; min-height: 24px; height: 24px; }

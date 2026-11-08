@@ -44,31 +44,31 @@ const text = defineText({
   copiedCount: (count: string) => `Скопировано ссылок: ${count}`,
   copyFailed: "Не удалось скопировать ссылки. Проверьте доступ к буферу обмена и повторите.",
   saveUnconfirmed: "Сохранение не подтверждено. Проверьте сообщение каталога и актуальный выбор.",
-  saveFailed: "Не удалось сохранить изменения. Выбор карт сохранён.",
-  actions: "Действия с выбранными картами",
+  saveFailed: "Не удалось сохранить изменения. Выбор карточек сохранён.",
+  actions: "Действия с выбранными карточками",
   clear: "Снять выбор",
   clearHint: "Снять выбор · Escape",
   selectedHint: (count: string, total: string) => `Выбрано ${count} из ${total} показанных`,
-  selectAllHint: "Выбрать все показанные карты · Ctrl/Cmd+A",
+  selectAllHint: "Выбрать все показанные карточки · Ctrl/Cmd+A",
   selectionActions: "Действия с выделением",
   limit: "Лимит — 1000 карточек",
-  compatibleDecks: "Показаны колоды, совместимые со всеми выбранными картами.",
+  compatibleDecks: "Показаны колоды, совместимые со всеми выбранными карточками.",
   noDeck: "Без колоды",
   trackHint: "Добавляет связь, сохраняя существующие треки.",
   copied: "Ссылки скопированы",
   moveCount: (count: number) => {
     const rule = new Intl.PluralRules(locale("ru")).select(count);
-    const noun = { one: 'карту', few: 'карты', many: 'карт', zero: 'карт', two: 'карты', other: 'карты' }[rule]!;
+    const noun = { one: 'карточку', few: 'карточки', many: 'карточек', zero: 'карточек', two: 'карточки', other: 'карточки' }[rule]!;
     return `Переместить ${new Intl.NumberFormat(locale("ru")).format(count)} ${noun} в колоду`;
   },
   trackCount: (count: number) => {
     const rule = new Intl.PluralRules(locale("ru")).select(count);
-    const noun = { one: 'карту', few: 'карты', many: 'карт', zero: 'карт', two: 'карты', other: 'карты' }[rule]!;
+    const noun = { one: 'карточку', few: 'карточки', many: 'карточек', zero: 'карточек', two: 'карточки', other: 'карточки' }[rule]!;
     return `Добавить ${new Intl.NumberFormat(locale("ru")).format(count)} ${noun} в трек`;
   },
   selected: (count: number) => {
     const rule = new Intl.PluralRules(locale("ru")).select(count);
-    return { one: 'карта выбрана', few: 'карты выбраны', many: 'карт выбрано', zero: 'карт выбрано', two: 'карты выбраны', other: 'карты выбраны' }[rule]!;
+    return { one: 'карточка выбрана', few: 'карточки выбраны', many: 'карточек выбрано', zero: 'карточек выбрано', two: 'карточки выбраны', other: 'карточки выбраны' }[rule]!;
   },
   uiAddToTrack: "Добавить в трек",
   uiSelectAll: "Выбрать все",

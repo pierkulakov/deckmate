@@ -31,9 +31,9 @@ const text = defineText({
   propertiesRequired: 'Нужны свойства тега.',
   invalidName: 'Название тега — непустая строка до 80 символов.',
   invalidColor: 'Цвет тега — #RRGGBB.',
-  invalidEmoji: 'Emoji тега — одна графема до 16 символов.',
-  invalidCard: 'Карта тега — ID карточки каталога.',
-  singleIcon: 'У тега один значок: emoji или SVG.',
+  invalidEmoji: 'Эмодзи тега — одна графема до 16 символов.',
+  invalidCard: 'Карточка тега — ID карточки каталога.',
+  singleIcon: 'У тега один значок: эмодзи или SVG.',
 });
 
 export interface ProjectTag {

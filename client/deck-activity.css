@@ -19,13 +19,12 @@
 .deck-activity .deck-activity-day .deck-activity-event { display: grid; grid-template-columns: 24px minmax(0, 1fr); align-items: start; gap: 12px; padding: 0; }
 .deck-activity-avatar { display: grid; place-items: center; width: 24px; height: 24px; margin-top: 6.5px; border-radius: 50%; background: var(--hover); color: var(--ink); font-size: 12px; font-weight: 700; line-height: 24px; }
 .deck-activity-event-body { min-width: 0; padding: 8px 12px; border-radius: 4px; background: var(--canvas); color: var(--ink); }
-.deck-activity-event-line { display: flex; align-items: center; gap: 16px; height: 21px; }
-.deck-activity-icon { display: flex; flex: 0 0 16px; color: var(--muted); }
-.deck-activity-description { display: flex; align-items: baseline; gap: 4px; flex: 1; min-width: 0; font-size: 14px; line-height: 21px; }
-.deck-activity .deck-activity-description .deck-activity-summary { margin: 0; min-width: 0; max-width: 55%; font-size: 14px; font-weight: 400; line-height: 21px; color: var(--ink); overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
-.deck-activity .deck-activity-description .deck-activity-summary:only-child { max-width: 100%; }
-.deck-activity-cards { display: flex; align-items: baseline; gap: 4px; min-width: 0; }
-.deck-activity .deck-activity-event .deck-activity-cards button { min-width: 0; max-width: 100%; border: 0; border-radius: 4px; padding: 0 4px; background: var(--gold-chip); color: var(--gold-chip-ink); text-align: left; font: inherit; font-weight: 700; line-height: 17px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; transition: background-color var(--motion-feedback); }
+.deck-activity-event-line { display: flex; align-items: flex-start; gap: 16px; min-height: 21px; }
+.deck-activity-icon { display: flex; align-items: center; flex: 0 0 16px; min-height: 21px; color: var(--muted); }
+.deck-activity-description { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px; flex: 1; min-width: 0; font-size: 14px; line-height: 21px; }
+.deck-activity .deck-activity-description .deck-activity-summary { flex: 1 0 100%; margin: 0; min-width: 0; max-width: 100%; font-size: 14px; font-weight: 400; line-height: 21px; color: var(--ink); overflow-wrap: anywhere; }
+.deck-activity-cards { display: flex; flex-wrap: wrap; align-items: baseline; flex: 1 1 100%; gap: 4px; min-width: 0; }
+.deck-activity .deck-activity-event .deck-activity-cards button { flex: 0 0 auto; min-width: 0; max-width: 100%; border: 0; border-radius: 4px; padding: 0 4px; background: var(--gold-chip); color: var(--gold-chip-ink); text-align: left; font: inherit; font-weight: 700; line-height: 17px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; transition: background-color var(--motion-feedback); }
 .deck-activity .deck-activity-event .deck-activity-cards button:hover:not(:disabled) { background: var(--hover); color: var(--ink); }
 .deck-activity-disclosure { padding: 0; background: none; border: 0; text-align: left; cursor: pointer; }
 .deck-activity-disclosure:hover { text-decoration: underline; text-underline-offset: 3px; }
@@ -42,4 +41,5 @@
 .deck-activity-error { margin: 12px 0 0 var(--activity-inset); }
 .deck-activity-error p { margin: 0 0 8px; font-size: 12px; line-height: 1.5; color: var(--danger); overflow-wrap: anywhere; }
 .deck-activity-more { margin: 12px 0 0 var(--activity-inset); }
+@media (max-width: 600px) { .deck-activity-event-line .deck-activity-cards > button:not(:first-child) { display: none; } }
 @media (prefers-reduced-motion: reduce) { .deck-activity .spin { animation: none; } .deck-activity-cards button { transition: none; } }

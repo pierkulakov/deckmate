@@ -2,6 +2,7 @@ import { defineText, locale, textNow, useLang, useText } from '../i18n.ts';
 import { stateLabel } from '../locales/common.ts';
 import { readStoredValue } from '../storage.ts';
 import { navigateTabs } from '../tab-navigation.ts';
+import { useEscapeToClose } from '../useEscapeToClose.ts';
 import { Fragment, useCallback, useDeferredValue, useEffect, useEffectEvent, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { ComponentProps, CSSProperties, FormEvent, PointerEvent, ReactElement, ReactNode, RefObject } from 'react';
 import * as Dialog from '@radix-ui/react-dialog';
@@ -9,10 +10,10 @@ import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import * as Tooltip from '@radix-ui/react-tooltip';
 import { DndContext, DragOverlay, KeyboardSensor, MeasuringStrategy, PointerSensor, closestCenter, pointerWithin, useDndContext, useDraggable, useDroppable, useSensor, useSensors } from '@dnd-kit/core';
 import { SortableContext, arrayMove, rectSortingStrategy, sortableKeyboardCoordinates, useSortable } from '@dnd-kit/sortable';
-import type { CollisionDetection, DragStartEvent, DragEndEvent, DragOverEvent, KeyboardCoordinateGetter } from '@dnd-kit/core';
+import type { AutoScrollOptions, CollisionDetection, DragStartEvent, DragEndEvent, DragOverEvent, KeyboardCoordinateGetter } from '@dnd-kit/core';
 import { Activity, Archive, BookOpen, Bot, Box, Braces, Bug, ChevronDown, ChevronRight, CircleCheck, Eye, Flag, FoldHorizontal, Gamepad2, Gauge, GripVertical, Hourglass, Image, Inbox, Layers, LayersArrowDown, LayersArrowUp, LayoutGrid, ListChecks, LoaderCircle, Palette, Pencil, Plus, Route, ScrollText, Search, Shield, Swords, Table2, Tag, Trash2, UsersRound, Volume2, X } from 'lucide-react';
 import type { CatalogCard, CatalogDeck, CatalogDeckZone, CatalogSpace, CatalogView, CardKind, CardPriority, DeckKind, DeckStyle, SpaceKind } from '../../src/catalog-contracts.ts';
-import { defaultDeckKind } from '../../src/catalog-contracts.ts';
+import { defaultDeckKind, deckCanBeInbox } from '../../src/catalog-contracts.ts';
 import type { WorkspaceSnapshot } from '../../src/workspace-contracts.ts';
 import { useCatalog } from '../useCatalog.ts';
 import type { BulkChange } from '../../src/bulk-contracts.ts';
@@ -148,7 +149,7 @@ const text = defineText({
   delete: "Delete",
   showAllCards: "Show all cards",
   showMyCards: "Show only my cards",
-  searchDeck: "Search this deck",
+  searchDeck: "Search…",
   includeShelved: "Include Archive and Trash",
   updating: "Updating",
   deckSearchLabel: "Search decks by title, description, or space",
@@ -212,9 +213,10 @@ const text = defineText({
   color: "Color",
   inboxDeck: "Inbox deck",
   inboxHelp: "Cards with no deck selected go here. This setting saves immediately.",
+  inboxBadgeHint: "Inbox: cards with no deck chosen go here",
+  inboxTasksOnly: "Inbox must take Tasks: Task or Mixed decks only",
   customImage: "Custom image",
   removeImage: "Remove image",
-  coverLibrary: "Cover library",
   preview: "Preview",
   imagePosition: "Image position",
   dragImage: "Drag the image up or down",
@@ -321,9 +323,9 @@ const text = defineText({
   iconObjects: "Объекты",
   iconMotion: "Движение",
   iconCombat: "Боевая система",
-  iconMilestone: "Веха",
-  alreadyHere: "Все выбранные карты уже здесь",
-  incompatibleDeck: "Колода не принимает все выбранные типы карт",
+  iconMilestone: "Milestone",
+  alreadyHere: "Все выбранные карточки уже здесь",
+  incompatibleDeck: "Колода не принимает все выбранные типы карточек",
   zoneName: "Название зоны",
   newZoneName: "Название новой зоны",
   add: "Добавить",
@@ -339,11 +341,11 @@ const text = defineText({
   open: "Открыть",
   deselect: "Снять выбор",
   select: "Выбрать",
-  noEffort: "Effort не задан",
+  noEffort: "Оценка не задана",
   checklistDone: "Выполненные пункты чеклиста",
   changeUnconfirmed: "Изменение не подтверждено. Проверьте сообщение каталога и повторите действие.",
   saveFailed: "Не удалось сохранить изменение. Повторите действие.",
-  lessonFailed: "Состояние сохранено, но грабли шага не записаны. Причина сохранена в журнале карты.",
+  lessonFailed: "Состояние сохранено, но грабли шага не записаны. Причина сохранена в журнале карточки.",
   cardTags: "Теги карточки",
   staleCard: "Карточка или каталог изменились. Закройте окно и повторите действие.",
   changeState: "Изменить состояние",
@@ -354,15 +356,15 @@ const text = defineText({
   unwatch: "Не наблюдать за колодой",
   watch: "Наблюдать за колодой",
   decks: "Колоды",
-  allCards: "Все карты",
-  foundCards: "Найденные карты",
+  allCards: "Все карточки",
+  foundCards: "Найденные карточки",
   allDecks: "Все колоды",
   cards: "Карточки",
   tracks: "Треки",
-  crossDeckCards: "Карты из разных колод",
+  crossDeckCards: "Карточки из разных колод",
   chooseTrack: "Выбрать трек",
   createTrack: "Создать трек",
-  dragInstructions: "Нажмите Space, чтобы поднять карту. Стрелками выберите колоду, Space завершает перенос, Escape отменяет.",
+  dragInstructions: "Нажмите пробел, чтобы поднять карточку. Стрелками выберите колоду, пробел завершает перенос, Escape отменяет.",
   dragStart: "Перенос карточек. Стрелками выберите совместимую колоду.",
   noDropTarget: "Нет совместимой цели.",
   dragCancelled: "Перенос отменён.",
@@ -376,9 +378,9 @@ const text = defineText({
   importCsv: "Импорт CSV",
   deleteDeck: "Удалить колоду",
   delete: "Удалить",
-  showAllCards: "Показать все карты",
-  showMyCards: "Показать только мои карты",
-  searchDeck: "Поиск в этой колоде",
+  showAllCards: "Показать все карточки",
+  showMyCards: "Показать только мои карточки",
+  searchDeck: "Поиск…",
   includeShelved: "Включая архив и корзину",
   updating: "Обновление",
   deckSearchLabel: "Поиск колод по названию, описанию или пространству",
@@ -387,10 +389,10 @@ const text = defineText({
   clearSearch: "Сбросить поиск",
   refresh: "Обновить",
   dismissSaveNotice: "Скрыть сообщение о сохранении",
-  loadingCatalog: "Загружаем колоды и карты…",
-  catalogNotLoaded: "Колоды и карты не загрузились. Обновите, чтобы повторить.",
+  loadingCatalog: "Загружаем колоды и карточки…",
+  catalogNotLoaded: "Колоды и карточки не загрузились. Обновите, чтобы повторить.",
   leaveTrack: "Выйти из трека",
-  notConfigured: "Колоды ещё не настроены. Markdown-карточки доступны в «Все карты».",
+  notConfigured: "Колоды ещё не настроены. Markdown-карточки доступны в «Все карточки».",
   startTemplate: "Начать с шаблона",
   startTemplateTitle: "Создайте начальную структуру проекта",
   startTemplateHelp: "Заготовка добавит готовые пространства, колоды и Journeys — для игры или софтверного проекта.",
@@ -401,7 +403,7 @@ const text = defineText({
   laneFilters: "Фильтры дорожек",
   noMatches: "Совпадений нет. Сбросьте поиск или измените фильтры.",
   noCardsProject: "Карточек пока нет.",
-  noCardsDeck: "В этой колоде пока нет карточек. Добавьте первую кнопкой «New Card».",
+  noCardsDeck: "В этой колоде пока нет карточек. Добавьте первую кнопкой «Новая карточка».",
   noCards: "В этой области пока нет карточек.",
   zone: "Зона",
   noSpaces: "Пространств пока нет.",
@@ -424,21 +426,21 @@ const text = defineText({
   pileOf: (space: string) => `Стопка пространства ${space}`,
   moveToPile: "Убрать в стопку",
   backToShelf: "Вернуть на полку",
-  pileHelp: "Колода уходит с полки в стопку в конце своего пространства; карты и настройки остаются. Сохраняется сразу.",
+  pileHelp: "Колода уходит с полки в стопку в конце своего пространства; карточки и настройки остаются. Сохраняется сразу.",
   movedToPile: "Колода лежит в стопке в конце своего пространства.",
   movedToShelf: "Колода снова на полке.",
   closeForm: "Закрыть форму",
   newTrack: "Новый трек",
   title: "Название",
   description: "Описание",
-  trackHelp: "Трек объединяет карты из разных пространств и колод. Карта может входить в несколько треков.",
+  trackHelp: "Трек объединяет карточки из разных пространств и колод. Карточка может входить в несколько треков.",
   create: "Создать",
   imageType: "Выберите PNG, JPEG или WEBP.",
   imageSize: "Изображение должно быть не больше 5 МБ.",
   imageReadFailed: "Не удалось прочитать изображение. Выберите файл ещё раз.",
   artFailed: "Не удалось взять обложку из библиотеки. Попробуйте ещё раз.",
   coverSaveFailed: "Настройки сохранены. Изображение не сохранено; файл и поля оставлены в форме. Повторите сохранение.",
-  inboxAssigned: "Эта колода назначена Inbox для новых карт без явного выбора.",
+  inboxAssigned: "Эта колода назначена Inbox для новых карточек без явного выбора.",
   inboxRemoved: "Назначение Inbox снято.",
   newDeck: "Новая колода",
   space: "Пространство",
@@ -447,10 +449,11 @@ const text = defineText({
   appearance: "Оформление",
   color: "Цвет",
   inboxDeck: "Колода-приёмник Inbox",
-  inboxHelp: "Карты без явно выбранной колоды попадают сюда. Настройка сохраняется сразу.",
+  inboxHelp: "Карточки без явно выбранной колоды попадают сюда. Настройка сохраняется сразу.",
+  inboxBadgeHint: "Inbox: сюда попадают карточки без выбранной колоды",
+  inboxTasksOnly: "Inbox принимает задачи: только колоды Task и Mixed",
   customImage: "Собственное изображение",
   removeImage: "Убрать изображение",
-  coverLibrary: "Библиотека обложек",
   preview: "Предпросмотр",
   imagePosition: "Положение изображения",
   dragImage: "Потяните картинку вверх или вниз",
@@ -462,19 +465,19 @@ const text = defineText({
   save: "Сохранить",
   labelAddZone: "Добавить зону",
   labelPriority: "Приоритет",
-  labelEffort: "Effort",
+  labelEffort: "Оценка",
   labelTags: "Теги",
-  labelArchiveCard: "Архивировать карту",
+  labelArchiveCard: "Архивировать карточку",
   labelUnarchiveCard: "Вернуть из архива",
   labelMovetoTrash: "Переместить в корзину",
   labelPrepareJourney: "Подготовить Journey",
   labelJourney: "Journey",
   labelDeleteDeck: "Удалить колоду",
-  labelMyCards: "Мои карты",
+  labelMyCards: "Мои карточки",
   labelArchiveTrash: "Архив/корзина",
   labelCreateSpace: "Создать пространство",
-  labelAddCard: "Добавить карту",
-  labelNewCard: "Новая карта",
+  labelAddCard: "Добавить карточку",
+  labelNewCard: "Новая карточка",
   showInfoSidebar: "Показать панель информации",
   labelOpenOrderPanel: "Открыть панель порядка",
   labelOrdering: "Порядок",
@@ -495,11 +498,11 @@ const text = defineText({
   labelSymbol: "Символ",
   labelArtwork: "Арт",
   labelMinimal: "Минимум",
-  deckCounts: (open: number, accepted: number) => `Открытые задачи и обычные карты: ${number(open)}; принятые задачи: ${number(accepted)}`,
+  deckCounts: (open: number, accepted: number) => `Открытые задачи и обычные карточки: ${number(open)}; принятые задачи: ${number(accepted)}`,
   deckProgress: (accepted: number, tasks: number) => `Принято задач: ${number(accepted)} из ${number(tasks)}`,
-  openCount: (count: number) => `Открытые задачи и обычные карты: ${number(count)}`,
+  openCount: (count: number) => `Открытые задачи и обычные карточки: ${number(count)}`,
   acceptedCount: (count: number) => `Принятые задачи: ${number(count)}`,
-  effortProgress: (done: string, total: string, missing: number) => `Effort: завершено ${done} из ${total}; без оценки ${number(missing)}`,
+  effortProgress: (done: string, total: string, missing: number) => `Оценка: принято ${done} из ${total}; без оценки ${number(missing)}`,
   selectGroup: (title: string) => `Выбрать группу: ${title}`,
   selectAll: (title: string) => `Выбрать все: ${title}`,
   zoneTitle: (title: string) => `Название зоны: ${title}`,
@@ -509,9 +512,9 @@ const text = defineText({
   deleteZoneButton: "Удалить зону",
   reorderZone: (title: string) => `Переставить зону: ${title}`,
   reorderZoneHint: (title: string) => `Переставить зону · ${title}`,
-  newGroupCard: (title: string) => `Новая карта · ${title}`,
+  newGroupCard: (title: string) => `Новая карточка · ${title}`,
   selectCard: (title: string) => `Выбрать: ${title}`,
-  owner: (title: string) => `Owner: ${title}`,
+  owner: (title: string) => `Исполнитель: ${title}`,
   searchCards: (title: string) => `Поиск карточек: ${title}`,
   search: (title: string) => `Поиск: ${title}`,
   removeFilter: (title: string) => `Убрать фильтр: ${title}`,
@@ -525,11 +528,11 @@ const text = defineText({
   configureSpace: (title: string) => `Настроить пространство ${title}`,
   configureDeck: (title: string) => `Настроить колоду ${title}`,
   beforeDeck: (title: string) => `Перед «${title}»`,
-  cardsCount: (count: number) => `${number(count)} карт`,
+  cardsCount: (count: number) => `Карточек: ${number(count)}`,
   cardsCountLong: (count: number) => `${number(count)} карточек`,
   deckResults: (shown: number, total: number) => `${number(shown)} из ${number(total)} колод`,
   foundDecks: (shown: number, total: number) => `Найдено ${number(shown)} из ${number(total)} колод`,
-  trackProgress: (done: number, total: number) => `${number(done)} из ${number(total)} задач принято · трек объединяет карты из разных колод`,
+  trackProgress: (done: number, total: number) => `${number(done)} из ${number(total)} задач принято · трек объединяет карточки из разных колод`,
   cardResults: (scope: string, shown: number, total: number) => `${scope} · ${number(shown)} из ${number(total)} карточек`,
   sourceWarnings: (count: number) => `Замечания к источникам: ${number(count)}`,
   // 2026-11-06: Russian counts need a noun form that agrees with the number, not a fixed genitive plural.
@@ -540,12 +543,12 @@ const text = defineText({
     else if (rule === 'few') form = 'документа';
     return `${number(documents)} Markdown-${form} · ${number(tasks)} Task · ${number(heroes)} Hero · ${number(docs)} Doc Cards`;
   },
-  transferCount: (count: number) => count === 1 ? 'Перенести карту в' : `Перенести карты (${number(count)}) в`,
+  transferCount: (count: number) => count === 1 ? 'Перенести карточку в' : `Перенести карточки (${number(count)}) в`,
   defaultDeckType: (kind: string) => `Тип колоды по умолчанию: ${kind}`,
   deleteDeckConfirm: (title: string, count: number) => {
     let consequence = '';
-    if (count === 1) consequence = ' Её карта уйдёт в «Без колоды».';
-    else if (count > 1) consequence = ` Её ${number(count)} карт уйдут в «Без колоды».`;
+    if (count === 1) consequence = ' Её карточка уйдёт в «Без колоды».';
+    else if (count > 1) consequence = ` Её карточки (${number(count)}) уйдут в «Без колоды».`;
     return `Удалить колоду «${title}»?${consequence} Journey колоды блокируют удаление.`;
   },
 });
@@ -565,6 +568,25 @@ type CatalogEditor = (action: CatalogAction) => Promise<boolean>;
 type LaneSearchEntry = { key: string; title: string; ordering: CardOrderingValue };
 // 2026-11-05: useSensor memoizes by options identity; new options invalidate every draggable's context.
 const cardPointerOptions = { activationConstraint: { distance: 6 } };
+
+// 2026-11-08: by default dnd-kit autoscrolls any scrollable ancestor within 20% of its edge, so a pointer resting at the
+// window edge raced the page away under the fixed transfer targets. Every transfer target is pinned to the viewport
+// (deck dock, tabs, lanes panel) or lives inside one of those fixed surfaces; only a Manual order insertion point can
+// sit outside the viewport, in the workspace card list. So autoscroll runs inside a fixed transfer surface (the dock,
+// lanes panel or deck menu scrolling their own lists) and, in Manual order, the workspace card list — never the page
+// itself. The zone is 5% of the container's height (~48px on the workspace), x: 0 disables the horizontal axis, and
+// dnd-kit checks the remaining scroll range in a direction before scrolling it and stops the moment the drag ends.
+const transferAutoScrollThreshold = { x: 0, y: 0.05 };
+function transferAutoScrollOptions(manualOrdering: boolean): AutoScrollOptions {
+  return {
+    threshold: transferAutoScrollThreshold,
+    canScroll: element => {
+      if (element === document.scrollingElement) return false;
+      if (element instanceof HTMLElement && getComputedStyle(element).position === 'fixed') return true;
+      return manualOrdering && element.classList.contains('workspace-main');
+    },
+  };
+}
 
 function readLaneSearch(query: URLSearchParams): LaneSearchEntry[] {
   return query.getAll('lane').flatMap(value => {
@@ -617,7 +639,7 @@ function DeckCounts({ counts }: { counts: DeckCardCounts }) {
 }
 
 const deckKindText = defineText({ asset: 'Asset · Hero Cards', task: 'Task · Tasks', knowledge: 'Knowledge · Doc Cards', mixed: 'Mixed' },
-  { asset: 'Asset · Hero Cards', task: 'Task · Tasks', knowledge: 'Knowledge · Doc Cards', mixed: 'Mixed' });
+  { asset: 'Asset · Hero Cards', task: 'Task · задачи', knowledge: 'Knowledge · Doc Cards', mixed: 'Mixed' });
 const spaceDescriptionText = defineText({
   gdd: 'For decks containing Hero Cards', tasks: 'For decks representing work areas',
   knowledge: 'For decks containing Doc Cards', qa: 'For decks containing bugs and issues', custom: '',
@@ -631,7 +653,7 @@ const spaceIconText = defineText({
   image: 'Image', tasks: 'Tasks', users: 'Users', box: 'Box', activity: 'Activity', swords: 'Swords', flag: 'Flag',
 }, {
   layers: 'Колода', code: 'Код', palette: 'Графика', gamepad: 'Геймдизайн', audio: 'Звук', bug: 'Ошибки', book: 'Знания',
-  image: 'Изображения', tasks: 'Задачи', users: 'Участники', box: 'Объекты', activity: 'Движение', swords: 'Боевая система', flag: 'Веха',
+  image: 'Изображения', tasks: 'Задачи', users: 'Участники', box: 'Объекты', activity: 'Движение', swords: 'Боевая система', flag: 'Milestone',
 });
 const spacePresets: Record<SpaceKind, { title: string; icon: string }> = {
   gdd: { title: 'GDD', icon: 'book' },
@@ -892,19 +914,27 @@ function CardGroupDropPanel({ groups, baseline, laneOf }: { groups: CardGroup[];
   const text = useCardDragText(cardDragText);
   const blocker = useDroppable({ id: 'card-group-panel-background', data: { operation: 'card-drop-blocker', surface: 'card-group-panel' } });
   const panel = useRef<HTMLElement>(null);
-  const [top, setTop] = useState(0);
+  const [bounds, setBounds] = useState({ top: 0, bottom: 0 });
   useLayoutEffect(() => {
     const workbench = panel.current?.closest('.catalog-workbench');
     if (!workbench) return;
-    const measure = () => setTop(Math.max(document.querySelector('.global-topbar')?.getBoundingClientRect().bottom ?? 0, workbench.getBoundingClientRect().top));
+    const dock = document.querySelector<HTMLElement>('.card-transfer-targets');
+    // 2026-11-08: the dock wraps by viewport/language; its layout height excludes the entrance animation's translate.
+    const measure = () => {
+      const top = Math.max(document.querySelector('.global-topbar')?.getBoundingClientRect().bottom ?? 0, workbench.getBoundingClientRect().top);
+      const bottom = dock ? Math.ceil(dock.getBoundingClientRect().height + parseFloat(getComputedStyle(dock).bottom) + 8) : 0;
+      setBounds(current => current.top === top && current.bottom === bottom ? current : { top, bottom });
+    };
+    const observer = new ResizeObserver(measure);
+    if (dock) observer.observe(dock);
     measure();
     window.addEventListener('resize', measure);
     window.addEventListener('scroll', measure, true);
-    return () => { window.removeEventListener('resize', measure); window.removeEventListener('scroll', measure, true); };
+    return () => { observer.disconnect(); window.removeEventListener('resize', measure); window.removeEventListener('scroll', measure, true); };
   }, []);
   const targets = groups.flatMap(group => { const lane = laneOf(group); return lane ? [{ group, lane }] : []; });
   if (!targets.length) return null;
-  return <aside ref={node => { panel.current = node; blocker.setNodeRef(node); }} className="card-group-drop-panel" style={{ top }} aria-label={text.groups}>{targets.map(({ group, lane }) =>
+  return <aside ref={node => { panel.current = node; blocker.setNodeRef(node); }} className="card-group-drop-panel" style={bounds} aria-label={text.groups}>{targets.map(({ group, lane }) =>
     <CardGroupDropTarget key={group.key} group={group} baseline={baseline} lane={lane} />)}</aside>;
 }
 
@@ -1047,7 +1077,9 @@ function DeckNeighborCover({ deck, counts, source, current, disabled, baseline, 
     style={coverStyle(deck)} type="button" data-deck-cover={deck.id} title={`${deck.title} · ${deckCountLabel(counts)}`}
     aria-label={`${deck.title}, ${deckCountLabel(counts)}`} aria-current={current ? 'page' : undefined}
     disabled={disabled || Boolean(baseline && issue)} onClick={onOpen}>
-    <CoverFace deck={deck} counts={counts} source={source} />
+    <span className="deck-neighbor-window"><span className={'catalog-deck-cover catalog-cover-' + (deck.style ?? 'symbol')}>
+      <CoverFace deck={deck} counts={counts} source={source} />
+    </span></span>
   </button>;
 }
 
@@ -1117,9 +1149,10 @@ function CatalogTableRow({ card, lookups, members, tagDefinitions, catalog, curr
     <td className={'deck-table-effort' + (effort == null ? ' is-empty' : '')}><span data-shortcut-property="effort"><Gauge size={16} aria-hidden="true" />{effort == null ? <span className="visually-hidden">{t.noEffort}</span> : <span>{effort.toLocaleString(locale(lang), { maximumFractionDigits: 2 })}</span>}</span></td>
     <td className="deck-table-card">{parent && <CardFamilyPopover projectTags={tagDefinitions} members={members} hero={parent} children={lookups.childrenByParent.get(parent.id) ?? emptyCards} disabled={disabled} onOpen={onFamilyOpen} />}
       {heroChildren.length > 0 ? <span className="deck-table-hero">{titleButton}<SubCardProgress cards={heroChildren} cardsById={lookups.cardById} /></span> : titleButton}
-      <OpenQuestionsBadge card={card} /></td>
+      </td>
     <td className="deck-table-tags"><CardTags tags={card.tags} definitions={tagDefinitions} compact maxVisible={2} /></td>
     <td className="deck-table-details"><CardIndicators card={card} lookups={lookups} members={members} catalog={catalog} currentMemberId={currentMemberId} variant="table" />
+      <OpenQuestionsBadge card={card} />
       {checklist && checklist.total > 0 && <span className="deck-table-checklist" title={t.checklistDone}><CircleCheck size={12} aria-hidden="true" />{number(checklist.done)}/{number(checklist.total)}</span>}
       {StateIcon && <span className="deck-table-state" title={stateName}><StateIcon size={12} aria-hidden="true" /><span className="visually-hidden">{stateName}</span></span>}
       {card.owner && <span className="deck-table-owner" title={t.owner(card.owner)}><CardOwnerAvatar owner={card.owner} members={members} /><span className="visually-hidden">{t.owner(card.owner)}</span></span>}
@@ -1279,6 +1312,15 @@ function DeckHoveredCardActions({ ref, root, catalog, lookups, snapshot, writabl
   </>;
 }
 
+interface HeroReturn {
+  heroId: string;
+  subCardId: string;
+  origin: 'journey' | 'family';
+  scrollTop: number;
+  familyVisible: boolean;
+  context: string;
+}
+
 export function Deck({ snapshot, refreshKey, onEditing, onImportCsv, onStartFromTemplate }: DeckProps) {
   const t = useText(text);
   const lang = useLang();
@@ -1314,6 +1356,8 @@ export function Deck({ snapshot, refreshKey, onEditing, onImportCsv, onStartFrom
   const [creationDirty, setCreationDirty] = useState(false);
   const [openedCard, setOpenedCard] = useState<CatalogCard | null>(null);
   const [openedCardId, setOpenedCardId] = useState(initialQuery.get('card') ?? '');
+  const [heroReturn, setHeroReturn] = useState<HeroReturn | null>(null);
+  const restoreHeroView = useRef<HeroReturn | null>(null);
   const [membershipDirty, setMembershipDirty] = useState(false);
   const [familyDirty, setFamilyDirty] = useState(false);
   const [familyDraftParentId, setFamilyDraftParentId] = useState<string | null>(null);
@@ -1354,6 +1398,7 @@ export function Deck({ snapshot, refreshKey, onEditing, onImportCsv, onStartFrom
   const [requestedJourneyId, setRequestedJourneyId] = useState(initialQuery.get('journey'));
   const panels = useCatalogPanels();
   const lastOpenedButton = useRef<HTMLButtonElement | null>(null);
+  const creationOpener = useRef<HTMLElement | null>(null);
   const [requestedCardFocus, setRequestedCardFocus] = useState<string | null>(null);
   const searchField = useRef<HTMLInputElement>(null);
   const journeyReturnFocus = useRef<HTMLElement | null>(null);
@@ -1367,6 +1412,10 @@ export function Deck({ snapshot, refreshKey, onEditing, onImportCsv, onStartFrom
   const activeLookups = useMemo(() => buildCatalogLookups(cards.filter(card => !card.archived && !card.deleted), catalog?.subCardOrder), [cards, catalog?.subCardOrder]);
   const deckCounts = useMemo(() => new Map([...activeLookups.cardsByDeck].map(([deckId, deckCards]) => [deckId, countDeckCards(deckCards)])), [activeLookups]);
   const selectedCard = lookups.cardById.get(openedCardId) ?? (openedCard?.id === openedCardId ? openedCard : null);
+  const heroReturnContext = JSON.stringify([snapshot.source, scope, trackId, search, tagFilter, mineOnly, laneSearch]);
+  const returnHero = heroReturn?.context === heroReturnContext && heroReturn.subCardId === selectedCard?.id
+    && selectedCard.parentId === heroReturn.heroId ? activeLookups.cardById.get(heroReturn.heroId) : undefined;
+  useEffect(() => { if (heroReturn && !returnHero) setHeroReturn(null); }, [heroReturn, returnHero]);
   // 2026-11-05: empty inline forms and parent pickers allow navigation; drafts and pending writes guard it.
   // Journey and Attach Sub Cards use modal dialogs, which provide their own navigation barrier.
   const draftLocked = creationDirty || Boolean(journeyDeckId) || Boolean(attachmentHeroId) || membershipDirty || familyDirty || Boolean(dropDeckPicker);
@@ -1457,6 +1506,7 @@ export function Deck({ snapshot, refreshKey, onEditing, onImportCsv, onStartFrom
   const deckScopeId = scope.kind === 'deck' ? scope.id : null;
   const manualOrdering = ordering.order === 'manual' && deckScopeId !== null;
   const manualDrop = manualOrdering && Boolean(cardTransfer);
+  const transferAutoScroll = useMemo(() => transferAutoScrollOptions(manualOrdering), [manualOrdering]);
   const cardMotion = useCardLayoutMotion<HTMLDivElement>({
     layoutKey: JSON.stringify(tableGroups.map(group => [group.key, group.cards.map(card => card.id)])),
     resetKey: JSON.stringify([snapshot.source, scope, resolvedView, showFamily, hasPreview]),
@@ -1492,6 +1542,30 @@ export function Deck({ snapshot, refreshKey, onEditing, onImportCsv, onStartFrom
       setRequestedCardFocus(null);
     }
   }, [requestedCardFocus, selectedCard?.id, shownGroups]);
+  useEffect(() => {
+    const saved = restoreHeroView.current;
+    if (!saved || selectedCard?.id !== saved.heroId) return;
+    // 2026-11-08: run after the preview's heading focus and its scrollport measurement, without scrolling the opener into view.
+    let frame = requestAnimationFrame(() => {
+      if (restoreHeroView.current !== saved) return;
+      restoreHeroView.current = null;
+      const root = sticky.root.current;
+      // 2026-11-09: the returning Hero can still be growing (file text, Journey section) on a slow machine; re-apply the
+      // saved scroll for up to 30 frames until the panel can reach it, instead of landing higher than the user left.
+      let attempts = 0;
+      const applyScroll = () => {
+        const panels = root?.querySelector<HTMLElement>('.card-preview-panels');
+        if (!panels) return;
+        panels.scrollTop = saved.scrollTop;
+        if (Math.abs(panels.scrollTop - saved.scrollTop) > 1 && ++attempts < 30) frame = requestAnimationFrame(applyScroll);
+      };
+      applyScroll();
+      const id = CSS.escape(saved.subCardId);
+      const selector = saved.origin === 'journey' ? `[data-journey-card-id="${id}"]` : `.card-family-list [data-card-id="${id}"] .card-family-row-open`;
+      root?.querySelector<HTMLElement>(selector)?.focus({ preventScroll: true });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [selectedCard?.id, sticky.root]);
   // 2026-11-05: event identities stay stable; actions still read the latest locks, selection and hashes.
   const tileActions = useRef({ activateCard, openCard, toggle: selection.toggle, lookups });
   useLayoutEffect(() => { tileActions.current = { activateCard, openCard, toggle: selection.toggle, lookups }; });
@@ -1616,13 +1690,14 @@ export function Deck({ snapshot, refreshKey, onEditing, onImportCsv, onStartFrom
     const card = lookups.cardById.get(cardId);
     if (card) openCard(card, next.button ?? undefined);
   }
-  // Escape clears selection first, then closes the card, then the deck.
+  // Escape clears selection, returns to Hero when remembered, then closes the card and the deck.
   function closeStepwise(event: KeyboardEvent) {
-    if (navigationLocked || cardTransfer) return;
+    if (creation || navigationLocked || cardTransfer) return;
     event.preventDefault();
     // A zone delete strip owns Escape first: it is the safe answer, not a step towards leaving the deck (2026-11-05).
     if (zoneDeletion) { setZoneDeletion(null); return; }
     if (selection.selectedIds.size > 0) { selection.clear(); return; }
+    if (returnToHero()) return;
     if (selectedCard) { closeCard(); return; }
     if (scope.kind !== 'catalog') returnToCatalog();
   }
@@ -1781,6 +1856,26 @@ export function Deck({ snapshot, refreshKey, onEditing, onImportCsv, onStartFrom
     if (familyRoot && card.id !== familyRoot.id && card.parentId !== familyRoot.id) resetFamilyContext();
     setOpenedCard(card); setOpenedCardId(card.id);
   }
+  function openHeroSubCard(card: CatalogCard, origin: HeroReturn['origin']) {
+    if (navigationLocked) return;
+    const hero = selectedCard;
+    const scrollTop = sticky.root.current?.querySelector<HTMLElement>('.card-preview-panels')?.scrollTop ?? 0;
+    openCard(card);
+    // 2026-11-09: a Journey step — mini-card, Next or a step in the Journey menu — opens its Sub Card inside the
+    // Sub Cards tab, so the family list stays in view; Escape back to the Hero restores the tab's previous state.
+    if (origin === 'journey') setFamilyVisible(true);
+    if (hero?.kind !== 'hero' || hero.archived || hero.deleted || card.parentId !== hero.id) return;
+    setHeroReturn({ heroId: hero.id, subCardId: card.id, origin, scrollTop, familyVisible: showFamily, context: heroReturnContext });
+  }
+  function returnToHero(): boolean {
+    if (navigationLocked || !heroReturn || !returnHero) return false;
+    const saved = heroReturn;
+    openCard(returnHero);
+    setFamilyVisible(saved.familyVisible);
+    restoreHeroView.current = saved;
+    lastOpenedButton.current = cardOpenButton(returnHero.id);
+    return true;
+  }
   function activateCard(card: CatalogCard, button?: HTMLButtonElement, shift = false) {
     if (navigationLocked) return;
     if (selection.selectedIds.size > 0) selection.toggle(card.id, shift);
@@ -1798,7 +1893,8 @@ export function Deck({ snapshot, refreshKey, onEditing, onImportCsv, onStartFrom
       setFamilyVisible(true); selection.clear();
       return;
     }
-    if (!target && !inbox) return;
+    // 2026-11-08: no deck and no Inbox no longer blocks New Card — the composer opens on the automatic
+    // choice and saves with deckId null (the server leaves the card without a deck).
     closeInlinePanels();
     resetFamilyContext();
     setComposer({ deckId: target?.id ?? '', parentId, priority, zoneId }); selection.clear();
@@ -1853,6 +1949,8 @@ export function Deck({ snapshot, refreshKey, onEditing, onImportCsv, onStartFrom
   function closeComposer() { setComposer(null); setMembershipDirty(false); }
   function closeCreation() { setCreation(null); setCreationDirty(false); }
   function closeInlinePanels() {
+    setHeroReturn(null);
+    restoreHeroView.current = null;
     closeComposer();
     closeCreation();
     setParentPicker(null);
@@ -2100,7 +2198,8 @@ export function Deck({ snapshot, refreshKey, onEditing, onImportCsv, onStartFrom
     resetFamilyContext();
     setOpenedCard(null); setOpenedCardId('');
     if (restoreFocus) {
-      if (lastOpenedButton.current?.isConnected) lastOpenedButton.current.focus();
+      if (selectedCard?.kind === 'hero' && orderedCards.some(card => card.id === selectedCard.id)) setRequestedCardFocus(selectedCard.id);
+      else if (lastOpenedButton.current?.isConnected) lastOpenedButton.current.focus();
       else searchField.current?.focus();
     }
   }
@@ -2172,9 +2271,9 @@ export function Deck({ snapshot, refreshKey, onEditing, onImportCsv, onStartFrom
   const browserNavigation = catalog ? <fieldset className="catalog-browser-navigation" disabled={navigationLocked}>
         <nav className="catalog-nav-section" aria-label={t.decks}><span className="catalog-nav-label">{t.decks}</span><button type="button" aria-current={!showCards ? 'page' : undefined} onClick={returnToCatalog}><Layers size={14} />{t.allDecks}<span>{number(catalog.decks.length)}</span></button></nav>
         <nav className="catalog-nav-section" aria-label={t.cards}><span className="catalog-nav-label">{t.cards}</span><div><button type="button" aria-current={scope.kind === 'all' && !trackId ? 'page' : undefined} onClick={() => openCardView('all')}>{t.allCards}<span>{number(cards.length)}</span></button><button type="button" aria-current={scope.kind === 'unassigned' ? 'page' : undefined} onClick={() => openCardView('unassigned')}>{t.unassigned}<span>{number(unassignedCount)}</span></button></div></nav>
-        <div className="catalog-track-picker"><label htmlFor="catalog-track-view" className="catalog-nav-label">{t.tracks} <span>{t.crossDeckCards}</span></label><div><select id="catalog-track-view" value={trackId} onChange={event => openCardView('all', event.target.value)}><option value="">{t.chooseTrack}</option>{catalog.tracks.map(track => <option key={track.id} value={track.id}>{track.title + ' · ' + number(lookups.trackCounts.get(track.id) ?? 0)}</option>)}</select>{writable && <Button variant="ghost" size="icon" onClick={() => setCreation({ kind: 'track' })} aria-label={t.createTrack}><Plus size={14} /></Button>}</div></div>
+        <div className="catalog-track-picker"><label htmlFor="catalog-track-view" className="catalog-nav-label">{t.tracks} <span>{t.crossDeckCards}</span></label><div><select id="catalog-track-view" value={trackId} onChange={event => openCardView('all', event.target.value)}><option value="">{t.chooseTrack}</option>{catalog.tracks.map(track => <option key={track.id} value={track.id}>{track.title + ' · ' + number(lookups.trackCounts.get(track.id) ?? 0)}</option>)}</select>{writable && <Button variant="ghost" size="icon" onClick={event => { creationOpener.current = event.currentTarget; setCreation({ kind: 'track' }); }} aria-label={t.createTrack}><Plus size={14} /></Button>}</div></div>
       </fieldset> : null;
-  return <DndContext key={snapshot.source} sensors={transferSensors} collisionDetection={coverCollisions}
+  return <DndContext key={snapshot.source} sensors={transferSensors} collisionDetection={coverCollisions} autoScroll={transferAutoScroll}
     onDragStart={startCardTransfer} onDragEnd={event => void finishCardTransfer(event)} onDragCancel={clearCardTransfer}
     accessibility={{ screenReaderInstructions: { draggable: t.dragInstructions }, announcements: {
       onDragStart: () => t.dragStart,
@@ -2239,7 +2338,7 @@ export function Deck({ snapshot, refreshKey, onEditing, onImportCsv, onStartFrom
         </DeckHeaderHint>
       </div>
       </Tooltip.Provider>}
-    </header> : <header className={'deck-heading catalog-heading' + (!showCards ? ' deck-gallery-header' : '')}>{!showCards ? <div className="deck-gallery-project">{writable && <Button variant="outline" size="icon" className="deck-gallery-add" onClick={() => setCreation({ kind: 'space' })} disabled={navigationLocked || !catalog} aria-label={t.labelCreateSpace} title={t.labelCreateSpace}><Plus size={22} /></Button>}<h1>{snapshot.projectName}</h1></div> : <div><h1>{title}</h1><p>{snapshot.projectName}{catalog && <><span className="dot-separator">·</span>{t.cardsCountLong(scopedCards.length)}</>}</p></div>}<div className="catalog-heading-actions">{loading && catalog && <span className="catalog-updating" role="status"><LoaderCircle size={14} className="spin" />{t.updating}</span>}
+    </header> : <header className={'deck-heading catalog-heading' + (!showCards ? ' deck-gallery-header' : '')}>{!showCards ? <div className="deck-gallery-project">{writable && <Button variant="outline" size="icon" className="deck-gallery-add" onClick={event => { creationOpener.current = event.currentTarget; setCreation({ kind: 'space' }); }} disabled={navigationLocked || !catalog} aria-label={t.labelCreateSpace} title={t.labelCreateSpace}><Plus size={22} /></Button>}<h1>{snapshot.projectName}</h1></div> : <div><h1>{title}</h1><p>{snapshot.projectName}{catalog && <><span className="dot-separator">·</span>{t.cardsCountLong(scopedCards.length)}</>}</p></div>}<div className="catalog-heading-actions">{loading && catalog && <span className="catalog-updating" role="status"><LoaderCircle size={14} className="spin" />{t.updating}</span>}
       {!showCards && catalog && <div className="deck-gallery-search"><label className="catalog-search"><Search size={20} /><span className="visually-hidden">{t.deckSearchLabel}</span><input type="search" value={deckSearch} disabled={navigationLocked} onChange={event => setDeckSearch(event.target.value)} placeholder={t.searchDecks} />{deckSearch && <button type="button" disabled={navigationLocked} onClick={() => setDeckSearch('')} aria-label={t.clearDeckSearch} title={t.clearSearch}><X size={14} /></button>}</label><span role="status" className="visually-hidden">{t.deckResults(visibleDecks.length, catalog.decks.length)}</span></div>}
       {!showCards && browserNavigation}</div></header>}
 
@@ -2249,6 +2348,7 @@ export function Deck({ snapshot, refreshKey, onEditing, onImportCsv, onStartFrom
     {catalog && <>
       {!selectedDeck && showCards && browserNavigation}
 
+      {!showCards && catalog.decks.length === 0 && onStartFromTemplate && <section className="project-template-start"><div><h2>{t.startTemplateTitle}</h2><p>{t.startTemplateHelp}</p></div><Button disabled={navigationLocked} onClick={onStartFromTemplate}><Layers size={16} />{t.startTemplate}</Button></section>}
       {!showCards && <ProjectPulseStrip source={snapshot.source} refreshKey={`${refreshKey}:${catalog.indexedAt}`} members={catalog.members ?? []} disabled={navigationLocked}
         onInProgress={() => openPulseCards('started')} onReview={deckId => openPulseCards('review', deckId)}
         onWithoutDeck={() => { openCardView('unassigned'); setIncludeShelved(false); }}
@@ -2258,12 +2358,11 @@ export function Deck({ snapshot, refreshKey, onEditing, onImportCsv, onStartFrom
       {selectedTrack && !selectedDeck && <div className="catalog-track-context"><Route size={16} /><div><strong>{selectedTrack.title}</strong>{selectedTrack.description && <p>{selectedTrack.description}</p>}<span>{t.trackProgress(trackProgress?.accepted ?? 0, trackProgress?.total ?? 0)}</span></div><Button variant="ghost" size="sm" disabled={navigationLocked} onClick={() => openCardView('all')}>{t.leaveTrack}</Button></div>}
       {showCards && !selectedDeck && <div className="catalog-card-search-row"><label className="catalog-search"><Search size={16} /><span className="visually-hidden">{t.searchCards(searchScope)}</span><input ref={searchField} type="search" value={search} disabled={navigationLocked} onChange={event => setSearch(event.target.value)} placeholder={t.search(searchScope)} /></label></div>}
 
-      {creation && <CatalogForm key={creation.kind + ':' + (creation.spaceId ?? '') + ':' + (creation.deckId ?? '')} creation={creation} catalog={catalog} source={snapshot.source} disabled={!writable || pending} pending={pending} onCancel={closeCreation} onSaved={closeCreation} onSubmit={edit} onDirtyChange={setCreationDirty} />}
+      {creation && <CatalogForm key={creation.kind + ':' + (creation.spaceId ?? '') + ':' + (creation.deckId ?? '')} creation={creation} catalog={catalog} source={snapshot.source} disabled={!writable || pending} pending={pending} onCancel={closeCreation} onSaved={closeCreation} onSubmit={edit} onDirtyChange={setCreationDirty} dirty={creationDirty} opener={creationOpener} />}
       {journeyDeckId && catalog.decks.some(deck => deck.id === journeyDeckId) && <JourneyTemplatePanel key={journeyDeckId} catalog={catalog} deck={catalog.decks.find(deck => deck.id === journeyDeckId)!} source={snapshot.source} initialJourneyId={requestedJourneyId} writable={writable} pending={pending} onEdit={edit} onClose={() => { setJourneyDeckId(null); setRequestedJourneyId(null); }} onRestoreFocus={restoreJourneyFocus} />}
       {/* 2026-11-06: the notice serves files that exist without a catalog; a first-run folder has nothing to report. */}
       {!catalog.configured && catalog.documents.length > 0 && <p className="catalog-notice">{t.notConfigured}</p>}
-      {!showCards && catalog.decks.length === 0 && onStartFromTemplate && <section className="project-template-start"><div><h2>{t.startTemplateTitle}</h2><p>{t.startTemplateHelp}</p></div><Button disabled={navigationLocked} onClick={onStartFromTemplate}><Layers size={16} />{t.startTemplate}</Button></section>}
-      {!showCards && <CatalogSpaces key={`${snapshot.source}:${catalog.rootIdentity}`} catalog={catalog} deckCounts={deckCounts} visibleDecks={visibleDecks} filtering={Boolean(deckSearchText)} source={snapshot.source} writable={writable} disabled={navigationLocked} collapsed={collapsedSpaces} onToggle={toggleSpace} onOpen={openDeck} onForm={setCreation} onEdit={edit} />}
+      {!showCards && <CatalogSpaces key={`${snapshot.source}:${catalog.rootIdentity}`} catalog={catalog} deckCounts={deckCounts} visibleDecks={visibleDecks} filtering={Boolean(deckSearchText)} source={snapshot.source} writable={writable} disabled={navigationLocked} collapsed={collapsedSpaces} onToggle={toggleSpace} onOpen={openDeck} onForm={(form, opener) => { creationOpener.current = opener ?? null; setCreation(form); }} onEdit={edit} />}
 
       {!selectedDeck && selectionToolbar && <div ref={sticky.selection} className="catalog-selection-dock">{selectionToolbar}</div>}
       {showCards && <div className={'catalog-workbench' + (selectedDeck ? ' has-action-rail' : '')}>
@@ -2275,13 +2374,16 @@ export function Deck({ snapshot, refreshKey, onEditing, onImportCsv, onStartFrom
           <DeckHeaderHint side="right" label={t.labelActivity}><Button variant="ghost" size="icon" aria-label={t.labelActivity} aria-pressed={activeDeckPanel === 'activity'} disabled={navigationLocked} onClick={() => showDeckPanel('activity')}><History size={20} /></Button></DeckHeaderHint>
         </nav></Tooltip.Provider>}
         <div className={'catalog-content-layout' + (hasPreview ? ' has-preview' : '') + (showSummary ? (narrowPanel ? ' has-narrow-panel' : ' has-summary') : '')}>
-        {hasPreview ? <><div className="catalog-preview-slot">{composer ? <CardComposer key={snapshot.source + ':new:' + composer.deckId + ':' + composer.parentId + ':' + composer.zoneId} catalog={catalog} snapshot={snapshot} initialDeckId={composer.deckId} initialParentId={composer.parentId} initialPriority={composer.priority} initialZoneId={composer.zoneId} pending={pending} onEdit={edit} onClose={closeComposer} onCreated={cardCreated} onDirtyChange={setMembershipDirty} /> : selectedCard && <CardPreview key={snapshot.source + ':' + selectedCard.id} card={selectedCard} catalog={catalog} snapshot={snapshot} writable={writable && lookups.cardById.has(selectedCard.id)} pending={pending || familyDirty} onClose={() => closeCard()} onSelect={openCard} onEdit={edit} onDirtyChange={setMembershipDirty} onShowTagCards={name => { openCardView('all'); setTagFilter(name); }} onOpenDeck={selectedCard.deckId && selectedCard.deckId !== deckScopeId ? () => showCardInDeck(selectedCard.id, selectedCard.deckId!) : undefined} onManageJourney={selectedCard.deckId ? opener => { journeyReturnFocus.current = opener ?? null; closeInlinePanels(); setJourneyDeckId(selectedCard.deckId); } : undefined} familyVisible={showFamily} onShowFamily={() => { if (navigationLocked) return; setFamilyVisible(true); }} onToggleFamily={() => { if (navigationLocked) return; if (showFamily) resetFamilyContext(); else setFamilyVisible(true); }} />}</div><PanelResize label={t.leftPanelWidth} value={panels.leftPanelWidth} minimum={420} maximum={800} direction={1} onChange={panels.setLeftPanelWidth} /></> : <>{showSummary && selectedDeck && (narrowPanel ? <aside className="deck-summary deck-narrow-panel">{activeDeckPanel === 'ordering'
+        {hasPreview ? <><div className="catalog-preview-slot">{composer ? <CardComposer key={snapshot.source + ':new:' + composer.deckId + ':' + composer.parentId + ':' + composer.zoneId} catalog={catalog} snapshot={snapshot} initialDeckId={composer.deckId} initialParentId={composer.parentId} initialPriority={composer.priority} initialZoneId={composer.zoneId} pending={pending} onEdit={edit} onClose={closeComposer} onCreated={cardCreated} onDirtyChange={setMembershipDirty} /> : selectedCard && <CardPreview key={snapshot.source + ':' + selectedCard.id} card={selectedCard} catalog={catalog} snapshot={snapshot} writable={writable && lookups.cardById.has(selectedCard.id)} pending={pending || familyDirty} onClose={() => closeCard()} onSelect={openCard}
+          onOpenSubCard={card => openHeroSubCard(card, 'journey')} onReturnToHero={returnHero ? () => { returnToHero(); } : undefined}
+          onEdit={edit} onDirtyChange={setMembershipDirty} onShowTagCards={name => { openCardView('all'); setTagFilter(name); }} onOpenDeck={selectedCard.deckId && selectedCard.deckId !== deckScopeId ? () => showCardInDeck(selectedCard.id, selectedCard.deckId!) : undefined} onManageJourney={selectedCard.deckId ? opener => { journeyReturnFocus.current = opener ?? null; closeInlinePanels(); setJourneyDeckId(selectedCard.deckId); } : undefined} familyVisible={showFamily} onShowFamily={() => { if (navigationLocked) return; setFamilyVisible(true); }} onToggleFamily={() => { if (navigationLocked) return; if (showFamily) resetFamilyContext(); else setFamilyVisible(true); }} />}</div><PanelResize label={t.leftPanelWidth} value={panels.leftPanelWidth} minimum={420} maximum={800} direction={1} onChange={panels.setLeftPanelWidth} /></> : <>{showSummary && selectedDeck && (narrowPanel ? <aside className="deck-summary deck-narrow-panel">{activeDeckPanel === 'ordering'
           ? <CardOrdering value={ordering} onChange={changeOrdering} disabled={navigationLocked} inDeck hideEmpty={hideEmptyZones} onHideEmpty={setHideEmptyZones} view={resolvedView} onViewChange={setCardView}
             defaultView={{ canReset: orderingChoice !== null && orderDiffersFromDefault, canSave: writable && orderDiffersFromDefault, onReset: resetOrdering, onSave: () => void saveDefaultOrdering() }} />
           : <DeckTagsPanel cards={visibleCards} projectTags={catalog.projectTags} pick={tagPick} active={tagPickActive} disabled={navigationLocked} onPick={pickTags} />}</aside>
           : <><>{activityOpen ? <aside className="deck-summary deck-activity-sidebar"><DeckActivity deckId={selectedDeck.id} source={snapshot.source} refreshKey={refreshKey + ":" + catalog.indexedAt} disabled={navigationLocked} onOpen={id => { const card = lookups.cardById.get(id); if (card) openCard(card); }} /></aside> : <DeckSummary deck={selectedDeck} cards={lookups.cardsByDeck.get(selectedDeck.id) ?? emptyCards} catalog={catalog} source={snapshot.source} refreshKey={refreshKey + ":" + catalog.indexedAt} onOpen={id => { const card = lookups.cardById.get(id); if (card) openCard(card); }} disabled={navigationLocked} onCollapse={() => panels.setSummaryCollapsed(true)} onTrack={id => openCardView('all', id)} />}</><PanelResize label={t.leftPanelWidth} value={panels.leftPanelWidth} minimum={420} maximum={800} direction={1} onChange={panels.setLeftPanelWidth} /></>)}</>}
         <div className="catalog-results" ref={attachResults} role="region" aria-label={t.cards} tabIndex={-1}>
-          {showFamily && selectedCard && familyRoot ? <CardFamilyPanel key={familyRoot.id} source={snapshot.source} createRequest={familyCreationRequest?.parentId === familyRoot.id ? familyCreationRequest.sequence : 0} card={selectedCard} hero={familyDraftParent ?? familyHero} children={familyChildren} openedId={selectedCard.id} catalog={catalog} disabled={navigationLocked} writable={writable} onOpen={openCard} onCreate={newCard} onAttach={() => { closeInlinePanels(); setAttachmentHeroId(familyRoot.id); }} onChooseParent={chooseParent} onDetach={detachCard} onReorder={reorderSubCards} onRefresh={refresh} pending={pending} onCreateCard={edit} onCreated={familyCardCreated} onCreateDirtyChange={setFamilyDirty} onCreateSessionChange={setFamilyDraftParentId} onCreateRequestHandled={sequence => setFamilyCreationRequest(request => request?.sequence === sequence ? null : request)} onEdit={edit} onCancelParentPicker={() => setParentPicker(null)} parentPicker={parentPicker ? <CardParentPicker embedded card={parentPicker.card} catalog={catalog} pending={pending} onChoose={saveParent} onPromote={promoteParent} onClose={() => setParentPicker(null)} /> : undefined} /> : <>
+          {showFamily && selectedCard && familyRoot ? <CardFamilyPanel key={familyRoot.id} source={snapshot.source} createRequest={familyCreationRequest?.parentId === familyRoot.id ? familyCreationRequest.sequence : 0} card={selectedCard} hero={familyDraftParent ?? familyHero} children={familyChildren} openedId={selectedCard.id} catalog={catalog} disabled={navigationLocked} writable={writable} onOpen={openCard} onOpenSubCard={card => openHeroSubCard(card, 'family')}
+            onCreate={newCard} onAttach={() => { closeInlinePanels(); setAttachmentHeroId(familyRoot.id); }} onChooseParent={chooseParent} onDetach={detachCard} onReorder={reorderSubCards} onRefresh={refresh} pending={pending} onCreateCard={edit} onCreated={familyCardCreated} onCreateDirtyChange={setFamilyDirty} onCreateSessionChange={setFamilyDraftParentId} onCreateRequestHandled={sequence => setFamilyCreationRequest(request => request?.sequence === sequence ? null : request)} onEdit={edit} onCancelParentPicker={() => setParentPicker(null)} parentPicker={parentPicker ? <CardParentPicker embedded card={parentPicker.card} catalog={catalog} pending={pending} onChoose={saveParent} onPromote={promoteParent} onClose={() => setParentPicker(null)} /> : undefined} /> : <>
           {!selectedDeck && <div className="catalog-results-toolbar">
             <div className="catalog-view-toggle" aria-label={t.labelCardview}><Button variant="ghost" size="sm" aria-pressed={resolvedView === 'cards'} onClick={() => setCardView('cards')}><LayoutGrid size={13} />{t.labelCards}</Button><Button variant="ghost" size="sm" aria-pressed={resolvedView === 'table'} onClick={() => setCardView('table')}><Table2 size={13} />{t.labelTable}</Button></div>
             <div className="catalog-panel-controls">
@@ -2418,7 +2520,7 @@ const deckSortCollisions: CollisionDetection = arguments_ => {
   return scored.length ? [scored[0]] : under.slice(0, 1);
 };
 
-function CatalogSpaces({ catalog, deckCounts, visibleDecks, filtering, source, writable, disabled, collapsed, onToggle, onOpen, onForm, onEdit }: { catalog: CatalogView; deckCounts: Map<string | null, DeckCardCounts>; visibleDecks: CatalogDeck[]; filtering: boolean; source: WorkspaceSnapshot['source']; writable: boolean; disabled: boolean; collapsed: ReadonlySet<string>; onToggle: (id: string) => void; onOpen: (deck: CatalogDeck) => void; onForm: (form: Creation) => void; onEdit: CatalogEditor }) {
+function CatalogSpaces({ catalog, deckCounts, visibleDecks, filtering, source, writable, disabled, collapsed, onToggle, onOpen, onForm, onEdit }: { catalog: CatalogView; deckCounts: Map<string | null, DeckCardCounts>; visibleDecks: CatalogDeck[]; filtering: boolean; source: WorkspaceSnapshot['source']; writable: boolean; disabled: boolean; collapsed: ReadonlySet<string>; onToggle: (id: string) => void; onOpen: (deck: CatalogDeck) => void; onForm: (form: Creation, opener?: HTMLElement) => void; onEdit: CatalogEditor }) {
   const t = useText(text);
   const [dragged, setDragged] = useState<CatalogDeck | null>(null);
   // The order on screen while dragging, and after a drop until the server catalog brings the same order back.
@@ -2506,10 +2608,10 @@ function CatalogSpaces({ catalog, deckCounts, visibleDecks, filtering, source, w
         const pile = decksOf(piles[space.id] ?? []);
         const pileOpen = filtering || openPiles.has(space.id);
         const spaceCollapsed = !filtering && collapsed.has(space.id);
-        const tileProps = (deck: CatalogDeck) => ({ deck, source, counts: deckCounts.get(deck.id) ?? emptyDeckCounts, disabled, writable, canOpen, onOpen: () => onOpen(deck), onSettings: () => onForm({ kind: 'deck', deckId: deck.id, editing: true }) });
+        const tileProps = (deck: CatalogDeck) => ({ deck, source, counts: deckCounts.get(deck.id) ?? emptyDeckCounts, disabled, writable, inbox: deck.id === (catalog.inboxDeckId ?? null), canOpen, onOpen: () => onOpen(deck), onSettings: () => onForm({ kind: 'deck', deckId: deck.id, editing: true }) });
         return <SpaceDrop key={space.id} space={space} disabled={disabled || !writable}>
           <header className="catalog-space-heading"><h2><button type="button" disabled={filtering} aria-expanded={!spaceCollapsed} aria-controls={`space-${space.id}`} onClick={() => onToggle(space.id)}>{spaceCollapsed ? <ChevronRight size={17} /> : <ChevronDown size={17} />}<DeckIcon name={space.icon ?? spacePresets[space.kind ?? 'custom'].icon} size={17} /><span>{space.title}</span></button></h2>
-            {writable && <div className="catalog-space-actions"><Button variant="ghost" size="icon" disabled={disabled} onClick={() => onForm({ kind: 'space', spaceId: space.id, editing: true })} aria-label={t.configureSpace(space.title)}><Pencil size={14} /></Button></div>}
+            {writable && <div className="catalog-space-actions"><Button variant="ghost" size="icon" disabled={disabled} onClick={event => onForm({ kind: 'space', spaceId: space.id, editing: true }, event.currentTarget)} aria-label={t.configureSpace(space.title)}><Pencil size={14} /></Button></div>}
           </header>
           <div id={`space-${space.id}`} hidden={spaceCollapsed}><SortableContext items={ids} strategy={rectSortingStrategy}><div className="catalog-deck-grid">
             {decksOf(ids).map(deck => <DeckCover key={deck.id} spaceId={space.id} {...tileProps(deck)} />)}
@@ -2522,7 +2624,7 @@ function CatalogSpaces({ catalog, deckCounts, visibleDecks, filtering, source, w
         </SpaceDrop>;
       })}
     </div>
-    <DragOverlay dropAnimation={null} adjustScale={false} style={{ pointerEvents: 'none' }}>{dragged && <div className={`catalog-deck-cover catalog-cover-${dragged.style ?? 'symbol'} cover-drag-overlay`} style={coverStyle(dragged)}><CoverFace deck={dragged} source={source} counts={deckCounts.get(dragged.id) ?? emptyDeckCounts} /></div>}</DragOverlay>
+    <DragOverlay dropAnimation={null} adjustScale={false} style={{ pointerEvents: 'none' }}>{dragged && <div className={`catalog-deck-cover catalog-cover-${dragged.style ?? 'symbol'} cover-drag-overlay`} style={coverStyle(dragged)}><CoverFace deck={dragged} source={source} counts={deckCounts.get(dragged.id) ?? emptyDeckCounts} inbox={dragged.id === (catalog.inboxDeckId ?? null)} /></div>}</DragOverlay>
   </DndContext>;
 }
 
@@ -2574,7 +2676,7 @@ function coverStyle(deck: CatalogDeck): CSSProperties {
 }
 
 /** imageUrl replaces the deck's stored cover, as the settings preview does with a picked image; null shows the symbol. */
-function CoverFace({ deck, counts, source, imageUrl }: { deck: CatalogDeck; counts: DeckCardCounts; source: WorkspaceSnapshot['source']; imageUrl?: string | null }) {
+function CoverFace({ deck, counts, source, imageUrl, inbox = false }: { deck: CatalogDeck; counts: DeckCardCounts; source: WorkspaceSnapshot['source']; imageUrl?: string | null; inbox?: boolean }) {
   const t = useText(text);
   const style = deck.style ?? 'symbol';
   const storedImage = deck.cover ? `/api/file?source=${source}&path=${encodeURIComponent(deck.cover)}` : null;
@@ -2586,7 +2688,11 @@ function CoverFace({ deck, counts, source, imageUrl }: { deck: CatalogDeck; coun
   return <>
     <span className={'catalog-cover-art' + (image ? '' : ' is-symbol')}>
       {image ? <img src={image} alt="" draggable={false} style={{ objectPosition: `center ${deck.coverPosition ?? 50}%` }} /> : <DeckIcon name={deck.icon || fallbackIcon} size={style === 'minimal' ? 22 : 38} />}
-      <span className="catalog-cover-kinds" aria-hidden="true">{deckKindBadges[deck.kind].map(kind => { const Icon = cardIcons[kind]; return <span key={kind} className={'catalog-cover-kind-badge is-' + kind}><Icon size={11} /></span>; })}</span>
+      <span className="catalog-cover-kinds">
+        {/* The tray marks the Inbox deck next to its kinds; the kind dots themselves stay decorative. */}
+        {inbox && <span className="catalog-cover-kind-badge is-inbox" title={t.inboxBadgeHint} role="img" aria-label={t.inboxBadgeHint}><Inbox size={11} /></span>}
+        {deckKindBadges[deck.kind].map(kind => { const Icon = cardIcons[kind]; return <span key={kind} className={'catalog-cover-kind-badge is-' + kind} aria-hidden="true"><Icon size={11} /></span>; })}
+      </span>
     </span>
     <strong className="catalog-cover-title">{deck.title || t.deckTitle}</strong>
     <span className="catalog-cover-foot"><DeckCounts counts={counts} /></span>
@@ -2594,7 +2700,7 @@ function CoverFace({ deck, counts, source, imageUrl }: { deck: CatalogDeck; coun
   </>;
 }
 
-interface DeckCoverProps { deck: CatalogDeck; counts: DeckCardCounts; source: WorkspaceSnapshot['source']; disabled: boolean; writable: boolean; canOpen: () => boolean; onOpen: () => void; onSettings: () => void }
+interface DeckCoverProps { deck: CatalogDeck; counts: DeckCardCounts; source: WorkspaceSnapshot['source']; disabled: boolean; writable: boolean; inbox: boolean; canOpen: () => boolean; onOpen: () => void; onSettings: () => void }
 
 /** A shelf deck: the whole tile is a drag handle; movement under 6 px remains a click that opens the deck. */
 function DeckCover({ spaceId, ...props }: DeckCoverProps & { spaceId: string }) {
@@ -2604,21 +2710,42 @@ function DeckCover({ spaceId, ...props }: DeckCoverProps & { spaceId: string }) 
 }
 
 /** A tile without drag is a piled deck shown in its opened pile: it opens and has settings, but is not sorted. */
-function DeckCoverTile({ deck, counts, source, disabled, writable, canOpen, onOpen, onSettings, drag }: DeckCoverProps & { drag?: ReturnType<typeof useSortable> }) {
+export function DeckCoverTile({ deck, counts, source, disabled, writable, inbox, canOpen, onOpen, onSettings, drag }: DeckCoverProps & { drag?: ReturnType<typeof useSortable> }) {
   const t = useText(text);
   const deckKinds = useText(deckKindText);
+  const cover = useRef<HTMLButtonElement>(null);
+  const [titleClipped, setTitleClipped] = useState(false);
+  const [titleHintOpen, setTitleHintOpen] = useState(false);
+  useLayoutEffect(() => {
+    const title = cover.current?.querySelector<HTMLElement>('.catalog-cover-title');
+    if (!title) return;
+    let active = true;
+    const measure = () => { if (active) setTitleClipped(title.scrollHeight > title.clientHeight); };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(title);
+    // Font loading can change the number of clipped lines without changing the two-line box's size.
+    void document.fonts.ready.then(measure);
+    return () => { active = false; observer.disconnect(); };
+  }, [deck.title, deck.style]);
   const handle = drag && writable ? drag : null;
   // Deck covers stay level because tilt looks like a position shift in the overview.
   const motion: CSSProperties | undefined = drag ? { transform: drag.transform ? `translate3d(${Math.round(drag.transform.x)}px, ${Math.round(drag.transform.y)}px, 0)` : undefined, transition: drag.transition } : undefined;
   const label = `${deck.title}, ${deckKinds[deck.kind]}, ${deckCountLabel(counts)}${deck.piled ? t.inPileNote : ''}${handle ? t.spaceToMove : ''}`;
   return <article data-card-id={deck.id} ref={drag?.setNodeRef} style={motion} className={'catalog-cover-item' + (drag?.isDragging ? ' is-dragging' : '') + (deck.piled ? ' is-piled' : '')}>
-    <button type="button" className={`catalog-deck-cover catalog-cover-${deck.style ?? 'symbol'}`} style={coverStyle(deck)} data-deck-cover={deck.id} {...(handle ? { ...handle.attributes, ...handle.listeners, role: undefined } : {})} onClick={() => { if (canOpen()) onOpen(); }} disabled={disabled} aria-label={label}><CoverFace deck={deck} counts={counts} source={source} /></button>
+    <Tooltip.Provider delayDuration={300} disableHoverableContent><Tooltip.Root open={titleHintOpen && titleClipped && !disabled && !drag?.isDragging} onOpenChange={open => setTitleHintOpen(open && canOpen())}>
+      <Tooltip.Trigger asChild><button ref={cover} type="button" className={`catalog-deck-cover catalog-cover-${deck.style ?? 'symbol'}`} style={coverStyle(deck)} data-deck-cover={deck.id} {...(handle ? { ...handle.attributes, ...handle.listeners, role: undefined } : {})} onClick={() => { if (canOpen()) onOpen(); }} disabled={disabled} aria-label={label}><CoverFace deck={deck} counts={counts} source={source} inbox={inbox} /></button></Tooltip.Trigger>
+      <Tooltip.Portal><Tooltip.Content className="deck-header-hint catalog-cover-title-tip" side="top" sideOffset={6} collisionPadding={12}>{deck.title}<Tooltip.Arrow /></Tooltip.Content></Tooltip.Portal>
+    </Tooltip.Root></Tooltip.Provider>
     {writable && <button type="button" className="catalog-cover-settings" onClick={() => { if (canOpen()) onSettings(); }} disabled={disabled} aria-label={t.configureDeck(deck.title)}><Pencil size={14} /></button>}
   </article>;
 }
 
 
 interface CatalogFormProps {
+  opener: RefObject<HTMLElement | null>;
+  /** True once the form differs from what it opened with; Escape then keeps it open so input is not lost. */
+  dirty: boolean;
   creation: Creation;
   catalog: CatalogView;
   source: WorkspaceSnapshot['source'];
@@ -2631,6 +2758,7 @@ interface CatalogFormProps {
 }
 
 function CatalogForm(props: CatalogFormProps) {
+  useEscapeToClose(props.creation.kind !== 'deck' && !props.pending && !props.dirty, props.onCancel, props.opener);
   if (props.creation.kind === 'space') return <SpaceForm {...props} />;
   if (props.creation.kind === 'deck') return <DeckSettingsForm {...props} />;
   return <TrackForm {...props} />;
@@ -2643,6 +2771,11 @@ function FormHeading({ title, pending, onCancel }: { title: string; pending: boo
 
 function SpaceForm({ creation, catalog, disabled, pending, onCancel, onSaved, onSubmit, onDirtyChange }: CatalogFormProps) {
   const t = useText(text);
+  const form = useRef<HTMLFormElement>(null);
+  useLayoutEffect(() => {
+    form.current?.scrollIntoView({ block: 'start', inline: 'nearest' });
+    form.current?.querySelector<HTMLInputElement>('input')?.focus({ preventScroll: true });
+  }, []);
   const deckKinds = useText(deckKindText);
   const descriptions = useText(spaceDescriptionText);
   const icons = useText(spaceIconText);
@@ -2666,7 +2799,7 @@ function SpaceForm({ creation, catalog, disabled, pending, onCancel, onSaved, on
       : { action: 'create-space', title, kind, icon };
     if (await onSubmit(action)) onSaved();
   }
-  return <form className="catalog-create-form space-preset-form" onSubmit={event => void submit(event)} onKeyDown={event => { if (event.key === 'Escape' && !disabled && !pending && !dirty) { event.preventDefault(); event.stopPropagation(); onCancel(); } }}>
+  return <form ref={form} className="catalog-create-form space-preset-form" onSubmit={event => void submit(event)}>
     <FormHeading title={original ? t.labelUpdateSpace : t.labelCreateSpace} pending={pending} onCancel={onCancel} />
     <fieldset disabled={disabled} className="space-preset-options">
       <legend className="visually-hidden">{t.labelSpacetype}</legend>
@@ -2697,7 +2830,7 @@ function TrackForm({ disabled, pending, onCancel, onSaved, onSubmit, onDirtyChan
     event.preventDefault();
     if (!disabled && title.trim() && await onSubmit({ action: 'create-track', title: title.trim(), description: description.trim() })) onSaved();
   }
-  return <form className="catalog-create-form" onSubmit={event => void submit(event)} onKeyDown={event => { if (event.key === 'Escape' && !disabled && !pending && !dirty) { event.preventDefault(); event.stopPropagation(); onCancel(); } }}>
+  return <form className="catalog-create-form" onSubmit={event => void submit(event)}>
     <FormHeading title={t.newTrack} pending={pending} onCancel={onCancel} />
     <fieldset disabled={disabled}><label className="catalog-field">{t.title}<input value={title} onChange={event => setTitle(event.target.value)} required maxLength={120} autoFocus /></label><label className="catalog-field catalog-field-wide">{t.description}<textarea value={description} onChange={event => setDescription(event.target.value)} rows={2} maxLength={2000} /></label></fieldset>
     <p className="catalog-form-help">{t.trackHelp}</p>
@@ -2723,7 +2856,7 @@ const deckSettingsText = defineText({
 
 type DeckCoverTab = 'browse' | 'upload' | 'icon';
 
-function DeckSettingsForm({ creation, catalog, source, disabled, pending, onCancel, onSaved, onSubmit, onDirtyChange }: CatalogFormProps) {
+export function DeckSettingsForm({ creation, catalog, source, disabled, pending, onCancel, onSaved, onSubmit, onDirtyChange }: CatalogFormProps) {
   const t = useText(text);
   const settings = useText(deckSettingsText);
   const deckKinds = useText(deckKindText);
@@ -2909,7 +3042,7 @@ function DeckSettingsForm({ creation, catalog, source, disabled, pending, onCanc
                         else if (event.key === 'Home') { event.preventDefault(); moveCover(0); }
                         else if (event.key === 'End') { event.preventDefault(); moveCover(100); }
                       } : undefined}>
-                      <CoverFace deck={previewDeck} counts={previewCounts} source={source} imageUrl={previewImage} />
+                      <CoverFace deck={previewDeck} counts={previewCounts} source={source} imageUrl={previewImage} inbox={Boolean(original && catalog.inboxDeckId === original.id)} />
                     </div>
                     {canMoveCover && <span className="deck-settings-position-help">{settings.positionHelp}</span>}
                   </div>
@@ -2917,6 +3050,8 @@ function DeckSettingsForm({ creation, catalog, source, disabled, pending, onCanc
                     <label className="deck-settings-color-toggle"><input type="checkbox" role="switch" checked={showColor} aria-expanded={showColor} aria-controls="deck-settings-color-picker" onChange={event => setShowColor(event.target.checked)} /><span>{settings.customColor}</span></label>
                     {showColor && <label id="deck-settings-color-picker" className="deck-settings-color-picker"><span className="visually-hidden">{t.color}</span><input type="color" value={color} onChange={event => { editedFields.current.add('color'); setColor(event.target.value); }} /><span>{color.toUpperCase()}</span></label>}
                   </div>
+                  {/* 2026-11-08: Inbox sits in the main form — it is the deck's role, not an extra. Decks without Tasks cannot take it. */}
+                  {original && <label className="deck-settings-inbox"><input type="checkbox" checked={catalog.inboxDeckId === original.id} disabled={!deckCanBeInbox(original.kind)} onChange={event => void changeInbox(event.target.checked)} /><Inbox size={15} /><strong>{t.inboxDeck}</strong><span>{deckCanBeInbox(original.kind) ? t.inboxHelp : t.inboxTasksOnly}</span></label>}
                 </fieldset>
                 <details className="deck-settings-more" open={!original || undefined}>
                   <summary>{settings.more}</summary>
@@ -2926,7 +3061,6 @@ function DeckSettingsForm({ creation, catalog, source, disabled, pending, onCanc
                       <label className="catalog-field"><span className="deck-settings-label">{t.deckType}</span><select value={kind} onChange={event => setKind(event.target.value as DeckKind)}>{Object.entries(deckKinds).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
                     </>}
                     <label className="catalog-field"><span className="deck-settings-label">{t.description}</span><textarea value={description} onChange={event => { editedFields.current.add('description'); setDescription(event.target.value); }} rows={2} maxLength={2000} /></label>
-                    {original && <label className="deck-settings-inbox"><input type="checkbox" checked={catalog.inboxDeckId === original.id} onChange={event => void changeInbox(event.target.checked)} /><Inbox size={15} /><strong>{t.inboxDeck}</strong><span>{t.inboxHelp}</span></label>}
                     {original && <div className="deck-pile-settings"><Button type="button" variant="outline" size="sm" onClick={() => void changePile()}>{original.piled ? <LayersArrowUp size={15} /> : <LayersArrowDown size={15} />}{original.piled ? t.backToShelf : t.moveToPile}</Button><p className="catalog-form-help">{t.pileHelp}</p></div>}
                   </fieldset>
                   {original && <details className="deck-move-settings">

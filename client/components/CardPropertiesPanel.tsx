@@ -1,11 +1,10 @@
-import { useEffect, useImperativeHandle, useMemo, useRef, useState, type ReactNode, type Ref } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { ChevronDown, Info, Layers, LoaderCircle, Settings, X } from 'lucide-react';
 import * as Tooltip from '@radix-ui/react-tooltip';
 import type { BulkChange } from '../../src/bulk-contracts.ts';
 import type { CardPriority, CatalogCard, CatalogView } from '../../src/catalog-contracts.ts';
-import type { DataSource } from '../../src/workspace-contracts.ts';
 import type { CatalogAction } from '../useCatalog.ts';
-import { CardOwnerAvatar, CardQuickSettings, cardEffortPresets, type CardQuickSettingsTab } from './CardQuickSettings.tsx';
+import { CardOwnerAvatar, cardEffortPresets, type CardQuickSettingsTab } from './CardQuickSettings.tsx';
 import { TagGlyph } from './CardTags.tsx';
 import { TagPicker } from './TagPicker.tsx';
 import { Button } from './ui/button.tsx';
@@ -51,43 +50,42 @@ const text = defineText({
 }, {
   stale: 'Изменение не сохранено. Проверьте сообщение каталога и повторите действие.',
   connection: 'Не удалось сохранить изменение. Проверьте соединение и повторите действие.',
-  docEffort: (value: string) => `Карта стала Doc. Черновик Effort: ${value}. Отмените его, чтобы продолжить.`,
+  docEffort: (value: string) => `Карточка стала Doc. Черновик оценки: ${value}. Отмените его, чтобы продолжить.`,
   notSet: 'не задан',
-  discardEffort: 'Отменить Effort',
-  clearPriority: 'Снять Priority',
-  clearEffort: 'Снять Effort',
-  customEffort: 'Свой Effort',
-  saveEffort: 'Сохранить Effort',
+  discardEffort: 'Отменить оценку',
+  clearPriority: 'Снять приоритет',
+  clearEffort: 'Снять оценку',
+  customEffort: 'Своя оценка',
+  saveEffort: 'Сохранить оценку',
   cancel: 'Отмена',
   invalidEffort: 'Введите неотрицательное число.',
-  effortConflict: 'Источник изменился. Отмените черновик Effort и повторите правку с актуальными данными.',
+  effortConflict: 'Источник изменился. Отмените черновик оценки и повторите правку с актуальными данными.',
   save: 'Сохранить',
-  clearDue: 'Снять Due Date',
+  clearDue: 'Снять срок',
   dueConflict: 'Свойства изменились. Отмените черновик срока и повторите правку с актуальными данными.',
   projectTags: 'Теги проекта',
-  projectTagsInfo: 'Теги проекта общие для всех в проекте. Щелчок по тегу добавляет его к карте или снимает. Личные теги — через # в тексте карты.',
+  projectTagsInfo: 'Теги проекта общие для всех в проекте. Щелчок по тегу добавляет его к карточке или снимает. Личные теги — через # в тексте карточки.',
   noProjectTags: 'Тегов проекта пока нет — создайте шестерёнкой.',
   addTag: (name: string) => 'Добавить тег ' + name, removeTag: (name: string) => 'Снять тег ' + name,
   pick: (label: string) => `Выбрать: ${label}`,
   pickButton: 'Выбрать',
   noRuns: 'Нет предстоящих Run',
-  noMilestones: 'Нет предстоящих вех',
+  noMilestones: 'Нет предстоящих Milestone',
   none: 'Нет',
   propertiesAria: 'Свойства',
-  ownerLabel: 'Владелец',
-  unassigned: 'Unassigned',
-  priority: 'Priority',
-  effort: 'Effort',
-  totalEffort: 'Суммарный Effort с Sub Cards: ',
+  ownerLabel: 'Исполнитель',
+  unassigned: 'Без исполнителя',
+  priority: 'Приоритет',
+  effort: 'Оценка',
+  totalEffort: 'Суммарная оценка с Sub Cards: ',
   runLabel: 'Run',
-  milestoneLabel: 'Веха',
-  dueDate: 'Due Date',
+  milestoneLabel: 'Milestone',
+  dueDate: 'Срок',
 });
 
 type Selector = 'dueDate';
 interface DraftRevision { sourceHash: string; manifestHash: string; optionsHash: string; value: string }
 type PropertyChange = Partial<Pick<CatalogCard, 'owner' | 'effort' | 'priority'>>;
-export interface CardPropertiesPanelHandle { openQuickSettings: (tab: CardQuickSettingsTab) => void }
 
 export function cardHeroEffort(card: CatalogCard, catalog: Pick<CatalogView, 'cards'>): number | null {
   if (card.kind !== 'hero') return null;
@@ -97,17 +95,14 @@ export function cardHeroEffort(card: CatalogCard, catalog: Pick<CatalogView, 'ca
   return (card.effort ?? 0) + children.reduce((total, child) => total + (child.effort ?? 1), 0);
 }
 
-export function CardPropertiesPanel({ id, card, catalog, source, disabled, visible, onEdit, onActiveChange, children, ref }: {
-  id: string; card: CatalogCard; catalog: CatalogView; source?: DataSource; disabled: boolean; visible: boolean;
+export function CardPropertiesPanel({ id, card, catalog, disabled, visible, onEdit, onActiveChange, onQuickSettings, children }: {
+  id: string; card: CatalogCard; catalog: CatalogView; disabled: boolean; visible: boolean;
   onEdit: (action: CatalogAction) => Promise<boolean>; onActiveChange: (active: boolean) => void; children?: ReactNode;
-  ref?: Ref<CardPropertiesPanelHandle>;
+  onQuickSettings: (tab: CardQuickSettingsTab, anchor: HTMLElement) => void;
 }) {
   const [selector, setSelector] = useState<Selector | null>(null);
   const t = useText(text);
   const lang = useLang();
-  const [quickTab, setQuickTab] = useState<CardQuickSettingsTab | null>(null);
-  const [quickSaving, setQuickSaving] = useState(false);
-  const quickAnchor = useRef<HTMLElement | null>(null);
   const [effortDraft, setEffortDraft] = useState<DraftRevision | null>(null);
   const [dueDraft, setDueDraft] = useState<DraftRevision | null>(null);
   const [tagManagerOpen, setTagManagerOpen] = useState(false);
@@ -121,7 +116,7 @@ export function CardPropertiesPanel({ id, card, catalog, source, disabled, visib
   // Offer every project tag, followed by this card's personal tags so they can be removed.
   const projectTagChips = useMemo(() => [...(catalog.projectTags ?? [])].sort((left, right) => left.name.localeCompare(right.name)), [catalog.projectTags]);
   const personalTags = useMemo(() => (value.tags ?? []).filter(name => !projectTagChips.some(tag => tag.name === name)), [value.tags, projectTagChips]);
-  const unavailable = disabled || busy || quickSaving || !current;
+  const unavailable = disabled || busy || !current;
   const editing = effortDraft !== null || dueDraft !== null;
   const controlsDisabled = unavailable || editing || tagManagerOpen;
   const effortText = effortDraft?.value ?? (value.effort == null ? '' : String(value.effort));
@@ -129,7 +124,7 @@ export function CardPropertiesPanel({ id, card, catalog, source, disabled, visib
   const effortValid = effortNumber === null || (Number.isFinite(effortNumber) && effortNumber >= 0);
   const effortConflict = Boolean(effortDraft && (effortDraft.sourceHash !== value.sourceHash || effortDraft.manifestHash !== catalog.manifestHash));
   const dueConflict = Boolean(dueDraft && (dueDraft.sourceHash !== value.sourceHash || dueDraft.manifestHash !== catalog.manifestHash || dueDraft.optionsHash !== (catalog.optionsHash ?? '')));
-  const active = busy || quickSaving || editing;
+  const active = busy || editing;
   const heroEffort = cardHeroEffort(value, catalog);
   const dueDate = value.dueDate ? new Date(value.dueDate + 'T00:00:00') : null;
   const dueLabel = dueDate && !Number.isNaN(dueDate.getTime())
@@ -140,7 +135,7 @@ export function CardPropertiesPanel({ id, card, catalog, source, disabled, visib
   useEffect(() => () => onActiveChange(false), [onActiveChange]);
   useEffect(() => {
     // 2026-11-04: hidden pickers must not lock navigation; an actual date draft stays reopenable.
-    if (!visible) { setQuickTab(null); if (!dueDraft) setSelector(null); }
+    if (!visible && !dueDraft) setSelector(null);
   }, [visible, dueDraft]);
   useEffect(() => {
     mounted.current = true;
@@ -191,17 +186,9 @@ export function CardPropertiesPanel({ id, card, catalog, source, disabled, visib
 
   function openQuickSettings(tab: CardQuickSettingsTab, anchor: HTMLElement) {
     if (controlsDisabled) return;
-    quickAnchor.current = anchor;
     setSelector(null);
-    setQuickTab(tab);
+    onQuickSettings(tab, anchor);
   }
-
-  useImperativeHandle(ref, () => ({
-    openQuickSettings(tab) {
-      const anchor = panel.current?.querySelector<HTMLElement>('[data-property="' + tab + '"]') ?? panel.current;
-      if (anchor) openQuickSettings(tab, anchor);
-    },
-  }));
 
   function discardEffort() { setEffortDraft(null); setMessage(''); }
   function discardDue() { setDueDraft(null); setSelector(null); setMessage(''); }
@@ -220,7 +207,7 @@ export function CardPropertiesPanel({ id, card, catalog, source, disabled, visib
   }
 
   function pickButton(field: Selector | 'owner' | 'run' | 'milestone', label: string) {
-    return <button type="button" className="card-properties-pick" disabled={controlsDisabled} aria-label={t.pick(label)} aria-expanded={selector === field || quickTab === field} onClick={event => {
+    return <button type="button" className="card-properties-pick" disabled={controlsDisabled} aria-label={t.pick(label)} aria-expanded={selector === field} onClick={event => {
       if (field === 'owner' || field === 'run' || field === 'milestone') openQuickSettings(field, event.currentTarget);
       else toggleSelector(field);
     }}><span>{t.pickButton}</span><ChevronDown size={16} /></button>;
@@ -240,7 +227,7 @@ export function CardPropertiesPanel({ id, card, catalog, source, disabled, visib
   return <section ref={panel} id={id} className="card-properties-panel" aria-label={t.propertiesAria} aria-busy={busy}>
     <section className="card-properties-section" data-property="owner">
       <div className="card-properties-heading"><h3>{t.ownerLabel}</h3>{pickButton('owner', t.ownerLabel)}</div>
-      <div className="card-properties-owner-value"><button type="button" className="card-properties-owner" disabled={controlsDisabled} aria-expanded={quickTab === 'owner'} onClick={event => openQuickSettings('owner', event.currentTarget)}>
+      <div className="card-properties-owner-value"><button type="button" className="card-properties-owner" disabled={controlsDisabled} aria-expanded={false} onClick={event => openQuickSettings('owner', event.currentTarget)}>
         <CardOwnerAvatar owner={value.owner} members={catalog.members ?? []} /><span>{value.owner || t.unassigned}</span>
       </button></div>
     </section>
@@ -279,7 +266,7 @@ export function CardPropertiesPanel({ id, card, catalog, source, disabled, visib
         {dueConflict && <p className="card-properties-error" role="alert">{t.dueConflict}</p>}
       </form>}
     </section>
-    <section className="card-properties-section" data-property="tags">
+    <section className="card-properties-section" data-property="tags" tabIndex={-1} aria-label={t.projectTags}>
       <div className="card-properties-heading"><h3>{t.projectTags}</h3>
         <Tooltip.Provider delayDuration={200}><Tooltip.Root><Tooltip.Trigger asChild>
           <button type="button" className="card-properties-info" aria-label={t.projectTagsInfo}><Info size={14} aria-hidden="true" /></button>
@@ -298,9 +285,6 @@ export function CardPropertiesPanel({ id, card, catalog, source, disabled, visib
       </div> : <p className="card-properties-value">{t.noProjectTags}</p>}
     </section>
     {message && <p className="card-properties-error" role="alert">{message}</p>}
-    {quickTab && <CardQuickSettings key={value.id} card={value} catalog={catalog} source={source} anchor={quickAnchor.current}
-      tab={quickTab} onTabChange={setQuickTab} disabled={disabled || busy || editing || !current} onEdit={onEdit}
-      onSavingChange={setQuickSaving} onClose={() => setQuickTab(null)} />}
     {children}
   </section>;
 }

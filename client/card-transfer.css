@@ -90,8 +90,8 @@ tbody.is-drop-over > tr.catalog-table-group > th { box-shadow: inset 0 2px 0 var
 .deck-table > tbody:not(:has(> .catalog-table-group)) > .card-table-drop-layer { top: 0; }
 .card-table-drop-layer > td { display: block; padding: 0; }
 .card-table-drop-layer .card-group-drop-surface > span { margin-top: 8px; }
-.card-group-drop-panel { position: fixed; z-index: 110; right: 0; bottom: 0; width: 240px; display: flex; flex-direction: column; gap: 8px; padding: 16px; overflow-y: auto; background: var(--card-drop-panel); box-shadow: var(--card-drop-shadow); }
-.card-group-drop-target { flex: 0 0 auto; height: 47px; min-height: 47px; width: 208px; padding: 10px 12px; border: 0; border-radius: 4px; background: var(--card-drop-target); color: var(--card-drop-target-ink); font: inherit; font-size: 14px; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.card-group-drop-panel { position: fixed; z-index: 110; right: 0; bottom: 0; width: 240px; min-height: 0; display: flex; flex-direction: column; gap: 8px; padding: 16px; overflow-y: auto; overscroll-behavior: contain; background: var(--card-drop-panel); box-shadow: var(--card-drop-shadow); }
+.card-group-drop-target { flex: 0 0 auto; height: 47px; min-height: 47px; width: 100%; padding: 10px 12px; border: 0; border-radius: 4px; background: var(--card-drop-target); color: var(--card-drop-target-ink); font: inherit; font-size: 14px; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .card-group-drop-target.is-current { background: var(--card-drop-current); color: var(--ink); }
 .card-group-drop-target:disabled:not(.is-current) { background: var(--card-drop-current); color: var(--muted); }
 .card-group-drop-target.is-over { background: var(--card-drop-mint); color: var(--card-drop-ink); }
@@ -128,6 +128,6 @@ tbody.is-drop-over > tr.catalog-table-group > th { box-shadow: inset 0 2px 0 var
 .card-drag-face.is-stack::before { transform: translate(8px, 8px); }
 .card-drag-face.is-stack::after { transform: translate(4px, 4px); }
 .card-drag-count { position: absolute; z-index: 2; top: -10px; right: -10px; min-width: 24px; height: 24px; padding-inline: 6px; border-radius: 12px; color: var(--card-drop-ink); background: var(--card-drop-mint); font: 700 13px/24px var(--font-sans); text-align: center; }
-@media (max-width: 600px) { .card-group-drop-panel { width: 152px; padding: 8px; } .card-group-drop-target { width: 136px; } }
+@media (max-width: 600px) { .card-group-drop-panel { width: 152px; padding: 8px; } }
 @media (prefers-reduced-motion: reduce) { .card-drag-face *, .card-drag-tab::before { transition: none; animation: none; } }
 @media (prefers-reduced-motion: reduce) { .card-group-drop-surface { transition: none; } }

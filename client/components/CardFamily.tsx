@@ -11,6 +11,7 @@ import { dependencyCycle, openDependencies, waitingCards, type CardHistoryCreate
 import type { DataSource } from '../../src/workspace-contracts.ts';
 import { orderSubCards } from '../catalog-lookups.ts';
 import { cardOrdering, groupAndSortCards, laneOrderOf, type CardOrdering } from '../catalog-ordering.ts';
+import { subCardStateLabel, subCardVisualState } from '../sub-card-state.ts';
 import type { CatalogAction } from '../useCatalog.ts';
 import { Button } from './ui/button.tsx';
 import { CardOwnerAvatar, CardQuickSettings, type CardQuickSettingsTab } from './CardQuickSettings.tsx';
@@ -33,7 +34,6 @@ export const subCardsCount = {
 };
 
 const text = defineText({
-  blocked: 'Blocked by dependency',
   progress: (done: number, total: number) => `${done} of ${total} done`,
   openSubCard: (label: string) => `Open Sub Card: ${label}`,
   noPriority: 'No priority',
@@ -160,14 +160,13 @@ const text = defineText({
   subCardFallback: 'Sub Card',
   subCardsCount: subCardsCount.en,
 }, {
-  blocked: 'заблокировано зависимостью',
   progress: (done: number, total: number) => `${done} из ${total} принято`,
   openSubCard: (label: string) => `Открыть Sub Card: ${label}`,
   noPriority: 'Без приоритета',
   gate: (incoming: number, outgoing: number, open: number) => `Зависимости: ждёт ${incoming}, ждут её ${outgoing}${open ? ` — незакрытых входящих ${open}` : ''}`,
   revealDependencies: '. Открыть секцию зависимостей',
   legacyReadonly: 'Зависимости legacy-карточки хранятся в файле проекта — здесь они только читаются.',
-  journeyReadonly: 'Зависимости карты Journey задаёт сам Journey — отдельная правка недоступна.',
+  journeyReadonly: 'Зависимости карточки Journey задаёт сам Journey — отдельная правка недоступна.',
   sourceReadonly: 'Источник доступен только для чтения.',
   cycle: (names: string) => `Такая зависимость образует цикл: ${names}.`,
   changeNotSaved: 'Изменение не сохранено — проверьте сообщение каталога вверху.',
@@ -178,48 +177,48 @@ const text = defineText({
   removeDependency: (title: string) => `Убрать зависимость: ${title}`,
   removeDependencyHint: 'Карточка перестанет ждать эту',
   noIncoming: 'Нет входящих зависимостей.',
-  searchDependency: 'Поиск карты для зависимости',
-  findCard: 'Найти карту',
+  searchDependency: 'Поиск карточки для зависимости',
+  findCard: 'Найти карточку',
   cancelAdd: 'Отменить добавление',
-  addCard: 'Добавить карту',
+  addCard: 'Добавить карточку',
   noResults: 'Ничего не найдено.',
   waitedOnBy: 'Ждут её',
   removeWait: (title: string) => `Снять ожидание: ${title}`,
-  removeWaitHint: 'Эта карта перестанет ждать текущую',
-  noOutgoing: 'Никто не ждёт эту карту.',
+  removeWaitHint: 'Эта карточка перестанет ждать текущую',
+  noOutgoing: 'Никто не ждёт эту карточку.',
   historyLoad: (status: number) => `Не удалось загрузить историю (${status}).`,
   invalidHistory: 'Сервер вернул некорректную страницу истории.',
   serverUnavailable: 'Не удалось связаться с сервером. Повторите попытку.',
   historyFailed: 'Не удалось загрузить историю.',
   closeHistory: 'Закрыть историю',
   noCreated: 'записи о создании нет в журнале',
-  historyEmpty: 'История этой карты начнётся с первого изменения через Deckmate.',
+  historyEmpty: 'История этой карточки начнётся с первого изменения через Deckmate.',
   historyWarnings: (warnings: string) => `Замечания к журналу: ${warnings}`,
   loadingMore: 'Загружаем ещё…',
   loadingHistory: 'Загружаем историю…',
   showMore: 'Показать ещё',
   parentHero: 'Hero Card не может быть Sub Card',
   journeyLink: 'Связь задана Journey',
-  nestedFamilies: 'У карты есть Sub Cards: вложенные семьи недоступны',
+  nestedFamilies: 'У карточки есть Sub Cards: вложенные семьи недоступны',
   createReason: 'Новая Sub Card · Shift+C',
-  chooseFirst: 'Сначала выберите Hero или Doc Card через Select',
+  chooseFirst: 'Сначала выберите Hero или Doc Card кнопкой «Выбрать»',
   refreshFailed: 'Не удалось обновить каталог. Порядок уже сохранён; повторите обновление.',
   listChanged: 'Список изменился во время переноса. Повторите перестановку по актуальным данным.',
   orderNotSaved: 'Порядок не сохранён. Восстановлен актуальный список; попробуйте снова.',
   orderFailed: 'Не удалось сохранить порядок. Перестановка отменена.',
-  emptyChoose: 'Выберите Hero или Doc Card через Select, чтобы открыть её Sub Cards.',
+  emptyChoose: 'Выберите Hero или Doc Card кнопкой «Выбрать», чтобы открыть её Sub Cards.',
   emptyFiltered: 'Нет совпадений с этими фильтрами.',
-  emptyCreate: 'Создайте New Sub Card или прикрепите существующую через Attach.',
+  emptyCreate: 'Создайте Sub Card или прикрепите существующую кнопкой «Прикрепить».',
   panel: 'Hero Card и Sub Cards',
-  closeParent: 'Закрыть выбор родительской карты',
+  closeParent: 'Закрыть выбор родительской карточки',
   chooseParent: 'Выбрать Hero или Doc Card',
-  removeParent: 'Снять связь с родительской картой',
-  hasOwnChildren: 'У этой карты есть собственные Sub Cards.',
-  noParentChosen: 'Родительская карта не выбрана.',
+  removeParent: 'Снять связь с родительской карточкой',
+  hasOwnChildren: 'У этой карточки есть собственные Sub Cards.',
+  noParentChosen: 'Родительская карточка не выбрана.',
   toggleComposer: 'Показать или скрыть черновик Sub Card',
   showAll: 'Показать все Sub Cards',
   onlyOpen: 'Только открытые Sub Cards',
-  draftSaved: 'Черновик сохранён в этой панели. Нажмите New Sub Card, чтобы продолжить.',
+  draftSaved: 'Черновик сохранён в этой панели. Нажмите «Новая Sub Card», чтобы продолжить.',
   searchSubCards: 'Поиск Sub Cards',
   findSubCard: 'Найти Sub Card',
   findSubCards: 'Найти Sub Cards',
@@ -228,7 +227,7 @@ const text = defineText({
   changeOrder: 'Изменить порядок',
   onlyOpenShown: 'Показаны только открытые',
   reorderFiltered: 'Для изменения порядка отключите поиск и фильтр.',
-  reorderManual: 'Перетаскивание — в порядке Manual.',
+  reorderManual: 'Перетаскивание доступно при ручном порядке.',
   orderSaved: 'Порядок сохранён. Обновите каталог перед следующей перестановкой.',
   refreshingCatalog: 'Обновляем каталог…',
   refreshCatalog: 'Обновить каталог',
@@ -240,13 +239,13 @@ const text = defineText({
   dragCancel: 'Перенос отменён.',
   deckUnavailable: 'Колода недоступна',
   noDeck: 'Без колоды',
-  dependenciesTitle: 'Зависимости открытой карты: ждёт / ждут её',
+  dependenciesTitle: 'Зависимости открытой карточки: ждёт / ждут её',
   dependenciesAction: 'Зависимости',
-  historyTitle: 'История изменений открытой карты',
+  historyTitle: 'История изменений открытой карточки',
   moveSubCard: (title: string) => `Переместить Sub Card: ${title}`,
-  reorderHint: 'Изменить порядок · Space и стрелки',
-  owner: (owner: string) => `Owner: ${owner}`,
-  assignOwner: (title: string, owner: string) => `Назначить Owner: ${title} · ${owner}`,
+  reorderHint: 'Изменить порядок · Пробел и стрелки',
+  owner: (owner: string) => `Исполнитель: ${owner}`,
+  assignOwner: (title: string, owner: string) => `Назначить исполнителя: ${title} · ${owner}`,
   notInRegistry: 'нет в реестре',
   waiting: 'ждёт:',
   journeyDetach: 'Связь задана Journey: такие Sub Cards нельзя отвязывать отдельно.',
@@ -261,13 +260,13 @@ const text = defineText({
   parentStrip: (title: string) => `Hero ${title} · Sub Cards`,
   subCardsOf: (title: string) => `Sub Cards: ${title}`,
   noSubCards: 'Sub Cards ещё нет.',
-  effort: 'Effort',
+  effort: 'Оценка',
   priorityOf: (priority: string) => `Приоритет: ${priority}`,
   docCard: 'Doc Card',
   historyOf: (title: string) => `История: ${title}`,
   historyHeading: (title: string) => `История · ${title}`,
   created: 'Создано',
-  parentDoc: 'Parent Doc Card',
+  parentDoc: 'Родительская Doc Card',
   heroCardHeading: 'Hero Card',
   change: 'Изменить',
   select: 'Выбрать',
@@ -276,20 +275,17 @@ const text = defineText({
   orderMenu: 'Порядок Sub Cards',
   historyAction: 'История',
   runPrefix: (reference: string) => `Run ${reference}`,
-  unassigned: 'Unassigned',
-  milestoneOf: (label: string) => `Веха: ${label}`,
-  orderManual: 'Manual',
+  unassigned: 'Без исполнителя',
+  milestoneOf: (label: string) => `Milestone: ${label}`,
+  orderManual: 'Вручную',
   orderPriority: 'Приоритет',
   orderState: 'Состояние',
   orderOwner: 'Исполнитель',
-  orderEffort: 'Effort',
+  orderEffort: 'Оценка',
   orderTitle: 'Название',
   subCardFallback: 'Sub Card',
   subCardsCount: subCardsCount.ru,
 });
-
-const subCardStates = { accepted: 'done', working: 'started', review: 'review', planned: 'not-started' } as const;
-type SubCardVisualState = keyof typeof subCardStates | 'blocked';
 
 /**
  * Sub Cards ordering: Manual uses the saved family order and is the only mode that allows dragging.
@@ -311,14 +307,6 @@ function readSubCardOrder(): SubCardOrder {
   return subCardOrders.find(option => option.key === stored)?.key ?? 'manual';
 }
 
-function subCardVisualState(card: CatalogCard, cardsById: ReadonlyMap<string, CatalogCard>): SubCardVisualState {
-  if (card.state === 'done') return 'accepted';
-  if ((card.dependsOn ?? []).some(id => cardsById.get(id)?.state !== 'done')) return 'blocked';
-  if (card.state === 'started') return 'working';
-  if (card.state === 'review') return 'review';
-  return 'planned';
-}
-
 /** One ordered, state-colored strip for Hero tiles and the Journey execution summary. */
 export function SubCardProgress({ cards, cardsById, disabled = false, onOpen }: {
   cards: CatalogCard[]; cardsById: ReadonlyMap<string, CatalogCard>; disabled?: boolean; onOpen?: (card: CatalogCard) => void;
@@ -331,7 +319,7 @@ export function SubCardProgress({ cards, cardsById, disabled = false, onOpen }: 
   return <div className="sub-card-progress" role={onOpen ? 'group' : 'img'} title={label} aria-label={label}>
     {cards.map(card => {
       const state = subCardVisualState(card, cardsById);
-      const stepLabel = `${card.title} · ${state === 'blocked' ? t.blocked : stateLabel(subCardStates[state], lang)}`;
+      const stepLabel = `${card.title} · ${subCardStateLabel(state, lang)}`;
       if (onOpen) return <button key={card.id} type="button" className="sub-card-progress-segment" data-state={state} disabled={disabled}
         title={stepLabel} aria-label={t.openSubCard(stepLabel)} onClick={() => onOpen(card)} />;
       return <span key={card.id} className="sub-card-progress-segment" data-state={state} title={stepLabel} aria-hidden="true" />;
@@ -648,9 +636,10 @@ interface CardHistoryResponse {
 interface DragBaseline { heroId: string; sourceHash: string; manifestHash: string; ids: string[] }
 interface OptimisticOrder { heroId: string; ids: string[]; manifestHash: string; acknowledged: boolean }
 
-export function CardFamilyPanel({ hero, card, children, openedId, catalog, disabled, pending = false, writable, parentPicker, createRequest, source, onOpen, onCreate, onCreateCard, onCreated, onCreateDirtyChange, onCreateSessionChange, onCreateRequestHandled, onEdit, onAttach, onDetach, onChooseParent, onCancelParentPicker, onReorder, onRefresh }: {
+export function CardFamilyPanel({ hero, card, children, openedId, catalog, disabled, pending = false, writable, parentPicker, createRequest, source, onOpen, onOpenSubCard, onCreate, onCreateCard, onCreated, onCreateDirtyChange, onCreateSessionChange, onCreateRequestHandled, onEdit, onAttach, onDetach, onChooseParent, onCancelParentPicker, onReorder, onRefresh }: {
   hero?: CatalogCard; card: CatalogCard; children: CatalogCard[]; openedId: string; catalog: CatalogView;
   disabled: boolean; writable: boolean; onOpen: (card: CatalogCard) => void; onCreate: (heroId: string) => void; onAttach: () => void;
+  onOpenSubCard?: (card: CatalogCard) => void;
   onDetach?: (card: CatalogCard) => void;
   onChooseParent?: () => void;
   onCancelParentPicker?: () => void;
@@ -896,7 +885,7 @@ export function CardFamilyPanel({ hero, card, children, openedId, catalog, disab
       </div>
       <div className="card-family-actions">
         {(writable || composerMounted) && <div className="card-family-action-group"><Button type="button" variant="ghost" size="icon" title={composerMounted ? t.toggleComposer : creationReason} aria-label={t.newSubCard} data-new-subcard aria-pressed={creating}
-          disabled={pending || reordering || Boolean(activeId) || (!composerMounted && (disabled || !canContainChildren || !catalog.decks.some(deck => deck.kind === 'task' || deck.kind === 'knowledge' || deck.kind === 'mixed')))}
+          disabled={pending || reordering || Boolean(activeId) || (!composerMounted && (disabled || !canContainChildren))}
           onClick={event => { newTrigger.current = event.currentTarget; toggleComposer(); }}><Plus size={16} /></Button><Button type="button" variant="ghost" size="icon" title={canContainChildren ? t.attachSubCards : creationReason} aria-label={t.attachSubCards} disabled={interacting || !canContainChildren || !writable} onClick={onAttach}><Link2 size={16} /></Button></div>}
         <div className="card-family-action-group"><DropdownMenu.Root modal={false}>
           <DropdownMenu.Trigger asChild><Button type="button" variant="ghost" size="icon" className={manualOrder ? undefined : 'is-active'} title={t.changeOrder + ' · ' + orderLabels[orderOption.key]} aria-label={t.changeOrder} disabled={interacting}><ArrowDownUp size={16} /></Button></DropdownMenu.Trigger>
@@ -944,7 +933,7 @@ export function CardFamilyPanel({ hero, card, children, openedId, catalog, disab
           {groupHeadings && <h3 className="card-family-group">{group.title}<span>{group.cards.length}</span></h3>}
           {group.cards.map(card => <SortableSubCard key={card.id} card={card} hero={familyParent} current={card.id === openedId} deckName={card.deckId ? deckNames.get(card.deckId) ?? t.deckUnavailable : t.noDeck}
           writable={writable} disabled={interacting} canReorder={canReorder} showHandle={writable && Boolean(onReorder) && manualOrder} confirming={detachingId === card.id} members={catalog.members} cardsById={cardsById} catalog={catalog}
-          onOpen={onOpen} onOwner={onEdit ? (selected, trigger) => { ownerTrigger.current = trigger; setSettingsTab('owner'); setOwnerCard(selected); } : undefined}
+          onOpen={onOpenSubCard ?? onOpen} onOwner={onEdit ? (selected, trigger) => { ownerTrigger.current = trigger; setSettingsTab('owner'); setOwnerCard(selected); } : undefined}
           onDependencies={revealDependencies}
           onDetach={onDetach} onConfirm={() => setDetachingId(detachingId === card.id ? null : card.id)} onCancel={() => setDetachingId(null)} />)}
         </Fragment>)}</div>
@@ -1065,6 +1054,7 @@ export function CardFamilyPopover({ hero, children: allChildren, disabled, membe
   function select(card: CatalogCard) { setOpen(false); onOpen(card, trigger.current ?? undefined); }
   return <DropdownMenu.Root modal={false} open={open && !unavailable} onOpenChange={setOpen}>
     <DropdownMenu.Trigger asChild><button ref={trigger} type="button" className="card-family-trigger" disabled={unavailable} aria-label={t.parentStrip(hero.title)}>
+      <span className="card-material-glare" aria-hidden="true" />
       {/* The Hero strip uses its tag emoji instead of a kind icon; the Sub Card's tags stay before its title. */}
       <span><TagGlyphs tags={hero.tags} definitions={projectTags} />{hero.title}</span>
     </button></DropdownMenu.Trigger>

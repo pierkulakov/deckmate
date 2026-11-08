@@ -62,8 +62,9 @@
 .planning-card-grid .deck-card { width: 115px; }
 /* 2026-11-06: light mode fills the bar with the pale doc band, so it takes the page ink; the done-band white read at 1.7:1. */
 .planning-selection { display: flex; align-items: center; gap: 12px; min-height: 44px; padding: 0 16px; background: var(--mint, var(--doc-metal)); color: var(--mint-ink, var(--ink)); }
-.planning-selection > span { font-size: 12px; white-space: nowrap; }
+.planning-selection > span { flex-shrink: 0; font-size: 12px; white-space: nowrap; }
 .planning-selection .bulk-actions { flex: 1; }
+.planning-selection > .ui-button { flex-shrink: 0; }
 /* 2026-11-05: the shared dark ghost hover made dots unreadable on mint bars. These buttons keep the bar's ink and tint hover and open-menu backgrounds with it. */
 .planning-selection .ui-button { color: inherit; background: transparent; }
 .planning-selection .ui-button:hover:not(:disabled), .planning-selection .ui-button[data-state="open"] { background: color-mix(in srgb, var(--mint-ink, currentColor) 14%, transparent); color: inherit; }
@@ -94,7 +95,7 @@
 .timeline-band::before, .timeline-band::after { content: ""; position: absolute; z-index: 5; top: 8px; bottom: 18px; width: 48px; pointer-events: none; }
 .timeline-band::before { left: 0; background: linear-gradient(90deg, color-mix(in srgb, var(--canvas) 75%, var(--sidebar)), transparent); }
 .timeline-band::after { right: 0; background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--canvas) 75%, var(--sidebar))); }
-.timeline-scroll { width: 100%; padding: 8px 0; overflow-x: auto; overflow-y: hidden; touch-action: pan-x; cursor: grab; scrollbar-width: thin; scrollbar-color: var(--planning-idle) transparent; }
+.timeline-scroll { width: 100%; padding: 8px 0; overflow-x: auto; overflow-y: hidden; touch-action: pan-x; cursor: grab; }
 .timeline-scroll:active { cursor: grabbing; }
 .timeline-canvas { position: relative; user-select: none; }
 .timeline-past { position: absolute; inset: 0 auto 0 0; background: var(--timeline-past); mix-blend-mode: multiply; pointer-events: none; }
@@ -104,7 +105,7 @@
 .timeline-week-label { position: absolute; height: 16px; border-top: .67px solid var(--timeline-week-edge); border-right: .67px solid var(--timeline-week-edge); border-radius: 4px 4px 0 0; background: var(--canvas); color: var(--timeline-axis-ink); font-size: 11px; line-height: 15px; text-align: center; font-variant-numeric: tabular-nums; }
 .timeline-week-label.is-current { color: var(--timeline-week-current); }
 .timeline-now { position: absolute; z-index: 3; width: 130px; height: 24px; transform: translateX(calc(-100% + 2px)); background: linear-gradient(90deg, transparent, var(--timeline-now-fade)); pointer-events: none; }
-.timeline-now > span { display: block; height: 20px; padding-right: 34px; border-right: 4px solid var(--planning-mint); border-radius: 0 4px 4px 0; color: var(--timeline-axis-ink); font-size: 11px; font-weight: 700; line-height: 20px; text-align: right; white-space: nowrap; }
+.timeline-now > span { display: block; height: 20px; padding-right: 34px; border-right: 4px solid var(--planning-mint); border-radius: 0 4px 4px 0; background: var(--canvas); color: var(--ink); font-size: 11px; font-weight: 700; line-height: 20px; text-align: right; white-space: nowrap; }
 .timeline-milestone-marker, .timeline-due-marker { position: absolute; z-index: 4; transform: translateX(-50%); display: flex; align-items: center; justify-content: center; width: 30px; height: 30px; border: 0; padding: 0; background: transparent; cursor: pointer; }
 .timeline-milestone-marker > span { width: 21px; height: 21px; border: 2px solid color-mix(in srgb, currentColor 60%, var(--ink)); border-radius: 4px; transform: rotate(45deg); background: currentColor; }
 .timeline-milestone-marker.is-past > span { background: var(--canvas); border-color: currentColor; }
@@ -188,6 +189,8 @@
 }
 @media (max-width: 760px) {
   .planning-collection-header { padding: 12px 16px; flex-wrap: wrap; gap: 12px; }
+  .planning-collection-header > div:first-child { flex-basis: 100%; }
+  .planning-collection-header h2, .planning-collection-header p { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; white-space: normal; overflow-wrap: anywhere; }
   .planning-search { width: 100%; margin-left: 0; }
   .planning-collection-body { display: grid; grid-template-columns: 32px minmax(0, 1fr); padding: 16px 12px; }
   .planning-details { width: 100%; }
@@ -198,5 +201,4 @@
   .planning-overview-title { flex-direction: row; flex-wrap: wrap; align-items: center; }
   .planning-order { flex-wrap: wrap; }
   .planning-calendar { padding: 12px; }
-  .planning-selection { overflow-x: auto; }
 }

@@ -18,11 +18,11 @@ const text = defineText({
   saving: 'Saving…', save: 'Save',
 }, {
   guardians: 'Стражи колоды',
-  hint: (names: string) => 'Стражи колоды' + (names ? ': ' + names : '') + ' · принять карту может только страж',
+  hint: (names: string) => 'Стражи колоды' + (names ? ': ' + names : '') + ' · принять карточку может только страж',
   label: (names: string) => 'Стражи колоды: ' + (names || 'нет'),
   saveFailed: 'Стражи не сохранены. Проверьте сообщение каталога и повторите.',
   heading: 'Стражи колоды',
-  note: (state: string) => `Принять карту этой колоды («${state.toLocaleLowerCase('ru-RU')}») может только страж. Агенты тоже могут быть стражами.`,
+  note: (state: string) => `Принять карточку этой колоды («${state.toLocaleLowerCase('ru-RU')}») может только страж. Агенты тоже могут быть стражами.`,
   agent: 'агент', human: 'человек', sandboxOnly: 'Стражи меняются только в тестовой копии.',
   saving: 'Сохраняем…', save: 'Сохранить',
 });

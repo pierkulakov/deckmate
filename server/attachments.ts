@@ -4,7 +4,7 @@ import { lstat, mkdir, open, realpath, rename, unlink } from 'node:fs/promises';
 import path from 'node:path';
 import type { BigIntStats } from 'node:fs';
 import { isDeepStrictEqual } from 'node:util';
-import { parse, stringify } from 'yaml';
+import { isMap, isScalar, isSeq, parseDocument, stringify, type YAMLSeq } from 'yaml';
 import type { CardAttachment, CardAttachments, CatalogEdit } from '../src/catalog-contracts.ts';
 import type { FormatLanguage } from '../src/format-vocabulary.ts';
 import { containedFile } from './config.ts';
@@ -33,10 +33,6 @@ const messages = defineText({
   invalidRegistryDate: "Invalid attachment date in the registry.",
   invalidRegistryAuthor: "Invalid attachment author in the registry.",
   duplicateAttachments: "The attachment registry contains duplicates.",
-  invalidCardCover: "Invalid card cover.",
-  coverMustBeAttachment: "A card cover must be an image from its attachments.",
-  invalidCoverPosition: "Cover position must be a number from 0 to 100.",
-  invalidCoverSettings: "Invalid card cover settings.",
   missingRegistryHeader: "The attachment registry has no YAML frontmatter.",
   registryChangedOnOpen: "The attachment registry changed while opening it.",
   registryRewriteChangesData: "Rewriting the registry would change unrelated data.",
@@ -46,7 +42,6 @@ const messages = defineText({
   attachmentChangedBeforeWrite: "The attachment file changed before saving.",
   attachmentChangedOnWrite: "The attachment file changed while saving.",
   attachmentCleanupFailed: "Attachment saving was cancelled; the new file could not be safely removed.",
-  missingCoverFile: "The card cover file was not found.",
   invalidAttachmentsHash: "Editing attachments needs the card's current attachment list. Refresh the card and try again.",
   attachmentDirectoryFailed: "Could not prepare the card attachment directory.",
   tooManyAttachments: "A card cannot have more than 500 attachments.",
@@ -55,10 +50,6 @@ const messages = defineText({
   attachmentNotFound: "Attachment not found.",
   attachmentNotListed: "Attachment not found in the card list.",
   attachmentFileBusy: "The attachment was removed from the card list, but its file is in use and could not be removed. Delete it manually.",
-  noAttachments: "The card has no attachments yet.",
-  invalidCoverPath: "Invalid cover path.",
-  invalidCoverTitleMode: "Cover title color must be light or dark.",
-  invalidCoverBlur: "Cover blur must be a boolean.",
 }, {
   missingAttachment: (filename: string) => `Файл вложения не найден: ${filename}`,
   invalidAttachmentId: "Недопустимый ID карточки для вложений.",
@@ -81,10 +72,6 @@ const messages = defineText({
   invalidRegistryDate: "Некорректная дата вложения в реестре.",
   invalidRegistryAuthor: "Некорректный автор вложения в реестре.",
   duplicateAttachments: "Реестр вложений содержит дубликаты.",
-  invalidCardCover: "Некорректная обложка карточки.",
-  coverMustBeAttachment: "Обложкой карточки может быть только изображение из её вложений.",
-  invalidCoverPosition: "Позиция обложки должна быть числом от 0 до 100.",
-  invalidCoverSettings: "Некорректные настройки обложки карточки.",
   missingRegistryHeader: "В реестре вложений отсутствует YAML-шапка.",
   registryChangedOnOpen: "Реестр вложений изменился при открытии.",
   registryRewriteChangesData: "Перезапись реестра изменила бы посторонние данные.",
@@ -94,7 +81,6 @@ const messages = defineText({
   attachmentChangedBeforeWrite: "Файл вложения изменился перед записью.",
   attachmentChangedOnWrite: "Файл вложения изменился при записи.",
   attachmentCleanupFailed: "Запись вложения отменена; безопасное удаление созданного файла не удалось.",
-  missingCoverFile: "Файл обложки карточки не найден.",
   invalidAttachmentsHash: "Для правки вложений нужен актуальный список вложений карточки. Обновите карточку и повторите действие.",
   attachmentDirectoryFailed: "Не удалось подготовить каталог вложений карточки.",
   tooManyAttachments: "У карточки не может быть больше 500 вложений.",
@@ -103,15 +89,11 @@ const messages = defineText({
   attachmentNotFound: "Вложение не найдено.",
   attachmentNotListed: "Вложение не найдено в списке карточки.",
   attachmentFileBusy: "Вложение удалено из списка карточки, но файл на диске занят и не удалён. Удалите его вручную.",
-  noAttachments: "У карточки ещё нет вложений.",
-  invalidCoverPath: "Недопустимый путь обложки.",
-  invalidCoverTitleMode: "Цвет заголовка обложки — light или dark.",
-  invalidCoverBlur: "Размытие обложки должно быть boolean.",
 });
 
 
 // 2026-11-04: attachment files live beside the card's assets directory in the data project.
-// The managed attachments.md file stores the attachment list and cover.
+// The managed attachments.md file stores the attachment list.
 // Writes target only the configured writable copy,
 // using the same directory and file guards as deck covers in catalog-covers.ts.
 
@@ -126,11 +108,11 @@ const nativeCardIdPattern = /^card:([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]
 const registryHeadPattern = /^(?:﻿)?---(\r?\n)([\s\S]*?)^---[ \t]*(?:\r?\n|$)/mu;
 const digest = (bytes: Buffer) => createHash('sha256').update(bytes).digest('hex');
 
-export type AttachmentEditAction = Extract<CatalogEdit, { action: 'upload-attachment' | 'remove-attachment' | 'set-card-cover' }>;
+export type AttachmentEditAction = Extract<CatalogEdit, { action: 'upload-attachment' | 'remove-attachment' }>;
 // ReadonlySet<string> lets app.ts validate any catalog action against this set.
-export const attachmentEditActions: ReadonlySet<string> = new Set<AttachmentEditAction['action']>(['upload-attachment', 'remove-attachment', 'set-card-cover']);
+export const attachmentEditActions: ReadonlySet<string> = new Set<AttachmentEditAction['action']>(['upload-attachment', 'remove-attachment']);
 
-interface RegistryEntry {
+interface RegistryEntry extends Record<string, unknown> {
   file: string;
   name: string;
   kind: 'image' | 'pdf';
@@ -139,19 +121,25 @@ interface RegistryEntry {
   addedAt: string;
   addedBy: string | null;
 }
-interface RegistryCover {
-  file: string;
-  position: number;
-  titleMode: 'light' | 'dark';
-  blur: boolean;
-}
-interface RegistryData {
+// 2026-11-09: legacy cover and unknown metadata are opaque, preserved data, never part of the public attachment view.
+interface RegistryData extends Record<string, unknown> {
   schema: 1;
   card: string;
   files: RegistryEntry[];
-  cover: RegistryCover | null;
 }
-interface ParsedRegistry { data: RegistryData; hash: string; body: string; newline: string }
+interface ParsedRegistry {
+  data: RegistryData;
+  hash: string;
+  bytes: Buffer;
+  yaml: string;
+  yamlStart: number;
+  files: YAMLSeq;
+  mapFlow: boolean;
+  filesIndent: string;
+  emptyIndent: string;
+  newline: string;
+}
+type RegistryTextEdit = { start: number; end: number; text: string };
 interface DirectoryIdentity { filename: string; stat: BigIntStats }
 interface DirectoryGuard { originalRoot: string; root: string; relativeDirectory: string; directories: DirectoryIdentity[] }
 export interface StoredAttachment { relativePath: string; remove: () => Promise<void> }
@@ -290,12 +278,13 @@ function validAddedAt(value: unknown): value is string {
   return !Number.isNaN(Date.parse(value));
 }
 
-function validateRegistry(value: unknown, cardId: string): RegistryData {
+// 2026-11-09: retain the raw parse result for post-write verification; projecting known fields would hide data loss.
+function validateRegistry(value: unknown, cardId: string): asserts value is RegistryData {
   const key = attachmentKey(cardId);
   if (!record(value) || value.schema !== 1 || value.card !== cardId) throw new Error(serverText(messages).registryCardMismatch);
   const filesValue = value.files;
   if (!Array.isArray(filesValue) || filesValue.length > maximumRegistryEntries) throw new Error(serverText(messages).invalidAttachmentList);
-  const files: RegistryEntry[] = filesValue.map(entry => {
+  const filePaths = filesValue.map(entry => {
     if (!record(entry) || !boundedText(entry.file, 300) || !isCardAttachmentPath(entry.file, key)) throw new Error(serverText(messages).invalidRegistryPath);
     const extension = entry.file.split('.').pop() as keyof typeof mimeByExtension;
     const expected = mimeByExtension[extension];
@@ -304,33 +293,37 @@ function validateRegistry(value: unknown, cardId: string): RegistryData {
     if (typeof bytes !== 'number' || !Number.isSafeInteger(bytes) || bytes < 1 || bytes > maximumAttachmentBytes) throw new Error(serverText(messages).invalidRegistrySize);
     if (!validAddedAt(addedAt)) throw new Error(serverText(messages).invalidRegistryDate);
     if (addedBy !== null && (typeof addedBy !== 'string' || !boundedText(addedBy, 80))) throw new Error(serverText(messages).invalidRegistryAuthor);
-    return { file: entry.file, name, kind: expected.kind, mime: expected.mime, bytes, addedAt, addedBy };
+    return entry.file;
   });
-  if (new Set(files.map(file => file.file)).size !== files.length) throw new Error(serverText(messages).duplicateAttachments);
-  let cover: RegistryCover | null = null;
-  if (value.cover !== null && value.cover !== undefined) {
-    const raw = value.cover;
-    if (!record(raw) || !boundedText(raw.file, 300)) throw new Error(serverText(messages).invalidCardCover);
-    const entry = files.find(file => file.file === raw.file);
-    if (!entry || entry.kind !== 'image') throw new Error(serverText(messages).coverMustBeAttachment);
-    if (typeof raw.position !== 'number' || !Number.isFinite(raw.position) || raw.position < 0 || raw.position > 100) throw new Error(serverText(messages).invalidCoverPosition);
-    if ((raw.titleMode !== 'light' && raw.titleMode !== 'dark') || typeof raw.blur !== 'boolean') throw new Error(serverText(messages).invalidCoverSettings);
-    cover = { file: raw.file, position: raw.position, titleMode: raw.titleMode, blur: raw.blur };
-  }
-  return { schema: 1, card: cardId, files, cover };
+  if (new Set(filePaths).size !== filePaths.length) throw new Error(serverText(messages).duplicateAttachments);
 }
 
 function parseRegistry(bytes: Buffer, cardId: string): ParsedRegistry {
-  const text = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(bytes);
+  let text: string;
+  try { text = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(bytes); }
+  catch { throw new Error(serverText(messages).invalidAttachmentList); }
   const match = registryHeadPattern.exec(text);
   if (!match || match.index !== 0) throw new Error(serverText(messages).missingRegistryHeader);
-  const data = validateRegistry(parse(match[2], { maxAliasCount: 0 }), cardId);
-  return { data, hash: digest(bytes), body: text.slice(match[0].length), newline: match[1] };
+  const yaml = match[2];
+  const document = parseDocument(yaml, { keepSourceTokens: true });
+  if (document.errors.length || !isMap(document.contents)) throw new Error(serverText(messages).invalidAttachmentList);
+  let value: unknown;
+  try { value = document.toJS({ maxAliasCount: 0 }); }
+  catch { throw new Error(serverText(messages).invalidAttachmentList); }
+  validateRegistry(value, cardId);
+  const files = document.get('files', true);
+  const key = document.contents.items.find(pair => isScalar(pair.key) && pair.key.value === 'files')?.key;
+  if (!isSeq(files) || !files.range || !files.srcToken || !isScalar(key) || !key.range) throw new Error(serverText(messages).invalidAttachmentList);
+  const keyColumn = key.range[0] - (yaml.lastIndexOf('\n', key.range[0] - 1) + 1);
+  const emptyIndent = ' '.repeat(keyColumn + 2);
+  const filesIndent = files.srcToken.type === 'block-seq' ? ' '.repeat(files.srcToken.indent) : emptyIndent;
+  return { data: value, hash: digest(bytes), bytes, yaml, files, filesIndent, emptyIndent, newline: match[1],
+    mapFlow: document.contents.flow ?? false, yamlStart: Buffer.byteLength(text.slice(0, text.indexOf('\n') + 1)) };
 }
 
 const registryBriefs = {
-  en: "\n# Card attachments\n\nA Deckmate-managed file: the card's attachment list and cover.\nThe files sit beside it in the same directory; entries are written by the Deckmate server. Edit through the interface or API, not by hand.\n",
-  ru: '\n# Вложения карточки\n\nУправляемый файл Deckmate: список вложений карточки и её обложка.\nФайлы лежат рядом в этом же каталоге; записи пишет сервер Deckmate. Правьте через интерфейс или API, не руками.\n',
+  en: "\n# Card attachments\n\nA Deckmate-managed file: the card's attachment list.\nThe files sit beside it in the same directory; entries are written by the Deckmate server. Edit through the interface or API, not by hand.\n",
+  ru: '\n# Вложения карточки\n\nУправляемый файл Deckmate: список вложений карточки.\nФайлы лежат рядом в этом же каталоге; записи пишет сервер Deckmate. Правьте через интерфейс или API, не руками.\n',
 } as const satisfies Record<FormatLanguage, string>;
 
 /** A new registry gets a header in the project's format language; a project without a manifest is new and reads English. */
@@ -338,10 +331,90 @@ async function registryBrief(root: string): Promise<string> {
   return registryBriefs[await projectLanguage(root)];
 }
 
+function registryLineEnd(yaml: string, offset: number): number {
+  const newline = yaml.indexOf('\n', offset);
+  return newline < 0 ? yaml.length : newline + 1;
+}
+
+function blockItemRange(previous: ParsedRegistry, index: number): [number, number] {
+  const token = previous.files.srcToken;
+  const item = previous.files.items[index];
+  const marker = token?.type === 'block-seq'
+    ? token.items.filter(item => item.value)[index]?.start.find(part => part.type === 'seq-item-ind') : undefined;
+  if (!marker || !isMap(item) || !item.range) throw new Error(serverText(messages).invalidAttachmentList);
+  const start = previous.yaml.lastIndexOf('\n', marker.offset - 1) + 1;
+  // 2026-11-09: node-end may include standalone comments and even the next item's indentation; value-end does not.
+  const end = item.range[1];
+  return [start, previous.yaml[end - 1] === '\n' ? end : registryLineEnd(previous.yaml, end)];
+}
+
+function appendRegistryItem(previous: ParsedRegistry, entry: RegistryEntry): RegistryTextEdit[] {
+  const { files, yaml, newline, filesIndent } = previous;
+  const token = files.srcToken;
+  if (!files.range || !token) throw new Error(serverText(messages).invalidAttachmentList);
+  if (token.type === 'flow-collection' && (files.items.length || previous.mapFlow)) {
+    const last = files.items.at(-1);
+    if (last !== undefined && (!isMap(last) || !last.range)) throw new Error(serverText(messages).invalidAttachmentList);
+    const start = isMap(last) && last.range ? last.range[1] : files.range[0] + 1;
+    const value = stringify(entry, { collectionStyle: 'flow', lineWidth: 0 }).replace(/\n$/u, '');
+    return [{ start, end: start, text: (files.items.length ? ', ' : '') + value }];
+  }
+  const block = filesIndent + stringify([entry], { lineWidth: 0 }).replace(/\n$/u, '').replace(/\n/gu, newline + filesIndent) + newline;
+  if (token.type === 'block-seq') {
+    const [, end] = blockItemRange(previous, files.items.length - 1);
+    return [{ start: end, end, text: block }];
+  }
+  if (token.type !== 'flow-collection') throw new Error(serverText(messages).invalidAttachmentList);
+  const close = token.end.find(part => part.type === 'flow-seq-end');
+  if (!close) throw new Error(serverText(messages).invalidAttachmentList);
+  const start = token.start.offset;
+  const lineStart = yaml.lastIndexOf('\n', start - 1) + 1;
+  const lineEnd = registryLineEnd(yaml, close.offset + 1);
+  if (/^[ \t]*$/u.test(yaml.slice(lineStart, start)) && /^\s*$/u.test(yaml.slice(start + 1, close.offset))
+    && /^\s*$/u.test(yaml.slice(close.offset + 1, lineEnd))) {
+    return [{ start: lineStart, end: lineEnd, text: block }];
+  }
+  // 2026-11-09: removing just the brackets leaves empty-list comments in place, including those on files: itself.
+  return [{ start, end: start + 1, text: '' }, { start: close.offset, end: close.offset + 1, text: '' },
+    { start: lineEnd, end: lineEnd, text: block }];
+}
+
+function removeRegistryItem(previous: ParsedRegistry, index: number): RegistryTextEdit[] {
+  const { files } = previous;
+  const token = files.srcToken;
+  const item = files.items[index];
+  if (!isMap(item) || !item.range || !token) throw new Error(serverText(messages).invalidAttachmentList);
+  if (token.type === 'block-seq') {
+    const [start, end] = blockItemRange(previous, index);
+    return [{ start, end, text: files.items.length === 1 ? previous.emptyIndent + '[]' + previous.newline : '' }];
+  }
+  if (token.type !== 'flow-collection') throw new Error(serverText(messages).invalidAttachmentList);
+  const properties = token.items[index].start.filter(part => part.type === 'anchor' || part.type === 'tag');
+  const start = Math.min(item.range[0], ...properties.map(part => part.offset));
+  const edits: RegistryTextEdit[] = [{ start, end: item.range[1], text: '' }];
+  const separatorIndex = index < files.items.length - 1 || files.items.length === 1 ? index + 1 : index;
+  const comma = token.items[separatorIndex]?.start.find(part => part.type === 'comma');
+  if (comma) edits.push({ start: comma.offset, end: comma.offset + 1, text: '' });
+  else if (files.items.length > 1) throw new Error(serverText(messages).invalidAttachmentList);
+  return edits;
+}
+
 function renderRegistry(data: RegistryData, previous: ParsedRegistry | null, body: string): Buffer {
-  const yaml = stringify(data, { lineWidth: 0 }).trimEnd();
-  const newline = previous?.newline ?? '\n';
-  return Buffer.from('---' + newline + yaml + newline + '---' + newline + body, 'utf8');
+  if (!previous) return Buffer.from('---\n' + stringify(data, { lineWidth: 0 }) + '---\n' + body, 'utf8');
+  let edits: RegistryTextEdit[];
+  if (data.files.length === previous.data.files.length + 1) edits = appendRegistryItem(previous, data.files.at(-1)!);
+  else if (data.files.length === previous.data.files.length - 1) {
+    const removedIndex = previous.data.files.findIndex(entry => !data.files.some(file => file.file === entry.file));
+    edits = removeRegistryItem(previous, removedIndex);
+  } else throw new Error(serverText(messages).registryRewriteChangesData);
+  // 2026-11-09: source offsets are UTF-16 positions; only the changed spans are encoded and spliced into the original bytes.
+  let bytes = previous.bytes;
+  for (const edit of edits.sort((first, second) => second.start - first.start)) {
+    const start = previous.yamlStart + Buffer.byteLength(previous.yaml.slice(0, edit.start));
+    const end = previous.yamlStart + Buffer.byteLength(previous.yaml.slice(0, edit.end));
+    bytes = Buffer.concat([bytes.subarray(0, start), Buffer.from(edit.text), bytes.subarray(end)]);
+  }
+  return bytes;
 }
 
 async function readRegistry(guard: DirectoryGuard, cardId: string): Promise<{ bytes: Buffer; parsed: ParsedRegistry } | null> {
@@ -363,9 +436,10 @@ async function readRegistry(guard: DirectoryGuard, cardId: string): Promise<{ by
 /** Publish through a temporary file and rename after rechecking the hash, as for project Markdown. */
 async function publishRegistry(guard: DirectoryGuard, cardId: string, expectedHash: string, data: RegistryData, previous: ParsedRegistry | null): Promise<void> {
   const relativePath = `${guard.relativeDirectory}/${registryFileName}`;
-  const body = previous?.body ?? await registryBrief(guard.root);
+  const body = previous ? '' : await registryBrief(guard.root);
   const nextBytes = renderRegistry(data, previous, body);
   const reparsed = parseRegistry(nextBytes, cardId);
+  // 2026-11-09: data includes raw opaque fields, not merely the public attachment projection.
   if (!isDeepStrictEqual(reparsed.data, data)) throw new Error(serverText(messages).registryRewriteChangesData);
   await checkDirectories(guard);
   const temporaryPath = path.join(guard.root, `${guard.relativeDirectory}/.${randomUUID()}.tmp`);
@@ -432,23 +506,19 @@ async function storeAttachmentFile(guard: DirectoryGuard, decoded: { bytes: Buff
 export async function readCardAttachments(root: string, cardId: string): Promise<CardAttachments> {
   const key = attachmentKey(cardId);
   const guard = await attachmentDirectory(root, key, false);
-  if (!guard) return { hash: '', files: [], cover: null, warnings: [] };
+  if (!guard) return { hash: '', files: [], warnings: [] };
   const registry = await readRegistry(guard, cardId);
-  if (!registry) return { hash: '', files: [], cover: null, warnings: [] };
+  if (!registry) return { hash: '', files: [], warnings: [] };
   const files: CardAttachment[] = [];
   const warnings: string[] = [];
   for (const entry of registry.parsed.data.files) {
     let missing = false;
     try { await checkedAttachmentFile(guard, entry.file); }
     catch { missing = true; warnings.push(serverText(messages).missingAttachment(entry.name)); }
-    files.push({ ...entry, ...(missing ? { missing: true } : {}) });
+    const { file, name, kind, mime, bytes, addedAt, addedBy } = entry;
+    files.push({ file, name, kind, mime, bytes, addedAt, addedBy, ...(missing ? { missing: true } : {}) });
   }
-  const cover = registry.parsed.data.cover;
-  if (cover) {
-    try { await checkedAttachmentFile(guard, cover.file); }
-    catch { warnings.push(serverText(messages).missingCoverFile); }
-  }
-  return { hash: registry.parsed.hash, files, cover, warnings };
+  return { hash: registry.parsed.hash, files, warnings };
 }
 
 function requireRegistryHash(edit: AttachmentEditAction): void {
@@ -476,10 +546,11 @@ async function uploadAttachment(root: string, edit: Extract<AttachmentEditAction
   const asset = await storeAttachmentFile(guard, decoded);
   try {
     const registry = await readRegistry(guard, edit.cardId);
-    const data = registry?.parsed.data ?? { schema: 1 as const, card: edit.cardId, files: [], cover: null };
-    if (data.files.length >= maximumRegistryEntries) throw new Error(serverText(messages).tooManyAttachments);
-    data.files.push({ file: asset.relativePath, name: await displayFileName(root, edit.fileName, decoded.extension),
-      kind: decoded.kind, mime: decoded.mime, bytes: decoded.bytes.length, addedAt: new Date().toISOString(), addedBy });
+    const previous = registry?.parsed.data ?? { schema: 1 as const, card: edit.cardId, files: [] };
+    if (previous.files.length >= maximumRegistryEntries) throw new Error(serverText(messages).tooManyAttachments);
+    const entry: RegistryEntry = { file: asset.relativePath, name: await displayFileName(root, edit.fileName, decoded.extension),
+      kind: decoded.kind, mime: decoded.mime, bytes: decoded.bytes.length, addedAt: new Date().toISOString(), addedBy };
+    const data = { ...previous, files: [...previous.files, entry] };
     await publishRegistry(guard, edit.cardId, edit.attachmentsHash, data, registry?.parsed ?? null);
   } catch (error) {
     try { await asset.remove(); }
@@ -498,37 +569,13 @@ async function removeAttachment(root: string, edit: Extract<AttachmentEditAction
   if (!registry || digest(registry.bytes) !== edit.attachmentsHash) throw new Error('ATTACHMENTS_CONFLICT');
   const entry = registry.parsed.data.files.find(file => file.file === edit.file);
   if (!entry) throw new Error(serverText(messages).attachmentNotListed);
-  const data = registry.parsed.data;
-  data.files = data.files.filter(file => file.file !== edit.file);
-  if (data.cover?.file === edit.file) data.cover = null;
+  const data = { ...registry.parsed.data, files: registry.parsed.data.files.filter(file => file.file !== edit.file) };
   await publishRegistry(guard, edit.cardId, edit.attachmentsHash, data, registry.parsed);
   // The registry is published; a leftover file is unused data, not data loss, so mark the error saved.
   try { await checkedAttachmentFile(guard, edit.file); await unlink(path.join(guard.root, edit.file)); }
   catch {
     throw Object.assign(new Error(serverText(messages).attachmentFileBusy), { saved: true });
   }
-}
-
-async function setCardCover(root: string, edit: Extract<AttachmentEditAction, { action: 'set-card-cover' }>): Promise<void> {
-  requireRegistryHash(edit);
-  const key = attachmentKey(edit.cardId);
-  const guard = await attachmentDirectory(root, key, false);
-  if (!guard) throw new Error(serverText(messages).noAttachments);
-  const registry = await readRegistry(guard, edit.cardId);
-  if (!registry || digest(registry.bytes) !== edit.attachmentsHash) throw new Error('ATTACHMENTS_CONFLICT');
-  const data = registry.parsed.data;
-  if (edit.coverFile === null) {
-    data.cover = null;
-  } else {
-    if (typeof edit.coverFile !== 'string' || !isCardAttachmentPath(edit.coverFile, key)) throw new Error(serverText(messages).invalidCoverPath);
-    const entry = data.files.find(file => file.file === edit.coverFile);
-    if (!entry || entry.kind !== 'image') throw new Error(serverText(messages).coverMustBeAttachment);
-    if (typeof edit.coverPosition !== 'number' || !Number.isFinite(edit.coverPosition) || edit.coverPosition < 0 || edit.coverPosition > 100) throw new Error(serverText(messages).invalidCoverPosition);
-    if (edit.coverTitleMode !== 'light' && edit.coverTitleMode !== 'dark') throw new Error(serverText(messages).invalidCoverTitleMode);
-    if (typeof edit.coverBlur !== 'boolean') throw new Error(serverText(messages).invalidCoverBlur);
-    data.cover = { file: edit.coverFile, position: edit.coverPosition, titleMode: edit.coverTitleMode, blur: edit.coverBlur };
-  }
-  await publishRegistry(guard, edit.cardId, edit.attachmentsHash, data, registry.parsed);
 }
 
 let queuedWrite: Promise<unknown> = Promise.resolve();
@@ -538,7 +585,6 @@ export function applyAttachmentEdit(root: string, edit: AttachmentEditAction): P
   const operation = queuedWrite.then(async () => {
     if (edit.action === 'upload-attachment') return uploadAttachment(root, edit);
     if (edit.action === 'remove-attachment') return removeAttachment(root, edit);
-    return setCardCover(root, edit);
   });
   queuedWrite = operation.catch(() => {});
   return operation;

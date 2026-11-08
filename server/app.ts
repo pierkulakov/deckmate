@@ -387,7 +387,6 @@ export async function createApp(config: ServerConfig) {
     'create-track': ['title', 'description'], 'assign-deck': ['cardId', 'deckId'], 'set-tracks': ['cardId', 'trackIds'],
     'upload-attachment': ['cardId', 'attachmentsHash', 'dataUrl'],
     'remove-attachment': ['cardId', 'attachmentsHash', 'file'],
-    'set-card-cover': ['cardId', 'attachmentsHash', 'coverFile', 'coverPosition', 'coverTitleMode', 'coverBlur'],
     'update-card-content': ['cardId', 'title', 'markdown', 'sourceHash'],
     'add-card-report': ['cardId', 'markdown', 'sourceHash'],
     // Apply the starter project template through the project-template module (2026-11-05).
@@ -485,9 +484,6 @@ export async function createApp(config: ServerConfig) {
       fileName: { type: ['string', 'null'], maxLength: 200 },
       addedBy: { type: ['string', 'null'], maxLength: 80 },
       file: { type: 'string', minLength: 1, maxLength: 300 },
-      coverFile: { type: ['string', 'null'], minLength: 1, maxLength: 300 },
-      coverTitleMode: { type: 'string', enum: ['light', 'dark'] },
-      coverBlur: { type: 'boolean' },
       journeyId: { type: ['string', 'null'], maxLength: 100 }, journeyHash: { type: ['string', 'null'], pattern: '^[0-9a-f]{64}$' },
       templateId: { type: 'string', minLength: 1, maxLength: 60, pattern: '^[a-z0-9][a-z0-9-]{0,59}$' },
       templateSource: { type: 'string', enum: ['bundled', 'project'] },

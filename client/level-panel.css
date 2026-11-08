@@ -8,6 +8,13 @@
    keeps its full width, so the badge stays where it was clicked. The common container .global-shell (App.tsx) holds
    the panel as a descendant, so :has() needs no extra state. */
 .global-shell:has(.level-panel) .workspace > :not(.topbar) { margin-right: var(--level-panel-width); }
+@media (min-width: 900px) {
+  .global-shell:has(.level-panel) .notifications-corner { right: calc(var(--level-panel-width) + 12px); }
+  .global-shell:has(.level-panel) .deck-gallery .deck-gallery-header,
+  .global-shell:has(.level-panel) .deck-gallery .catalog-heading-actions,
+  .global-shell:has(.level-panel) .deck-gallery .catalog-browser-navigation { flex-wrap: wrap; }
+  .global-shell:has(.level-panel) .deck-gallery .catalog-browser-navigation { row-gap: 8px; }
+}
 
 .level-panel { position: fixed; top: 52px; right: 0; bottom: 0; z-index: 65; display: flex; flex-direction: column; width: var(--level-panel-width); background: var(--sidebar); border-left: 1px solid var(--line); animation: level-panel-in var(--motion-material) var(--ease-out); }
 @keyframes level-panel-in { from { opacity: 0; transform: translateX(20px); } }
@@ -21,11 +28,11 @@
 .level-panel-head { display: flex; align-items: center; gap: 12px; padding: 14px 12px 10px 16px; }
 .level-panel-card { display: grid; place-items: center; flex: 0 0 auto; width: 40px; height: 50px; border: 1px solid var(--mark-back); border-radius: 5px; background: var(--mark-front); color: var(--count-face); font: 500 20px 'Geist Mono', monospace; }
 :root.dark .level-panel-card { border-color: var(--mark-front); background: var(--mark-back); }
-.level-panel-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; flex: 1; min-width: 0; }
+.level-panel-heading { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 2px 10px; flex: 1; min-width: 0; }
 .level-panel-heading h2 { margin: 0; font-size: 18px; font-weight: 700; letter-spacing: -.3px; }
 /* The heading takes focus only so the panel announces itself on open; it is not a control, so no ring. */
 .level-panel-heading h2:focus { outline: none; }
-.level-panel-xp { color: var(--muted); font: 12px 'Geist Mono', monospace; white-space: nowrap; }
+.level-panel-xp { color: var(--muted); font: 12px 'Geist Mono', monospace; }
 /* «All quests done» is words, not a counter: the text face, in the success color. */
 .level-panel-xp.is-done { color: var(--level-done); font: 600 13px var(--font-sans); }
 .level-panel-xpbar { height: 6px; margin: 0 16px 4px; border-radius: 3px; background: color-mix(in srgb, var(--line) 55%, transparent); overflow: hidden; }
@@ -38,7 +45,7 @@
 .level-chapter-check { color: var(--level-done); }
 .level-chapter-bar { flex: 0 0 44px; width: 44px; height: 4px; border-radius: 2px; background: color-mix(in srgb, var(--line) 60%, transparent); overflow: hidden; }
 .level-chapter-bar i { display: block; height: 100%; border-radius: 2px; background: var(--mint-edge, var(--card-highlight)); }
-.level-chapter-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.level-chapter-title { flex: 1; min-width: 0; overflow-wrap: anywhere; }
 .level-chapter-chevron { flex: 0 0 auto; color: var(--muted); transition: rotate var(--motion-feedback) var(--ease-out); }
 .level-chapter-head[aria-expanded='true'] .level-chapter-chevron { rotate: 180deg; }
 .level-chapter.is-done .level-chapter-title { color: var(--level-done); }
@@ -50,20 +57,20 @@
 
 .level-divider { margin: 10px 9px 6px; padding-top: 10px; border-top: 1px solid var(--line); color: var(--muted); font-size: 11px; line-height: 1.5; }
 
-.level-quest.is-done { display: flex; align-items: center; gap: 8px; padding: 6px 9px; border-radius: 5px; color: var(--ink); font-size: 13px; }
+.level-quest.is-done { display: flex; align-items: center; gap: 8px; padding: 6px 9px; border-radius: 5px; color: var(--muted); font-size: 13px; }
 .level-quest.is-done > svg { flex: 0 0 auto; color: var(--level-done); }
-/* Open quests use the primary action fill, the same pair as .button-default: --violet-fill exists only in the dark
-   theme, the light one falls back to the accent with surface ink, so the rows stand out on the light sidebar too. */
-.level-quest.is-open { border-radius: 5px; background: var(--violet-fill, var(--accent)); color: var(--violet-fill-ink, var(--surface)); }
+.level-quest.is-open { border-radius: 5px; color: var(--ink); }
+.level-quest.is-open:has(.level-quest-row[aria-expanded='true']) { background: var(--surface); }
 .level-quest-row { display: flex; align-items: center; gap: 8px; width: 100%; padding: 7px 9px; border: 0; border-radius: 5px; background: transparent; color: inherit; font-size: 13px; font-weight: 500; text-align: left; }
-.level-quest-row:hover:not(:disabled) { background: color-mix(in srgb, currentColor 10%, transparent); }
-.level-quest-row > svg { flex: 0 0 auto; color: inherit; opacity: .8; transition: rotate var(--motion-feedback) var(--ease-out); }
+.level-quest-row:hover:not(:disabled) { background: var(--hover); }
+.level-quest-row > svg { flex: 0 0 auto; color: var(--muted); transition: rotate var(--motion-feedback) var(--ease-out); }
 .level-quest-row[aria-expanded='true'] > svg { rotate: 90deg; }
 .level-quest-title { flex: 1; min-width: 0; overflow-wrap: anywhere; }
 .level-quest.is-done .level-quest-xp { flex: 0 0 auto; color: var(--muted); font: 11px 'Geist Mono', monospace; }
-.level-quest-chip { flex: 0 0 auto; padding: 1px 6px; border-radius: 3px; background: color-mix(in srgb, currentColor 14%, transparent); color: inherit; font: 11px 'Geist Mono', monospace; }
+.level-quest-chip { flex: 0 0 auto; color: var(--muted); font: 11px 'Geist Mono', monospace; }
 .level-quest-hint { display: flex; flex-direction: column; align-items: start; gap: 9px; padding: 1px 9px 9px 30px; color: inherit; font-size: 13px; line-height: 1.55; }
 .level-quest-hint p { margin: 0; }
+.level-quest-hint p, .level-quest-hint code { overflow-wrap: anywhere; }
 .level-quest-hint code { padding: 1px 4px; border-radius: 3px; background: var(--ground); color: var(--ink); font-family: 'Geist Mono', monospace; font-size: 11px; }
 
 /* «Show me» rings the element a quest teaches (show-me.ts adds the class for ~1.6 s). box-shadow only, so the ring
@@ -72,15 +79,17 @@
 @keyframes show-me-pulse { 50% { box-shadow: 0 0 0 4px color-mix(in srgb, var(--focus) 90%, transparent), 0 0 0 9px color-mix(in srgb, var(--plum) 45%, transparent); } }
 
 /* The badge is a small violet card in the Deckmate material (as the deck mark), the number in Geist Mono;
-   the light theme pairs it with the darker --mark-front face so the number keeps AA contrast. */
+   the light theme pairs it with the darker --mark-front face so the number keeps AA contrast.
+   2026-11-08: card and bar are 24 px wide so the whole badge makes a 24 px target (audit P-1). */
 .level-badge { position: relative; display: flex; flex-direction: column; align-items: center; gap: 2px; border: 0; border-radius: 4px; background: transparent; padding: 0; }
-.level-badge-card { display: grid; place-items: center; width: 22px; height: 28px; border: 1px solid var(--mark-back); border-radius: 3px; background: var(--mark-front); color: var(--count-face); font: 500 11px 'Geist Mono', monospace; line-height: 1; transition: filter var(--motion-feedback) var(--ease-out); }
+.level-badge-card { display: grid; place-items: center; width: 24px; height: 28px; border: 1px solid var(--mark-back); border-radius: 3px; background: var(--mark-front); color: var(--count-face); font: 500 11px 'Geist Mono', monospace; line-height: 1; transition: filter var(--motion-feedback) var(--ease-out); }
 :root.dark .level-badge-card { border-color: var(--mark-front); background: var(--mark-back); }
 /* 2026-11-06: hover and the open panel lighten the card as the planning markers do; a focus-colored edge was lost in the dark
    theme, where the card's own edge already has nearly that color. Plain buttons press 1px like the shared .ui-button. */
 .level-badge:hover .level-badge-card, .level-badge[aria-expanded='true'] .level-badge-card { filter: brightness(1.12); }
 .level-badge:active:not(:disabled), .level-chapter-head:active:not(:disabled), .level-quest-row:active:not(:disabled) { translate: 0 1px; }
-.level-badge-bar { width: 22px; height: 3px; border-radius: 2px; background: color-mix(in srgb, var(--line) 70%, transparent); overflow: hidden; }
+.level-badge:focus-visible, .level-chapter-head:focus-visible, .level-quest-row:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.level-badge-bar { width: 24px; height: 3px; border-radius: 2px; background: color-mix(in srgb, var(--line) 70%, transparent); overflow: hidden; }
 .level-badge-bar i { display: block; height: 100%; background: var(--mint-edge, var(--card-highlight)); }
 .level-badge-card.is-pop { animation: level-pop var(--motion-material) var(--ease-out); }
 @keyframes level-pop { 40% { transform: scale(1.14); } }

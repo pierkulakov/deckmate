@@ -1,3 +1,4 @@
+import { Fragment } from 'react';
 import * as Tooltip from '@radix-ui/react-tooltip';
 import { ArrowUpRight } from 'lucide-react';
 import { tagDecoration, tagIconDataUrl, type ProjectTag } from '../../src/project-tags.ts';
@@ -13,7 +14,7 @@ const text = defineText({
   tags: 'Теги', projectTags: 'Теги проекта',
   tagged: (names: string) => `Теги: ${names}`,
   more: (count: number) => `Ещё тегов: ${count}`,
-  missingCard: 'Карта не найдена',
+  missingCard: 'Карточка не найдена',
 });
 
 export function TagGlyph({ tag }: { tag: ProjectTag }) {
@@ -83,9 +84,10 @@ export function TagColorIndicator({ tags = [], definitions = [] }: { tags?: read
   </Tooltip.Content></Tooltip.Portal></Tooltip.Root></Tooltip.Provider>;
 }
 
-export function CardTags({ tags = [], definitions = [], compact = false, maxVisible, cardsById, onOpenCard }: {
+export function CardTags({ tags = [], definitions = [], compact = false, maxVisible, cardsById, onOpenCard, onEditTags, disabled = false }: {
   tags?: readonly string[]; definitions?: readonly ProjectTag[]; compact?: boolean; maxVisible?: number;
   cardsById?: ReadonlyMap<string, { title: string }>; onOpenCard?: (cardId: string) => void;
+  onEditTags?: () => void; disabled?: boolean;
 }) {
   const t = useText(text);
   if (!tags.length) return null;
@@ -96,10 +98,14 @@ export function CardTags({ tags = [], definitions = [], compact = false, maxVisi
   return <Tooltip.Provider delayDuration={200}><span className={'card-tags' + (maxVisible === undefined ? '' : ' is-bounded')} aria-label={t.tagged(unique.join(', '))}>
     {visible.map(name => {
       const definition = byName.get(name);
-      if (!definition?.cardId || !onOpenCard) return <TagBadge key={name} name={name} definition={definition} compact={compact} />;
-      const cardId = definition.cardId;
+      const badge = <TagBadge name={name} definition={definition} compact={compact} />;
+      const cardId = definition?.cardId;
+      const onClick = cardId && onOpenCard ? () => onOpenCard(cardId) : onEditTags;
+      if (!onClick) return <Fragment key={name}>{badge}</Fragment>;
+      const button = <button key={name} type="button" className="tag-badge-link" aria-label={name} disabled={disabled} onClick={onClick}>{badge}</button>;
+      if (!cardId) return button;
       return <Tooltip.Root key={name}><Tooltip.Trigger asChild>
-        <button type="button" className="tag-badge-link" aria-label={name} onClick={() => onOpenCard(cardId)}><TagBadge name={name} definition={definition} compact={compact} /></button>
+        {button}
       </Tooltip.Trigger><Tooltip.Portal><Tooltip.Content className="card-tag-tooltip" side="top" sideOffset={6}>
         <span>{name}</span><span className="card-tag-tooltip-card"><ArrowUpRight size={11} aria-hidden="true" />{cardsById?.get(cardId)?.title ?? t.missingCard}</span>
       </Tooltip.Content></Tooltip.Portal></Tooltip.Root>;

@@ -6,8 +6,17 @@
 .card-indicator-button { padding: 0; border: 0; border-radius: 3px; background: transparent; cursor: pointer; }
 .card-indicator-button:hover { background: var(--hover); }
 .card-indicator-button:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
+/* 2026-11-08 (NW-04): tile Run/Milestone buttons keep the 13px glyph and carry a transparent 24×24 target (::after),
+   centered by default. When both planning buttons sit on a tile the targets grow outward (Run left, Milestone right)
+   and meet between them, so the two targets never overlap; passive icons (due, gate) have no target and keep their look. */
+.card-indicators.is-tile .card-indicator-button::after { content: ''; position: absolute; inset: -5px -5.5px; }
+/* The outward targets reach under passive sibling icons, which are positioned and would otherwise paint above them. */
+.card-indicators.is-tile .card-indicator-button { z-index: 1; }
+.card-indicators.is-tile:has(.card-milestone-indicator) .card-run-indicator.card-indicator-button::after { left: -11px; right: -2px; }
+.card-indicators.is-tile:has(.card-run-indicator) .card-milestone-indicator.card-indicator-button::after { left: 0; right: -11px; }
 .card-due-indicator.is-urgent { color: var(--danger); }
 .card-due-indicator.is-soon { color: var(--warning-ink); }
+.card-trash-indicator { color: var(--danger); }
 .card-run-body { fill: none; stroke: currentColor; stroke-width: 1.3; }
 .card-run-detail { fill: none; stroke: currentColor; stroke-width: 1.2; stroke-linecap: round; }
 .card-run-indicator.is-current .card-run-body,
@@ -20,6 +29,7 @@
 .card-hand-indicator { gap: 1px; }
 .card-hand-indicator > strong { min-width: 7px; font: 700 9px/12px var(--font-sans); text-align: center; }
 .card-hand-indicator.is-mine { color: var(--mint-edge, var(--card-highlight)); }
+:root:not(.dark) .card-hand-indicator.is-mine > strong { color: #1f7a61; }
 .card-hand-indicator.is-foreign > svg { fill-opacity: 0; }
 .card-gate-indicator { flex-direction: column; min-width: 35px; gap: 1px; }
 .card-gate-indicator.is-blocked { color: var(--danger); }
@@ -41,7 +51,9 @@
 .deck-card-face .card-indicator { pointer-events: auto; }
 .deck-card-face > .deck-card-hints { pointer-events: none; }
 .deck-card-face > .card-indicators.is-tile + .deck-card-hints { min-height: 16px; margin-top: 1px; padding-top: 0; }
-.card-indicators.is-preview { display: flex; gap: 6px; padding: 8px 16px; }
+/* 2026-11-08: the preview variant lives in the meta row (card-preview.css): one 16px icon size, one 8px step like the
+   tags beside it; the row's own 16px insets carry the shared axis. Only semantic tones (due, gate, milestone) differ. */
+.card-indicators.is-preview { display: flex; gap: 8px; }
 .card-indicators.is-preview .card-indicator { min-width: 24px; min-height: 24px; }
 .card-indicators.is-preview .card-indicator > svg { width: 16px; height: 16px; }
 .card-indicators.is-table { flex: 0 0 auto; gap: 4px; }

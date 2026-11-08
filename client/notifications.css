@@ -6,6 +6,14 @@
 /* The corner column spans its width for every child; only the children themselves catch the pointer. */
 .notifications-corner > * { pointer-events: auto; }
 
+/* On a phone, keep the workspace reachable even when several stacks or warnings arrive at once. */
+@media (max-width: 480px) {
+  .notifications-corner { max-height: 45dvh; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; }
+  /* Keep empty space beside collapsed pills click-through, but allow dragging the expanded column's scrollbar. */
+  .notifications-corner:has(.notification-stack) { pointer-events: auto; }
+  .notifications-corner > .notification-stack { flex-shrink: 0; }
+}
+
 .notification-stack { display: flex; flex: 0 1 auto; flex-direction: column; min-height: 0; gap: 6px; padding: 10px 11px; border: 1px solid var(--line);
   border-radius: 8px; background: var(--surface); color: var(--ink); box-shadow: var(--shadow);
   animation: toast-rise var(--motion-spring-pop) var(--ease-spring-pop); }
@@ -36,7 +44,7 @@
   background: var(--hover); transform: translateY(4px) rotate(45deg); }
 @media (prefers-reduced-motion: reduce) { .notification-hold-hint { animation: none; } }
 
-/* «Due Cards» folds into a pill with the count at the bottom right; the choice is kept per viewer (2026-11-05). */
+/* Each stack folds into a pill with its count; the choice is kept per viewer. */
 .notification-collapse { display: inline-grid; flex-shrink: 0; place-items: center; width: 22px; height: 22px; padding: 0; border: 1px solid var(--line); border-radius: 5px;
   background: transparent; color: var(--muted); transition: border-color var(--motion-feedback), color var(--motion-feedback); }
 .notification-pill { display: inline-flex; flex-shrink: 0; align-self: flex-end; align-items: center; gap: 6px; height: 30px; padding: 0 8px 0 10px; border: 1px solid var(--line);

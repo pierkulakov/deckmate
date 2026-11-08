@@ -1,9 +1,10 @@
 import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { Gauge, Layers, SlidersHorizontal, Trash2, X } from 'lucide-react';
-import { deckAcceptsCard, type CardKind, type CardPriority, type CatalogDeck, type CatalogView } from '../../src/catalog-contracts.ts';
+import { deckAcceptsCard, newCardDeckId, type CardKind, type CardPriority, type CatalogDeck, type CatalogView } from '../../src/catalog-contracts.ts';
 import type { WorkspaceSnapshot } from '../../src/workspace-contracts.ts';
 import type { CatalogAction } from '../useCatalog.ts';
 import { readNewCardDraft, removeNewCardDraft, writeNewCardDraft, type NewCardDraft } from '../card-drafts.ts';
+import { useScrollportFitHeight } from '../scrollport-fit.ts';
 import { MemberOptions } from './JourneyPanel.tsx';
 import { CardEditForm, splitDraft } from './CardEditForm.tsx';
 import { Switch } from './CardOrdering.tsx';
@@ -19,7 +20,9 @@ const text = defineText({
   sandboxOnly: 'Cards can only be created in sandbox.',
   titleRequired: 'Enter the card title on the first line.',
   tooLong: 'The title is limited to 1000 characters, the content to 200000 characters.',
-  chooseDeck: 'Choose a deck or assign an Inbox destination deck.',
+  landsInInbox: (deck: string) => `→ Inbox: ${deck}`,
+  landsNoDeck: '→ No deck',
+  noDeckOption: 'No deck (Unassigned)',
   incompatible: (kind: string, deck: string) => `${kind} is not compatible with deck “${deck}”.`,
   chooseCompatible: 'Choose an existing compatible Deck.',
   invalidParent: 'Choose an active Hero or Doc Card without a parent or Journey, or leave the field empty.',
@@ -48,8 +51,7 @@ const text = defineText({
   editPriority: 'Edit Priority',
   panels: 'New card panels',
   chooseDeckLabel: 'Choose Deck',
-  saveCard: 'Save Card to Deck',
-  createAnother: 'Create another card after this one',
+  createAnother: 'Create another',
   typeLabel: 'Type',
   ownerLabel: 'Owner',
   unassigned: 'Unassigned',
@@ -63,21 +65,23 @@ const text = defineText({
   sandboxOnly: 'Создание карточек доступно только в sandbox.',
   titleRequired: 'Введите название карточки первой строкой.',
   tooLong: 'Название ограничено 1000 знаками, содержимое — 200000 знаками.',
-  chooseDeck: 'Выберите колоду или назначьте колоду-приёмник Inbox.',
+  landsInInbox: (deck: string) => `→ Inbox: ${deck}`,
+  landsNoDeck: '→ Без колоды',
+  noDeckOption: 'Без колоды',
   incompatible: (kind: string, deck: string) => `Тип ${kind} не подходит колоде «${deck}».`,
-  chooseCompatible: 'Выберите существующую совместимую Deck.',
+  chooseCompatible: 'Выберите существующую совместимую колоду.',
   invalidParent: 'Выберите активную Hero или Doc Card без родителя и Journey либо оставьте поле пустым.',
-  nestedFamily: 'У карты есть собственные Sub Cards: вложенные семьи недоступны.',
-  ownerUnavailable: 'Owner больше недоступен. Выберите другого участника или Unassigned.',
-  invalidEffort: 'Effort должен быть неотрицательным числом.',
+  nestedFamily: 'У карточки есть собственные Sub Cards: вложенные семьи недоступны.',
+  ownerUnavailable: 'Исполнитель больше недоступен. Выберите другого участника или «Без исполнителя».',
+  invalidEffort: 'Оценка должна быть неотрицательным числом.',
   notConfirmed: 'Создание не подтверждено. Черновик и ID сохранены; проверьте сообщение каталога и повторите.',
-  closeNew: 'Закрыть New Card',
+  closeNew: 'Закрыть новую карточку',
   newCardPanel: 'Новая карточка',
   propertiesButton: 'Свойства',
   close: 'Закрыть',
   content: 'Текст новой карточки',
   writeSandbox: 'Запись доступна только в sandbox.',
-  properties: 'Properties новой карточки',
+  properties: 'Свойства новой карточки',
   subCardKind: 'Sub Card может быть Task или Doc. Родительская связь сохранится.',
   mixedKind: 'Эта колода принимает Task, Hero и Doc.',
   kindFromDeck: (kind: string, deck: string) => `${kind} · тип задаётся колодой «${deck}»`,
@@ -86,20 +90,19 @@ const text = defineText({
   parentUnavailable: 'Родитель недоступен',
   notSet: 'не задан',
   priorityNotSet: 'Не задан',
-  effortLabel: (value: string) => `Effort: ${value}`,
-  priorityLabel: (value: string) => `Priority: ${value}`,
-  editEffort: 'Изменить Effort',
-  editPriority: 'Изменить Priority',
+  effortLabel: (value: string) => `Оценка: ${value}`,
+  priorityLabel: (value: string) => `Приоритет: ${value}`,
+  editEffort: 'Изменить оценку',
+  editPriority: 'Изменить приоритет',
   panels: 'Панели новой карточки',
   chooseDeckLabel: 'Выбрать колоду',
-  saveCard: 'Сохранить карту в колоде',
-  createAnother: 'Создать ещё одну карточку после этой',
+  createAnother: 'Создать ещё одну',
   typeLabel: 'Тип',
-  ownerLabel: 'Владелец',
-  unassigned: 'Unassigned',
-  parentCardOptional: 'Родительская карта (необязательно)',
-  effort: 'Effort',
-  priority: 'Priority',
+  ownerLabel: 'Исполнитель',
+  unassigned: 'Без исполнителя',
+  parentCardOptional: 'Родительская карточка (необязательно)',
+  effort: 'Оценка',
+  priority: 'Приоритет',
   tracks: 'Треки',
 });
 
@@ -109,53 +112,14 @@ function defaultCardKind(deck: CatalogDeck | undefined): CardKind {
   return 'task';
 }
 
+// The composer panel itself is the measured element (2026-11-04); the shared hook lives in scrollport-fit.ts.
+const fitSelf = (element: HTMLElement) => element;
 function useComposerViewport() {
-  const composer = useRef<HTMLElement>(null);
-  useLayoutEffect(() => {
-    const element = composer.current;
-    if (!element) return;
-    const scrollport = element.closest<HTMLElement>('.workspace-main');
-    const viewport = window.visualViewport;
-    let frame = 0;
-    function measure() {
-      const bounds = element!.getBoundingClientRect();
-      const scale = element!.offsetWidth > 0 ? bounds.width / element!.offsetWidth : 1;
-      if (scale <= 0) return;
-      const viewportTop = viewport?.offsetTop ?? 0;
-      const viewportBottom = viewportTop + (viewport?.height ?? window.innerHeight);
-      const scrollportBounds = scrollport?.getBoundingClientRect();
-      const top = Math.max(bounds.top, viewportTop, scrollportBounds?.top ?? viewportTop);
-      const bottom = Math.min(viewportBottom, scrollportBounds?.bottom ?? viewportBottom);
-      // 2026-11-04: clamp to visible scrollport space; scrolling a static slot above it must not grow the form.
-      const height = Math.max(0, Math.floor((bottom - top) / scale - 12));
-      const value = height + 'px';
-      if (element!.style.getPropertyValue('--composer-height') !== value) element!.style.setProperty('--composer-height', value);
-    }
-    function schedule() {
-      if (!frame) frame = requestAnimationFrame(() => { frame = 0; measure(); });
-    }
-    const observer = new ResizeObserver(schedule);
-    for (const node of [element, scrollport, element.closest('.catalog-view')]) if (node) observer.observe(node);
-    measure();
-    scrollport?.addEventListener('scroll', schedule, { passive: true });
-    window.addEventListener('resize', schedule);
-    window.addEventListener('scroll', schedule, { passive: true });
-    viewport?.addEventListener('resize', schedule);
-    viewport?.addEventListener('scroll', schedule);
-    return () => {
-      observer.disconnect(); cancelAnimationFrame(frame);
-      scrollport?.removeEventListener('scroll', schedule);
-      window.removeEventListener('resize', schedule);
-      window.removeEventListener('scroll', schedule);
-      viewport?.removeEventListener('resize', schedule);
-      viewport?.removeEventListener('scroll', schedule);
-    };
-  }, []);
-  return composer;
+  return useScrollportFitHeight(fitSelf, '--composer-height');
 }
 
 // New Card shares CardEditForm with the card sheet's edit mode:
-// first line — title, the rest Markdown; Save Card to Deck / Ctrl+Enter; «Create another card after this one»; Effort/Priority band.
+// first line — title, the rest Markdown; Save / Ctrl+Enter; «Create another»; Effort/Priority band.
 export function CardComposer({ catalog, snapshot, initialDeckId, initialParentId = null, initialPriority = null, initialZoneId = null, pending, onEdit, onClose, onCreated, onDirtyChange }: {
   catalog: CatalogView;
   snapshot: WorkspaceSnapshot;
@@ -212,9 +176,9 @@ export function CardComposer({ catalog, snapshot, initialDeckId, initialParentId
   const [error, setError] = useState('');
 
   const selectedDeck = catalog.decks.find(deck => deck.id === deckId);
-  // Without an explicit deck, cards land in the project's default Inbox.
-  const inboxDeck = catalog.decks.find(deck => deck.id === (catalog.inboxDeckId ?? null));
-  const targetDeck = selectedDeck ?? (deckId === '' ? inboxDeck : undefined);
+  // 2026-11-08: without an explicit deck the card lands in the project Inbox when it takes the kind, else in no deck at all.
+  const autoDeck = catalog.decks.find(deck => deck.id === newCardDeckId(null, catalog.inboxDeckId, catalog.decks, kind));
+  const targetDeck = selectedDeck ?? (deckId === '' ? autoDeck : undefined);
   const availableDecks = catalog.decks.filter(deck => !parentId || deckAcceptsCard(deck.kind, 'task') || deckAcceptsCard(deck.kind, 'doc'));
   const parentCards = catalog.cards.filter(card => (card.kind === 'hero' || card.kind === 'doc')
     && card.id !== draftId && !card.parentId && !card.journey && !card.archived && !card.deleted);
@@ -263,11 +227,12 @@ export function CardComposer({ catalog, snapshot, initialDeckId, initialParentId
 
   function chooseDeck(nextDeckId: string) {
     const nextDeck = catalog.decks.find(deck => deck.id === nextDeckId);
-    const nextTarget = nextDeck ?? (nextDeckId === '' ? inboxDeck : undefined);
     if (nextDeck && parentId && !deckAcceptsCard(nextDeck.kind, 'task') && !deckAcceptsCard(nextDeck.kind, 'doc')) return;
     setDeckId(nextDeckId);
     setZoneId(null);
-    if (nextTarget && nextTarget.kind !== 'mixed') setKind(defaultCardKind(nextTarget));
+    // The automatic choice is the default flow — its kind is Task; an explicit deck keeps setting it.
+    if (nextDeckId === '') setKind('task');
+    else if (nextDeck && nextDeck.kind !== 'mixed') setKind(defaultCardKind(nextDeck));
     setError('');
   }
 
@@ -303,8 +268,8 @@ export function CardComposer({ catalog, snapshot, initialDeckId, initialParentId
     if (!canWrite) return t.sandboxOnly;
     if (!draftTitle) return t.titleRequired;
     if (draftTitle.length > 1000 || draftMarkdown.length > 200000) return t.tooLong;
-    if (!deckId && !inboxDeck) return t.chooseDeck;
-    if (!targetDeck || !deckAcceptsCard(targetDeck.kind, kind)) return targetDeck ? t.incompatible(kind, targetDeck.title) : t.chooseCompatible;
+    // No deck chosen is a valid choice: the card goes to the Inbox or stays without a deck (deckId null).
+    if (deckId && (!targetDeck || !deckAcceptsCard(targetDeck.kind, kind))) return targetDeck ? t.incompatible(kind, targetDeck.title) : t.chooseCompatible;
     if (parentId && (kind === 'hero' || !parentCards.some(parent => parent.id === parentId))) return t.invalidParent;
     if (parentId && catalog.cards.some(card => card.parentId === draftId)) return t.nestedFamily;
     if (owner && !catalog.members?.some(member => member.label === owner)) return t.ownerUnavailable;
@@ -348,7 +313,7 @@ export function CardComposer({ catalog, snapshot, initialDeckId, initialParentId
       removeNewCardDraft(snapshot.source, draftPlace);
       setStashShown(false);
       if (createAnother) resetDraft();
-      else { created.current = true; onCreated(draftId, deckId || inboxDeck?.id || ''); }
+      else { created.current = true; onCreated(draftId, deckId || autoDeck?.id || ''); }
     } finally {
       inFlight.current = false;
       setSaving(false);
@@ -368,8 +333,8 @@ export function CardComposer({ catalog, snapshot, initialDeckId, initialParentId
         <div className="card-preview-context card-composer-context">
           <h2>{t.newCardPanel}</h2>
           <DeckPicker catalog={catalog} projectName={snapshot.projectName} source={snapshot.source} decks={availableDecks} current={deckId || null}
-            noneLabel={inboxDeck ? `Inbox · ${inboxDeck.title}` : undefined} shown={targetDeck}
-            text={selectedDeck?.title ?? (!deckId && inboxDeck ? `Inbox · ${inboxDeck.title}` : t.chooseDeckLabel)} disabled={busy} onChoose={nextDeckId => chooseDeck(nextDeckId ?? '')} />
+            noneLabel={autoDeck ? `Inbox · ${autoDeck.title}` : t.noDeckOption} shown={targetDeck}
+            text={selectedDeck?.title ?? (!deckId ? (autoDeck ? t.landsInInbox(autoDeck.title) : t.landsNoDeck) : t.chooseDeckLabel)} disabled={busy} onChoose={nextDeckId => chooseDeck(nextDeckId ?? '')} />
         </div>
         <div className="card-preview-tools"><Button type="button" variant="ghost" size="icon" disabled={busy} onClick={requestClose} aria-label={t.closeNew} title={t.close}><X size={19} /></Button></div>
       </header>
@@ -380,15 +345,15 @@ export function CardComposer({ catalog, snapshot, initialDeckId, initialParentId
         </section>}
         <section id={draftId + '-content'} className="card-composer-panel card-composer-content" hidden={panel !== 'content'} aria-label={t.content}>
           <CardEditForm key={draftId} draft={draft} onDraftChange={value => { setDraft(value); setError(''); }} catalog={catalog} source={snapshot.source}
-            path={'cards/' + draftId.slice(5) + '.md'} writable={canWrite} busy={busy} saving={saving} blocked={!(deckId || inboxDeck) || !effortValid}
-            saveLabel={t.saveCard} notice={error || (canWrite ? '' : t.writeSandbox)} cancelButton={false}
+            path={'cards/' + draftId.slice(5) + '.md'} writable={canWrite} busy={busy} saving={saving} blocked={!effortValid}
+            notice={error || (canWrite ? '' : t.writeSandbox)} cancelButton={false}
             onSave={() => void save()} onCancel={requestClose} />
           <div className="card-composer-again"><Switch label={t.createAnother} checked={createAnother} disabled={busy} onChange={setCreateAnother} /></div>
         </section>
         <section id={draftId + '-properties'} className="card-composer-panel card-composer-settings" hidden={panel !== 'properties'} aria-label={t.properties}>
           <header><SlidersHorizontal size={16} /><h3>{t.propertiesButton}</h3></header>
           <fieldset disabled={busy || !canWrite}>
-            {targetDeck?.kind === 'mixed' ? <label className="catalog-field">{t.typeLabel}<select value={kind} onChange={event => chooseKind(event.target.value as CardKind)}>{(['task', 'hero', 'doc'] as CardKind[]).map(cardKind => <option key={cardKind} value={cardKind} disabled={Boolean(parentId) && cardKind === 'hero'}>{kindLabel(cardKind, lang)}</option>)}</select><small>{parentId ? t.subCardKind : t.mixedKind}</small></label> : <p className="card-composer-kind-context">{t.kindFromDeck(kindLabel(kind, lang), targetDeck?.title ?? (inboxDeck ? 'Inbox · ' + inboxDeck.title : t.chooseDeckLabel))}</p>}
+            {targetDeck?.kind === 'mixed' ? <label className="catalog-field">{t.typeLabel}<select value={kind} onChange={event => chooseKind(event.target.value as CardKind)}>{(['task', 'hero', 'doc'] as CardKind[]).map(cardKind => <option key={cardKind} value={cardKind} disabled={Boolean(parentId) && cardKind === 'hero'}>{kindLabel(cardKind, lang)}</option>)}</select><small>{parentId ? t.subCardKind : t.mixedKind}</small></label> : <p className="card-composer-kind-context">{t.kindFromDeck(kindLabel(kind, lang), targetDeck?.title ?? (autoDeck ? 'Inbox · ' + autoDeck.title : t.noDeckOption))}</p>}
             <label className="catalog-field">{t.ownerLabel}<select value={owner ?? ''} onChange={event => setOwner(event.target.value || null)}><option value="">{t.unassigned}</option><MemberOptions members={catalog.members ?? []} />{owner && !catalog.members?.some(member => member.label === owner) && <option value={owner} disabled>{t.memberUnavailable}</option>}</select></label>
             {kind !== 'hero' && <label className="catalog-field"><span>{t.parentCardOptional}</span><select value={parentId ?? ''} onChange={event => setParentId(event.target.value || null)}><option value="">{t.noParent}</option>{parentCards.map(parent => <option key={parent.id} value={parent.id}>{parent.title} · {kindLabel(parent.kind, lang)}</option>)}{parentId && !parentCards.some(parent => parent.id === parentId) && <option value={parentId} disabled>{t.parentUnavailable}</option>}</select></label>}
             <div className="card-composer-settings-pair">

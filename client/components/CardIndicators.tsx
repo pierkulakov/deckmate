@@ -1,5 +1,5 @@
 import type { CSSProperties, ReactNode } from 'react';
-import { Bell, Hand as HandIcon, Link2 } from 'lucide-react';
+import { Bell, Hand as HandIcon, Link2, Trash2 } from 'lucide-react';
 import type { CatalogCard, CatalogMember, CatalogView } from '../../src/catalog-contracts.ts';
 import { localIsoDate } from '../../src/catalog-hand.ts';
 import type { CardTileLookups } from '../card-tile-equality.ts';
@@ -29,6 +29,7 @@ const text = defineText({
   unknownMilestone: (id: string) => `Milestone ${id} · not in registry`,
   dependencies: (incoming: string, open: string, outgoing: string) => `Dependencies: incoming ${incoming} (${open} open), outgoing ${outgoing}`,
   cardProperties: 'Card properties',
+  deleted: 'In Trash',
   due: (date: string, label: string) => `Due: ${date} · ${label}`,
 }, {
   past: 'прошлый', current: 'текущий', future: 'будущий', unknown: 'нет в реестре',
@@ -36,15 +37,16 @@ const text = defineText({
   workdays: (count: number) => `${new Intl.NumberFormat(locale('ru')).format(count)} рабочих дней`,
   unknownRun: (id: string) => `Run ${id} · нет в реестре`,
   changeRun: (label: string) => `${label}, изменить Run`,
-  changeMilestone: (label: string) => `${label}, изменить веху`,
+  changeMilestone: (label: string) => `${label}, изменить Milestone`,
   run: (label: string, start: string, end: string, phase: string) => `${label} · ${start} – ${end} · ${phase}`,
   hands: (members: string) => 'Руки: ' + members,
   noSlot: 'без слота',
   slot: (number: string) => 'слот ' + number,
-  milestone: (title: string, date: string, total: number, acceptedState: string, accepted: string) => `Milestone: ${title} · ${date} · ${new Intl.NumberFormat(locale('ru')).format(total)} карт · ${acceptedState} ${accepted}`,
+  milestone: (title: string, date: string, total: number, acceptedState: string, accepted: string) => `Milestone: ${title} · ${date} · карточек: ${new Intl.NumberFormat(locale('ru')).format(total)} · ${acceptedState} ${accepted}`,
   unknownMilestone: (id: string) => `Milestone ${id} · нет в реестре`,
   dependencies: (incoming: string, open: string, outgoing: string) => `Зависимости: вход ${incoming} (не закрыто ${open}), выход ${outgoing}`,
   cardProperties: 'Свойства карточки',
+  deleted: 'В корзине',
   due: (date: string, label: string) => `Срок: ${date} · ${label}`,
 });
 
@@ -75,16 +77,17 @@ function dependencyCount(value: number, numberFormat: Intl.NumberFormat): string
   return value > 9 ? '9+' : numberFormat.format(value);
 }
 
-function PlanningIndicator({ className, title, actionLabel, style, onOpen, children }: {
-  className: string; title: string; actionLabel: string; style?: CSSProperties;
-  onOpen?: (anchor: HTMLButtonElement) => void; children: ReactNode;
+function PlanningIndicator({ tab, className, title, actionLabel, style, disabled, onOpen, children }: {
+  tab: 'run' | 'milestone'; className: string; title: string; actionLabel: string; style?: CSSProperties;
+  disabled?: boolean; onOpen?: (anchor: HTMLButtonElement) => void; children: ReactNode;
 }) {
   if (!onOpen) return <span className={className} role="img" title={title} aria-label={title} style={style}>{children}</span>;
-  return <button type="button" className={className + ' card-indicator-button'} title={actionLabel} aria-label={actionLabel} style={style}
+  return <button type="button" className={className + ' card-indicator-button'} title={actionLabel} aria-label={actionLabel} style={style} disabled={disabled}
+    data-quick-settings-tab={tab} aria-haspopup="dialog" aria-expanded={false}
     onPointerDown={event => event.stopPropagation()} onClick={event => { event.stopPropagation(); onOpen(event.currentTarget); }}>{children}</button>;
 }
 
-export function CardIndicators({ card, lookups, members, catalog, currentMemberId, variant, onQuickSettings }: {
+export function CardIndicators({ card, lookups, members, catalog, currentMemberId, variant, onQuickSettings, quickSettingsDisabled }: {
   card: CatalogCard;
   lookups: CardTileLookups;
   members: CatalogMember[];
@@ -92,6 +95,7 @@ export function CardIndicators({ card, lookups, members, catalog, currentMemberI
   currentMemberId?: string;
   variant: 'tile' | 'table' | 'preview';
   onQuickSettings?: (tab: 'run' | 'milestone', anchor: HTMLButtonElement) => void;
+  quickSettingsDisabled?: boolean;
 }) {
   const t = useText(text);
   const lang = useLang();
@@ -125,7 +129,7 @@ export function CardIndicators({ card, lookups, members, catalog, currentMemberI
   const showDue = card.kind === 'task' && Boolean(card.dueDate);
   const showRun = Boolean(catalog && card.run);
   const showMilestone = Boolean(catalog && card.milestone);
-  if (!showDue && !showRun && !showMilestone && !primaryHandId && !hasGate) return null;
+  if (!card.deleted && !showDue && !showRun && !showMilestone && !primaryHandId && !hasGate) return null;
 
   let runPhase: RunPhase = 'unknown';
   let runTitle = t.unknownRun(card.run ?? '');
@@ -151,10 +155,11 @@ export function CardIndicators({ card, lookups, members, catalog, currentMemberI
   const dueLabel = card.dueDate && due ? t.due(formatDate(card.dueDate), due.label) : '';
 
   return <span className={`card-indicators is-${variant}`} role="group" aria-label={t.cardProperties}>
+    {card.deleted && <span className="card-indicator card-trash-indicator" role="img" title={t.deleted} aria-label={t.deleted}><Trash2 aria-hidden="true" /></span>}
     {showDue && due && <span className={`card-indicator card-due-indicator is-${due.tone}`} role="img" title={dueLabel} aria-label={dueLabel}><Bell aria-hidden="true" /></span>}
-    {showRun && <PlanningIndicator className={`card-indicator card-run-indicator is-${runPhase}`} title={runTitle} actionLabel={t.changeRun(runTitle)}
+    {showRun && <PlanningIndicator tab="run" className={`card-indicator card-run-indicator is-${runPhase}`} title={runTitle} actionLabel={t.changeRun(runTitle)} disabled={quickSettingsDisabled}
       onOpen={onQuickSettings ? anchor => onQuickSettings('run', anchor) : undefined}><RunGlyph /></PlanningIndicator>}
-    {showMilestone && <PlanningIndicator className={`card-indicator card-milestone-indicator${milestone && milestone.date < today ? ' is-past' : ' is-future'}`} title={milestoneTitle} actionLabel={t.changeMilestone(milestoneTitle)} style={{ color: milestone?.color }}
+    {showMilestone && <PlanningIndicator tab="milestone" className={`card-indicator card-milestone-indicator${milestone && milestone.date < today ? ' is-past' : ' is-future'}`} title={milestoneTitle} actionLabel={t.changeMilestone(milestoneTitle)} style={{ color: milestone?.color }} disabled={quickSettingsDisabled}
       onOpen={onQuickSettings ? anchor => onQuickSettings('milestone', anchor) : undefined}><MilestoneGlyph filled={Boolean(milestone && milestone.date >= today)} /></PlanningIndicator>}
     {primaryHandId && <span className={`card-indicator card-hand-indicator${primaryHandId === defaultMemberId ? ' is-mine' : ' is-foreign'}`} role="img" title={handTitle} aria-label={handTitle}>
       <HandIcon fill={primaryHandId === defaultMemberId ? 'currentColor' : 'none'} aria-hidden="true" />

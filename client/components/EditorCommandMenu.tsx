@@ -1,4 +1,4 @@
-import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
+import { useEffect, useId, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type Ref } from 'react';
 import { createPortal } from 'react-dom';
 import { Bold, Italic, Strikethrough, Hash, Smile, Image, Code, Heading1, Heading2, Heading3, Link, List, ListOrdered, Minus, Quote, SquareCheck, Table2, UserRound, type LucideIcon } from 'lucide-react';
 import type { CatalogView } from '../../src/catalog-contracts.ts';
@@ -38,7 +38,7 @@ const text = defineText({
   code: 'Код',
   link: 'Ссылка',
   defaultLabel: 'Текст карточки: первая строка — название',
-  cards: 'Карты',
+  cards: 'Карточки',
   members: 'Участники',
   commands: 'Команды',
   projectTags: 'Теги проекта',
@@ -67,13 +67,16 @@ const formatKeys: Partial<Record<string, EditorFormat>> = { b: 'bold', i: 'itali
 
 interface MenuPosition { left: number; top?: number; bottom?: number; width: number; maxHeight: number }
 
-export function EditorCommandMenu({ value, onChange, catalog, disabled, label: textLabel, maxLength = 201002 }: {
+export interface EditorCommandHandle { insert: (markdown: string) => void; focus: () => void }
+
+export function EditorCommandMenu({ value, onChange, catalog, disabled, label: textLabel, maxLength = 201002, ref }: {
   value: string;
   onChange: (value: string) => void;
   catalog: CatalogView;
   disabled: boolean;
   label?: string;
   maxLength?: number;
+  ref?: Ref<EditorCommandHandle>;
 }) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const t = useText(text);
@@ -93,6 +96,16 @@ export function EditorCommandMenu({ value, onChange, catalog, disabled, label: t
   const active = Boolean(trigger && focused && !disabled && !dismissed);
   const formatting = focused && !disabled && selection.start !== selection.end && !mediaRequest;
   const selectedIndex = Math.min(selected, Math.max(0, options.length - 1));
+
+  useImperativeHandle(ref, () => ({
+    focus: () => textareaRef.current?.focus({ preventScroll: true }),
+    insert: markdown => {
+      const textarea = textareaRef.current;
+      if (!textarea || disabled || mediaRequest) return;
+      const { selectionStart: start, selectionEnd: end } = textarea;
+      applyReplacement({ value: value.slice(0, start) + markdown + value.slice(end), start: start + markdown.length, end: start + markdown.length });
+    },
+  }));
 
   useEffect(() => { setSelected(0); }, [trigger?.kind, trigger?.start, trigger?.query]);
 

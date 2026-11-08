@@ -44,7 +44,12 @@
 .deck-table .catalog-card-group-heading > .catalog-group-effort { grid-area: 1 / 4; gap: 6px; margin-left: 16px; font-size: 11px; line-height: 12px; opacity: 0; transition: opacity var(--motion-feedback); }
 .deck-table .catalog-group-effort svg { width: 16px; height: 16px; }
 .deck-table .catalog-card-group-heading:hover > .catalog-group-effort, .deck-table .catalog-card-group-heading:focus-within > .catalog-group-effort { opacity: 1; }
-.deck-table .catalog-card-group-heading input[type="checkbox"] { position: absolute; left: -22px; top: 4px; opacity: 0; transition: opacity var(--motion-feedback); }
+/* 2026-11-08 (NW-02): the hit target moved to the label: its 5px padding forms a 26×26 target around the 16px input
+   (a pseudo on the bordered input clips ~1px in this scroll container). left/top keep the checkbox at its old spot;
+   the filter margin keeps the 8px slot the label used to occupy as a zero-width flex item. */
+.deck-table .catalog-card-group-heading .catalog-group-select { position: absolute; left: -27px; top: -1px; padding: 5px; }
+.deck-table .catalog-card-group-heading .catalog-group-filter { margin-left: 8px; }
+.deck-table .catalog-card-group-heading input[type="checkbox"] { opacity: 0; transition: opacity var(--motion-feedback); }
 .deck-table .catalog-card-group-heading:hover input[type="checkbox"], .deck-table .catalog-card-group-heading input[type="checkbox"]:is(:focus-visible, :checked, :indeterminate) { opacity: 1; }
 
 /* Card row. */
@@ -58,7 +63,12 @@
 .deck-table-row[data-state="accepted"] { --row-strip: var(--sub-card-state-accepted, var(--accepted-metal)); }
 .deck-table-row:hover { z-index: 1; box-shadow: 0 0 5px 1px color-mix(in srgb, var(--card-highlight) 25%, transparent), 0 0 0 1px color-mix(in srgb, var(--card-highlight) 45%, transparent); }
 .deck-table-row.is-opened { z-index: 2; box-shadow: 0 0 5px 1px color-mix(in srgb, var(--row-ring) 45%, transparent), 0 0 0 1px var(--row-ring); }
-.deck-table-row.is-multi-selected { z-index: 2; background: color-mix(in srgb, var(--card-highlight) 16%, var(--card-face)); box-shadow: 0 0 0 1px var(--card-highlight); }
+/* 2026-11-08: replace the 1 px gap with a border at the same row pitch, joining checked rows into one recessed block. */
+.deck-table-row.is-multi-selected { z-index: 2; height: 35px; margin-bottom: 0; border-bottom: 1px solid color-mix(in srgb, var(--check-on-face) 22%, var(--card-face)); background: color-mix(in srgb, var(--check-on-face) 22%, var(--card-face)); }
+.deck-table-row.is-multi-selected:where(:not(.is-opened)) { box-shadow: none; }
+.deck-table-row.is-multi-selected:where(:not(.is-multi-selected + .is-multi-selected)) { box-shadow: inset 0 4px 5px -4px #0c0a1399; }
+.deck-table-row.is-multi-selected:not(:has(+ .is-multi-selected)) { border-bottom-color: var(--card-edge); }
+.deck-table-row.is-multi-selected:where(.is-opened:not(.is-multi-selected + .is-multi-selected)) { box-shadow: inset 0 4px 5px -4px #0c0a1399, 0 0 5px 1px color-mix(in srgb, var(--row-ring) 45%, transparent), 0 0 0 1px var(--row-ring); }
 .deck-table-row.is-card-order-target { z-index: 2; box-shadow: inset 0 2px 0 var(--accent), 0 -2px 6px color-mix(in srgb, var(--accent) 60%, transparent); }
 .deck-table-row:has(.catalog-table-title:focus-visible) { z-index: 2; outline: 2px solid var(--focus); outline-offset: -1px; }
 
@@ -89,6 +99,8 @@
 /* Heroes with Sub Cards use a gold title chip and a 4 px progress strip: 115×25, padding 4/6, gap 8, radius 4.
    A light gold tint, thin edge and 500-weight pale gold title keep the chip quiet; unstarted steps stay faint. */
 .deck-table-hero { --sub-card-state-planned: color-mix(in srgb, var(--pill-tint) 28%, transparent); display: inline-flex; align-items: center; flex: 0 1 auto; gap: 8px; min-width: 0; height: 24px; padding: 3px 6px; border: 1px solid color-mix(in srgb, var(--pill-face) 60%, var(--card-face)); border-radius: 4px; background: color-mix(in srgb, var(--pill-face) 18%, var(--card-face)); color: var(--pill-tint); }
+/* 2026-11-08: pale gold remains the dark-theme tint, not the ink on a light gold face. */
+:root:not(.dark) .deck-table-hero { color: var(--hero-ink); }
 .deck-table-hero .catalog-table-title { font-weight: 500; }
 .deck-table-hero .catalog-table-title > svg { color: inherit; }
 .deck-table-hero .sub-card-progress { position: relative; z-index: 1; top: 1px; flex: 0 0 auto; width: auto; min-width: 47px; height: 4px; gap: 1px; overflow: hidden; border-radius: 4px; }
@@ -113,13 +125,18 @@
 .deck-table-checklist { display: inline-flex; align-items: center; gap: 3px; color: var(--card-muted); font-size: 11px; line-height: 12px; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .deck-table-state { display: inline-flex; color: var(--mint, var(--card-highlight)); }
 
-/* 2026-11-07: below 460 px of table width rows become compact blocks without horizontal scroll: the Priority, Effort and right
-   cells keep their natural width and the title takes the rest, so nothing forces the table wider than its container.
-   It sits after the base right-cell rules: a container query adds no specificity, so the later rule wins. */
+/* 2026-11-08: below 460 px the title owns the first line; the parent and metrics share the second.
+   The nested subgrid keeps the parent inside its cell without letting it squeeze the title. */
 @container deck-table (max-width: 460px) {
-  .deck-table { grid-template-columns: 44px max-content minmax(0, 1fr) 0 max-content; }
+  .deck-table { grid-template-columns: 36px max-content minmax(0, 1fr) 0 max-content; }
+  .deck-table > tbody > .deck-table-row { grid-template-rows: 28px 24px; row-gap: 2px; height: auto; padding-block: 4px; }
   .deck-table-row > td { padding: 0 4px; }
-  .deck-table-row > .deck-table-details { min-width: 0; gap: 2px; }
+  .deck-table-row > .deck-table-priority { grid-area: 2 / 1; }
+  .deck-table-row > .deck-table-effort { grid-area: 2 / 2; }
+  .deck-table .deck-table-row > .deck-table-card { display: grid; grid-template-columns: subgrid; grid-template-rows: subgrid; grid-area: 1 / 1 / 3 / -1; gap: 0; }
+  .deck-table-card > :is(.catalog-table-title, .deck-table-hero) { grid-area: 1 / 1 / 2 / -1; justify-self: start; max-width: 100%; }
+  .deck-table-card > .card-family-trigger { grid-area: 2 / 3 / 3 / 5; justify-self: start; min-width: 0; max-width: 100%; }
+  .deck-table-row > .deck-table-details { grid-area: 2 / 5; min-width: 0; gap: 2px; }
   .deck-table-row > .deck-table-details .card-indicators, .deck-table-row > .deck-table-details .deck-table-checklist { display: none; }
 }
 

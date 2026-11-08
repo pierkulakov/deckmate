@@ -1,8 +1,8 @@
 import { afterEach, expect, it } from 'vitest';
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { applyAttachmentEdit, readCardAttachments } from '../server/attachments.ts';
+import { applyAttachmentEdit, attachmentKey, readCardAttachments } from '../server/attachments.ts';
 
 // 2026-11-05 write path: an upload without a file name gets the default name of the project's format
 // language (the manifest's formatLanguage), not the interface language of the request.
@@ -32,7 +32,12 @@ afterEach(async () => {
 
 async function uploadedName(root: string): Promise<string> {
   await applyAttachmentEdit(root, { action: 'upload-attachment', manifestHash: '', cardId, attachmentsHash: '', dataUrl, fileName: null, addedBy: null });
-  return (await readCardAttachments(root, cardId)).files[0].name;
+  const view = await readCardAttachments(root, cardId);
+  expect(view).not.toHaveProperty('cover');
+  const registry = await readFile(path.join(root, `tasks/deckmate-assets/cards/${attachmentKey(cardId)}/attachments.md`), 'utf8');
+  expect(registry).not.toMatch(/^cover:/mu);
+  expect(registry).not.toMatch(/list and cover|и её обложка/u);
+  return view.files[0].name;
 }
 
 it('names an upload without a file name by the project format language', async () => {

@@ -24,6 +24,7 @@ import { shortReference } from '../../src/references.ts';
 import { CatalogReferenceLink } from './JourneyPanel.tsx';
 import VisionCardNode, { visionCardSize, visionCardViewOf, visionCardViewOptions } from './VisionCardNode.tsx';
 import VisionSmartNode, { visionSmartSize } from './VisionSmartNode.tsx';
+import { fitVisionOnOpen } from '../vision-viewport.ts';
 import '../vision.css';
 
 const text = defineText({
@@ -96,7 +97,7 @@ const text = defineText({
   memberNotFound: 'Member not found',
   noTextRefs: 'There are no references in text nodes yet.',
 }, {
-  newScheme: 'Новая схема',
+  newScheme: 'Новая доска',
   agent: 'агент',
   human: 'человек',
   editable: 'Можно править',
@@ -105,37 +106,37 @@ const text = defineText({
   editableHint: 'Каждый с доступом может править (по умолчанию).',
   readonlyHint: 'Правка закрыта; переключить обратно можно здесь.',
   lockedHint: 'Правка закрыта для всех; снять — только правкой файла доски.',
-  openFailed: 'Не удалось открыть полотно.',
-  loadingBoard: 'Открываем полотно…',
-  saveFailed: 'Не удалось сохранить полотно.',
+  openFailed: 'Не удалось открыть доску.',
+  loadingBoard: 'Открываем доску…',
+  saveFailed: 'Не удалось сохранить доску.',
   notResponding: 'Deckmate не отвечает. Проверьте, что он запущен, и повторите.',
   notSavedOffline: 'Не сохранено: Deckmate не отвечает. Проверьте, что он запущен, и повторите.',
   copyTitle: (title: string) => `${title} — копия`.slice(0, 120),
-  noDecksForSmart: 'В проекте нет колод для Smart Node.',
-  youtubeError: 'Video-узлы поддерживают ссылки YouTube (https://youtube.com/… или https://youtu.be/…).',
-  saveBeforeCard: 'Сохраните или отмените правки схемы перед открытием карточки.',
+  noDecksForSmart: 'В проекте нет колод для умного узла.',
+  youtubeError: 'Видеоузлы поддерживают ссылки YouTube (https://youtube.com/… или https://youtu.be/…).',
+  saveBeforeCard: 'Сохраните или отмените правки доски перед открытием карточки.',
   board: 'Доска Vision',
   boardAccess: 'Доступ к доске',
-  schemeTitle: 'Название схемы',
+  schemeTitle: 'Название доски',
   dirty: 'Есть изменения',
   saved: 'Сохранено',
-  newBoard: 'Новое полотно',
+  newBoard: 'Новая доска',
   save: 'Сохранить',
   copy: 'Копия',
   discard: 'Отменить правки',
   stale: 'Файл доски обновлён извне. Ваш рисунок сохранён в редакторе.',
   loadNewVersion: 'Загрузить новую версию',
   openedAs: (access: string) => `Доска открыта как ${access}. Правка недоступна.`,
-  switchEditable: ' Переключите доступ в Editable через меню «…».',
-  cardsOnBoard: 'Карточки на схеме',
-  cardLinksDescription: 'Ссылки ведут к исходным карточкам. Стрелки на полотне показывают связи вашей схемы.',
+  switchEditable: ' Выберите доступ «Можно править» через меню «…».',
+  cardsOnBoard: 'Карточки на доске',
+  cardLinksDescription: 'Ссылки ведут к исходным карточкам. Стрелки на доске показывают связи.',
   findCard: 'Найти карточку…',
-  findCardForBoard: 'Найти карточку для схемы',
+  findCardForBoard: 'Найти карточку для доски',
   noMatches: 'Совпадений нет.',
   noCards: 'В проекте пока нет карточек.',
   cardNotFound: 'Карточка не найдена',
-  emptyLinked: 'Найдите карточку и нажмите +, чтобы добавить её на полотно.',
-  smartNode: 'Smart Node',
+  emptyLinked: 'Найдите карточку и нажмите +, чтобы добавить её на доску.',
+  smartNode: 'Умный узел',
   smartDescription: (done: string) => `Полоса «${done} / всего» по колоде; пересчитывается при каждом обновлении каталога.`,
   widgetDeck: 'Колода виджета',
   widgetState: 'Статус-фильтр виджета',
@@ -143,7 +144,7 @@ const text = defineText({
   noDecks: 'Нет колод',
   widget: 'Виджет',
   youtubeTitle: 'Видео YouTube',
-  youtubeDescription: 'Ссылка YouTube создаёт video-узел; вставка ссылки прямо на полотно работает так же.',
+  youtubeDescription: 'Ссылка YouTube создаёт видеоузел; вставка ссылки прямо на доску работает так же.',
   youtubeLink: 'Ссылка YouTube',
   add: 'Добавить',
   selected: 'Выделено',
@@ -153,7 +154,7 @@ const text = defineText({
   mixed: 'Разные',
   imageCaption: 'Подпись изображения',
   ok: 'ОК',
-  captionNote: 'Подпись — текст под картинкой, двигается вместе с ней. Текст меняют двойным кликом на полотне.',
+  captionNote: 'Подпись — текст под картинкой, двигается вместе с ней. Текст меняют двойным кликом на доске.',
   textRefs: 'Ссылки в тексте',
   textRefCard: 'Печатайте в текстовых узлах ',
   textRefCardTail: ' — карточка, ',
@@ -275,6 +276,7 @@ export default function Vision({ snapshot, refreshKey, dark, onEditing, onOpenCa
   const [videoUrl, setVideoUrl] = useState('');
   const [captionDraft, setCaptionDraft] = useState('');
   const api = useRef<ExcalidrawImperativeAPI | null>(null);
+  const fitOnOpen = useRef(true);
   const draftId = useRef<string>(crypto.randomUUID());
   const scene = useRef(emptyScene);
   // 2026-11-05: quests count cards newly placed on the board; a ref, not the linkedIds state, so rapid canvas
@@ -310,6 +312,7 @@ export default function Vision({ snapshot, refreshKey, dark, onEditing, onOpenCa
   }, [lang, document, title]);
 
   function display(next: BoardDocument | null, mountCanvas = true, keepError = false) {
+    fitOnOpen.current = true;
     const restored = restore((next?.scene ?? emptyScene) as unknown as Parameters<typeof restore>[0], null, null);
     const serialized = serializeAsJSON(restored.elements, restored.appState, restored.files, 'local');
     scene.current = JSON.parse(serialized) as BoardScene;
@@ -389,6 +392,7 @@ export default function Vision({ snapshot, refreshKey, dark, onEditing, onOpenCa
   }
 
   const onChange: ExcalidrawProps['onChange'] = (elements, appState, files) => {
+    if (fitOnOpen.current && api.current) fitOnOpen.current = !fitVisionOnOpen(api.current);
     const serialized = serializeAsJSON(elements, appState, files, 'local');
     scene.current = JSON.parse(serialized) as BoardScene;
     setDirty(sceneSignature(scene.current) !== baseline.current || currentTitle.current !== baselineTitle.current);
@@ -525,27 +529,33 @@ export default function Vision({ snapshot, refreshKey, dark, onEditing, onOpenCa
     : '';
   return <section className="vision-workspace">
     <header className="vision-toolbar">
-      <select aria-label={t.board} value={document?.id ?? ''} disabled={editing || opening} onChange={event => { if (event.target.value) void open(event.target.value); else display(null); }}>
-        <option value="">{opening ? t.loadingBoard : t.newScheme}</option>{boards.map(board => <option key={board.id} value={board.id}>{board.title}</option>)}
-      </select>
-      {document && <DropdownMenu.Root>
-        <DropdownMenu.Trigger className="ui-button button-ghost button-size-sm vision-access" aria-label={t.boardAccess} disabled={!snapshot.writable || pending || document.access === 'locked'}>
-          <MoreHorizontal size={14} /><span className={`vision-access-state${document.access === 'locked' ? ' is-locked' : ''}`}>{accessTitle(document.access, lang)}</span>
-        </DropdownMenu.Trigger>
-        <DropdownMenu.Portal><DropdownMenu.Content className="dropdown" align="start" sideOffset={6}>
-          <DropdownMenu.Label className="dropdown-label">{t.boardAccess}</DropdownMenu.Label>
-          {boardAccesses.map(access => <DropdownMenu.Item key={access} className="dropdown-item" onSelect={() => { if (document.access !== access) void save(false, access); }}>
-            {accessTitle(access, lang)}{document.access === access && <Check size={14} className="menu-check" />}
-          </DropdownMenu.Item>)}
-          <DropdownMenu.Label className="dropdown-label">{accessHint(document.access, lang)}</DropdownMenu.Label>
-        </DropdownMenu.Content></DropdownMenu.Portal>
-      </DropdownMenu.Root>}
-      <input aria-label={t.schemeTitle} value={opening ? '' : title} maxLength={120} disabled={!editable || pending || opening} onChange={event => { titleEdited.current = true; currentTitle.current = event.target.value; setTitle(event.target.value); setDirty(sceneSignature(scene.current) !== baseline.current || event.target.value !== baselineTitle.current); }} />
-      <span className="vision-save-state">{dirty ? t.dirty : document ? t.saved : opening ? '' : t.newBoard}</span>
-      {document && <CatalogReferenceLink kind="v" id={document.id} source={snapshot.source} />}
-      <Button size="sm" disabled={!editable || pending || opening || !title.trim()} onClick={() => void save()}><Save size={14} />{t.save}</Button>
-      <Button size="sm" variant="outline" disabled={!editable || pending || opening || !title.trim()} onClick={() => void save(true)}>{t.copy}</Button>
-      <Button size="sm" variant="ghost" disabled={pending || !dirty} onClick={() => display(document)}>{t.discard}</Button>
+      <div className="vision-toolbar-fields">
+        <select aria-label={t.board} value={document?.id ?? ''} disabled={editing || opening} onChange={event => { if (event.target.value) void open(event.target.value); else display(null); }}>
+          <option value="">{opening ? t.loadingBoard : t.newScheme}</option>{boards.map(board => <option key={board.id} value={board.id}>{board.title}</option>)}
+        </select>
+        <input aria-label={t.schemeTitle} value={opening ? '' : title} maxLength={120} disabled={!editable || pending || opening} onChange={event => { titleEdited.current = true; currentTitle.current = event.target.value; setTitle(event.target.value); setDirty(sceneSignature(scene.current) !== baseline.current || event.target.value !== baselineTitle.current); }} />
+      </div>
+      <div className="vision-toolbar-details">
+        {document && <DropdownMenu.Root>
+          <DropdownMenu.Trigger className="ui-button button-ghost button-size-sm vision-access" aria-label={t.boardAccess} disabled={!snapshot.writable || pending || document.access === 'locked'}>
+            <MoreHorizontal size={14} /><span className={`vision-access-state${document.access === 'locked' ? ' is-locked' : ''}`}>{accessTitle(document.access, lang)}</span>
+          </DropdownMenu.Trigger>
+          <DropdownMenu.Portal><DropdownMenu.Content className="dropdown" align="start" sideOffset={6}>
+            <DropdownMenu.Label className="dropdown-label">{t.boardAccess}</DropdownMenu.Label>
+            {boardAccesses.map(access => <DropdownMenu.Item key={access} className="dropdown-item" onSelect={() => { if (document.access !== access) void save(false, access); }}>
+              {accessTitle(access, lang)}{document.access === access && <Check size={14} className="menu-check" />}
+            </DropdownMenu.Item>)}
+            <DropdownMenu.Label className="dropdown-label">{accessHint(document.access, lang)}</DropdownMenu.Label>
+          </DropdownMenu.Content></DropdownMenu.Portal>
+        </DropdownMenu.Root>}
+        <span className="vision-save-state">{dirty ? t.dirty : document ? t.saved : opening ? '' : t.newBoard}</span>
+        {document && <CatalogReferenceLink kind="v" id={document.id} source={snapshot.source} />}
+      </div>
+      <div className="vision-toolbar-actions">
+        <Button size="sm" disabled={!editable || pending || opening || !title.trim()} onClick={() => void save()}><Save size={14} />{t.save}</Button>
+        <Button size="sm" variant="outline" disabled={!editable || pending || opening || !title.trim()} onClick={() => void save(true)}>{t.copy}</Button>
+        <Button size="sm" variant="ghost" disabled={pending || !dirty} onClick={() => display(document)}>{t.discard}</Button>
+      </div>
     </header>
     {(error || catalogError) && <div className="error-banner" role="alert">{error ?? catalogError}</div>}
     {stale && <div className="notice">{t.stale} <button disabled={editing} onClick={() => void open(document.id)}>{t.loadNewVersion}</button></div>}
@@ -572,7 +582,7 @@ export default function Vision({ snapshot, refreshKey, dark, onEditing, onOpenCa
       <div className="vision-tools">
         <h3><Gauge size={14} />{t.smartNode}</h3>
         <p>{t.smartDescription(stateLabel(SMART_DONE_STATE, lang).toLocaleLowerCase(locale(lang)))}</p>
-        <div className="vision-tool-row">
+        <div className="vision-tool-row vision-smart-controls">
           <select aria-label={t.widgetDeck} value={smartDeckId} disabled={!editable || pending} onChange={event => setSmartDeckId(event.target.value)}>
             {catalog?.decks.map(deck => <option key={deck.id} value={deck.id}>{deck.title}</option>) ?? <option value="">{t.noDecks}</option>}
           </select>

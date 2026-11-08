@@ -129,6 +129,7 @@ it('creates the declared decks, artwork, mapped Journey, tags and optional Hero 
   expect(catalog.projectTags).toEqual(template.tags);
   const units = catalog.decks.find(deck => deck.title === 'Units')!;
   const coding = catalog.decks.find(deck => deck.title === 'Coding')!;
+  expect(catalog.inboxDeckId).toBe(coding.id);
   expect(units.kind).toBe('asset');
   expect(units.style).toBe('artwork');
   expect(await readFile(path.join(root, units.cover!))).toEqual(await readFile(path.join(fixturePaths.artRoot, 'units.webp')));
@@ -184,6 +185,27 @@ it('reuses case-insensitive names and leaves existing deck, tag, Journey and for
   const before = await snapshot(root);
   expect(await applyProjectTemplate(root, await editFor(root, false), null, fixturePaths)).toEqual([]);
   expect(await snapshot(root)).toEqual(before);
+});
+
+it('keeps the existing Inbox while applying a starter template', async () => {
+  const { root } = await fixture();
+  const manifest = emptyManifest();
+  manifest.spaces.push({ id: 'existing', title: 'Existing' });
+  manifest.decks.push({ id: 'inbox', title: 'Capture', kind: 'mixed', spaceId: 'existing', icon: 'box', color: '#123456', description: '' });
+  manifest.inboxDeckId = 'inbox';
+  await writeFile(path.join(root, 'tasks/deckmate.md'), renderCatalogManifest(manifest));
+  await applyProjectTemplate(root, await editFor(root, false), null, fixturePaths);
+  expect((await readProjectCatalog(root)).inboxDeckId).toBe('inbox');
+});
+
+it('does not assign a reused template Task deck of an incompatible kind as Inbox', async () => {
+  const { root } = await fixture();
+  const manifest = emptyManifest();
+  manifest.spaces.push({ id: 'existing', title: 'Existing' });
+  manifest.decks.push({ id: 'coding', title: 'Coding', kind: 'asset', spaceId: 'existing', icon: 'box', color: '#123456', description: '' });
+  await writeFile(path.join(root, 'tasks/deckmate.md'), renderCatalogManifest(manifest));
+  await applyProjectTemplate(root, await editFor(root, false), null, fixturePaths);
+  expect((await readProjectCatalog(root)).inboxDeckId).toBeNull();
 });
 
 it('rejects external manifest and template edits before the first write', async () => {

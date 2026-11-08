@@ -4,6 +4,25 @@ Notable changes are grouped by version using [Keep a Changelog](https://keepacha
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-11-09
+
+### Added
+
+- **Desktop projects.** Switch directly to another recent project from the board's project menu.
+- **Development.** `npm run dev` runs the watched server and Vite with hot reload.
+- **Attachments.** Insert an attachment into card text from the editor, or copy its Markdown link from the attachments panel.
+
+### Changed
+
+- **Inbox and Sub Cards.** A Task or Mixed deck can be designated as Inbox for compatible cards created without a chosen deck; otherwise cards remain Unassigned. Sub Cards can belong to working decks independently of their Hero.
+- **Journeys.** Hero cards show compact step mini-cards and a Journey menu; opening a step shows its Sub Card in the Sub Cards tab, with Esc returning to the Hero. The Sub Card displays a step note.
+- **Cards and materials.** Open-card properties offer quick settings and clickable tag chips; the card number moves to the footer. Metallic cards gain cursor lighting and tilt.
+- **Card attachments.** Card covers were removed; legacy cover entries remain preserved. Deck and planning covers are unaffected.
+
+### Fixed
+
+- Improved narrow layouts, contrast, focus and scrolling, and refined Russian interface wording; added tests for these flows and accessibility.
+
 ## [0.2.0] - 2026-11-08
 
 ### Added
@@ -68,6 +87,7 @@ First public release.
 - Third-party notices: `dist/client/third-party-licenses.md` now carries full license texts for bundled packages that ship no license file and for code embedded in prebuilt packages (Chevrotain, Langium, the vscode-languageserver libraries and lodash-es inside `@mermaid-js/parser`, js-yaml inside `mermaid`); the build fails on an empty section or on undeclared embedded code.
 - Source-checkout instructions also open the demo, and the `/deckmate` analyze and audit workflows move new cards to `discussing` after creating them.
 
-[Unreleased]: https://github.com/pierkulakov/deckmate/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/pierkulakov/deckmate/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/pierkulakov/deckmate/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/pierkulakov/deckmate/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/pierkulakov/deckmate/releases/tag/v0.1.0

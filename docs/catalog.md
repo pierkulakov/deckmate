@@ -35,7 +35,7 @@ An imported Hero comes from a numbered `##` heading; its tasks are the source sl
 | `tasks/deckmate-runs.md`, `tasks/deckmate-milestones.md` | Run and Milestone registries with dates; do not replace the iteration log. |
 | `tasks/deckmate-planning-history.md` | Append-only daily observations of Runs and Milestones for burndown and velocity. |
 | `tasks/deckmate-notifications.md` | Per-member notification seen/dismiss marks and card watch lists. |
-| `tasks/deckmate-assets/cards/<key>/attachments.md` and adjacent binary files | One card's attachment registry and cover; key is a native UUID or `legacy-<first 16 characters of the ID's SHA-256>`. |
+| `tasks/deckmate-assets/cards/<key>/attachments.md` and adjacent binary files | One card's attachment registry; key is a native UUID or `legacy-<first 16 characters of the ID's SHA-256>`. Legacy cover entries are preserved but not shown (2026-11-09). |
 | `cards/<uuid>.md` | One native card: YAML metadata and a Markdown body. |
 | `tasks/journeys/<uuid>/index.md` | Pipeline metadata, version, and ordered step links. |
 | `tasks/journeys/<uuid>/steps/<stepId>.md` | Properties and full instructions for one step. |
@@ -43,7 +43,7 @@ An imported Hero comes from a numbered `##` heading; its tasks are the source sl
 | `tasks/journey-templates/<uuid>/index.md` + `steps/*.md` | A project Journey template created with Save as Template. |
 | `assets/project-templates/<id>.md` | Bundled starter templates for **Start from template**, in the Deckmate repository, not the data project. |
 | `boards/<uuid>.excalidraw` | A Vision scene and external image references. |
-| `tasks/deckmate-assets/covers/<uuid>.<ext>` | Cover and Vision images: PNG, JPEG, WebP. |
+| `tasks/deckmate-assets/covers/<uuid>.<ext>` | Deck cover and Vision images: PNG, JPEG, WebP; unrelated to card attachments. |
 | `tasks/deckmate-activity/<UTC timestamp>-<uuid>.md` | One Deckmate activity event; the application does not rewrite existing events. |
 
 Symbolic links are not traversed. Managed writes validate the root, parents, and destination; nested directories are created one at a time. Native files are published without overwriting an existing destination.
@@ -211,7 +211,7 @@ The filename must match the UUID in the frontmatter. The canonical ID is `card:<
 
 `effort` is an optional finite number ≥ 0; `priority` is optional `high` / `medium` / `low`. Omission means unset. These fields are read into the catalog and SQLite, never inferred from text length or state. API creation also accepts null and omits those values from YAML. `update-card-content` does not change effort, priority, or other properties.
 
-`assign-deck` / `set-tracks` require a native card's current `sourceHash`, change only YAML, and preserve the body, BOM, and EOL byte for byte. An invalid or stale hash prevents writing. Unknown/malformed files appear in warnings. Native cards are created with the New Card editor inside a deck, by applying a Journey, or manually using the format above.
+`assign-deck` / `set-tracks` require a native card's current `sourceHash`, change only YAML, and preserve the body, BOM, and EOL byte for byte. An invalid or stale hash prevents writing. Unknown/malformed files appear in warnings. Native cards are created through `create-card`, by applying a Journey, or manually using the format above.
 
 The UI changes Deck through Quick Settings. Properties has no separate Tracks form; API commands update track links: `set-tracks`, or `set-card-links` to change deckId and trackIds together in one source-file or manifest write. An invalid or stale hash prevents writing and protects external changes.
 
@@ -230,7 +230,9 @@ Both write commands use `POST /api/catalog`, the `x-deckmate-token` header from 
 | `create-card` | `cardId: "card:<uuid>"`, `kind: "task" \| "hero" \| "doc"`, `title`, `markdown`, `deckId`, `trackIds`, `parentId`, `owner`, `effort`, `priority` |
 | `update-card-content` | `cardId`, `sourceHash`, `title`, `markdown` |
 
-Title is a nonempty single-line string of up to 1000 characters; Markdown is a string of up to 200000 characters and can be empty. `trackIds` is a list of unique existing tracks. Creation requires an existing compatible deck; for Task/Doc, `parentId` is null or an active top-level Hero/Doc. Hero is always created without a parent; nested families are prohibited. Task starts in `not-started`; Hero/Doc state remains null. Owner for any card kind accepts null or a name following the rules above. Send unset `parentId`, `owner`, `effort`, and `priority` explicitly as null, and `trackIds` as `[]`.
+Title is a nonempty single-line string of up to 1000 characters; Markdown is a string of up to 200000 characters and can be empty. `trackIds` is a list of unique existing tracks. An explicit `deckId` must name an existing compatible deck. `deckId: null` uses the project's Inbox if it accepts the card kind, otherwise creates an Unassigned card (`deckId: null`); this also applies to Sub Cards. For Task/Doc, `parentId` is null or an active top-level Hero/Doc. Hero is always created without a parent; nested families are prohibited. Task starts in `not-started`; Hero/Doc state remains null. Owner for any card kind accepts null or a name following the rules above. Send unset `parentId`, `owner`, `effort`, and `priority` explicitly as null, and `trackIds` as `[]`.
+
+`set-inbox-deck` accepts only Task or Mixed decks (or null to clear). Legacy Inbox decks of other kinds remain readable and receive only compatible card kinds. Changing the Inbox deck to a kind that cannot take Tasks clears `inboxDeckId` with a warning. Starter templates choose their first compatible Task deck when no Inbox is set; the demo uses Production.
 
 The client generates the creation UUID and retains it until a confirmed response. The server publishes `cards/<uuid>.md` without overwriting the destination. Repeating the same ID with identical metadata and text is safe and creates no duplicate; an existing ID with different content returns 409. Every request still checks the current manifestHash and, when assigning a parent, verifies that the parent's source is unchanged before publication.
 
@@ -336,15 +338,19 @@ CSV is generated from selected visible cards and selected columns: UTF-8 BOM, `;
 
 The server validates the full set and prepares all candidates, including sidecars, then rechecks sources before each publication. State changes to several legacy slices in one file use one patch; membership uses one manifest replacement. A no-op neither writes files nor creates an event. There is no cross-file transaction: `bulkOutcome` distinguishes `applied`, `unchanged`, `pending`, `created`, and `warnings`. After partial I/O, published files remain; retrying requires a fresh catalog and hashes. An action whose copy file exists but whose selected CardOptions are not yet saved remains pending until both publications complete. Index refresh failure does not undo Markdown.
 
-### Card attachments — 2026-11-04
+### Card attachments — 2026-11-09
 
-`GET /api/attachments?source=sandbox&cardId=<id>` returns `{ hash, files, cover, warnings }`; `live` reads are also available. The registry and binary UUID files live in `tasks/deckmate-assets/cards/<key>/`. PNG/JPEG/WebP/GIF/PDF files are allowed up to 10 MiB each, with a maximum of 500 registry entries per card.
+`GET /api/attachments?source=sandbox&cardId=<id>` returns `{ hash, files, warnings }`; `live` reads are also available. The registry and binary UUID files live in `tasks/deckmate-assets/cards/<key>/`. PNG/JPEG/WebP/GIF/PDF files are allowed up to 10 MiB each, with a maximum of 500 registry entries per card.
 
 `POST /api/catalog` actions send token, `source: "sandbox"`, `manifestHash`, `cardId`, and `attachmentsHash`:
 
 - `upload-attachment`: `dataUrl`, optional `fileName` and `addedBy`; the `x-deckmate-actor` member takes precedence over `addedBy`.
-- `remove-attachment`: `file`; updates the registry, deletes the binary file, and clears the cover if it used that file.
-- `set-card-cover`: `coverFile: string | null`, `coverPosition: 0..100`, `coverTitleMode: "light" | "dark"`, `coverBlur: boolean`.
+- `remove-attachment`: `file`; updates the registry and deletes the binary file.
+
+Card covers were removed on 2026-11-09. Existing registries still read, but legacy `cover` entries are opaque data: never returned or shown, never validated as active attachments, and preserved byte for byte during uploads and removals, even when their image is removed. Only the `files` block changes; BOM, line endings, other metadata, comments and Markdown body remain unchanged. New registries omit `cover`. Deck, Run and Milestone covers and Vision images remain separate features.
+
+Each attachment row offers **Copy link for the card text**: Markdown relative to the card file, embedding images and linking PDFs, with short copied feedback. It is available in read-only views too.
+In the card text editor, the paperclip menu can insert the same attachment Markdown directly.
 
 `attachmentsHash` protects the registry revision: an empty string means no file; a stale hash returns 409. This API branch requires `manifestHash` in the request shape but does not check its freshness or `sourceHash`: writes follow a separate path guarded by token, edit mode, and attachment hash; the branch is checked in `sandbox` mode. The shared catalog queue and activity event writing do not apply to attachment operations. The card body is not rewritten.
 

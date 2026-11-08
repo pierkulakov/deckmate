@@ -2,7 +2,7 @@
    Bulk buttons fold into the existing More menu by the bar's own width, not the viewport. */
 .deck-open-toolbar.is-selection { align-items: stretch; padding: 0; gap: 0; border-bottom: 0; }
 .deck-open-toolbar.is-selection > .card-selection-bar { height: auto; }
-.card-selection-toolbar.card-selection-bar { --selection-ink: #f1fff9; --selection-muted: #d5f5e9; container: selection-bar / inline-size; display: flex; align-items: center; gap: 14px; width: 100%; min-width: 0; height: 44px; min-height: 44px; margin: 0; padding: 5px 12px; border: 0; border-radius: inherit; background: linear-gradient(100deg, #116d56, #14765f 70%, #16775f); color: var(--selection-ink); box-shadow: inset 0 -1px #ffffff16; }
+.card-selection-toolbar.card-selection-bar { --selection-ink: #f1fff9; --selection-muted: #d5f5e9; display: flex; align-items: center; gap: 14px; width: 100%; min-width: 0; height: 44px; min-height: 44px; margin: 0; padding: 5px 12px; border: 0; border-radius: inherit; background: linear-gradient(100deg, #116d56, #14765f 70%, #16775f); color: var(--selection-ink); box-shadow: inset 0 -1px #ffffff16; }
 .card-selection-core, .card-selection-buttons { display: flex; flex: 0 1 auto; align-items: center; gap: 7px; min-width: 0; }
 .card-selection-count { flex: 0 1 auto; min-width: 0; margin: 0 3px 0 5px; overflow: hidden; color: var(--selection-ink); font-size: 12px; line-height: 18px; font-weight: 500; white-space: nowrap; text-overflow: ellipsis; }
 .card-selection-count > span { font-variant-numeric: tabular-nums; }
@@ -15,10 +15,6 @@
 .card-selection-divider { align-self: center; flex-shrink: 0; width: 1px; height: 22px; margin-inline: 7px; background: #d5f5e936; }
 .card-selection-status { display: block; flex: 1; min-width: 0; overflow: hidden; color: var(--selection-ink); font-size: 11px; line-height: 18px; white-space: nowrap; text-overflow: ellipsis; }
 .card-selection-status:empty { display: none; }
-/* Widths are the bar's content box: full row ≈ 890px, without secondary ≈ 762px, without narrow ≈ 506px. */
-@container selection-bar (max-width: 900px) { .card-selection-bar .bulk-action-secondary { display: none; } }
-@container selection-bar (max-width: 770px) { .card-selection-bar .bulk-action-narrow { display: none; } }
-@container selection-bar (max-width: 520px) { .card-selection-bar .bulk-action-button { display: none; } }
 @container selection-bar (max-width: 400px) {
   .card-selection-core, .card-selection-buttons { gap: 3px; }
   .card-selection-count { margin-inline: 2px; font-size: 11px; }

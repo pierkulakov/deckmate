@@ -12,7 +12,7 @@ const text = defineText({
   capped: (limit: number) => `first ${new Intl.NumberFormat(locale('en')).format(limit)}`,
 }, {
   deckMissing: 'Колода не найдена',
-  cappedTitle: (limit: number) => `Запрос ограничен первыми ${new Intl.NumberFormat(locale('ru')).format(limit)} картами`,
+  cappedTitle: (limit: number) => `Запрос ограничен первыми ${new Intl.NumberFormat(locale('ru')).format(limit)} карточками`,
   capped: (limit: number) => `первые ${new Intl.NumberFormat(locale('ru')).format(limit)}`,
 });
 

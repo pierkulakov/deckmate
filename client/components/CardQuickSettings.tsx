@@ -21,22 +21,24 @@ const text = defineText({
   connection: 'Could not save. Check the connection and try again.',
   docProperties: 'Doc cards have no Priority or Effort.',
   quickSettings: 'Quick Settings',
+  deck: 'Deck', owner: 'Owner', run: 'Run', milestone: 'Milestone', priority: 'Priority', effort: 'Effort',
 }, {
   none: 'Нет',
   noDeck: 'Без колоды',
-  unassigned: 'Unassigned',
+  unassigned: 'Без исполнителя',
   stale: 'Изменение не сохранено. Проверьте обновлённые данные и повторите выбор.',
   connection: 'Не удалось сохранить. Проверьте соединение и повторите выбор.',
-  docProperties: 'У Doc нет Priority и Effort.',
+  docProperties: 'У Doc нет приоритета и оценки.',
   quickSettings: 'Быстрые настройки',
+  deck: 'Колода', owner: 'Исполнитель', run: 'Run', milestone: 'Milestone', priority: 'Приоритет', effort: 'Оценка',
 });
 
 export { CardOwnerAvatar, OwnerAvatar } from './CardOwnerAvatar.tsx';
 export type { CardQuickSettingsTab } from '../keyboard-shortcuts.ts';
 const tabs = [
-  { id: 'deck', label: 'Deck', icon: LayoutGrid }, { id: 'owner', label: 'Owner', icon: UserRound },
-  { id: 'run', label: 'Run', icon: Play }, { id: 'milestone', label: 'Milestone', icon: Flag },
-  { id: 'priority', label: 'Priority', icon: Layers }, { id: 'effort', label: 'Effort', icon: Gauge },
+  { id: 'deck', icon: LayoutGrid }, { id: 'owner', icon: UserRound },
+  { id: 'run', icon: Play }, { id: 'milestone', icon: Flag },
+  { id: 'priority', icon: Layers }, { id: 'effort', icon: Gauge },
 ] as const;
 export const cardPriorityOptions: { value: CardPriority | null }[] = [
   { value: null }, { value: 'low' }, { value: 'medium' }, { value: 'high' },
@@ -87,7 +89,8 @@ export function CardQuickSettings({ card, catalog, source, projectName, tab, onT
   tab: CardQuickSettingsTab; onTabChange: (tab: CardQuickSettingsTab) => void; disabled: boolean; anchor?: HTMLElement | null;
   onEdit: (action: CatalogAction) => Promise<boolean>; onClose: () => void; onSavingChange?: (saving: boolean) => void;
 }) {
-  const [opener] = useState(() => anchor ?? (document.activeElement instanceof HTMLElement ? document.activeElement : null));
+  const [initialOpener] = useState(() => document.activeElement instanceof HTMLElement ? document.activeElement : null);
+  const opener = anchor ?? initialOpener;
   const t = useText(text);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -128,12 +131,12 @@ export function CardQuickSettings({ card, catalog, source, projectName, tab, onT
       changeTab(tabs[(index + (event.key === 'ArrowLeft' ? -1 : 1) + tabs.length) % tabs.length].id);
     }}>
       <div className="card-quick-tabs" role="tablist" aria-label={t.quickSettings}>
-        {tabs.map(item => <button key={item.id} type="button" role="tab" id={id + '-' + item.id} aria-label={item.label} title={item.label}
+        {tabs.map(item => <button key={item.id} type="button" role="tab" id={id + '-' + item.id} aria-label={t[item.id]} title={t[item.id]}
           aria-controls={id + '-panel'} aria-selected={tab === item.id} tabIndex={tab === item.id ? 0 : -1} disabled={saving}
           onClick={() => changeTab(item.id)}><item.icon size={16} aria-hidden="true" /></button>)}
       </div>
       <div id={id + '-panel'} role="tabpanel" aria-labelledby={id + '-' + tab} className="card-quick-panel">
-        <QuickSettingsList key={tab} title={selectedTab.label} titleAs={Dialog.Title} tabs choices={choicesFor(tab, value, catalog, source, projectName)}
+        <QuickSettingsList key={tab} title={t[selectedTab.id]} titleAs={Dialog.Title} tabs choices={choicesFor(tab, value, catalog, source, projectName)}
           current={currentChoice(tab, value, catalog)} disabled={unavailable || propertyUnavailable} searchDisabled={unavailable} onChoose={key => void choose(key)} />
       </div>
       {propertyUnavailable && <p className="card-quick-message">{t.docProperties}</p>}

@@ -34,19 +34,18 @@
       filter: drop-shadow(0 3px 12px #e5b65055); }
     .tagline { margin: 22px 0 28px; color: var(--muted); font-size: 31px; font-weight: 550; line-height: 1.2; }
     .tagline b { color: var(--ink); font-weight: 700; }
-    /* 2026-11-08: the CLI plate stays in the row for agents; the Windows badge sits in the corner like a store badge. */
-    .badges { display: flex; align-items: center; gap: 12px; }
+    /* 2026-11-08: ways to run Deckmate sit in one row: the CLI plate, then one chip per desktop platform
+       (Windows today; a macOS chip joins the row later). The chips share the plate's shape and size. */
+    .badges { display: flex; align-items: center; gap: 14px; }
     .badge { display: inline-flex; align-items: center; padding: 10px 16px; border: 2px solid transparent; border-radius: 12px; line-height: 1.2; }
-    /* The store-badge convention: logo on the left, a small line above a large one; readers know it without reading. */
-    .badge-app { position: absolute; left: 72px; bottom: 30px; gap: 10px; padding: 6px 14px 6px 11px; border-radius: 9px;
-      background: #111018; border-color: #ffffff2e; color: var(--ink); box-shadow: 0 4px 18px #0a081266; }
-    .badge-app svg { width: 20px; height: 20px; fill: currentColor; flex: none; }
-    .badge-app .lines { display: flex; flex-direction: column; line-height: 1.05; }
-    .badge-app small { font-size: 10px; font-weight: 500; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
-    .badge-app strong { font-size: 18px; font-weight: 650; letter-spacing: -.01em; }
+    .badge-app { gap: 11px; padding-left: 14px;
+      background: linear-gradient(160deg, #2c2442, #16131f) padding-box, linear-gradient(120deg, #ffffffa0, #b79cf2 45%, #9258e5) border-box;
+      color: var(--ink); font: 650 23px/1.2 "Source Sans 3", sans-serif; letter-spacing: -.005em; box-shadow: 0 0 28px #9258e540; }
+    .badge-app svg { width: 22px; height: 22px; fill: #c9b2fb; flex: none; }
     code { background: linear-gradient(160deg, #123f3a, #0b2724) padding-box, linear-gradient(120deg, #a8eedf, #74dcc8 40%, #9258e5) border-box;
       color: var(--mint); font: 500 23px/1.2 "Geist Mono", monospace; box-shadow: 0 0 28px #74dcc833; }
-    code::before { content: "$ "; color: #74dcc8aa; }
+    /* A trailing space in generated content collapses inside inline-flex (it printed "$npx"), so the gap is a margin. */
+    code::before { content: "$"; margin-right: 11px; color: #74dcc8aa; }
     .cards { position: absolute; left: 700px; top: 70px; width: 580px; height: 540px; perspective: 1300px; }
     .fan { position: absolute; inset: 0; transform-style: preserve-3d; transform: rotateX(16deg) rotateY(-22deg) rotateZ(4deg) scale(1.14); }
     /* A soft floor shadow anchors the floating hand. */
@@ -84,8 +83,8 @@
       <p class="tagline">A local <b>Markdown</b> project board<br>for <b>people</b> and <b>AI agents</b>.</p>
       <div class="badges">
         <code class="badge">npx deckmate</code>
+        <span class="badge badge-app"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 5.6 11 4.5v7.1H3zM12 4.3 21 3v8.6h-9zM3 12.4h8v7.1L3 18.4zM12 12.4h9V21l-9-1.3z"/></svg>Windows app</span>
       </div>
-      <span class="badge badge-app"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 5.6 11 4.5v7.1H3zM12 4.3 21 3v8.6h-9zM3 12.4h8v7.1L3 18.4zM12 12.4h9V21l-9-1.3z"/></svg><span class="lines"><small>Works with</small><strong>Windows</strong></span></span>
     </section>
     <div class="cards" aria-label="Five real cards from the sample project, fanned like a hand">
       <div class="floor"></div>

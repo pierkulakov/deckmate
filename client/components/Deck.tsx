@@ -1546,12 +1546,20 @@ export function Deck({ snapshot, refreshKey, onEditing, onImportCsv, onStartFrom
     const saved = restoreHeroView.current;
     if (!saved || selectedCard?.id !== saved.heroId) return;
     // 2026-11-08: run after the preview's heading focus and its scrollport measurement, without scrolling the opener into view.
-    const frame = requestAnimationFrame(() => {
+    let frame = requestAnimationFrame(() => {
       if (restoreHeroView.current !== saved) return;
       restoreHeroView.current = null;
       const root = sticky.root.current;
-      const panels = root?.querySelector<HTMLElement>('.card-preview-panels');
-      if (panels) panels.scrollTop = saved.scrollTop;
+      // 2026-11-09: the returning Hero can still be growing (file text, Journey section) on a slow machine; re-apply the
+      // saved scroll for up to 30 frames until the panel can reach it, instead of landing higher than the user left.
+      let attempts = 0;
+      const applyScroll = () => {
+        const panels = root?.querySelector<HTMLElement>('.card-preview-panels');
+        if (!panels) return;
+        panels.scrollTop = saved.scrollTop;
+        if (Math.abs(panels.scrollTop - saved.scrollTop) > 1 && ++attempts < 30) frame = requestAnimationFrame(applyScroll);
+      };
+      applyScroll();
       const id = CSS.escape(saved.subCardId);
       const selector = saved.origin === 'journey' ? `[data-journey-card-id="${id}"]` : `.card-family-list [data-card-id="${id}"] .card-family-row-open`;
       root?.querySelector<HTMLElement>(selector)?.focus({ preventScroll: true });

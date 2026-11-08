@@ -32,10 +32,10 @@ function findRepo() {
     if (!isDeckmateRepo(dir)) fail(`DECKMATE_REPO is not a deckmate repository: ${dir}`);
     return dir;
   }
-  // Future layout: desktop/scripts inside the deckmate repository.
+  // Layout since 0.2.0 (2026-11-08): desktop/ inside the deckmate repository.
   const inside = path.resolve(scriptDir, '..', '..');
   if (isDeckmateRepo(inside)) return inside;
-  // Current layout: deckmate-desktop next to deckmate.
+  // Older layout: a separate deckmate-desktop checkout next to deckmate.
   const sibling = path.resolve(shellDir, '..', 'deckmate');
   if (isDeckmateRepo(sibling)) return sibling;
   fail(`deckmate repository not found. Set DECKMATE_REPO, or clone it next to this folder (${sibling}).`);

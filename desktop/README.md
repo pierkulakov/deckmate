@@ -16,7 +16,7 @@ Pack the deckmate repository and install dependencies:
 node scripts/prepare-deckmate.mjs
 ```
 
-The script runs `npm pack` in the deckmate repository (which builds `dist/`), writes the tgz into this folder, points `dependencies.deckmate` at it and runs `npm install`. Set `DECKMATE_REPO` if the repository is not at `..\deckmate`. Repeat it after every change to deckmate.
+The script runs `npm pack` in the deckmate repository (which builds `dist/`), writes the tgz into this folder, points `dependencies.deckmate` at it and runs `npm install`. By default it packs the repository one level up (this folder lives inside it); set `DECKMATE_REPO` to pack another checkout. Repeat it after every change to deckmate.
 
 ## Run
 

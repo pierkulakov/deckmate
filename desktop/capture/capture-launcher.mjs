@@ -24,11 +24,36 @@ const frames = [
   { name: 'light-ru-hover-row', theme: 'light', lang: 'ru', size: [1280, 820], state: 'hover-row' },
 ];
 
-const FOCUS_TARGETS = {
-  'focus-open': '#open-folder',
-  'focus-row': '.recent-open',
+// Every script sent to the page is a fixed string picked by key: nothing from the frame table is spliced into code.
+const THEME_SCRIPTS = {
+  dark: `localStorage.setItem('deckmate-theme', 'dark')`,
+  light: `localStorage.setItem('deckmate-theme', 'light')`,
+};
+const LANG_SCRIPTS = {
+  en: `localStorage.setItem('deckmate-language', 'en')`,
+  ru: `localStorage.setItem('deckmate-language', 'ru')`,
+};
+const STATE_SCRIPTS = {
+  list: `document.getAnimations().forEach(a => a.finish())`,
+  empty: `document.getAnimations().forEach(a => a.finish());
+    document.getElementById('recent-list').replaceChildren();
+    document.getElementById('recent-empty').hidden = false;
+    document.getElementById('recent-count').hidden = true;`,
+  error: `document.getAnimations().forEach(a => a.finish()); document.getElementById('open-folder').click();`,
+  'hover-row': `document.getAnimations().forEach(a => a.finish()); document.querySelectorAll('.recent-item')[1].classList.add('is-hover-demo');`,
+  'focus-open': `document.getAnimations().forEach(a => a.finish())`,
+  'focus-row': `document.getAnimations().forEach(a => a.finish())`,
+};
+const FOCUS_CHECKS = {
+  'focus-open': `document.activeElement === document.getElementById('open-folder')`,
+  'focus-row': `document.activeElement === document.querySelector('.recent-open')`,
 };
 const MAX_TAB_PRESSES = 12;
+
+function scriptFor(table, key, what) {
+  if (!Object.hasOwn(table, key)) throw new Error(`Unknown ${what}: ${key}`);
+  return table[key];
+}
 
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 // Frames at 1 CSS px per device px, whatever the monitor's scale is.
@@ -56,9 +81,8 @@ async function waitForPageReady() {
 }
 
 // Moves keyboard focus with real Tab key events, so :focus-visible matches a user's focus.
-async function tabUntilFocused(selector, frameName) {
+async function tabUntilFocused(matches, frameName) {
   await win.webContents.focus();
-  const matches = `(() => { const el = document.querySelector(${JSON.stringify(selector)}); return !!el && document.activeElement === el; })()`;
   for (let press = 0; press < MAX_TAB_PRESSES; press++) {
     if (await win.webContents.executeJavaScript(matches)) return;
     win.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'Tab' });
@@ -66,7 +90,7 @@ async function tabUntilFocused(selector, frameName) {
     await sleep(50);
   }
   if (!(await win.webContents.executeJavaScript(matches))) {
-    console.warn(`warning: ${frameName}: ${selector} not focused after ${MAX_TAB_PRESSES} Tab presses`);
+    console.warn(`warning: ${frameName}: target not focused after ${MAX_TAB_PRESSES} Tab presses`);
   }
 }
 
@@ -80,30 +104,21 @@ async function capture(frame) {
     await win.loadFile(page);
   }
   win.setContentSize(width, height);
-  await win.webContents.executeJavaScript(`localStorage.setItem('deckmate-theme', ${JSON.stringify(frame.theme)}); localStorage.setItem('deckmate-language', ${JSON.stringify(frame.lang)});`);
+  await win.webContents.executeJavaScript(scriptFor(THEME_SCRIPTS, frame.theme, 'theme'));
+  await win.webContents.executeJavaScript(scriptFor(LANG_SCRIPTS, frame.lang, 'language'));
   await new Promise(resolve => { win.webContents.once('did-finish-load', resolve); win.webContents.reload(); });
   // A hidden window never advances compositor animations, so the frames show the settled state directly.
   await win.webContents.insertCSS('*, *::before, *::after { animation: none !important; transition: none !important; }');
   await waitForPageReady();
 
   const state = frame.state ?? 'list';
-  await win.webContents.executeJavaScript(`(async () => {
-    document.getAnimations().forEach(a => a.finish());
-    const state = ${JSON.stringify(state)};
-    if (state === 'empty') {
-      document.getElementById('recent-list').replaceChildren();
-      document.getElementById('recent-empty').hidden = false;
-      document.getElementById('recent-count').hidden = true;
-    }
-    if (state === 'error') document.getElementById('open-folder').click();
-    if (state === 'hover-row') document.querySelectorAll('.recent-item')[1].classList.add('is-hover-demo');
-  })()`);
+  await win.webContents.executeJavaScript(scriptFor(STATE_SCRIPTS, state, 'state'));
 
   if (state === 'error') {
     const failed = await pollPage(`document.getElementById('status').dataset.phase === 'error'`, 4000, 50);
     if (!failed) console.warn(`warning: ${frame.name}: status phase is not 'error' after 4 s`);
   }
-  if (FOCUS_TARGETS[state]) await tabUntilFocused(FOCUS_TARGETS[state], frame.name);
+  if (Object.hasOwn(FOCUS_CHECKS, state)) await tabUntilFocused(FOCUS_CHECKS[state], frame.name);
 
   await sleep(250);
   if (state === 'hover-row') {

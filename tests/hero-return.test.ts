@@ -85,7 +85,7 @@ describe.skipIf(!browserPath)('one-step Hero return (browser)', () => {
   }
 
   beforeAll(async () => {
-    temporary = await mkdtemp(path.join(process.env.LOCALAPPDATA ? path.join(process.env.LOCALAPPDATA, 'Temp', 'opencode') : tmpdir(), 'hero-return-test-'));
+    temporary = await mkdtemp(path.join(tmpdir(), 'hero-return-test-'));
     server = await createServer({ configFile: false, root: process.cwd(), cacheDir: path.join(temporary, 'vite'),
       plugins: [tailwindcss(), { name: 'hero-return-fixture', configureServer(vite) {
         vite.middlewares.use((request, response, next) => {

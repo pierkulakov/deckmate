@@ -55,7 +55,7 @@ describe.skipIf(!browserPath)('application shell (browser)', () => {
   }
 
   beforeAll(async () => {
-    const base = process.platform === 'win32' ? path.join(process.env.LOCALAPPDATA!, 'Temp', 'opencode') : tmpdir();
+    const base = tmpdir();
     temporary = await mkdtemp(path.join(base, 'deckmate-shell-test-'));
     server = await createServer({ configFile: false, root: process.cwd(), cacheDir: path.join(temporary, 'vite'), plugins: [tailwindcss(), {
       name: 'shell-ui-fixture', configureServer(vite) {

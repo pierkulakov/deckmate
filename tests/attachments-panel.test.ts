@@ -50,7 +50,7 @@ describe.skipIf(!browserPath)('attachment row actions (browser)', () => {
   }
 
   beforeAll(async () => {
-    temporary = await mkdtemp(path.join(process.env.LOCALAPPDATA ? path.join(process.env.LOCALAPPDATA, 'Temp', 'opencode') : tmpdir(), 'attachments-panel-test-'));
+    temporary = await mkdtemp(path.join(tmpdir(), 'attachments-panel-test-'));
     server = await createServer({ configFile: false, root: process.cwd(), cacheDir: path.join(temporary, 'vite'),
       plugins: [tailwindcss(), { name: 'attachments-panel-fixture', configureServer(vite) {
         vite.middlewares.use((request, response, next) => {

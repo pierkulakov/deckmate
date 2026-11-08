@@ -9,7 +9,7 @@ import { applyAttachmentEdit, attachmentKey, readCardAttachments } from '../serv
 import { registerRequestLang } from '../server/i18n.ts';
 import type { CardAttachment } from '../src/catalog-contracts.ts';
 
-const temporaryRoot = process.env.LOCALAPPDATA ? path.join(process.env.LOCALAPPDATA, 'Temp', 'opencode') : tmpdir();
+const temporaryRoot = tmpdir();
 const roots: string[] = [];
 const cardId = 'card:ca1d0000-0000-4000-8000-000000000001';
 const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jhVEAAAAASUVORK5CYII=', 'base64');

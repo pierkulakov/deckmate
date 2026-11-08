@@ -248,7 +248,7 @@ describe.skipIf(!browserPath)('Journey navigation (headless CDP)', () => {
 
   beforeAll(async () => {
     vi.unstubAllGlobals();
-    temporary = await mkdtemp(path.join(process.env.LOCALAPPDATA ? path.join(process.env.LOCALAPPDATA, 'Temp', 'opencode') : tmpdir(), 'journey-test-'));
+    temporary = await mkdtemp(path.join(tmpdir(), 'journey-test-'));
     server = await createServer({ configFile: false, root: process.cwd(), cacheDir: path.join(temporary, 'vite'),
       plugins: [tailwindcss(), { name: 'journey-fixture', configureServer(vite) {
         vite.middlewares.use((request, response, next) => {

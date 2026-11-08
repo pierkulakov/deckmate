@@ -67,7 +67,7 @@ describe.skipIf(!browserPath)('card attachment insertion (headless CDP)', () => 
   const highlighted = () => evaluate(`document.querySelector('.card-edit-attachment[data-highlighted]')?.textContent`);
 
   beforeAll(async () => {
-    temporary = await mkdtemp(path.join(process.env.LOCALAPPDATA ? path.join(process.env.LOCALAPPDATA, 'Temp', 'opencode') : tmpdir(), 'attachment-editor-test-'));
+    temporary = await mkdtemp(path.join(tmpdir(), 'attachment-editor-test-'));
     server = await createServer({ configFile: false, root: process.cwd(), cacheDir: path.join(temporary, 'vite'),
       plugins: [tailwindcss(), { name: 'attachment-editor-fixture', configureServer(vite) {
         vite.middlewares.use((request, response, next) => {

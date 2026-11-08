@@ -6,7 +6,7 @@ Thank you for considering a contribution. Deckmate is an early-stage local tool,
 
 Requirements: Node.js ≥ 26, npm, Git. CI runs on Ubuntu and Windows; Python 3 is optional: only projects with a `Tools/board.py` board script need it, for the parser cross-check and the server's board check and rebuild.
 
-On Windows, run tests from a cwd with an uppercase drive letter (for example, `D:\GitHub\deckmate`): Vitest fixes its root before setup and registers mocks under the cwd spelling.
+On Windows, run tests from a cwd with an uppercase drive letter (for example, `C:\src\deckmate`): Vitest fixes its root before setup and registers mocks under the cwd spelling.
 
 ```sh
 git clone https://github.com/pierkulakov/deckmate.git

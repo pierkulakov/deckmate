@@ -12,9 +12,13 @@ Connect only trusted project folders through `DECKMATE_DATA` and `DECKMATE_WRITE
 
 Two more entry points execute project-supplied code. `deckmate agents run` reads launcher commands from the project's `tasks/deckmate-agents.md` and runs them through the system shell with the project folder as the working directory. And `deckmate` and its subcommands load `.env.local` from the folder they are started in, which can set `DECKMATE_PYTHON`, `DECKMATE_DATA` and `DECKMATE_WRITE`. Cloning someone else's project and running Deckmate inside it therefore executes that project's code with your user privileges — run Deckmate only in folders you trust.
 
+## Deckmate Desktop
+
+Deckmate Desktop (the Electron shell in `desktop/`) wraps the same local server and inherits the same trust model. The installer and portable builds are not code-signed, so Windows SmartScreen warns about an unknown publisher; download them only from the repository's Releases page, and when a checksum is published for a release, compare the size/checksum of your download against it before running the installer. Inside the app the server still listens only on `127.0.0.1` on a random free port, and any local process of the same user can talk to it, exactly as with the CLI. Application settings and the server log live in the user's profile (`%APPDATA%\Deckmate\desktop.json` and `server.log`); project data stays in the project folder. Vulnerabilities in the desktop shell itself are reported through the same channel described below.
+
 ## Supported versions
 
-The latest release line is supported, currently 0.1.x. Security fixes land on the current `main` branch and are published as new patch versions; please run the latest patch.
+The latest release line is supported, currently 0.2.x (the CLI, the npm package and the desktop shell share one version). Security fixes land on the current `main` branch and are published as new patch versions; please run the latest patch.
 
 ## Reporting a vulnerability
 

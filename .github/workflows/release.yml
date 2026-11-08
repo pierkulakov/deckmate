@@ -138,3 +138,60 @@ jobs:
           else
             gh release create "$GITHUB_REF_NAME" "$PACKAGE_FILE" --verify-tag --title "Deckmate ${VERSION}" --notes-file release-notes.md "${prerelease[@]}"
           fi
+
+  # Runs only after npm, GHCR and the GitHub Release are published, so a failed
+  # desktop build never blocks or undoes them; the installer can then be uploaded
+  # by hand (2026-11-08).
+  desktop:
+    needs: release
+    runs-on: windows-latest
+    timeout-minutes: 45
+    continue-on-error: false
+    permissions:
+      contents: write
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: package.json
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - name: Validate desktop version
+        id: desktop
+        run: |
+          $version = (Get-Content package.json -Raw | ConvertFrom-Json).version
+          if (-not (Test-Path -LiteralPath desktop/package.json)) { throw 'desktop/package.json is missing.' }
+          $desktopVersion = (Get-Content desktop/package.json -Raw | ConvertFrom-Json).version
+          if ($desktopVersion -ne $version) { throw "desktop/package.json has version $desktopVersion; it must match $version." }
+          Add-Content -Path $env:GITHUB_OUTPUT -Value "version=$version"
+      - run: npm ci
+      - run: npm run build
+      # prepare-deckmate.mjs packs the repository root into desktop/ and runs npm install there itself.
+      - name: Install desktop dependencies
+        working-directory: desktop
+        run: node scripts/prepare-deckmate.mjs
+      - name: Build Windows installer and portable folder
+        working-directory: desktop
+        run: npx electron-builder --win --publish never
+      - name: Pack portable folder
+        env:
+          VERSION: ${{ steps.desktop.outputs.version }}
+        run: Compress-Archive -Path desktop/release/win-unpacked/* -DestinationPath "desktop/release/Deckmate-$env:VERSION-win-x64.zip"
+      - name: Upload desktop build to GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          VERSION: ${{ steps.desktop.outputs.version }}
+        run: |
+          $installer = "desktop/release/Deckmate Setup $env:VERSION.exe"
+          $files = @($installer, "$installer.blockmap", "desktop/release/Deckmate-$env:VERSION-win-x64.zip")
+          foreach ($file in $files) {
+            if (-not (Test-Path -LiteralPath $file)) { throw "Missing build output: $file" }
+          }
+          gh release upload "$env:GITHUB_REF_NAME" @files --clobber
+          if ($LASTEXITCODE -ne 0) { throw "gh release upload exited with code $LASTEXITCODE." }

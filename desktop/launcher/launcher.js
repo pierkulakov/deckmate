@@ -315,7 +315,7 @@ function mockBridge() {
   const now = Date.now();
   const recent = [
     { path: 'D:\\Projects\\Hollow Signal', name: 'Hollow Signal', lastOpened: new Date(now - 90e3).toISOString() },
-    { path: 'D:\\GitHub\\deckmate\\demo', name: 'demo', lastOpened: new Date(now - 5 * 3600e3).toISOString() },
+    { path: 'D:\\Projects\\demo', name: 'demo', lastOpened: new Date(now - 5 * 3600e3).toISOString() },
     { path: 'C:\\Users\\Someone\\Documents\\Долгий путь к релизу', name: 'Долгий путь к релизу', lastOpened: new Date(now - 3 * 86400e3).toISOString() },
   ];
   return {

@@ -21,7 +21,7 @@ const text = defineText({
   why: 'Почему вернули?',
   placeholder: 'Коротко, по желанию',
   lessonAvailable: 'Строка уйдёт в раздел «Грабли» шага и попадёт в его следующие Task',
-  lessonUnavailable: 'Шага этой карты больше нет в Journey',
+  lessonUnavailable: 'Шага этой карточки больше нет в Journey',
   addLesson: 'Добавить в грабли шага',
   withoutReason: 'Без причины',
   return: 'Вернуть',

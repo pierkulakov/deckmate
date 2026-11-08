@@ -54,12 +54,13 @@ function questBody(body: string): ReactNode {
     part.length > 2 && part.startsWith('`') && part.endsWith('`') ? <code key={index}>{part.slice(1, -1)}</code> : part);
 }
 
-function QuestRow({ quest, isDone, hintOpen, onToggleHint, onNavigate }: {
+function QuestRow({ quest, isDone, hintOpen, onToggleHint, onNavigate, onClose }: {
   quest: Quest<QuestTextKey>;
   isDone: boolean;
   hintOpen: boolean;
   onToggleHint: () => void;
   onNavigate: (view: AppView) => void;
+  onClose: () => void;
 }) {
   const t = useText(text);
   const strings = useText(questText);
@@ -75,6 +76,8 @@ function QuestRow({ quest, isDone, hintOpen, onToggleHint, onNavigate }: {
     // Switch the tab only when the person is elsewhere: navigating remounts the view, which would close their open
     // card and deck — on the quest's own tab the ring alone is the answer (2026-11-05).
     if (view && new URLSearchParams(location.search).get('view') !== view) onNavigate(view);
+    // 2026-11-08: the overlay covers the target on narrow screens, so reveal the page before ringing it.
+    if (window.matchMedia('(max-width: 899px)').matches) onClose();
     if (target) showQuestTarget(target);
   }
   return <div className="level-quest is-open">
@@ -90,7 +93,7 @@ function QuestRow({ quest, isDone, hintOpen, onToggleHint, onNavigate }: {
   </div>;
 }
 
-function ChapterSection({ chapter, status, done, folded, onToggleFold, openHints, onToggleHint, onNavigate }: {
+function ChapterSection({ chapter, status, done, folded, onToggleFold, openHints, onToggleHint, onNavigate, onClose }: {
   chapter: Chapter<QuestTextKey>;
   status: ChapterStatus;
   done: ReadonlySet<string>;
@@ -99,6 +102,7 @@ function ChapterSection({ chapter, status, done, folded, onToggleFold, openHints
   openHints: ReadonlySet<string>;
   onToggleHint: (questId: string) => void;
   onNavigate: (view: AppView) => void;
+  onClose: () => void;
 }) {
   const t = useText(text);
   const strings = useText(questText);
@@ -116,7 +120,7 @@ function ChapterSection({ chapter, status, done, folded, onToggleFold, openHints
     </button>
     {!folded && <div className="level-chapter-quests">
       {chapter.quests.map(quest => <QuestRow key={quest.id} quest={quest} isDone={done.has(quest.id)}
-        hintOpen={openHints.has(quest.id)} onToggleHint={() => onToggleHint(quest.id)} onNavigate={onNavigate} />)}
+        hintOpen={openHints.has(quest.id)} onToggleHint={() => onToggleHint(quest.id)} onNavigate={onNavigate} onClose={onClose} />)}
     </div>}
   </section>;
 }
@@ -172,7 +176,7 @@ export function LevelPanel({ projectKey, onClose, onNavigate }: LevelPanelProps)
         : <ChapterSection key={chapter.id} chapter={chapter} status={statuses[index]} done={done}
           folded={folds[chapter.id] ?? statuses[index] === 'done'}
           onToggleFold={fold => setFolds(current => ({ ...current, [chapter.id]: fold }))}
-          openHints={openHints} onToggleHint={toggleHint} onNavigate={onNavigate} />)}
+          openHints={openHints} onToggleHint={toggleHint} onNavigate={onNavigate} onClose={onClose} />)}
       {locked.length > 0 && <>
         <p className="level-divider">{t.unlockHint}</p>
         {locked.map(chapter => <LockedChapter key={chapter.id} chapter={chapter} />)}

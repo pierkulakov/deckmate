@@ -3,7 +3,8 @@
 /* 2026-11-06: the text box and Properties scroll inside, so the shell drops the stable gutter like the open card's shell
    (.card-preview-layout > .card-preview): the sheet keeps 456 px and the rail does not shift 3 px between New Card and a card. */
 .card-composer { max-height: var(--composer-height, var(--preview-height)); }
-.card-preview.card-composer { scrollbar-width: none; scrollbar-gutter: auto; padding-right: 7px; }
+/* 2026-11-08: the shell clips instead of scrolling, so only the padding that keeps the sheet width stays. */
+.card-preview.card-composer { padding-right: 7px; }
 .card-composer > .card-composer-main { display: flex; flex-direction: column; min-width: 0; min-height: 0; height: var(--composer-height, var(--preview-height)); }
 .card-composer-main > .card-preview-header { flex-shrink: 0; }
 .card-composer-main > .card-composer-sheet { flex: 1 1 0; min-width: 0; min-height: 0; }
@@ -25,8 +26,13 @@
 /* Create another card: right-aligned 11px uppercase label and 28×12 toggle, with 4 + 8 px spacing. */
 .card-composer-again { flex-shrink: 0; padding: 12px 8px 8px; }
 .card-composer-again > .deck-panel-switch-row { justify-content: flex-end; min-height: 12px; height: auto; color: var(--edit-hint); font-size: 11px; line-height: 14px; letter-spacing: .22px; text-transform: uppercase; }
-.card-composer-again > .deck-panel-switch-row > label { flex: 0 1 auto; }
+.card-composer-again > .deck-panel-switch-row > label { flex: 0 1 auto; overflow: visible; white-space: normal; }
 .card-composer-again .deck-panel-switch:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+/* 2026-11-08 (NW-06): the 28×12 track keeps its look; the label pads 5px vertically (24px target) and its right padding
+   reaches 4px past the switch, so the whole row line is one 24px-tall target. Negative margins keep the layout byte-stable:
+   the target ends 7px under Save and 3px above the Effort band. Clicks over the track hit the switch itself; the label
+   forwards the rest to the same control (htmlFor), so no positioning or pseudo is needed on the track. */
+.card-composer-again > .deck-panel-switch-row > label { padding: 5px 36px 5px 4px; margin: -5px -36px -5px -4px; }
 /* The empty owner slot allows a 44px band; an open card needs 58px for its medallion. */
 .card-preview-sheet > .card-composer-band { height: 44px; min-height: 44px; }
 

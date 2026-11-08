@@ -3,6 +3,7 @@ import { FileText, Gauge, Layers, PanelLeftClose, Route } from 'lucide-react';
 import type { CatalogCard, CatalogDeck, CatalogView } from '../../src/catalog-contracts.ts';
 import type { WorkspaceSnapshot } from '../../src/workspace-contracts.ts';
 import type { CardPriority } from '../../src/catalog-contracts.ts';
+import { isActiveCatalogCard } from '../../src/catalog-hand.ts';
 import { CardOwnerAvatar } from './CardOwnerAvatar.tsx';
 import { DeckActivity } from './DeckActivity.tsx';
 import { JourneyPriorityIcon } from './JourneyMiniCard.tsx';
@@ -28,14 +29,14 @@ const text = defineText({
 }, {
   summary: (title: string) => `Сводка колоды ${title}`, collapse: 'Свернуть сводку', metrics: 'Показатели колоды',
   tasks: (_count: number) => 'задач', documents: (_count: number) => 'документов',
-  cards: 'Карты', subCards: 'Sub Cards', noState: 'Без состояния',
+  cards: 'Карточки', subCards: 'Sub Cards', noState: 'Без состояния',
   states: (kind: string) => `Состояния ${kind}`,
-  effort: 'Effort',
-  effortHint: (estimated: string, total: string, kind: string) => `Effort указан у ${estimated} из ${total} ${kind}`,
+  effort: 'Оценка',
+  effortHint: (estimated: string, total: string, kind: string) => `Оценка указана у ${estimated} из ${total} ${kind}`,
   accepted: (label: string, accepted: string, total: string, kind: string) => `${label} ${accepted} из ${total} ${kind}`,
-  noSubCards: 'У карт этой колоды ещё нет Sub Cards.', tracks: 'Треки колоды', sourceFiles: 'Исходные файлы',
-  openCard: (title: string, path: string) => `Открыть карту «${title}» из ${path}`,
-  priorities: 'Приоритеты', noPriority: 'Без приоритета', owners: 'Владельцы', unassigned: 'Без владельца',
+  noSubCards: 'У карточек этой колоды ещё нет Sub Cards.', tracks: 'Треки колоды', sourceFiles: 'Исходные файлы',
+  openCard: (title: string, path: string) => `Открыть карточку «${title}» из ${path}`,
+  priorities: 'Приоритеты', noPriority: 'Без приоритета', owners: 'Исполнители', unassigned: 'Без исполнителя',
   priorityShare: (label: string, done: string, total: string) => `${label}: принято ${done} из ${total}`,
 });
 
@@ -60,11 +61,11 @@ export function DeckSummary({ deck, cards, catalog, source, refreshKey, onOpen, 
   const numberFormat = new Intl.NumberFormat(locale(lang));
   const effortFormat = new Intl.NumberFormat(locale(lang), { maximumFractionDigits: 2 });
   const summary = useMemo(() => {
-    const deckCards = [...new Map(cards.map(card => [card.id, card])).values()];
+    const deckCards = [...new Map(cards.filter(isActiveCatalogCard).map(card => [card.id, card])).values()];
     const heroIds = new Set(deckCards.filter(card => card.kind === 'hero').map(card => card.id));
     // Hero estimates can already aggregate children; only Task estimates enter this total.
     const taskCandidates = deck.kind === 'asset'
-      ? catalog.cards.filter(card => card.kind === 'task' && card.parentId !== null && heroIds.has(card.parentId))
+      ? catalog.cards.filter(card => isActiveCatalogCard(card) && card.kind === 'task' && card.parentId !== null && heroIds.has(card.parentId))
       : deckCards.filter(card => card.kind === 'task');
     const tasks = [...new Map(taskCandidates.map(card => [card.id, card])).values()];
     const stateCounts = new Map<string, number>();

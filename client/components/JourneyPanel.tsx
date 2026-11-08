@@ -6,6 +6,7 @@ import { markdownParser } from '../../src/markdown-model.ts';
 import { shortReference } from '../../src/references.ts';
 import type { CatalogAction } from '../useCatalog.ts';
 import { Markdown } from './Markdown.tsx';
+import { journeyStepTitle } from './journey-step-title.ts';
 import { Button } from './ui/button.tsx';
 import { defineText, locale, useText, type Lang } from '../i18n.ts';
 import '../journey-apply.css';
@@ -192,7 +193,7 @@ export function ApplyJourneyPanel({ catalog, card, source, pending, writable, on
   const inspected = journey?.steps.find(step => step.id === inspectedId) ?? journey?.steps[0];
   const availableCount = journey?.steps.filter(step => !applied.has(step.id)).length ?? 0;
   const allSelected = availableCount > 0 && selected.size === availableCount;
-  const stepTitle = (step: CatalogJourneyStep) => step.title.replaceAll('%PARENT_TITLE%', card.title);
+  const stepTitle = (step: CatalogJourneyStep) => journeyStepTitle(step.title, card.title);
 
   function chooseJourney(id: string) {
     if (busy) return;

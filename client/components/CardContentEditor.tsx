@@ -5,7 +5,9 @@ import type { WorkspaceSnapshot } from '../../src/workspace-contracts.ts';
 import type { CatalogAction } from '../useCatalog.ts';
 import { parseEditorMarkdown, toggleEditorChecklist } from '../editor-checklists.ts';
 import { readCardDraft, removeCardDraft, writeCardDraft } from '../card-drafts.ts';
+import { useScrollportFitHeight } from '../scrollport-fit.ts';
 import { Markdown } from './Markdown.tsx';
+import { splitJourneyStepLink } from './journey-step-link.ts';
 import { TagTitlePrefix } from './CardTags.tsx';
 import { CardEditForm, composeDraft, splitDraft } from './CardEditForm.tsx';
 import { CardFocusMode } from './CardFocusMode.tsx';
@@ -47,7 +49,7 @@ const text = defineText({
   loadFailed: 'Не удалось загрузить содержимое карточки.',
   invalidResponse: 'Сервер вернул некорректное содержимое карточки.',
   conflictLoadFailed: 'Конфликт сохранён. Не удалось загрузить текущий текст; черновик остался в редакторе.',
-  unsaved: 'В карте есть несохранённые изменения',
+  unsaved: 'В карточке есть несохранённые изменения',
   continueEditing: 'Продолжить правку',
   discardChanges: 'Отменить изменения',
   draftNotKept: 'Браузер не смог сохранить черновик. Сохраните его или нажмите «Отмена» ещё раз, чтобы отменить.',
@@ -71,11 +73,14 @@ const text = defineText({
   currentText: 'Текущий текст',
   useCurrentBase: 'Использовать актуальную основу',
   edit: 'Правка',
-  editCard: 'Редактировать карту',
+  editCard: 'Редактировать карточку',
 });
 
 interface ContentBaseline extends CardContent { manifestHash: string }
 interface LoadFailure extends Error { status: number }
+
+// 2026-11-08: the reading column measures the card shell that carries it; in Focus Mode the portal has no shell.
+const cardPreviewShell = (from: HTMLElement) => from.closest<HTMLElement>('.card-preview');
 
 async function fetchCardContent(cardId: string, source: WorkspaceSnapshot['source'], signal?: AbortSignal): Promise<CardContent> {
   const response = await fetch(`/api/card-content?source=${source}&cardId=${encodeURIComponent(cardId)}`, { cache: 'no-store', signal });
@@ -92,7 +97,7 @@ async function fetchCardContent(cardId: string, source: WorkspaceSnapshot['sourc
   return result as CardContent;
 }
 
-export function CardContentEditor({ card, catalog, snapshot, writable, pending, blocked, headingRef, onEdit, onEditingChange, titleActions, footerActions, bodyAfter, onOpenCard, focusMode = false, onFocusModeExit }: {
+export function CardContentEditor({ card, catalog, snapshot, writable, pending, blocked, headingRef, onEdit, onEditingChange, titleActions, footerActions, bodyAfter, onOpenCard, focusMode = false, onFocusModeExit, hideJourneyStepLink = false }: {
   card: CatalogCard;
   catalog: CatalogView;
   snapshot: WorkspaceSnapshot;
@@ -106,6 +111,8 @@ export function CardContentEditor({ card, catalog, snapshot, writable, pending, 
   footerActions?: ReactNode;
   /** Read mode only: shown under the text, inside the sheet. */
   bodyAfter?: ReactNode;
+  /** True where a Journey step note replaces the trailing Markdown step link. */
+  hideJourneyStepLink?: boolean;
   /** Read mode only: a click on a card reference chip opens that card. */
   onOpenCard?: (card: CatalogCard) => void;
   /** Focus Mode shares this reading and edit state across the whole viewport (CardFocusMode). */
@@ -114,6 +121,8 @@ export function CardContentEditor({ card, catalog, snapshot, writable, pending, 
 }) {
   const baseline = useRef<ContentBaseline | null>(null);
   const t = useText(text);
+  // The card shell keeps its height within the actually visible workspace space, so the material band stays in view.
+  const shell = useScrollportFitHeight(cardPreviewShell, '--preview-height');
   const inFlight = useRef(false);
   const latestRevision = useRef({ sourceHash: card.sourceHash, manifestHash: catalog.manifestHash });
   const [content, setContent] = useState<CardContent | null>(null);
@@ -134,7 +143,11 @@ export function CardContentEditor({ card, catalog, snapshot, writable, pending, 
   const fallbackContent = useMemo<CardContent>(() => ({ cardId: card.id, title: card.title, markdown: card.markdown, sourceHash: card.sourceHash }), [card.id, card.title, card.markdown, card.sourceHash]);
   // 2026-11-05: use this card's catalog copy until the file loads, preventing stale text and a one-frame layout collapse.
   const shownContent = content?.cardId === card.id ? content : fallbackContent;
-  const tree = useMemo(() => parseEditorMarkdown(shownContent.markdown), [shownContent.markdown]);
+  // 2026-11-08: reading hides the server's trailing Journey step link (a prefix, so checklist offsets stay valid);
+  // the editor and the file keep the full text.
+  const readingMarkdown = useMemo(() => hideJourneyStepLink ? splitJourneyStepLink(shownContent.markdown, card.journey).body : shownContent.markdown,
+    [hideJourneyStepLink, shownContent.markdown, card.journey]);
+  const tree = useMemo(() => parseEditorMarkdown(readingMarkdown), [readingMarkdown]);
   const base = baseline.current;
   const contentDirty = editing && base !== null && draft !== composeDraft(base.title, base.markdown);
   const revisionChanged = editing && base !== null
@@ -328,7 +341,7 @@ export function CardContentEditor({ card, catalog, snapshot, writable, pending, 
 
   const comparison = currentContent ?? fallbackContent;
   // Focus Mode shows only the card text: the sheet's actions, links and footer stay on the card.
-  const article = <article className={'card-preview-reading card-content-reading' + (editing ? ' is-editing' : '')}>
+  const article = <article ref={shell} className={'card-preview-reading card-content-reading' + (editing ? ' is-editing' : '')}>
     {!editing && <>
       {stashed && <section className="card-draft-banner" aria-label={t.unsaved}>
         <p>{t.unsaved}</p>
@@ -347,7 +360,7 @@ export function CardContentEditor({ card, catalog, snapshot, writable, pending, 
         <Button type="button" variant="outline" size="sm" onClick={() => void reloadActual().catch(() => setNotice(t.sourceUnavailable))}><RefreshCw size={14} />{t.retry}</Button>
       </div>}
       <div className="card-preview-document" onClick={editFromBody}>
-        {shownContent.markdown.trim() ? <Markdown projectTags={catalog.projectTags} rawMarkdown={shownContent.markdown} tree={tree} source={snapshot.source} path={card.path} members={catalog.members} showChecklistCount
+        {readingMarkdown.trim() ? <Markdown projectTags={catalog.projectTags} rawMarkdown={readingMarkdown} tree={tree} source={snapshot.source} path={card.path} members={catalog.members} showChecklistCount
           cards={catalog.cards} onOpenCard={onOpenCard}
           onTaskToggle={content && writable && !loadFailure ? (offset, checked) => void toggleTask(offset, checked) : undefined}
           taskToggleDisabled={loading || pending || saving || blocked} /> : <p className="card-content-empty">{t.empty}</p>}
@@ -361,7 +374,7 @@ export function CardContentEditor({ card, catalog, snapshot, writable, pending, 
         </div>
       </footer>}
     </>}
-    {editing && <CardEditForm draft={draft} onDraftChange={setDraft} catalog={catalog} source={snapshot.source} path={card.path}
+    {editing && <CardEditForm draft={draft} onDraftChange={setDraft} catalog={catalog} source={snapshot.source} path={card.path} cardId={card.id}
       writable={writable} busy={pending || saving} saving={saving} blocked={hasConflict} hintActions={focusMode ? undefined : titleActions} notice={notice}
       onSave={() => void save()} onCancel={() => void cancelEditing()}>
       {hasConflict && <section className="card-content-conflict" aria-label={t.conflict}>

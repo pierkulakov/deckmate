@@ -24,7 +24,7 @@
 .deck-settings-preview img { display: block; width: 100%; height: 100%; object-fit: cover; pointer-events: none; image-rendering: pixelated; }
 .deck-settings-preview.is-cover-draggable { cursor: grab; touch-action: none; user-select: none; }
 .deck-settings-preview.is-cover-draggable:active { cursor: grabbing; }
-.deck-settings-preview.is-cover-draggable:hover { outline: 1px solid var(--deck-settings-focus); outline-offset: 2px; }
+.deck-settings-preview.is-cover-draggable:hover { box-shadow: 0 0 0 1px var(--tile-highlight); }
 /* 2026-11-06: the hint takes the whole width beside the preview; at 100 px "· ↑ ↓" fell onto a line of its own. */
 .deck-settings-position-help { position: absolute; left: 155px; right: 0; top: 30px; color: var(--muted); font-size: 11px; line-height: 16px; text-wrap: pretty; }
 .deck-settings-color { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; }
@@ -33,7 +33,9 @@
 .deck-settings-color-toggle input::after { content: ''; position: absolute; width: 16px; height: 16px; top: -2px; left: 0; border: 1px solid var(--deck-settings-toggle-line); border-radius: 50%; background: var(--toggle-knob, var(--surface)); box-shadow: var(--toggle-knob-shadow, var(--shadow)); }
 .deck-settings-color-toggle input:checked { background: var(--toggle-on, var(--accent)); }
 .deck-settings-color-toggle input:checked::after { left: 12px; }
-.deck-settings-color-toggle input:hover:not(:disabled) { outline: 1px solid var(--deck-settings-focus); outline-offset: 3px; }
+/* 2026-11-08: an outline on hover read as a focus ring after a mouse click; hover only lifts the track, keyboard focus keeps the ring. */
+.deck-settings-color-toggle input:hover:not(:disabled) { filter: brightness(1.15); }
+.deck-settings-color-toggle input:focus-visible { outline: 2px solid var(--deck-settings-focus); outline-offset: 3px; }
 .deck-settings-color-toggle input:disabled { opacity: .5; cursor: default; }
 .deck-settings-color-picker { display: flex; align-items: center; gap: 8px; font-size: 11px; color: var(--muted); }
 .deck-settings-color-picker input { width: 32px; height: 28px; padding: 2px; border: 1px solid var(--line); border-radius: 4px; background: var(--deck-settings-input); cursor: pointer; }
@@ -45,6 +47,10 @@
 .deck-settings-more > fieldset, .deck-move-settings > fieldset { padding-block: 10px; }
 .deck-settings-inbox { display: grid; grid-template-columns: 16px 15px 1fr; align-items: center; gap: 6px; color: var(--deck-settings-label); font-size: 12px; cursor: pointer; }
 .deck-settings-inbox > span { grid-column: 2 / -1; color: var(--muted); font-size: 11px; line-height: 16px; }
+/* 2026-11-08: decks without Tasks cannot be the Inbox; the reason replaces the hint and the row reads as locked. */
+.deck-settings-inbox:has(input:disabled) { cursor: default; }
+/* 2026-11-08: only the dead checkbox and its icon fade; the reason must keep 4.5:1 in both themes (D07). */
+.deck-settings-inbox:has(input:disabled) > :is(input, svg) { opacity: .55; }
 .deck-move-settings { border-top: 1px solid var(--line); padding-top: 4px; }
 .deck-move-settings fieldset > button { justify-self: start; }
 .deck-settings-form .catalog-form-help { margin: 8px 0; font-size: 12px; line-height: 18px; }

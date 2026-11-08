@@ -51,7 +51,7 @@ const text = defineText({
   invalidPulse: 'Сервер вернул некорректный пульс проекта.',
   retry: 'Повторить',
   inProgress: 'В работе',
-  review: 'На ревью',
+  review: 'На приёмке',
   accepted: 'Принято · 14 дней',
   currentRun: 'Текущий Run',
   withoutDeck: 'Без колоды',
@@ -78,7 +78,7 @@ const text = defineText({
     else if (rule === 'few') unit = 'дня';
     return `Ждёт ${count.toLocaleString('ru-RU')} ${unit}`;
   },
-  openReview: 'Открыть ревью',
+  openReview: 'Открыть приёмку',
   acceptedToday: (count: string) => `+${count} сегодня`,
   acceptedChart: 'Принятые задачи по дням, от старых к новым',
   today: 'Сегодня',

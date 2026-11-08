@@ -15,7 +15,8 @@
 .deckmate-vision-card.kind-doc .deckmate-card-kind { background: var(--kind-doc-bg); color: var(--kind-doc-ink); }
 .deckmate-card-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; font-size: 13px; font-weight: 500; line-height: 1.35; letter-spacing: -.2px; overflow-wrap: anywhere; }
 .is-lane .deckmate-card-title { white-space: nowrap; }
-.is-full .deckmate-card-title { font-size: 15px; -webkit-line-clamp: 2; display: -webkit-box; -webkit-box-orient: vertical; }
+.is-mini .deckmate-card-title, .is-full .deckmate-card-title { -webkit-line-clamp: 2; display: -webkit-box; -webkit-box-orient: vertical; }
+.is-full .deckmate-card-title { font-size: 15px; }
 .deckmate-card-owner, .deckmate-card-effort, .deckmate-card-deck, .deckmate-card-muted, .deckmate-card-properties span {
   flex-shrink: 0; font-size: 10px; color: var(--card-muted); }
 .deckmate-card-owner::before { content: '@'; }
@@ -30,6 +31,9 @@
 .deckmate-card-open { display: inline-flex; align-items: center; gap: 3px; flex-shrink: 0; padding: 2px 7px; border-radius: 4px;
   background: var(--accent-soft); color: var(--accent); font-size: 10px; font-weight: 500; }
 .deckmate-card-meta { display: flex; align-items: center; gap: 8px; min-width: 0; flex-wrap: wrap; }
+.is-mini .deckmate-card-head, .is-mini .deckmate-card-meta { flex-shrink: 0; }
+.is-mini .deckmate-card-meta { flex-wrap: nowrap; }
+.is-mini .deckmate-card-owner { flex-shrink: 1; }
 .deckmate-card-excerpt { margin: 0; font-size: 11px; line-height: 1.55; color: var(--card-muted);
   display: -webkit-box; -webkit-line-clamp: 6; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }
 .deckmate-card-properties { margin-top: auto; display: flex; gap: 10px; flex-wrap: wrap; border-top: 1px solid var(--card-edge); padding-top: 6px; }
@@ -54,6 +58,9 @@
 .vision-tool-row { display: flex; gap: 5px; align-items: center; }
 .vision-tool-row select { flex: 1; min-width: 0; }
 .vision-tool-row input { flex: 1; min-width: 0; }
+.vision-tool-row.vision-smart-controls { display: grid; grid-template-columns: minmax(0, 1fr); }
+.vision-smart-controls select { width: 100%; }
+.vision-smart-controls .ui-button { justify-self: start; }
 /* 2026-11-06: fields take the shared small button's 30 px height, so a row's select, input and button share one top and bottom line. */
 .vision-tools select, .vision-tools input { height: 30px; color: var(--ink); background: var(--surface); border: 1px solid var(--line); border-radius: 5px; padding: 0 8px; font-size: 11px; }
 .vision-tools .ui-button { flex-shrink: 0; }
@@ -71,6 +78,8 @@
 .vision-ref-note { font-size: 10px; color: var(--muted); line-height: 1.6; margin: 2px 0 0; }
 
 /* --- Toolbar: access menu ----------------------------------------------------- */
+.vision-toolbar-fields, .vision-toolbar-details, .vision-toolbar-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; min-width: 0; }
+.vision-toolbar-details { margin-right: auto; }
 .vision-access { display: inline-flex; }
 .vision-access-state { font-size: 10px; color: var(--muted); }
 .vision-access-state.is-locked { color: var(--warning-ink); }
@@ -82,6 +91,21 @@
 .vision-results > button > span, .vision-linked-list > button > span { display: block; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .vision-results small, .vision-linked-list small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .vision-ref-row > span:not(.vision-ref-kind) { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* 2026-11-08: the canvas has its own palette; a token-backed hint remains readable over any drawing background. */
+.vision-canvas .excalidraw .ToolIcon__keybinding { color: var(--ink); }
+.vision-canvas .excalidraw .HintViewer > span { align-self: center; max-width: 100%; background: var(--canvas); color: var(--muted); border-radius: 3px; }
+/* 2026-11-08: keep focus inside the clipped viewport, above the drawing canvases that cover the container's own outline. */
+.vision-canvas .excalidraw:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
+.vision-canvas .excalidraw:focus-visible::after { content: ''; position: absolute; inset: 0; z-index: var(--zIndex-layerUI); outline: inherit; outline-offset: inherit; pointer-events: none; }
+
+@media (max-width: 760px) {
+  .vision-toolbar { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; padding: 12px 16px; }
+  .vision-toolbar-fields { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; }
+  .vision-toolbar .vision-toolbar-fields > select, .vision-toolbar .vision-toolbar-fields > input { width: 100%; min-width: 0; }
+  .vision-toolbar-details { margin-right: 0; justify-content: space-between; }
+  .vision-toolbar-actions { gap: 8px; }
+}
 
 /* 2026-11-06: while the remembered board is read, the canvas area shows the shared loading state instead of an empty board that
    would be replaced a moment later; the padding is trimmed so the plate sits inside the canvas, not 150 px down the page.

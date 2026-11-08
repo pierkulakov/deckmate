@@ -53,7 +53,8 @@
 /* Priority uses an icon; an invisible native select overlays the label to preserve keyboard access. */
 .journey-step-priority { position: relative; border-radius: 4px; }
 .journey-step-priority select { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; }
-.journey-step-priority:hover, .journey-step-priority:focus-within { outline: .67px solid color-mix(in srgb, var(--card-ink) 35%, transparent); outline-offset: 3px; }
+.journey-step-priority:hover { outline: .67px solid color-mix(in srgb, var(--card-ink) 35%, transparent); outline-offset: 3px; }
+.journey-step-priority:focus-within { outline: 2px solid var(--focus); outline-offset: 3px; }
 .journey-step-properties select option { background: var(--surface); font-weight: 400; }
 .journey-step-properties :is(input, select):hover:enabled, .journey-step-properties :is(input, select):focus { border-color: color-mix(in srgb, var(--card-ink) 35%, transparent); }
 .journey-step-properties input::placeholder { color: var(--card-muted); }

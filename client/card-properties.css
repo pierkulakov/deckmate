@@ -7,7 +7,8 @@
 .card-properties-heading h3 { margin: 0; font-size: 12px; font-weight: 700; line-height: 14px; letter-spacing: .24px; text-transform: uppercase; }
 .card-properties-clear { display: grid; place-items: center; width: 18px; height: 18px; padding: 0; border: 0; border-radius: 3px; color: var(--muted); background: transparent; }
 .card-properties-clear:hover:not(:disabled) { color: var(--ink); background: var(--hover); }
-.card-properties-pick { display: flex; align-items: center; justify-content: space-between; gap: 2px; flex: 0 0 54px; width: 54px; height: 24px; margin-left: auto; padding: 0 3px 0 5px; border: .67px solid var(--edit-line); border-radius: 4px; color: var(--edit-link); background: transparent; font-size: 12px; font-weight: 700; line-height: 14px; letter-spacing: .12px; text-align: left; }
+/* 2026-11-08: the Pick control sizes to its label — RU «Выбрать» needs more than 54 px (audit CP-07); min-width keeps the EN button at its former size. */
+.card-properties-pick { display: flex; align-items: center; justify-content: space-between; gap: 2px; flex: 0 0 auto; width: auto; min-width: 54px; height: 24px; margin-left: auto; padding: 0 3px 0 5px; border: .67px solid var(--edit-line); border-radius: 4px; color: var(--edit-link); background: transparent; font-size: 12px; font-weight: 700; line-height: 14px; letter-spacing: .12px; text-align: left; }
 .card-properties-pick > span { flex-shrink: 0; white-space: nowrap; }
 .card-properties-pick > svg { flex-shrink: 0; }
 .card-properties-pick:hover:not(:disabled) { background: var(--hover); }

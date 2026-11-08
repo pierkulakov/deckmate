@@ -44,22 +44,22 @@ const text = defineText({
   deck: (title: string) => `Deck: ${title}`,
   open: (title: string) => `Open: ${title}`,
 }, {
-  syntaxHint: 'слова · #тег (#a|#b — ИЛИ) · @владелец · @none · !исключить · deck:Колода · kind:hero|task|doc · state:done|archived|deleted · '
+  syntaxHint: 'слова · #тег (#a|#b — ИЛИ) · @исполнитель · @none · !исключить · deck:Колода · kind:hero|task|doc · state:done|archived|deleted · '
     + 'effort:3+|3- · priority:high|medium|low · run:current|future|past|none · milestone:Название|none · hand:in|not · due:today|soon|any · '
-    + 't:заголовок · sub:карта · $ID · gd:Колода · gc:Карта · Q — мои карты',
-  searchCards: 'Поиск карт',
-  searchPlaceholder: 'Поиск карт…',
+    + 't:заголовок · sub:карточка · $ID · gd:Колода · gc:Карточка · Q — мои карточки',
+  searchCards: 'Поиск карточек',
+  searchPlaceholder: 'Поиск карточек…',
   loading: 'Загружаем карточки…',
   activeFilters: 'Активные фильтры',
   removeFilter: 'Снять фильтр',
   removeFilterNamed: (raw: string) => `Снять фильтр: ${raw}`,
   disableOr: 'Любой из тегов — выключить',
-  enableOr: 'Показать карты с любым из тегов',
+  enableOr: 'Показать карточки с любым из тегов',
   or: 'или',
   contains: (query: string) => `содержит «${query}»`,
   results: 'Результаты поиска',
   content: 'Содержимое',
-  goToCard: 'Перейти к карте',
+  goToCard: 'Перейти к карточке',
   empty: 'Ничего не найдено. Измените запрос или фильтры.',
   noCards: 'В проекте пока нет карточек.',
   found: (total: number, limit: number) => `Найдено ${total.toLocaleString(locale())} — показаны первые ${limit.toLocaleString(locale())}.`,

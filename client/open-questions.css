@@ -6,7 +6,6 @@
 .catalog-card-open-questions.has-warning::after { content: ''; position: absolute; top: -2px; right: -2px; width: 7px; height: 7px;
   border: 1.5px solid var(--kind-doc-bg); border-radius: 50%; background: var(--danger); }
 .catalog-card-doc .deck-card-identity { gap: 4px; }
-.catalog-card-doc .deck-card-identity > strong { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 .open-questions { margin: 4px 16px 20px; color: var(--ink); }
 /* Reading needs a negative margin for Edit; after questions, TagPicker stays in normal flow to avoid overlap. */

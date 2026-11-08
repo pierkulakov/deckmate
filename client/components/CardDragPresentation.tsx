@@ -17,9 +17,9 @@ export const cardDragText = defineText({
   handFor: (member: string) => `Add to ${member}’s hand`,
 }, {
   hand: 'Добавить в руку', decks: 'Сменить колоду', timeline: 'Календарь', vision: 'Полотно',
-  drop: (value: string) => `Отпустите, чтобы задать: ${value}`, groups: 'Группа карт',
-  noDeck: 'Без колоды', cancel: 'Отмена', chooseDeck: 'Выберите колоду для переносимых карт',
-  sameDeck: 'Все переносимые карты уже здесь', incompatible: 'Колода не принимает все переносимые типы карт',
+  drop: (value: string) => `Отпустите, чтобы задать: ${value}`, groups: 'Группа карточек',
+  noDeck: 'Без колоды', cancel: 'Отмена', chooseDeck: 'Выберите колоду для переносимых карточек',
+  sameDeck: 'Все переносимые карточки уже здесь', incompatible: 'Колода не принимает все переносимые типы карточек',
   high: 'Высокий', medium: 'Средний', low: 'Низкий', noPriority: 'Без приоритета',
   handFor: (member: string) => `Добавить в руку: ${member}`,
 });

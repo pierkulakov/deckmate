@@ -1,7 +1,9 @@
 /* 2026-11-06: the cast cover, 132×180 — one material in the gallery, the shelf above an open deck, the drag overlay and the
    settings preview. A lit rim and a soft lift instead of a printed band: a sunken art window, the kind as a glass dot in its
    corner, the title on the deck color, raised counters and a progress lip at the bottom edge. */
-.catalog-deck-grid { display: grid; grid-template-columns: repeat(auto-fill, 132px); gap: 16px; padding: 0 12px 12px; }
+/* 2026-11-08: the light layer draws outside the cover — a 2px ring, a 5px keyboard outline and an 8px halo core —
+   so the grid keeps a 12px top inset (its own spacing step) to hold every highlight state off the space heading above. */
+.catalog-deck-grid { display: grid; grid-template-columns: repeat(auto-fill, 132px); gap: 16px; padding: 12px; }
 .catalog-pile-decks { display: contents; }
 
 /* --deck-band is the deck color, darkened by coverStyle only where the title would fall below 4.5:1. The title sits on a flat
@@ -38,6 +40,7 @@
 
 /* Chrome lays a centered clamp's ellipsis up to 5 px past the box: clip only the third line, so «…» shows whole inside the margin. */
 .catalog-cover-title { position: relative; z-index: 1; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow-x: visible; overflow-y: clip; margin: 9px 6px 0; padding-bottom: 1px; font: 600 13px/15px var(--font-sans); color: var(--deck-ink, #fff); text-shadow: 0 1px 0 rgb(0 0 0 / .18); overflow-wrap: anywhere; }
+.catalog-cover-title-tip { max-width: min(340px, var(--radix-tooltip-content-available-width)); overflow-wrap: anywhere; }
 .catalog-cover-foot { display: flex; justify-content: center; margin-top: auto; padding-bottom: 10px; }
 /* Raised counters: a white face on a 2 px foot; the accepted Task count is green. */
 .catalog-cover-counts { display: inline-flex; gap: 5px; }

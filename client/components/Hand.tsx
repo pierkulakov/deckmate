@@ -84,27 +84,27 @@ const text = defineText({
   openCard: (title: string) => `Open ${title}`,
 }, {
   yourHand: 'Ваша рука',
-  yourDueCards: 'Ваши карты по срокам',
+  yourDueCards: 'Ваши карточки по срокам',
   yourRuns: 'Ваши Run',
   tabWithCount: (label: string, count: number) => {
     const rule = new Intl.PluralRules('ru-RU').select(count);
-    return `${label}, ${count.toLocaleString(locale())} ${rule === 'one' ? 'карта' : rule === 'few' ? 'карты' : 'карт'}`;
+    return `${label}, ${count.toLocaleString(locale())} ${rule === 'one' ? 'карточка' : rule === 'few' ? 'карточки' : 'карточек'}`;
   },
   addToHand: 'В руку',
   removeFromHand: 'Убрать из руки',
-  pinnedMilestone: 'Закреплённая веха',
+  pinnedMilestone: 'Закреплённый Milestone',
   bookmarks: 'Закладки',
   teamHands: 'Руки команды',
   showAll: 'Показать всех',
-  doneCards: 'Готовые карты',
+  doneCards: 'Принятые карточки',
   dueNow: 'Срок наступил',
   dueSoon: 'Срок скоро',
   dueLater: 'Срок позже',
-  seeFullMilestone: 'Показать веху целиком',
+  seeFullMilestone: 'Показать Milestone целиком',
   due: 'Срок',
   unassigned: 'Без исполнителя',
   bookmark: 'Закладка',
-  effort: 'Effort',
+  effort: 'Оценка',
   agent: 'Агент',
   human: 'Человек',
   noBookmarks: 'Закладок пока нет. Откройте карточку и добавьте закладку в её меню.',
@@ -114,8 +114,8 @@ const text = defineText({
     return `${count.toLocaleString(locale())} ${word}`;
   },
   emptyMemberHand: 'В Hand нет карточек. Добавьте их через выделение в Decks.',
-  emptyHand: 'Пусто. В Decks перетащите карту на вкладку Hand или нажмите H, наведя на карту.',
-  totalEffort: 'Суммарный Effort руки',
+  emptyHand: 'Пусто. В Decks перетащите карточку на вкладку Hand или нажмите H, наведя на карточку.',
+  totalEffort: 'Суммарная оценка руки',
   showAllTitle: 'Показать руки всех участников',
   allHands: 'Все руки',
   whoseHand: 'Чья рука',
@@ -128,7 +128,7 @@ const text = defineText({
   handSections: 'Разделы руки',
   invalidMember: 'Участник из ссылки отсутствует в составе команды. Показана рука по умолчанию.',
   card: 'Карточка',
-  doneSummary: (count: number, effort: number, lastCount: number, lastEffort: number, total: number) => `Неделя: ${count.toLocaleString(locale())} карт · Effort ${effort.toLocaleString(locale())}\nПрошлая неделя: ${lastCount.toLocaleString(locale())} · ${lastEffort.toLocaleString(locale())}\nВсего в стопке: ${total.toLocaleString(locale())}`,
+  doneSummary: (count: number, effort: number, lastCount: number, lastEffort: number, total: number) => `Неделя: карточек ${count.toLocaleString(locale())} · оценка ${effort.toLocaleString(locale())}\nПрошлая неделя: ${lastCount.toLocaleString(locale())} · ${lastEffort.toLocaleString(locale())}\nВсего в стопке: ${total.toLocaleString(locale())}`,
   dragInstructions: 'Нажмите пробел, чтобы поднять карточку руки. Стрелки меняют позицию, пробел завершает перенос, Escape отменяет.',
   dragStart: (card: string) => `Поднята карточка «${card}».`,
   dragOver: (card: string, position: number, total: number) => `Карточка «${card}», позиция ${position.toLocaleString(locale())} из ${total.toLocaleString(locale())}.`,
@@ -138,10 +138,10 @@ const text = defineText({
   queue: (count: number) => `В очереди: ${count.toLocaleString(locale())}`,
   noDeck: 'Без колоды',
   moveInHand: (title: string) => `Переместить в руке: ${title}`,
-  reorderTitle: 'Изменить порядок · Space и стрелки',
-  noDueCards: 'У вас нет карт со сроком.',
+  reorderTitle: 'Изменить порядок · Пробел и стрелки',
+  noDueCards: 'У вас нет карточек со сроком.',
   openRunTimeline: (label: string) => `Открыть ${label} в Timeline`,
-  noOwnedMilestone: 'Ваших карт в этой вехе нет.',
+  noOwnedMilestone: 'Ваших карточек в этом Milestone нет.',
   openCard: (title: string) => `Открыть ${title}`,
 });
 
@@ -320,7 +320,7 @@ export function Hand({ snapshot, refreshKey, onOpenCard, onOpenMembers }: {
       <span>{t.allHands}</span>
     </label>
     {!showAllHands && <label className="hand-member-picker"><span className="visually-hidden">{t.whoseHand}</span>
-      <select value={selectedMember} onChange={event => selectMember(event.target.value)} aria-label={t.whoseHand}>{hands.map(({ member }) => <option key={member.id} value={member.id}>{member.label}</option>)}</select>
+      <select value={selectedMember} onChange={event => selectMember(event.target.value)} aria-label={t.whoseHand} title={activeHand?.member.label}>{hands.map(({ member }) => <option key={member.id} value={member.id}>{member.label}</option>)}</select>
     </label>}
   </header>;
   const panelBody = showAllHands
@@ -648,7 +648,7 @@ function HandMilestoneSection({ milestone, cards, decksById, projectTags, onOpen
   const lang = useLang();
   return <section className="hand-section" aria-label={t.pinnedMilestone}>
     <div className="hand-section-toolbar">
-      <h3 className="hand-milestone-title">{milestone.title}<small>{formatPlanningDate(milestone.date, lang)}</small></h3>
+      <h3 className="hand-milestone-title"><span>{milestone.title}</span><small>{formatPlanningDate(milestone.date, lang)}</small></h3>
       <button type="button" className="hand-show-all" onClick={() => onOpenTimeline({ kind: 'milestone', id: milestone.id })}>{t.seeFullMilestone}</button>
     </div>
     {groupCardsByStateFlow(cards).map(group => (

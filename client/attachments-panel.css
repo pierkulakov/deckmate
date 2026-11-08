@@ -18,8 +18,10 @@
 .attachments-add { display: flex; flex-direction: column; gap: 8px; }
 .attachments-drop { position: relative; display: flex; flex-direction: column; align-items: center; padding: 16px; border: .67px solid var(--tab-idle, var(--line)); border-radius: 4px; background: var(--ground); transition: border-color var(--motion-feedback); }
 .attachments-panel.is-drop-target .attachments-drop { border-color: var(--mint-edge, var(--accent)); }
-.attachments-drop-text { max-width: 100%; overflow: hidden; color: var(--ink); font-size: 16px; font-weight: 700; line-height: 18px; white-space: nowrap; text-overflow: ellipsis; }
-.attachments-browse { padding: 0; border: 0; background: none; color: var(--mint, var(--accent)); font: inherit; cursor: pointer; }
+/* 2026-11-08: the invitation wraps on a narrow panel; the browse link is the only way to pick a file, so it never hides
+   under an ellipsis — only the invitation text may break (CP-09). */
+.attachments-drop-text { max-width: 100%; color: var(--ink); font-size: 16px; font-weight: 700; line-height: 18px; }
+.attachments-browse { padding: 0; border: 0; background: none; color: var(--mint, var(--accent)); font: inherit; white-space: nowrap; cursor: pointer; }
 .attachments-browse:hover:not(:disabled) { text-decoration: underline; text-underline-offset: 3px; }
 .attachments-browse:disabled { cursor: default; opacity: .5; }
 .attachments-busy { position: absolute; top: 50%; right: 16px; margin-top: -7px; color: var(--edit-hint); }
@@ -38,8 +40,12 @@
 .attachments-row-actions { display: flex; flex-shrink: 0; gap: 4px; margin-left: auto; }
 .attachments-row-actions .ui-button { width: 24px; height: 24px; padding: 0; border: 0; border-radius: 4px; color: var(--edit-hint); text-decoration: none; }
 .attachments-row-actions .ui-button:hover:not(:disabled) { color: var(--ink); background: var(--hover); }
-.attachments-row-actions .ui-button[aria-pressed="true"] { color: var(--mint, var(--accent)); }
+.attachments-row-actions .ui-button[data-copied] { color: var(--mint, var(--accent)); }
 .attachments-row-actions .attachments-remove:hover:not(:disabled) { color: var(--danger); }
+/* 2026-11-09: reuse the card ID's short feedback bubble, anchored inward so it fits the attachment panel. */
+.attachment-copy-control { position: relative; display: inline-flex; }
+.attachment-copy-control .attachment-copy-feedback { left: auto; right: 0; }
+.attachment-copy-control .attachment-copy-feedback::after { left: auto; right: 8px; }
 .attachments-preview { display: flex; justify-content: center; width: 100%; padding: 0; border: 0; border-radius: 4px; background: var(--ground); overflow: hidden; cursor: zoom-in; }
 .attachments-preview img { display: block; max-width: 100%; max-height: 240px; }
 .attachments-file { display: flex; align-items: center; gap: 8px; min-width: 0; padding: 12px; border: .67px solid var(--tab-idle, var(--line)); border-radius: 4px; background: var(--ground); color: var(--edit-hint); }
@@ -47,29 +53,14 @@
 .attachments-file > span { min-width: 0; overflow: hidden; color: var(--ink); font-size: 14px; line-height: 16px; white-space: nowrap; text-overflow: ellipsis; }
 .attachments-file > small { flex-shrink: 0; margin-left: auto; color: var(--danger); font-size: 12px; }
 
-/* The eye action opens the cover editor below its image. */
-.attachments-cover { display: flex; flex-direction: column; gap: 12px; padding: 16px; border: .67px solid var(--tab-idle, var(--line)); border-radius: 4px; background: var(--ground); }
-.attachments-cover h3 { margin: 0; color: var(--edit-hint); font-size: 11px; font-weight: 700; line-height: 12px; letter-spacing: .22px; text-transform: uppercase; }
-.attachments-cover-preview { position: relative; display: flex; align-items: flex-end; height: 96px; border-radius: 4px; overflow: hidden; background: var(--canvas); }
-.attachments-cover-preview img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
-.attachments-cover-caption { position: relative; z-index: 1; padding: 8px 10px; font-size: 13px; font-weight: 700; }
-.attachments-cover-preview.is-light .attachments-cover-caption { color: var(--overlay-ink); text-shadow: 0 1px 3px color-mix(in srgb, var(--overlay-face) 60%, transparent); }
-.attachments-cover-preview.is-dark .attachments-cover-caption { color: var(--overlay-ink); }
-.attachments-cover-preview.is-blurred::after { content: ''; position: absolute; z-index: 1; left: 0; right: 0; bottom: 0; height: 46%; background: transparent; backdrop-filter: blur(3px); border-top: 1px solid color-mix(in srgb, var(--line) 60%, transparent); }
-.attachments-cover-field { display: flex; align-items: center; gap: 9px; font-size: 12px; color: var(--ink); }
-.attachments-cover-field > span { margin-left: auto; color: var(--edit-hint); font-family: 'Geist Mono', monospace; font-size: 11px; }
-.attachments-cover-field input[type="range"] { flex: 1; accent-color: var(--accent); }
-.attachments-cover-field select { border: 1px solid var(--line); border-radius: 4px; padding: 5px 8px; background: var(--surface); color: var(--ink); font: inherit; font-size: 12px; }
-.attachments-cover-check { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--ink); }
-.attachments-cover-actions { display: flex; align-items: center; gap: 8px; }
-
 /* Image viewer: zoom, pan and navigation between card images. The scrim is the darker --scrim-heavy token: images need a near-black field. */
 .attachment-viewer-overlay { position: fixed; inset: 0; z-index: var(--z-viewer-overlay); background: var(--scrim-heavy); backdrop-filter: blur(3px); }
 .attachment-viewer { position: fixed; inset: 0; z-index: var(--z-viewer); display: flex; flex-direction: column; background: transparent; outline: none; }
 .attachment-viewer-bar { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 10px 16px; background: var(--sidebar); border-bottom: 1px solid var(--line); }
 .attachment-viewer-name { display: flex; align-items: baseline; gap: 10px; min-width: 0; color: var(--ink); }
 .attachment-viewer-name strong { font-size: 13px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.attachment-viewer-name span { color: var(--muted); font-family: 'Geist Mono', monospace; font-size: 11px; }
+/* 2026-11-08: the counter is one short number; it never shrinks or breaks — the long file name takes the ellipsis (CP-12). */
+.attachment-viewer-name span { flex-shrink: 0; color: var(--muted); font-family: 'Geist Mono', monospace; font-size: 11px; white-space: nowrap; }
 .attachment-viewer-tools { display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
 .attachment-viewer-tools .ui-button, .attachment-viewer-tools a { color: var(--ink); }
 .attachment-viewer-zoom { min-width: 44px; color: var(--muted); font-family: 'Geist Mono', monospace; font-size: 11px; text-align: center; }

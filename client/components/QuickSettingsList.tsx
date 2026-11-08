@@ -4,8 +4,10 @@ import { defineText, locale, useLang, useText } from '../i18n.ts';
 import '../deck-picker.css';
 
 const text = defineText(
-  { noResults: 'Nothing found.', searchLabel: (title: string) => `Search ${title}` },
-  { noResults: 'Ничего не найдено.', searchLabel: (title: string) => `Поиск: ${title}` });
+  { noResults: 'Nothing found.', searchLabel: (title: string) => `Search ${title}`, choose: (title: string) => `Choose ${title}`,
+    current: 'current', beforeKeys: 'Use ', beforeEnter: ' to navigate, ', afterEnter: ' to ', confirm: 'confirm' },
+  { noResults: 'Ничего не найдено.', searchLabel: (title: string) => `Поиск: ${title}`, choose: (title: string) => `Выбрать: ${title}`,
+    current: 'текущее', beforeKeys: '', beforeEnter: ' — выбор, ', afterEnter: ' — ', confirm: 'подтвердить' });
 
 export interface QuickSettingsChoice {
   key: string;
@@ -64,7 +66,7 @@ export function QuickSettingsList({ title, choices, current, disabled, searchDis
     }
   }}>
     <div className="deck-choice-body">
-      <Title className="deck-choice-title">Choose {title}</Title>
+      <Title className="deck-choice-title">{t.choose(title)}</Title>
       <input ref={search} className="deck-choice-search" type="search" role="combobox" aria-expanded="true" aria-controls={id + '-list'} aria-autocomplete="list"
         aria-activedescendant={activeIndex >= 0 ? optionId(activeIndex) : undefined} aria-label={t.searchLabel(title)}
         value={query} disabled={searchDisabled} data-autofocus onChange={event => {
@@ -82,14 +84,14 @@ export function QuickSettingsList({ title, choices, current, disabled, searchDis
               data-active={choice.key === active} data-current={choice.key === current} className="deck-choice-option"
               onPointerMove={() => { if (!disabled) setActive(choice.key); }} onMouseDown={event => event.preventDefault()} onClick={() => choose(choice.key)}>
               {choice.icon}<span className="deck-choice-name" title={choice.label}>{choice.label}</span>{choice.detail}
-              {choice.key === current && <span className="deck-choice-current">current</span>}
+              {choice.key === current && <span className="deck-choice-current">{t.current}</span>}
             </div>;
           })}
         </div>)}
         {!filtered.length && <p className="deck-choice-empty" role="status">{t.noResults}</p>}
       </div>
     </div>
-    <p className="deck-choice-hint">Use {tabs && <kbd>←</kbd>}<kbd>↑</kbd><kbd>↓</kbd>{tabs && <kbd>→</kbd>} to navigate, <kbd>Enter</kbd> to <button type="button" className="deck-choice-confirm" disabled={disabled || activeIndex < 0} onClick={() => choose(filtered[activeIndex]?.key)}>confirm</button>.</p>
+    <p className="deck-choice-hint">{t.beforeKeys}{tabs && <kbd>←</kbd>}<kbd>↑</kbd><kbd>↓</kbd>{tabs && <kbd>→</kbd>}{t.beforeEnter}<kbd>Enter</kbd>{t.afterEnter}<button type="button" className="deck-choice-confirm" disabled={disabled || activeIndex < 0} onClick={() => choose(filtered[activeIndex]?.key)}>{t.confirm}</button>.</p>
   </div>;
 }
 
@@ -99,6 +101,15 @@ export function QuickSettingsPopover({ anchor, busy = false, onClose, children }
   const content = useRef<HTMLDivElement>(null);
   const outside = useRef(false);
   const [place, setPlace] = useState<CSSProperties>();
+  useLayoutEffect(() => {
+    if (!anchor) return;
+    const expanded = anchor.getAttribute('aria-expanded');
+    anchor.setAttribute('aria-expanded', 'true');
+    return () => {
+      if (expanded === null) anchor.removeAttribute('aria-expanded');
+      else anchor.setAttribute('aria-expanded', 'false');
+    };
+  }, [anchor]);
   useLayoutEffect(() => {
     function measure() {
       const bounds = anchor?.getBoundingClientRect();

@@ -10,26 +10,29 @@ import type { SliceStatus, WorkspaceSnapshot } from '../../src/workspace-contrac
 import type { CatalogAction } from '../useCatalog.ts';
 import { CardTags, TagBadge } from './CardTags.tsx';
 import { CardIndicators } from './CardIndicators.tsx';
-import { CardPropertiesPanel, cardHeroEffort, type CardPropertiesPanelHandle } from './CardPropertiesPanel.tsx';
+import { CardPropertiesPanel, cardHeroEffort } from './CardPropertiesPanel.tsx';
 import { shortReference } from '../../src/references.ts';
 import { markdownParser } from '../../src/markdown-model.ts';
 import { CardContentEditor } from './CardContentEditor.tsx';
 import { OpenQuestions } from './OpenQuestions.tsx';
-import { CardOwnerAvatar, type CardQuickSettingsTab } from './CardQuickSettings.tsx';
+import { CardOwnerAvatar, CardQuickSettings, type CardQuickSettingsTab } from './CardQuickSettings.tsx';
 import { DeckPicker } from './DeckPicker.tsx';
 import { ApplyJourneyPanel } from './JourneyPanel.tsx';
-import { SubCardProgress, subCardsCount } from './CardFamily.tsx';
+import { JourneyTrack } from './JourneyTrack.tsx';
+import { subCardsCount } from './CardFamily.tsx';
 import { DependencyStateWarning, dependencyConflicts, type DependencyConflict } from './DependencyWarning.tsx';
 import { AttachmentsPanel } from './AttachmentsPanel.tsx';
 import { JourneyReturnPrompt, isJourneyReturn, journeyLessonAction, type JourneyReturnAnswer } from './JourneyReturnPrompt.tsx';
 import { buildCatalogLookups, orderSubCards } from '../catalog-lookups.ts';
 import { familyFinished, useJustFinished } from '../done-impact.ts';
+import { useCardTilt } from '../useCardTilt.ts';
 import { OPEN_CARD_SHORTCUTS, claimOpenCardShortcuts, markShortcutPropertyHover, matchShortcut, resolveHoveredCardShortcut, shortcutTargetBlocked } from '../keyboard-shortcuts.ts';
 import { currentMember, onMemberChange } from '../current-member.ts';
 import { countCatalogCardWords } from '../card-word-count.ts';
 import { Button } from './ui/button.tsx';
 import { defineText, locale, textNow, useLang, useText } from '../i18n.ts';
 import { priorityLabel } from '../locales/common.ts';
+import { JourneyStepNote } from './JourneyStepNote.tsx';
 import '../card-preview.css';
 
 const text = defineText({
@@ -45,8 +48,6 @@ const text = defineText({
   stale: 'The card or catalog changed. Close the menu and try again with current data.',
   notConfirmed: 'Change not confirmed. Check the catalog message and try again.',
   saveFailed: 'Could not save the change. Try again.',
-  moveNotConfirmed: 'Move not confirmed. You can choose the deck again after checking the data.',
-  moveFailed: 'Could not move the card. Try again.',
   loadMarkdown: 'Could not load card Markdown.',
   changedDuringCopy: 'The card changed while copying. Reopen the menu.',
   invalidMarkdown: 'The server did not return the full card Markdown.',
@@ -67,17 +68,16 @@ const text = defineText({
   sandboxDeck: 'Open sandbox to change the deck',
   closeCard: 'Close card',
   openFamily: 'Open Hero and Sub Cards',
+  returnToHero: (title: string) => `Back to Hero: ${title} · Esc`,
   parentProgress: (done: number, total: number) => `Hero: ${done} of ${total} done`,
   cardState: 'Card state',
   start: 'Start work',
   review: 'Send to review',
   accept: 'Accept card',
   plan: 'Return to planned',
-  applyJourney: 'Apply pipeline to Hero Card',
+  applyJourney: 'Apply Journey to Hero Card',
   tagCardsLabel: (name: string) => `All cards with tag “${name}”`,
   tagLabel: 'Tag',
-  journeyProgress: 'Journey progress',
-  journeyDone: (done: number, total: number) => `${done} of ${total} done`,
   missingSource: 'This card’s source disappeared from the index. Showing the last version; changing links and applying Journey are unavailable.',
   backlinks: 'Links to this card',
   more: (count: number) => `and ${count} more`,
@@ -114,21 +114,20 @@ const text = defineText({
   moveToTrash: 'Move to Trash',
   subCardsCount: subCardsCount.en,
   journeyAction: 'Journey',
-  journeyTitle: (title: string, version: number) => `Journey: ${title} v${version}`,
   startJourney: 'Start Journey',
   effort: 'Effort',
   priority: 'Priority',
   markdownLabel: 'Markdown',
 }, {
-  copyId: 'Скопировать ID карты',
+  copyId: 'Скопировать ID карточки',
   copyReference: (reference: string) => `Скопировать ID ${reference}`,
   copied: 'Скопировано',
   copyFailed: 'Не удалось скопировать',
   tagCards: (count: number) => {
     const rule = new Intl.PluralRules('ru-RU').select(count);
-    if (rule === 'one') return `${count} карта`;
-    if (rule === 'few') return `${count} карты`;
-    return `${count} карт`;
+    if (rule === 'one') return `${count} карточка`;
+    if (rule === 'few') return `${count} карточки`;
+    return `${count} карточек`;
   },
   watchLoadFailed: 'Не удалось прочитать список наблюдения.',
   watchUnavailable: 'Список наблюдения недоступен. Проверьте файл уведомлений и откройте меню заново.',
@@ -137,47 +136,44 @@ const text = defineText({
   stale: 'Карточка или каталог изменились. Закройте меню и повторите действие с актуальными данными.',
   notConfirmed: 'Изменение не подтверждено. Проверьте сообщение каталога и повторите действие.',
   saveFailed: 'Не удалось сохранить изменение. Повторите действие.',
-  moveNotConfirmed: 'Перемещение не подтверждено. Выбор колоды можно повторить после проверки данных.',
-  moveFailed: 'Не удалось переместить карточку. Повторите действие.',
-  loadMarkdown: 'Не удалось загрузить Markdown карты.',
+  loadMarkdown: 'Не удалось загрузить Markdown карточки.',
   changedDuringCopy: 'Карточка изменилась во время копирования. Откройте меню заново.',
-  invalidMarkdown: 'Сервер не вернул полный Markdown карты.',
+  invalidMarkdown: 'Сервер не вернул полный Markdown карточки.',
   copiedLegacy: 'Markdown скопирован. Это документ проекта: скопировано его содержимое без служебной YAML-шапки.',
-  copiedMarkdown: 'Markdown карты скопирован.',
+  copiedMarkdown: 'Markdown карточки скопирован.',
   copyMarkdownFailed: 'Не удалось скопировать Markdown. Проверьте доступ к буферу обмена.',
-  noMember: 'Добавьте участника в состав команды, чтобы назначить карту себе.',
+  noMember: 'Добавьте участника в состав команды, чтобы назначить карточку себе.',
   stateNotConfirmed: 'Изменение состояния не подтверждено. Проверьте актуальные данные и повторите действие.',
-  lessonFailed: 'Карта возвращена, но грабли шага не записаны. Причина есть в журнале карты; допишите грабли в шаг Journey вручную.',
+  lessonFailed: 'Карточка возвращена, но грабли шага не записаны. Причина есть в журнале карточки; допишите грабли в шаг Journey вручную.',
   stateFailed: 'Не удалось изменить состояние. Повторите действие.',
-  moreActions: 'Действия открытой карты',
+  moreActions: 'Действия открытой карточки',
   legacyHelp: 'Документ проекта: копируется Markdown без служебной YAML-шапки.',
   sandboxChanges: 'Изменения доступны в тестовой копии.',
   menuConflict: 'Карточка или каталог изменились. Откройте меню заново.',
-  card: (title: string) => `Карта: ${title}`,
+  card: (title: string) => `Карточка: ${title}`,
   noDeck: 'Без колоды',
   moveDeck: 'Переместить в другую колоду',
   sandboxDeck: 'Для изменения колоды откройте sandbox',
-  closeCard: 'Закрыть карту',
+  closeCard: 'Закрыть карточку',
   openFamily: 'Открыть Hero и Sub Cards',
+  returnToHero: (title: string) => `Вернуться к Hero: ${title} · Esc`,
   parentProgress: (done: number, total: number) => `Hero: принято ${done} из ${total}`,
   cardState: 'Состояние карточки',
   start: 'Взять в работу',
   review: 'Отправить на приёмку',
   accept: 'Принять карточку',
   plan: 'Вернуть в план',
-  applyJourney: 'Применить pipeline к Hero Card',
-  tagCardsLabel: (name: string) => `Все карты с тегом «${name}»`,
+  applyJourney: 'Применить Journey к Hero Card',
+  tagCardsLabel: (name: string) => `Все карточки с тегом «${name}»`,
   tagLabel: 'Тег',
-  journeyProgress: 'Исполнение Journey',
-  journeyDone: (done: number, total: number) => `${done} из ${total} принято`,
-  missingSource: 'Источник этой карты исчез из индекса. Показана последняя версия; изменение связей и применение Journey недоступны.',
+  missingSource: 'Источник этой карточки исчез из индекса. Показана последняя версия; изменение связей и применение Journey недоступны.',
   backlinks: 'Ссылается сюда',
   more: (count: number) => `и ещё ${count}`,
   notSet: 'не задан',
-  effortLabel: (value: string) => `Effort: ${value}`,
-  editEffort: 'Изменить Effort',
-  priorityLabel: (value: string) => `Priority: ${value}`,
-  editPriority: 'Изменить Priority',
+  effortLabel: (value: string) => `Оценка: ${value}`,
+  editEffort: 'Изменить оценку',
+  priorityLabel: (value: string) => `Приоритет: ${value}`,
+  editPriority: 'Изменить приоритет',
   wordCount: (count: number) => `Число слов: ${count}`,
   panels: 'Панели карточки',
   contentPanel: 'Содержимое',
@@ -185,31 +181,30 @@ const text = defineText({
   attachmentsPanel: 'Вложения',
   focusMode: 'Фокус-режим',
   moreOptions: 'Ещё действия',
-  ownerLabel: (owner: string) => `Владелец: ${owner}`,
-  unassigned: 'Unassigned',
+  ownerLabel: (owner: string) => `Исполнитель: ${owner}`,
+  unassigned: 'Без исполнителя',
   family: 'Hero и Sub Cards',
-  trashChildren: 'В Trash также попадут Sub Cards этой карты, включая архивные. Их можно восстановить вместе с родителем.',
+  trashChildren: 'В корзину также попадут Sub Cards этой карточки, включая архивные. Их можно восстановить вместе с родителем.',
   removalConflict: 'Карточка или каталог изменились. Закройте это окно и повторите действие с актуальными данными.',
   cancel: 'Отмена',
   archiveQuestion: (title: string) => `Архивировать «${title}»? Файлы сохраняются.`,
   unarchiveQuestion: (title: string) => `Вернуть из архива «${title}»? Файлы сохраняются.`,
-  deleteQuestion: (title: string) => `Переместить в Trash «${title}»? Файлы сохраняются.`,
-  copyCardContent: 'Скопировать содержимое карты',
+  deleteQuestion: (title: string) => `Переместить в корзину «${title}»? Файлы сохраняются.`,
+  copyCardContent: 'Скопировать содержимое карточки',
   unbookmarkCard: 'Убрать из закладок',
   bookmarkCard: 'Добавить в закладки',
   unwatchCard: 'Отключить наблюдение',
-  watchCard: 'Наблюдать за картой',
+  watchCard: 'Наблюдать за карточкой',
   unstartCard: 'Вернуть в план',
-  archiveCard: 'Архивировать карту',
+  archiveCard: 'Архивировать карточку',
   unarchiveCard: 'Вернуть из архива',
-  restoreCard: 'Восстановить карту',
-  moveToTrash: 'В Trash',
+  restoreCard: 'Восстановить карточку',
+  moveToTrash: 'В корзину',
   subCardsCount: subCardsCount.ru,
   journeyAction: 'Journey',
-  journeyTitle: (title: string, version: number) => `Journey: ${title} v${version}`,
   startJourney: 'Запустить Journey',
-  effort: 'Effort',
-  priority: 'Priority',
+  effort: 'Оценка',
+  priority: 'Приоритет',
   markdownLabel: 'Markdown',
 });
 
@@ -221,6 +216,8 @@ interface CardPreviewProps {
   pending: boolean;
   onClose: () => void;
   onSelect: (card: CatalogCard) => void;
+  onOpenSubCard?: (card: CatalogCard) => void;
+  onReturnToHero?: () => void;
   onEdit: (action: CatalogAction) => Promise<boolean>;
   onDirtyChange: (dirty: boolean) => void;
   onShowFamily?: () => void;
@@ -274,7 +271,7 @@ function cardLinksTo(candidate: CatalogCard, reference: string, source: string):
   return tree.children.some(containsLink);
 }
 
-export function CardPreview({ card, catalog, snapshot, writable, pending, onClose, onSelect, onEdit, onDirtyChange, onShowFamily, onToggleFamily, onManageJourney, onShowTagCards, onOpenDeck, familyVisible }: CardPreviewProps) {
+export function CardPreview({ card, catalog, snapshot, writable, pending, onClose, onSelect, onOpenSubCard, onReturnToHero, onEdit, onDirtyChange, onShowFamily, onToggleFamily, onManageJourney, onShowTagCards, onOpenDeck, familyVisible }: CardPreviewProps) {
   const [saving, setSaving] = useState(false);
   const t = useText(text);
   const lang = useLang();
@@ -284,7 +281,10 @@ export function CardPreview({ card, catalog, snapshot, writable, pending, onClos
   const [journeySaving, setJourneySaving] = useState(false);
   const [contentEditing, setContentEditing] = useState(false);
   const [propertiesActive, setPropertiesActive] = useState(false);
-  const [activePanel, setActivePanel] = useState<CardPanel>('content');
+  const [quickSettings, setQuickSettings] = useState<{ cardId: string; tab: CardQuickSettingsTab; anchor: HTMLElement } | null>(null);
+  const [quickSaving, setQuickSaving] = useState(false);
+  const [panelTarget, setPanelTarget] = useState<{ panel: CardPanel; property?: 'tags' }>({ panel: 'content' });
+  const activePanel = panelTarget.panel;
   const [stateNotice, setStateNotice] = useState('');
   const [moreOpen, setMoreOpen] = useState(false);
   const [moreRevision, setMoreRevision] = useState('');
@@ -303,8 +303,11 @@ export function CardPreview({ card, catalog, snapshot, writable, pending, onClos
   const journeyOpener = useRef<HTMLElement | null>(null);
   const journeyManaging = useRef(false);
   const preview = useRef<HTMLElement>(null);
+  const materialGlare = useCardTilt<HTMLElement>(0);
+  // 2026-11-09: the author asked for the band's soft glow on the gold parent bar as well.
+  const parentGlare = useCardTilt<HTMLButtonElement>(0);
   const propertiesContainer = useRef<HTMLDivElement>(null);
-  const propertiesPanel = useRef<CardPropertiesPanelHandle>(null);
+  const attachmentsContainer = useRef<HTMLDivElement>(null);
   const panelId = useId();
   const heading = useRef<HTMLHeadingElement>(null);
   const currentCard = catalog.cards.find(candidate => candidate.id === card.id);
@@ -324,9 +327,14 @@ export function CardPreview({ card, catalog, snapshot, writable, pending, onClos
   const journeyChild = orderedChildren.find(child => child.journey);
   const journeyReference = journeyChild?.journey;
   const journeyDefinition = journeyReference ? catalog.journeys?.find(journey => journey.id === journeyReference.journeyId) : undefined;
+  const stepJourney = card.journey ? catalog.journeys?.find(journey => journey.id === card.journey?.journeyId) : undefined;
+  // 2026-11-09: only the Sub Cards of this very run are its steps; ordinary Sub Cards of the Hero stay in the family list.
+  const stepRunCards = card.journey ? siblings.filter(candidate => candidate.journey?.journeyId === card.journey?.journeyId
+    && candidate.journey?.version === card.journey?.version && candidate.journey?.instanceId === card.journey?.instanceId) : [];
+  // The Markdown step link is hidden only where the step note replaces it.
+  const stepNoteShown = Boolean(card.journey && stepRunCards.some(candidate => candidate.id === card.id));
   const journeyChildren = journeyReference ? orderedChildren.filter(child => child.journey?.journeyId === journeyReference.journeyId
     && child.journey.version === journeyReference.version && child.journey.instanceId === journeyReference.instanceId) : [];
-  const journeyAccepted = journeyChildren.filter(child => child.state === 'done').length;
   const indicatorLookups = useMemo(() => buildCatalogLookups(catalog.cards, catalog.subCardOrder), [catalog.cards, catalog.subCardOrder]);
   const cardsById = indicatorLookups.cardById;
   const backlinks = useMemo(() => card.kind === 'doc' ? catalog.cards.filter(candidate => candidate.id !== card.id && !candidate.deleted && !candidate.archived
@@ -336,15 +344,15 @@ export function CardPreview({ card, catalog, snapshot, writable, pending, onClos
   const tagCardCounts = useMemo(() => new Map(boundTags.map(tag => [tag.name,
     catalog.cards.filter(item => !item.deleted && !item.archived && item.tags?.includes(tag.name)).length])), [boundTags, catalog.cards]);
   const displayedEffort = card.kind === 'hero' ? cardHeroEffort(card, catalog) : card.effort;
-  const disabled = !exists || !writable || pending || saving || journeySaving || contentEditing || openQuestionsActive;
-  const questionsDisabled = !exists || pending || saving || journeySaving || contentEditing || propertiesActive;
-  const navigationLocked = saving || pending || journeySaving || contentEditing || propertiesActive || openQuestionsActive;
+  const disabled = !exists || !writable || pending || saving || quickSaving || journeySaving || contentEditing || openQuestionsActive;
+  const questionsDisabled = !exists || pending || saving || quickSaving || journeySaving || contentEditing || propertiesActive;
+  const navigationLocked = saving || quickSaving || pending || journeySaving || contentEditing || propertiesActive || openQuestionsActive;
   const quickDisabled = !exists || !writable || navigationLocked;
-  const panelSwitchDisabled = pending || saving || journeySaving || openQuestionsActive;
+  const panelSwitchDisabled = pending || saving || quickSaving || journeySaving || openQuestionsActive;
   const journeyDisabled = panelSwitchDisabled || !exists || contentEditing;
   const journeyBusy = pending || saving || journeySaving;
   // An open content edit may move into Focus Mode with its draft; other open drafts and dialogs keep the card in place.
-  const focusDisabled = saving || pending || journeySaving || propertiesActive || openQuestionsActive;
+  const focusDisabled = saving || quickSaving || pending || journeySaving || propertiesActive || openQuestionsActive;
   const actionDisabled = quickDisabled || snapshot.source !== 'sandbox' || Boolean(currentCard?.deleted);
   const stateDisabled = actionDisabled || Boolean(currentCard?.archived);
   const moreConflict = moreOpen && moreRevision !== revision;
@@ -362,11 +370,20 @@ export function CardPreview({ card, catalog, snapshot, writable, pending, onClos
 
   useEffect(() => { heading.current?.focus(); }, [card.id]);
   useEffect(() => {
-    if (activePanel === 'properties') propertiesContainer.current?.focus({ preventScroll: true });
-  }, [activePanel]);
-  useEffect(() => { onDirtyChange(saving || journeySaving || contentEditing || propertiesActive || openQuestionsActive); }, [saving, journeySaving, contentEditing, propertiesActive, openQuestionsActive, onDirtyChange]);
+    let panel: HTMLDivElement | null = null;
+    if (activePanel === 'properties') panel = propertiesContainer.current;
+    if (activePanel === 'attachments') panel = attachmentsContainer.current;
+    if (!panel) return;
+    const target = panelTarget.property === 'tags' ? panel.querySelector<HTMLElement>('section[data-property="tags"]') ?? panel : panel;
+    target.focus({ preventScroll: true });
+    // 2026-11-08: stacked panels open below the whole card; their scroll margin clears the sticky deck toolbar.
+    if (target !== panel || window.matchMedia('(max-width: 760px)').matches) {
+      target.scrollIntoView({ block: target === panel ? 'start' : 'center', inline: 'nearest', behavior: 'instant' });
+    }
+  }, [activePanel, panelTarget]);
+  useEffect(() => { onDirtyChange(saving || quickSaving || journeySaving || contentEditing || propertiesActive || openQuestionsActive); }, [saving, quickSaving, journeySaving, contentEditing, propertiesActive, openQuestionsActive, onDirtyChange]);
   useEffect(() => () => onDirtyChange(false), [onDirtyChange]);
-  useEffect(() => { setStateQuestion(null); setReturnState(null); }, [card.id]);
+  useEffect(() => { setStateQuestion(null); setReturnState(null); setQuickSettings(null); }, [card.id]);
   useEffect(() => () => copyRequest.current?.abort(), []);
   useEffect(claimOpenCardShortcuts, []);
   useEffect(() => onMemberChange(setSelectedMemberId), []);
@@ -428,19 +445,6 @@ export function CardPreview({ card, catalog, snapshot, writable, pending, onClos
       if (saved) setRemoval(null);
       else setStateNotice(t.notConfirmed);
     } catch { setStateNotice(t.saveFailed); }
-    finally { stateInFlight.current = false; setSaving(false); }
-  }
-
-  // The deck picker moves the card at once (assign-deck keeps parent Hero and Tracks); drafts disable it through quickDisabled.
-  async function moveToDeck(deckId: string | null) {
-    if (quickDisabled || !currentCard || stateInFlight.current || deckId === currentCard.deckId) return;
-    stateInFlight.current = true;
-    setSaving(true);
-    setStateNotice('');
-    try {
-      const saved = await onEdit({ action: 'assign-deck', cardId: currentCard.id, deckId, sourceHash: currentCard.sourceHash, manifestHash: catalog.manifestHash });
-      if (!saved) setStateNotice(t.moveNotConfirmed);
-    } catch { setStateNotice(t.moveFailed); }
     finally { stateInFlight.current = false; setSaving(false); }
   }
 
@@ -551,24 +555,29 @@ export function CardPreview({ card, catalog, snapshot, writable, pending, onClos
     finally { stateInFlight.current = false; setSaving(false); }
   }
 
-  function showPanel(panel: CardPanel) {
+  function showPanel(panel: CardPanel, property?: 'tags') {
     if (panelSwitchDisabled) return;
+    setQuickSettings(null);
     closeJourney();
     if (panel !== 'content' && familyVisible) onToggleFamily?.();
-    setActivePanel(panel);
+    setPanelTarget({ panel, property });
   }
 
   function toggleFamily() {
     if (navigationLocked) return;
     closeJourney();
-    setActivePanel('content');
+    setPanelTarget({ panel: 'content' });
     (onToggleFamily ?? onShowFamily)?.();
   }
 
-  function openQuickSettings(tab: CardQuickSettingsTab) {
+  function openQuickSettings(tab: CardQuickSettingsTab, anchor?: HTMLElement) {
     if (quickDisabled) return;
-    showPanel('properties');
-    requestAnimationFrame(() => propertiesPanel.current?.openQuickSettings(tab));
+    if (card.kind === 'doc' && (tab === 'effort' || tab === 'priority')) return;
+    const opener = anchor ?? preview.current?.querySelector<HTMLElement>('[data-quick-settings-tab="' + tab + '"]')
+      ?? preview.current?.querySelector<HTMLElement>('.card-preview-owner-shortcut');
+    if (!opener) return;
+    closeJourney();
+    setQuickSettings(previous => previous?.anchor === opener ? null : { cardId: card.id, tab, anchor: opener });
   }
 
   function openAttachments() {
@@ -578,18 +587,9 @@ export function CardPreview({ card, catalog, snapshot, writable, pending, onClos
     preview.current?.parentElement?.querySelector<HTMLButtonElement>('.attachments-preview')?.click();
   }
 
-  function openProperty(name: 'owner' | 'priority' | 'effort') {
-    if (quickDisabled) return;
-    showPanel('properties');
-    requestAnimationFrame(() => {
-      const section = propertiesContainer.current?.querySelector<HTMLElement>('[data-property="' + name + '"]');
-      section?.scrollIntoView({ block: 'nearest' });
-      section?.querySelector<HTMLElement>('button:not(:disabled), input:not(:disabled)')?.focus({ preventScroll: true });
-    });
-  }
-
   function openParentFamily() {
     if (navigationLocked || !parent) return;
+    if (onReturnToHero) { onReturnToHero(); return; }
     selectCard(parent);
     onShowFamily?.();
   }
@@ -601,10 +601,10 @@ export function CardPreview({ card, catalog, snapshot, writable, pending, onClos
     if (target) selectCard(target);
   }
 
-  function selectCard(next: CatalogCard) {
+  function selectCard(next: CatalogCard, open = onSelect) {
     if (navigationLocked) return;
     closeJourney();
-    onSelect(next);
+    open(next);
   }
 
   function showTagCards(tag: string) {
@@ -688,13 +688,17 @@ export function CardPreview({ card, catalog, snapshot, writable, pending, onClos
         <div className="card-preview-context"><DeckPicker catalog={catalog} projectName={snapshot.projectName} source={snapshot.source} card={currentCard ?? card} onEdit={onEdit}
           decks={catalog.decks.filter(candidate => deckAcceptsCard(candidate.kind, card.kind))} current={card.deckId} noneLabel={t.noDeck}
           shown={deck} text={deck?.title ?? t.noDeck} disabled={quickDisabled} hint={writable ? t.moveDeck : t.sandboxDeck}
-          onOpen={onOpenDeck ? openDeck : undefined} openDisabled={navigationLocked} onChoose={deckId => void moveToDeck(deckId)} /></div>
+          onOpen={onOpenDeck ? openDeck : undefined} openDisabled={navigationLocked} onQuickSettings={openQuickSettings} /></div>
         <div className="card-preview-tools">
           <Button type="button" variant="ghost" size="icon" onClick={closePreview} disabled={navigationLocked} aria-label={t.closeCard}><X size={19} /></Button>
         </div>
       </header>
-    {parent && <button type="button" className="card-preview-parent" disabled={navigationLocked} onClick={openParentFamily} title={t.openFamily}>
+    {parent && <button ref={parentGlare.element} type="button" className="card-preview-parent" disabled={navigationLocked} onClick={openParentFamily}
+      title={onReturnToHero ? t.returnToHero(parent.title) : t.openFamily} aria-keyshortcuts={onReturnToHero ? 'Escape' : undefined}
+      onPointerEnter={parentGlare.tilt} onPointerMove={parentGlare.tilt} onPointerLeave={parentGlare.reset}>
+      <span className="card-material-glare" aria-hidden="true" />
       <Crown size={18} /><span>{parent.title}</span><progress value={parentAccepted} max={Math.max(siblings.length, 1)} aria-label={t.parentProgress(parentAccepted, siblings.length)} />
+      {onReturnToHero && <kbd>Esc</kbd>}
     </button>}
     <div className={'card-preview-sheet' + (justDone ? ' is-just-done' : '')} data-state={card.state ?? undefined} data-family-done={familyDone || undefined}>
       {supportsChildren && onShowFamily && <div className="card-preview-subcards-bar">
@@ -717,34 +721,47 @@ export function CardPreview({ card, catalog, snapshot, writable, pending, onClos
       <div className="card-preview-panels">
       <section id={panelId + '-content'} data-panel="content" className="card-preview-panel" tabIndex={-1} aria-label={t.contentPanel}>
       <CardContentEditor card={card} catalog={catalog} snapshot={snapshot} writable={writable && exists} pending={pending}
-        blocked={saving || journeySaving || propertiesActive || openQuestionsActive} headingRef={heading} onEdit={onEdit} onEditingChange={setContentEditing} onOpenCard={selectCard}
-        focusMode={focusMode} onFocusModeExit={() => setFocusMode(false)}
-        footerActions={<><CardIdChip cardId={card.id} />{card.kind === 'hero' && card.deckId && <Button type="button" variant="outline" size="sm" className="card-preview-journey-action" disabled={journeyDisabled || propertiesActive} onClick={openJourney} title={t.applyJourney}><Route size={15} />{t.journeyAction}</Button>}</>}
+        blocked={saving || quickSaving || journeySaving || propertiesActive || openQuestionsActive} headingRef={heading} onEdit={onEdit} onEditingChange={setContentEditing} onOpenCard={selectCard}
+        focusMode={focusMode} onFocusModeExit={() => setFocusMode(false)} hideJourneyStepLink={stepNoteShown}
+        footerActions={<><CardIdChip cardId={card.id} />{card.kind === 'hero' && card.deckId && !(journeyReference && journeyChildren.length > 0) && <Button type="button" variant="outline" size="sm" className="card-preview-journey-action" disabled={journeyDisabled || propertiesActive} onClick={openJourney} title={t.applyJourney}><Route size={15} />{t.journeyAction}</Button>}</>}
         titleActions={supportsChildren && onShowFamily ? undefined : <div className="card-preview-subcards-actions">{focusAction}{moreAction}</div>}
-        bodyAfter={<>{boundTags.length > 0 && <div className="card-tag-links">
+        bodyAfter={boundTags.length > 0 && <div className="card-tag-links">
         {boundTags.map(tag => <button key={tag.name} type="button" className="card-tag-link" disabled={!onShowTagCards || navigationLocked}
           title={t.tagCardsLabel(tag.name)} aria-label={t.tagCardsLabel(tag.name)}
           onClick={() => showTagCards(tag.name)}>
           <span>{t.tagLabel}</span><TagBadge name={tag.name} definition={tag} /><span>· {t.tagCards(tagCardCounts.get(tag.name) ?? 0)}</span>
         </button>)}
-      </div>}</>} />
+      </div>} />
+      {/* 2026-11-09: Journey sections belong to reading; card-preview.css hides them while the text is edited. */}
+      {journeyReference && journeyChildren.length > 0 && <JourneyTrack title={journeyDefinition?.title ?? journeyReference.journeyId}
+        version={journeyReference.version} steps={journeyDefinition?.steps ?? []} cards={journeyChildren}
+        description={journeyDefinition?.description} members={catalog.members} onOpenJourney={() => openJourney()}
+        cardsById={cardsById} disabled={navigationLocked} onOpen={next => selectCard(next, onOpenSubCard)} />}
+      {/* 2026-11-08: a Journey Sub Card shows its step as the same soft section, in place of the hidden Markdown tail. */}
+      {stepNoteShown && card.journey && <JourneyStepNote card={card} cards={stepRunCards} steps={stepJourney?.steps ?? []}
+        title={stepJourney?.title ?? card.journey.journeyId} version={card.journey.version} description={stepJourney?.description}
+        cardsById={cardsById} members={catalog.members} disabled={navigationLocked} onOpen={next => selectCard(next, onOpenSubCard)}
+        source={snapshot.source} journeyPath={stepJourney?.path} />}
       <OpenQuestions card={card} catalog={catalog} writable={writable && exists} disabled={questionsDisabled} onEdit={onEdit} onSelect={selectCard} onActiveChange={setOpenQuestionsActive} />
-      {journeyReference && journeyChildren.length > 0 && <section className="card-preview-journey-progress" aria-label={t.journeyProgress}>
-        <header><Route size={14} aria-hidden="true" /><h3>{t.journeyTitle(journeyDefinition?.title ?? journeyReference.journeyId, journeyReference.version)}</h3><span>{t.journeyDone(journeyAccepted, journeyChildren.length)}</span></header>
-        <SubCardProgress cards={journeyChildren} cardsById={cardsById} disabled={navigationLocked} onOpen={selectCard} />
-      </section>}
       {!exists && <p className="card-preview-notice" role="status">{t.missingSource}</p>}
       {backlinks.length > 0 && <section className="card-preview-backlinks" aria-label={t.backlinks}><h3>{t.backlinks}</h3><ul>{backlinks.slice(0, 50).map(candidate => <li key={candidate.id}><button type="button" disabled={navigationLocked} onClick={() => selectCard(candidate)}>{candidate.title}</button></li>)}</ul>{backlinks.length > 50 && <p>{t.more(backlinks.length - 50)}</p>}</section>}
       </section>
 
       </div>
-      {!!card.tags?.length && <div className="card-preview-tags-area"><CardTags tags={card.tags} definitions={catalog.projectTags} cardsById={cardsById} onOpenCard={navigationLocked ? undefined : openTagCard} /></div>}
-      <CardIndicators card={card} lookups={indicatorLookups} members={catalog.members ?? []} catalog={catalog} currentMemberId={selectedMemberId} variant="preview"
-        onQuickSettings={actionDisabled ? undefined : openQuickSettings} />
-      <footer className="card-preview-material-band">
-        {card.kind !== 'doc' && <Button type="button" variant="ghost" size="sm" className="card-preview-property-shortcut" disabled={quickDisabled} data-shortcut-property="effort" data-shortcut-card-id={card.id} onPointerEnter={event => markShortcutPropertyHover(event.currentTarget, true)} onPointerLeave={event => markShortcutPropertyHover(event.currentTarget, false)} aria-label={t.effortLabel(String(displayedEffort ?? t.notSet))} title={t.editEffort} onClick={() => openProperty('effort')}><span>{t.effort}</span><Gauge size={19} /><strong>{displayedEffort ?? '—'}</strong></Button>}
-        <Button type="button" variant="ghost" size="sm" className="card-preview-owner-shortcut" disabled={quickDisabled} aria-label={t.ownerLabel(card.owner ?? t.unassigned)} title={t.ownerLabel(card.owner ?? t.unassigned)} onClick={() => openProperty('owner')}><CardOwnerAvatar owner={card.owner} members={catalog.members ?? []} /></Button>
-        {card.kind !== 'doc' && <Button type="button" variant="ghost" size="sm" className="card-preview-property-shortcut" disabled={quickDisabled} data-shortcut-property="priority" data-shortcut-card-id={card.id} onPointerEnter={event => markShortcutPropertyHover(event.currentTarget, true)} onPointerLeave={event => markShortcutPropertyHover(event.currentTarget, false)} aria-label={t.priorityLabel(card.priority ? priorityLabel(card.priority, lang) : t.notSet)} title={t.editPriority} onClick={() => openProperty('priority')}><span>{t.priority}</span><Layers size={18} /><strong>{card.priority ? priorityLabel(card.priority, lang) : '—'}</strong></Button>}
+      {/* 2026-11-08: indicators and tag badges share the meta row; the card ID sits in the reading footer beside Edit.
+          An empty row still clears the owner medallion. Disabled controls stay mounted during saving so popups can return
+          focus to their original buttons. */}
+      <div className="card-preview-meta-row">
+        <CardIndicators card={card} lookups={indicatorLookups} members={catalog.members ?? []} catalog={catalog} currentMemberId={selectedMemberId} variant="preview"
+          onQuickSettings={openQuickSettings} quickSettingsDisabled={actionDisabled} />
+        <CardTags tags={card.tags} definitions={catalog.projectTags} cardsById={cardsById} onOpenCard={openTagCard}
+          onEditTags={() => showPanel('properties', 'tags')} disabled={navigationLocked} />
+      </div>
+      <footer ref={materialGlare.element} className="card-preview-material-band" onPointerEnter={materialGlare.tilt} onPointerMove={materialGlare.tilt} onPointerLeave={materialGlare.reset}>
+        <span className="card-material-glare" aria-hidden="true" />
+        {card.kind !== 'doc' && <Button type="button" variant="ghost" size="sm" className="card-preview-property-shortcut" disabled={quickDisabled} data-quick-settings-tab="effort" aria-haspopup="dialog" aria-expanded={quickSettings?.cardId === card.id && quickSettings.anchor.dataset.quickSettingsTab === 'effort'} data-shortcut-property="effort" data-shortcut-card-id={card.id} onPointerEnter={event => markShortcutPropertyHover(event.currentTarget, true)} onPointerLeave={event => markShortcutPropertyHover(event.currentTarget, false)} aria-label={t.effortLabel(String(displayedEffort ?? t.notSet))} title={t.editEffort} onClick={event => openQuickSettings('effort', event.currentTarget)}><span>{t.effort}</span><Gauge size={19} /><strong>{displayedEffort ?? '—'}</strong></Button>}
+        <Button type="button" variant="ghost" size="sm" className="card-preview-owner-shortcut" disabled={quickDisabled} data-quick-settings-tab="owner" aria-haspopup="dialog" aria-expanded={quickSettings?.cardId === card.id && quickSettings.anchor.dataset.quickSettingsTab === 'owner'} aria-label={t.ownerLabel(card.owner ?? t.unassigned)} title={t.ownerLabel(card.owner ?? t.unassigned)} onClick={event => openQuickSettings('owner', event.currentTarget)}><CardOwnerAvatar owner={card.owner} members={catalog.members ?? []} /></Button>
+        {card.kind !== 'doc' && <Button type="button" variant="ghost" size="sm" className="card-preview-property-shortcut" disabled={quickDisabled} data-quick-settings-tab="priority" aria-haspopup="dialog" aria-expanded={quickSettings?.cardId === card.id && quickSettings.anchor.dataset.quickSettingsTab === 'priority'} data-shortcut-property="priority" data-shortcut-card-id={card.id} onPointerEnter={event => markShortcutPropertyHover(event.currentTarget, true)} onPointerLeave={event => markShortcutPropertyHover(event.currentTarget, false)} aria-label={t.priorityLabel(card.priority ? priorityLabel(card.priority, lang) : t.notSet)} title={t.editPriority} onClick={event => openQuickSettings('priority', event.currentTarget)}><span>{t.priority}</span><Layers size={18} /><strong>{card.priority ? priorityLabel(card.priority, lang) : '—'}</strong></Button>}
         {card.kind === 'doc' && <span className="card-preview-word-count">{t.markdownLabel}{docWords > 0 && <span title={t.wordCount(docWords)} aria-label={t.wordCount(docWords)}> · {new Intl.NumberFormat(languageTag).format(docWords)}</span>}</span>}
       </footer>
     </div>
@@ -752,7 +769,7 @@ export function CardPreview({ card, catalog, snapshot, writable, pending, onClos
     <nav className="card-preview-action-rail" aria-label={t.panels}>
       <Button type="button" variant="ghost" size="icon" disabled={panelSwitchDisabled} aria-label={t.propertiesPanel} title={t.propertiesPanel} aria-pressed={activePanel === 'properties'} aria-controls={panelId + '-properties'} className={propertiesActive ? 'has-draft' : ''} onClick={() => showPanel(activePanel === 'properties' ? 'content' : 'properties')}><SlidersHorizontal size={17} /></Button>
       {onShowFamily && <Button type="button" variant="ghost" size="icon" disabled={navigationLocked} data-card-family aria-label={t.family} title={t.family} aria-pressed={familyVisible} onClick={toggleFamily}><Crown size={18} /></Button>}
-      <Button type="button" variant="ghost" size="icon" disabled={panelSwitchDisabled || !exists} aria-label={t.attachmentsPanel} title={t.attachmentsPanel} aria-pressed={activePanel === 'attachments'} onClick={() => showPanel(activePanel === 'attachments' ? 'content' : 'attachments')}><Paperclip size={18} /></Button>
+      <Button type="button" variant="ghost" size="icon" disabled={panelSwitchDisabled || !exists} aria-label={t.attachmentsPanel} title={t.attachmentsPanel} aria-pressed={activePanel === 'attachments'} aria-controls={panelId + '-attachments'} onClick={() => showPanel(activePanel === 'attachments' ? 'content' : 'attachments')}><Paperclip size={18} /></Button>
     </nav>
     {journeyOpen && <Dialog.Root open onOpenChange={open => { if (!open) closeJourney(); }}><Dialog.Portal>
       <Dialog.Overlay className="card-journey-overlay" />
@@ -786,10 +803,13 @@ export function CardPreview({ card, catalog, snapshot, writable, pending, onClos
       </Dialog.Content>
     </Dialog.Portal></Dialog.Root>}
   </aside>
+    {quickSettings?.cardId === card.id && <CardQuickSettings key={card.id} card={currentCard ?? card} catalog={catalog} source={snapshot.source} projectName={snapshot.projectName}
+      anchor={quickSettings.anchor} tab={quickSettings.tab} onTabChange={tab => setQuickSettings(previous => previous && { ...previous, tab })}
+      disabled={quickDisabled} onEdit={onEdit} onSavingChange={setQuickSaving} onClose={() => setQuickSettings(null)} />}
     <div ref={propertiesContainer} className="card-properties-slot" hidden={activePanel !== 'properties'} tabIndex={-1} aria-label={t.propertiesPanel}>
-      <CardPropertiesPanel ref={propertiesPanel} id={panelId + '-properties'} card={currentCard ?? card} catalog={catalog} source={snapshot.source} disabled={disabled} visible={activePanel === 'properties'} onEdit={onEdit} onActiveChange={setPropertiesActive} />
+      <CardPropertiesPanel id={panelId + '-properties'} card={currentCard ?? card} catalog={catalog} disabled={disabled} visible={activePanel === 'properties'} onEdit={onEdit} onActiveChange={setPropertiesActive} onQuickSettings={openQuickSettings} />
     </div>
-    {activePanel === 'attachments' && <div className="card-properties-slot" aria-label={t.attachmentsPanel}>
+    {activePanel === 'attachments' && <div ref={attachmentsContainer} id={panelId + '-attachments'} className="card-properties-slot" tabIndex={-1} aria-label={t.attachmentsPanel}>
       <AttachmentsPanel key={card.id} card={currentCard ?? card} catalog={catalog} writable={exists && writable && !navigationLocked} onEdit={onEdit} />
     </div>}
   </div>;

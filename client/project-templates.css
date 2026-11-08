@@ -15,7 +15,8 @@
 .project-template-browser { min-width: 0; overflow-y: auto; padding: 20px 24px 24px; scrollbar-width: thin; }
 .project-template-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
 .project-template-option { display: flex; flex-direction: column; gap: 9px; min-width: 0; min-height: 142px; padding: 15px 16px; border: 1px solid var(--line); border-radius: 6px; text-align: left; color: var(--ink); background: var(--surface); }
-.project-template-option:hover:not(:disabled):not([aria-pressed="true"]) { background: var(--hover); border-color: var(--focus); }
+/* 2026-11-08: hover is a soft fill only — the accent edge is the language of the chosen card and of :focus-visible (D13). */
+.project-template-option:hover:not(:disabled):not([aria-pressed="true"]) { background: var(--hover); }
 .project-template-option[aria-pressed="true"] { border-color: var(--focus); background: var(--accent-soft); }
 .project-template-option:focus-visible { outline: 2px solid var(--focus); outline-offset: 3px; }
 .project-template-option:disabled { cursor: default; opacity: .5; }
@@ -62,9 +63,13 @@
 }
 @media (max-width: 640px) {
   .project-template-picker { width: calc(100vw - 16px); height: calc(100dvh - 24px); }
-  .project-template-header { flex-wrap: wrap; padding: 16px; gap: 12px; }
+  /* 2026-11-08: × keeps its own right column on the title's axis (D05): on flex-wrap the unshrinkable text block
+     pushed it onto a lone left-edge line between the description and the shelves. Grid columns replace order tricks. */
+  .project-template-header { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: start; padding: 16px; gap: 12px; }
   .project-template-header h2 { font-size: 21px; }
-  .project-template-shelves { order: 3; width: 100%; margin: 0; }
+  .project-template-heading { grid-column: 1; grid-row: 1; }
+  .project-template-close { grid-column: 2; grid-row: 1; }
+  .project-template-shelves { grid-column: 1 / -1; grid-row: 2; margin: 0; }
   .project-template-shelf { flex: 1; }
   .project-template-body { display: block; overflow-y: auto; }
   .project-template-browser, .project-template-plan { overflow: visible; }

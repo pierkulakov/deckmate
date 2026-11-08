@@ -54,7 +54,7 @@ const text = defineText({
   journeys: (count: number) => `${count} ${count === 1 ? 'Journey' : 'Journeys'}`,
 }, {
   title: 'Начать с шаблона',
-  description: 'Выберите заготовку, чтобы добавить в проект колоды и Journeys.',
+  description: 'Выберите заготовку, чтобы добавить в проект колоды и Journey.',
   choose: 'Выберите заготовку',
   shelves: 'Полки шаблонов',
   games: 'Игры',
@@ -77,9 +77,9 @@ const text = defineText({
   deck: 'Колода',
   journey: 'Journey',
   tag: 'Тег',
-  sample: 'Пример карты',
-  samples: 'Добавить примеры карт',
-  samplesHint: 'Hero-карты с шагами Journey для знакомства с процессом.',
+  sample: 'Пример карточки',
+  samples: 'Добавить примеры карточек',
+  samplesHint: 'Hero-карточки с шагами Journey для знакомства с процессом.',
   additive: 'Существующие пространства, колоды и теги сохраняются.',
   readOnly: 'Проект открыт только для чтения. Для применения шаблона откройте проект с доступом к записи.',
   stale: 'Проект изменился. Обновите план перед применением.',
@@ -89,7 +89,7 @@ const text = defineText({
   applying: 'Применяем…',
   noChanges: 'Эта структура уже есть в вашем проекте.',
   decks: (count: number) => `Колоды: ${count}`,
-  journeys: (count: number) => `Journeys: ${count}`,
+  journeys: (count: number) => `Journey: ${count}`,
 });
 
 // 2026-11-05: starters sit on two shelves, Games and Software; the key remembers the last opened one.
@@ -246,14 +246,14 @@ export function ProjectTemplates({ snapshot, refreshKey, onClose, onApplied, tes
     <Dialog.Overlay className="dialog-overlay" />
     <Dialog.Content className="project-template-picker" aria-busy={busy}>
       <header className="project-template-header">
-        <div><Dialog.Title>{t.title}</Dialog.Title><Dialog.Description>{t.description}</Dialog.Description></div>
+        <div className="project-template-heading"><Dialog.Title>{t.title}</Dialog.Title><Dialog.Description>{t.description}</Dialog.Description></div>
         <div className="project-template-shelves" role="tablist" aria-label={t.shelves} onKeyDown={navigateTabs}>
           {templateShelves.map(category => <button type="button" role="tab" key={category}
             id={`${shelfTabsId}-${category}`} aria-controls={`${shelfTabsId}-panel`} tabIndex={shelf === category ? 0 : -1}
             aria-selected={shelf === category} className="project-template-shelf" disabled={busy}
             onClick={() => chooseShelf(category)}>{t[category]}</button>)}
         </div>
-        <Dialog.Close asChild><Button variant="ghost" size="icon" disabled={busy} aria-label={t.close}><X size={18} /></Button></Dialog.Close>
+        <Dialog.Close asChild><Button variant="ghost" size="icon" className="project-template-close" disabled={busy} aria-label={t.close}><X size={18} /></Button></Dialog.Close>
       </header>
       <div className="project-template-body" role="tabpanel" id={`${shelfTabsId}-panel`} aria-labelledby={`${shelfTabsId}-${shelf}`} tabIndex={0}>
         <section className="project-template-browser" aria-label={t.choose} aria-busy={loading}>

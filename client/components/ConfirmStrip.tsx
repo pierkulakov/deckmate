@@ -27,6 +27,7 @@ export function ConfirmStrip({ question, keepLabel, confirmLabel, danger = false
   useLayoutEffect(() => {
     // The strip arrives with the decision: the safe button takes focus, and gives it back where it came from.
     restoreFocus.current = document.activeElement;
+    root.current?.scrollIntoView({ block: 'nearest' });
     keepButton.current?.focus({ preventScroll: true });
     return () => {
       const restore = restoreFocus.current;

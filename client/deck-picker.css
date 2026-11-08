@@ -43,6 +43,7 @@
 .deck-choice-confirm:hover:not(:disabled) { background: var(--hover); }
 @media (prefers-reduced-motion: reduce) { .deck-picker-popover { animation: none; } .deck-choice-option { transition: none; } }
 
-.deck-choice-search:focus { border-color: var(--quick-settings-focus, var(--focus)); outline: 2px solid var(--focus); outline-offset: 2px; }
+/* 2026-11-09: the caret and the focus-colored border say «type here»; a second ring around it was noise (author). */
+.deck-choice-search:focus { border-color: var(--quick-settings-focus, var(--focus)); outline: none; }
 .deck-choice-hint kbd { display: inline-block; min-width: 0; height: auto; padding: 1px 2px; border: .67px solid var(--quick-settings-key-line, var(--line)); border-radius: 4px; background: transparent; color: inherit; font-family: inherit; font-size: 10px; font-weight: 700; line-height: 10px; text-transform: uppercase; box-shadow: var(--quick-settings-key-shadow, var(--card-shadow)); }
-.deck-choice-confirm { width: 58px; }
+.deck-choice-confirm { min-width: 58px; }

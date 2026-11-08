@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
-import { ArrowDownUp, Check, Download, Eye, FileText, Filter, Image as ImageIcon, LoaderCircle, Trash2 } from 'lucide-react';
+import { ArrowDownUp, Check, Copy, Download, Eye, FileText, Filter, Image as ImageIcon, LoaderCircle, Trash2 } from 'lucide-react';
 import type { CardAttachment, CardAttachments, CatalogCard, CatalogView } from '../../src/catalog-contracts.ts';
 import type { CatalogAction } from '../useCatalog.ts';
 import { Button } from './ui/button.tsx';
@@ -14,16 +14,15 @@ import {
 } from '../attachments.ts';
 import { defineText, textNow, useText } from '../i18n.ts';
 import { failureMessage } from '../failure-message.ts';
+import { attachmentMarkdown } from '../attachment-markdown.ts';
 import '../attachments-panel.css';
 
 const text = defineText({
-  coverEditor: 'Image Cover Editor',
   loadFailed: 'Could not load attachments.',
   pasteFailed: 'The attachment was saved, but the image could not be inserted into the text because the card text changed. Paste it again.',
   readFailed: 'Could not read the file.',
   notSaved: (name: string) => `“${name}”: attachment not saved. Check that the list is current and try again.`,
   notRemoved: 'Attachment not removed. Refresh the list and try again.',
-  coverNotSaved: 'Cover not saved. Try again.',
   heading: (count: number) => `${count} attached ${new Intl.PluralRules('en-US').select(count) === 'one' ? 'file' : 'files'}`,
   previousNewest: 'Previous image (newer)',
   previousOldest: 'Previous image (older)',
@@ -32,23 +31,15 @@ const text = defineText({
   panel: (title: string) => `Card attachments ${title}`,
   uploadHint: 'PNG, JPEG, WebP, GIF, PDF · up to 10 MB · Ctrl+V — paste',
   saving: 'Saving…',
-  configureCover: 'Card cover: configure',
-  makeCover: 'Make card cover',
-  editCover: 'Image Cover — configure',
+  copyLink: 'Copy link for the card text',
+  copied: 'Copied',
+  copyFailed: 'Could not copy',
   download: (name: string) => `Download ${name}`,
   remove: (name: string) => `Delete ${name}`,
   removeAttachment: 'Delete attachment',
   view: (name: string) => `View ${name}`,
   missing: 'file missing',
   emptyFilter: 'No attachments of this type.',
-  cardTitle: 'Card title',
-  position: 'Position',
-  title: 'Title',
-  light: 'Light',
-  dark: 'Dark',
-  blur: 'Blur bottom edge',
-  savePosition: 'Save position',
-  removeCover: 'Remove cover',
   allFiles: 'All files',
   images: 'Images',
   documents: 'Documents',
@@ -59,15 +50,12 @@ const text = defineText({
   addAttachments: 'Add attachments',
   dropAttachmentOr: 'Drop attachment or',
   browse: 'browse',
-  imageCover: 'Image cover',
 }, {
-  coverEditor: 'Редактор обложки',
   loadFailed: 'Не удалось загрузить вложения.',
   pasteFailed: 'Вложение сохранено, но вставить картинку в текст не удалось — текст карточки изменился. Повторите вставку.',
   readFailed: 'Не удалось прочитать файл.',
   notSaved: (name: string) => `«${name}»: вложение не сохранено. Проверьте актуальность списка и повторите.`,
   notRemoved: 'Вложение не удалено. Обновите список и повторите действие.',
-  coverNotSaved: 'Обложка не сохранена. Повторите действие.',
   heading: (count: number) => {
     const rule = new Intl.PluralRules('ru-RU').select(count);
     const noun = { one: 'вложение', few: 'вложения', many: 'вложений', zero: 'вложений', two: 'вложения', other: 'вложения' }[rule]!;
@@ -80,23 +68,15 @@ const text = defineText({
   panel: (title: string) => `Вложения карточки ${title}`,
   uploadHint: 'PNG, JPEG, WebP, GIF, PDF · до 10 МБ · Ctrl+V — вставка из буфера',
   saving: 'Сохранение…',
-  configureCover: 'Обложка карточки: настроить',
-  makeCover: 'Сделать обложкой карточки',
-  editCover: 'Image Cover — настроить',
+  copyLink: 'Скопировать ссылку для текста',
+  copied: 'Скопировано',
+  copyFailed: 'Не удалось скопировать',
   download: (name: string) => `Скачать ${name}`,
   remove: (name: string) => `Удалить ${name}`,
   removeAttachment: 'Удалить вложение',
   view: (name: string) => `Просмотреть ${name}`,
   missing: 'файл отсутствует',
   emptyFilter: 'Вложений этого типа нет.',
-  cardTitle: 'Заголовок карточки',
-  position: 'Позиция',
-  title: 'Заголовок',
-  light: 'Светлый',
-  dark: 'Тёмный',
-  blur: 'Размыть нижний край',
-  savePosition: 'Сохранить позицию',
-  removeCover: 'Убрать обложку',
   allFiles: 'Все файлы',
   images: 'Изображения',
   documents: 'Документы',
@@ -107,7 +87,6 @@ const text = defineText({
   addAttachments: 'Добавить вложения',
   dropAttachmentOr: 'Перетащите вложение или',
   browse: 'выберите файл',
-  imageCover: 'Обложка',
 });
 
 export interface AttachmentsPanelProps {
@@ -118,9 +97,8 @@ export interface AttachmentsPanelProps {
 }
 
 type UploadOrigin = 'browse' | 'drop' | 'paste';
-type CoverDraft = { position: number; titleMode: 'light' | 'dark'; blur: boolean };
 
-/** Attachments sidebar with type and order filters, file metadata, cover selection, download, and deletion.
+/** Attachments sidebar with type and order filters, file metadata, Markdown links, download, and deletion.
  *  Image previews open the viewer. Uploads support browsing, dropping onto the panel, and Ctrl+V.
  *  Mounted only while the panel is open. */
 export function AttachmentsPanel({ card, catalog, writable, onEdit }: AttachmentsPanelProps) {
@@ -134,7 +112,6 @@ export function AttachmentsPanel({ card, catalog, writable, onEdit }: Attachment
   const [sortOrder, setSortOrder] = useState<AttachmentSortOrder>(readAttachmentSortOrder);
   const [dragActive, setDragActive] = useState(false);
   const [viewerIndex, setViewerIndex] = useState<number | null>(null);
-  const [coverEditorFile, setCoverEditorFile] = useState<string | null>(null);
   const viewRef = useRef<CardAttachments | null>(null);
   const uploadInFlight = useRef(false);
   const fileInput = useRef<HTMLInputElement>(null);
@@ -144,7 +121,6 @@ export function AttachmentsPanel({ card, catalog, writable, onEdit }: Attachment
   const sortedFiles = view ? sortAttachmentFiles(view.files, sortOrder) : [];
   const images = sortedFiles.filter(file => file.kind === 'image' && !file.missing);
   const visibleFiles = sortedFiles.filter(file => filter === 'all' || file.kind === filter);
-  const cover = view?.cover ?? null;
   const members = catalog.members ?? [];
   const filterOptions: { key: AttachmentTypeFilter; label: string }[] = [
     { key: 'all', label: t.allFiles },
@@ -218,29 +194,6 @@ export function AttachmentsPanel({ card, catalog, writable, onEdit }: Attachment
     } finally { setBusy(false); }
   }
 
-  async function applyCover(coverFile: string | null, draft: CoverDraft): Promise<boolean> {
-    if (!view || busy) return false;
-    setBusy(true);
-    setError('');
-    try {
-      const saved = await onEdit({ action: 'set-card-cover', cardId: card.id, attachmentsHash: view.hash, coverFile,
-        coverPosition: draft.position, coverTitleMode: draft.titleMode, coverBlur: draft.blur });
-      if (saved) await load();
-      else setError(t.coverNotSaved);
-      return saved;
-    } finally { setBusy(false); }
-  }
-
-  /** The eye selects an image as the cover and opens its editor; on the current cover it toggles the editor. */
-  async function chooseCover(file: CardAttachment) {
-    if (cover?.file === file.file) { setCoverEditorFile(coverEditorFile === file.file ? null : file.file); return; }
-    if (await applyCover(file.file, { position: cover?.position ?? 50, titleMode: cover?.titleMode ?? 'light', blur: cover?.blur ?? false })) setCoverEditorFile(file.file);
-  }
-
-  async function saveCover(coverFile: string | null, draft: CoverDraft) {
-    if (await applyCover(coverFile, draft)) setCoverEditorFile(null);
-  }
-
   function changeSortOrder(next: AttachmentSortOrder) {
     setSortOrder(next);
     writeAttachmentSortOrder(next);
@@ -297,7 +250,6 @@ export function AttachmentsPanel({ card, catalog, writable, onEdit }: Attachment
     </div>}
     <ul className="attachments-list">
       {visibleFiles.map(file => {
-        const isCover = cover?.file === file.file;
         const viewable = file.kind === 'image' && !file.missing;
         const author = attachmentAddedByLabel(catalog, file.addedBy);
         return <li key={file.file} className="attachments-row">
@@ -307,9 +259,9 @@ export function AttachmentsPanel({ card, catalog, writable, onEdit }: Attachment
             <time className="attachments-row-when" dateTime={file.addedAt}>{formatAttachmentDate(file.addedAt)}</time>
             <span className="attachments-row-size">{formatAttachmentSize(file.bytes)}</span>
             <div className="attachments-row-actions">
-              {viewable && writable && <Button type="button" variant="ghost" size="icon" disabled={busy} aria-pressed={isCover}
-                aria-label={isCover ? t.configureCover : t.makeCover} title={isCover ? t.editCover : t.makeCover}
-                onClick={() => void chooseCover(file)}><Eye size={16} /></Button>}
+              {viewable && <Button type="button" variant="ghost" size="icon" aria-label={t.view(file.name)} title={t.view(file.name)}
+                onClick={() => setViewerIndex(images.indexOf(file))}><Eye size={16} /></Button>}
+              <AttachmentCopyButton cardPath={card.path} attachment={file} />
               {!file.missing && <a className="ui-button button-ghost button-size-icon" href={attachmentFileUrl(source, file.file)} download={file.name} aria-label={t.download(file.name)} title={t.download(file.name)}><Download size={16} /></a>}
               {writable && <Button type="button" variant="ghost" size="icon" className="attachments-remove" aria-label={t.remove(file.name)} title={t.removeAttachment} disabled={busy} onClick={() => void removeAttachment(file)}><Trash2 size={16} /></Button>}
             </div>
@@ -317,7 +269,6 @@ export function AttachmentsPanel({ card, catalog, writable, onEdit }: Attachment
           {viewable
             ? <button type="button" className="attachments-preview" aria-label={t.view(file.name)} title={file.name} onClick={() => setViewerIndex(images.indexOf(file))}><img src={attachmentFileUrl(source, file.file)} alt="" loading="lazy" /></button>
             : <div className="attachments-file">{file.kind === 'image' ? <ImageIcon size={16} /> : <FileText size={16} />}<span title={file.name}>{file.name}</span>{file.missing && <small>{t.missing}</small>}</div>}
-          {isCover && coverEditorFile === file.file && cover && <CoverEditor key={cover.file} cover={cover} source={source} busy={busy || !writable} onSave={saveCover} />}
         </li>;
       })}
     </ul>
@@ -345,37 +296,23 @@ function AttachmentsMenu<T extends string>({ label, icon, active, value, options
   </DropdownMenu.Root>;
 }
 
-/** Cover controls for image position, light or dark title text, and bottom blur. */
-function CoverEditor({ cover, source, busy, onSave }: {
-  cover: NonNullable<CardAttachments['cover']>;
-  source: ReturnType<typeof attachmentSource>;
-  busy: boolean;
-  onSave: (coverFile: string | null, draft: CoverDraft) => void;
-}) {
-  const [position, setPosition] = useState(cover.position);
+function AttachmentCopyButton({ cardPath, attachment }: { cardPath: string; attachment: CardAttachment }) {
+  const [feedback, setFeedback] = useState<'' | 'copied' | 'failed'>('');
   const t = useText(text);
-  const [titleMode, setTitleMode] = useState(cover.titleMode);
-  const [blur, setBlur] = useState(cover.blur);
-  const dirty = position !== cover.position || titleMode !== cover.titleMode || blur !== cover.blur;
-  return <section className="attachments-cover" aria-label={t.coverEditor}>
-    <h3>{t.imageCover}</h3>
-    <div className={'attachments-cover-preview is-' + titleMode + (blur ? ' is-blurred' : '')}>
-      <img src={attachmentFileUrl(source, cover.file)} alt="" style={{ objectPosition: `${Math.round(position)}% 50%` }} />
-      <span className="attachments-cover-caption">{t.cardTitle}</span>
-    </div>
-    <label className="attachments-cover-field">{t.position}<span>{Math.round(position)}%</span>
-      <input type="range" min={0} max={100} step={1} value={position} onChange={event => setPosition(Number(event.target.value))} disabled={busy} />
-    </label>
-    <label className="attachments-cover-field">{t.title}
-      <select value={titleMode} onChange={event => setTitleMode(event.target.value === 'dark' ? 'dark' : 'light')} disabled={busy}>
-        <option value="light">{t.light}</option>
-        <option value="dark">{t.dark}</option>
-      </select>
-    </label>
-    <label className="attachments-cover-check"><input type="checkbox" checked={blur} onChange={event => setBlur(event.target.checked)} disabled={busy} />{t.blur}</label>
-    <div className="attachments-cover-actions">
-      <Button type="button" size="sm" disabled={busy || !dirty} onClick={() => onSave(cover.file, { position, titleMode, blur })}>{t.savePosition}</Button>
-      <Button type="button" variant="ghost" size="sm" disabled={busy} onClick={() => onSave(null, { position, titleMode, blur })}>{t.removeCover}</Button>
-    </div>
-  </section>;
+  useEffect(() => {
+    if (!feedback) return;
+    const timer = window.setTimeout(() => setFeedback(''), 1400);
+    return () => window.clearTimeout(timer);
+  }, [feedback]);
+  async function copyLink() {
+    try { await navigator.clipboard.writeText(attachmentMarkdown(cardPath, attachment)); setFeedback('copied'); }
+    catch { setFeedback('failed'); }
+  }
+  return <span className="attachment-copy-control">
+    <Button type="button" variant="ghost" size="icon" aria-label={t.copyLink} title={t.copyLink} data-copied={feedback === 'copied' || undefined}
+      onClick={() => void copyLink()}><Copy size={16} /></Button>
+    <span className="card-id-feedback attachment-copy-feedback" role="status" data-state={feedback || undefined}>
+      {feedback === 'copied' && <><Check size={12} aria-hidden="true" />{t.copied}</>}{feedback === 'failed' && t.copyFailed}
+    </span>
+  </span>;
 }

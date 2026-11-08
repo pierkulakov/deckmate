@@ -15,7 +15,9 @@
 .tag-badge.is-compact.is-personal .tag-badge-name { padding-inline: 0; }
 .tag-badge.is-compact .tag-badge-glyph { flex-basis: var(--tag-compact-glyph-width); width: var(--tag-compact-glyph-width); }
 .tag-badge-link { display: inline-flex; min-width: 0; max-width: 100%; padding: 0; border: 0; background: transparent; vertical-align: middle; }
-.tag-badge-link:hover .tag-badge { text-decoration: underline; text-underline-offset: 2px; }
+/* 2026-11-08: the author does not want tag plaques underlined; hover only lifts the plaque's tone, keyboard focus keeps its outline. */
+.tag-badge-link { cursor: pointer; }
+.tag-badge-link:hover:not(:disabled) .tag-badge { filter: brightness(1.15); }
 .card-tag-pie { display: inline-block; flex: 0 0 auto; width: var(--tag-dot-size); height: var(--tag-dot-size); padding: 0; border: 0; border-radius: 50%; box-shadow: none; }
 .card-tag-emoji { display: inline-block; flex: 0 0 auto; font-size: 14px; line-height: 1; }
 .card-tag-icon { display: inline-block; width: 14px; height: 14px; object-fit: contain; flex: 0 0 auto; }

@@ -2,6 +2,7 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { markdownParser } from '../src/markdown-model.ts';
 import { Markdown } from '../client/components/Markdown.tsx';
+import { attachmentMarkdown } from '../client/attachment-markdown.ts';
 import { setLang } from '../client/i18n.ts';
 
 // 2026-11-06: the card Markdown renderer must not activate unsafe URL schemes, raw HTML or injected
@@ -104,4 +105,14 @@ it('resolves relative traversal links back into the project file endpoint', () =
   const html = renderMarkdown('[escape](../../../etc/passwd)');
   expect(html).toContain('href="/api/file?source=sandbox&amp;path=etc%2Fpasswd"');
   expect(html).not.toContain('..');
+});
+
+it.each(['sandbox', 'live'] as const)('renders inserted image and PDF attachments relative to a nested card in %s', source => {
+  const path = 'tasks/features/ferry.md';
+  const directory = 'tasks/deckmate-assets/cards/a b/';
+  const image = attachmentMarkdown(path, { file: directory + 'рисунок #1.png', name: 'Sketch [v2].png', kind: 'image' });
+  const pdf = attachmentMarkdown(path, { file: directory + 'brief.pdf', name: 'Brief.pdf', kind: 'pdf' });
+  const html = renderToStaticMarkup(<Markdown tree={markdownParser.parse(image + '\n\n' + pdf)} source={source} path={path} />);
+  expect(html).toContain(`<img src="/api/file?source=${source}&amp;path=${encodeURIComponent(directory + 'рисунок #1.png')}" alt="Sketch [v2].png"`);
+  expect(html).toContain(`<a href="/api/file?source=${source}&amp;path=${encodeURIComponent(directory + 'brief.pdf')}" target="_blank" rel="noreferrer">Brief.pdf</a>`);
 });

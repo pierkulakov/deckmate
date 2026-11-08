@@ -39,7 +39,7 @@ describe('Journey language changes', () => {
     expect(renderToStaticMarkup(createElement(JourneyMiniCard, card))).toContain('Effort: 1,000.25');
     setLang('ru');
     const russian = renderToStaticMarkup(createElement(JourneyMiniCard, card));
-    expect(russian).toContain('Effort: 1 000,25');
+    expect(russian).toContain('Оценка: 1 000,25');
     expect(russian).toContain('Исходный заголовок');
   });
 });

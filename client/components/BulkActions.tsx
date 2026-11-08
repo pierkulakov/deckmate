@@ -128,14 +128,14 @@ const text = defineText({
   wait: "Дождитесь завершения текущей операции",
   limit: "Лимит — 1000 карточек за операцию",
   sandbox: "Изменения доступны только в sandbox",
-  restoreFirst: "Сначала восстановите карты из корзины",
+  restoreFirst: "Сначала восстановите карточки из корзины",
   tasksOnly: "Выберите только Task Cards",
   tasksDocs: "Выберите Task или Doc Cards",
-  noNested: "У выбранных карт есть Sub Cards: вложенные семьи недоступны",
-  unarchiveFirst: "Сначала верните карты из архива",
-  journeyHero: "Hero карт Journey управляется самим Journey",
+  noNested: "У выбранных карточек есть Sub Cards: вложенные семьи недоступны",
+  unarchiveFirst: "Сначала верните карточки из архива",
+  journeyHero: "Hero карточек Journey управляется самим Journey",
   convertHero: "Hero Card не преобразуется в Task или Doc",
-  convertJourney: "Карты Journey нельзя преобразовать в другой тип",
+  convertJourney: "Карточки Journey нельзя преобразовать в другой тип",
   separateTask: "Для документа проекта создайте отдельную Task Card",
   unconfirmed: "Не все изменения подтверждены. Проверьте сообщение каталога и оставшийся выбор.",
   saveFailed: "Не удалось сохранить изменения.",
@@ -147,22 +147,22 @@ const text = defineText({
   differentValues: (count: number) => `${new Intl.NumberFormat(locale("ru")).format(count)} разных значений`,
   noDeck: "Без колоды",
   noMembers: "В проекте пока нет участников.",
-  handHint: "Hand хранит личную очередь участника и не меняет Owner.",
-  effortHint: (sum: string) => `Суммарный Effort: ${sum}. Новое значение будет задано каждой выбранной карте.`,
+  handHint: "Hand хранит личную очередь участника и не меняет исполнителя.",
+  effortHint: (sum: string) => `Суммарная оценка: ${sum}. Новое значение будет задано каждой выбранной карточке.`,
   heroHint: "Выбранные Task и Doc Cards станут Sub Cards новой Hero.",
   addTag: (tag: string) => `Добавить «${tag}»`,
-  convertHint: "Изменяется тип выбранных карт и их колода. Содержимое сохраняется.",
+  convertHint: "Изменяется тип выбранных карточек и их колода. Содержимое сохраняется.",
   copyHint: "Название, Markdown и чеклист копируются всегда. Выберите дополнительные свойства; копии получат новые ID.",
   exportHint: "CSV · UTF-8 · разделитель «;». Markdown загружается полностью только при выборе этого столбца.",
   reopen: (state: string) => `Вернуть в план · ${state}`,
-  archiveConfirm: (count: number) => `Архивировать ${new Intl.NumberFormat(locale("ru")).format(count)} карточек? Их данные сохранятся; вернуть карты можно через «Убрать из архива».`,
+  archiveConfirm: (count: number) => `Архивировать ${new Intl.NumberFormat(locale("ru")).format(count)} карточек? Их данные сохранятся; вернуть карточки можно через «Убрать из архива».`,
   unarchiveConfirm: (count: number) => `Вернуть ${new Intl.NumberFormat(locale("ru")).format(count)} карточек из архива?`,
-  deleteConfirm: (count: number) => `Переместить ${new Intl.NumberFormat(locale("ru")).format(count)} карточек в корзину? Файлы сохраняются, карты можно восстановить.`,
+  deleteConfirm: (count: number) => `Переместить ${new Intl.NumberFormat(locale("ru")).format(count)} карточек в корзину? Файлы сохраняются, карточки можно восстановить.`,
   restoreConfirm: (count: number) => `Восстановить ${new Intl.NumberFormat(locale("ru")).format(count)} карточек из корзины? Их состояние архива сохранится.`,
   deleteHeroHint: "Вместе с Hero в корзину попадут её Sub Cards.",
   restoreHeroHint: "Sub Cards выбранной Hero также будут восстановлены.",
   actions: "Массовые действия",
-  effortTitle: (sum: string) => `Effort · сумма ${sum}`,
+  effortTitle: (sum: string) => `Оценка · сумма ${sum}`,
   close: "Закрыть массовое действие",
   conflict: "Выбранные карточки или каталог изменились. Значения формы сохранены.",
   useCurrent: "Использовать актуальные данные",
@@ -185,15 +185,15 @@ const text = defineText({
   uiHand: "Hand",
   uiBookmark: "Закладка",
   uiRun: "Run",
-  uiMilestone: "Веха",
+  uiMilestone: "Milestone",
   uiDueDate: "Срок",
   uiHeroCard: "Hero Card",
-  uiEffort: "Effort",
+  uiEffort: "Оценка",
   uiPriority: "Приоритет",
-  uiOwner: "Owner",
+  uiOwner: "Исполнитель",
   uiTags: "Теги",
   uiDocCardTask: "Doc Card / Task",
-  uiCopyCards: "Скопировать карты",
+  uiCopyCards: "Скопировать карточки",
   uiExportCSV: "Экспорт CSV",
   uiDone: "Принять",
   uiArchive: "В архив",
@@ -205,7 +205,7 @@ const text = defineText({
   uiDeck: "Колода",
   uiAddToHand: "В руку",
   uiRemoveFromHand: "Убрать из руки",
-  uiUnassigned: "Unassigned",
+  uiUnassigned: "Без исполнителя",
   uiFindAHand: "Найти руку…",
   uiFindAnOwner: "Найти исполнителя…",
   uiBookmarked: "С закладкой",
@@ -215,11 +215,11 @@ const text = defineText({
   uiNone: "Нет",
   uiClear: "Очистить",
   uiClearDueDate: "Снять срок",
-  uiClearEffort: "Снять Effort",
+  uiClearEffort: "Снять оценку",
   uiFindExisting: "Найти существующую",
   uiCreateNew: "Создать новую",
   uiHeroTitle: "Название Hero",
-  uiCreateCardInDeck: "Создать карту в колоде",
+  uiCreateCardInDeck: "Создать карточку в колоде",
   uiChooseDeck: "Выбрать колоду",
   uiFindAHeroDocCard: "Найти Hero / Doc Card…",
   uiRemoveParent: "Отвязать родителя",
@@ -331,6 +331,7 @@ export function BulkActions({ cards, catalog, pending, onAction, onOpenDeck, sou
   const newHeroId = useRef<string | null>(null);
   const exportRequest = useRef<AbortController | null>(null);
   const opener = useRef<HTMLElement | null>(null);
+  const moreButton = useRef<HTMLButtonElement | null>(null);
   const openingDialogFromMenu = useRef(false);
   const dialog = useRef<HTMLDivElement | null>(null);
   const currentSelection = useRef('');
@@ -608,11 +609,11 @@ export function BulkActions({ cards, catalog, pending, onAction, onOpenDeck, sou
       return <Button key={action.id} type="button" variant="ghost" size="icon" className={className} disabled={Boolean(disabled)} aria-label={action.label} aria-keyshortcuts={shortcut?.keys} aria-haspopup="dialog" aria-expanded={menu === action.id} aria-controls={menu === action.id ? id + '-dialog' : undefined} title={disabled ?? (actionTitle + (shortcut ? ' · ' + shortcut.keys : ''))} data-active={action.id === 'bookmark' && selected.every(card => card.bookmarked) || action.id === 'done' && taskOnly && selected.every(card => card.state === 'done') || undefined} onClick={event => openAction(action.id, event.currentTarget)}><action.Icon size={16} />{action.id === 'effort' && <small>{effortLabel}</small>}</Button>;
     })}
     <DropdownMenu.Root modal={false} open={menu === 'more'} onOpenChange={open => { if (open) { openingDialogFromMenu.current = false; setMenu('more'); setError(''); } else if (menu === 'more') setMenu(null); }}>
-      <DropdownMenu.Trigger asChild><Button type="button" variant="ghost" size="icon" disabled={busy || !selected.length} aria-label={t.uiMoreActions} title={t.uiMoreActions} onFocus={event => { opener.current = event.currentTarget; }}><MoreHorizontal size={17} /></Button></DropdownMenu.Trigger>
+      <DropdownMenu.Trigger asChild><Button ref={moreButton} type="button" variant="ghost" size="icon" disabled={busy || !selected.length} aria-label={t.uiMoreActions} title={t.uiMoreActions}><MoreHorizontal size={17} /></Button></DropdownMenu.Trigger>
       <DropdownMenu.Portal><DropdownMenu.Content className="bulk-more-menu" align="end" sideOffset={7} collisionPadding={10} onEscapeKeyDown={event => { event.preventDefault(); closeMenu(); }} onCloseAutoFocus={event => { if (openingDialogFromMenu.current) event.preventDefault(); }}>
-        {actions.map(action => <DropdownMenu.Item key={action.id} className="bulk-more-item" disabled={Boolean(reason(action.id))} onSelect={event => { event.preventDefault(); openingDialogFromMenu.current = true; openAction(action.id); }}><action.Icon size={16} /><span>{action.label}</span></DropdownMenu.Item>)}
+        {actions.map(action => <DropdownMenu.Item key={action.id} className="bulk-more-item" disabled={Boolean(reason(action.id))} onSelect={event => { event.preventDefault(); openingDialogFromMenu.current = true; openAction(action.id, moreButton.current ?? undefined); }}><action.Icon size={16} /><span>{action.label}</span></DropdownMenu.Item>)}
         <DropdownMenu.Separator className="bulk-more-separator" />
-        {extraActions.map(action => <DropdownMenu.Item key={action.id} className="bulk-more-item" disabled={Boolean(reason(action.id))} onSelect={event => { event.preventDefault(); openingDialogFromMenu.current = true; openAction(action.id); }}><action.Icon size={16} /><span>{action.label}</span></DropdownMenu.Item>)}
+        {extraActions.map(action => <DropdownMenu.Item key={action.id} className="bulk-more-item" disabled={Boolean(reason(action.id))} onSelect={event => { event.preventDefault(); openingDialogFromMenu.current = true; openAction(action.id, moreButton.current ?? undefined); }}><action.Icon size={16} /><span>{action.label}</span></DropdownMenu.Item>)}
       </DropdownMenu.Content></DropdownMenu.Portal>
     </DropdownMenu.Root>
     {(notice || error && !dialogOpen) && <span className="bulk-action-feedback" role={error ? 'alert' : 'status'} title={error || notice}>{error || notice}</span>}

@@ -4,9 +4,8 @@ import { lstat, mkdir, open, realpath, rename, unlink } from 'node:fs/promises';
 import path from 'node:path';
 import type { BigIntStats } from 'node:fs';
 import { isDeepStrictEqual } from 'node:util';
-import { isSeq, parseDocument, stringify } from 'yaml';
+import { isMap, isScalar, isSeq, parseDocument, stringify, type YAMLSeq } from 'yaml';
 import type { CardAttachment, CardAttachments, CatalogEdit } from '../src/catalog-contracts.ts';
-import type { ByteRange } from '../src/contracts.ts';
 import type { FormatLanguage } from '../src/format-vocabulary.ts';
 import { containedFile } from './config.ts';
 import { projectLanguage } from './project-language.ts';
@@ -113,7 +112,7 @@ export type AttachmentEditAction = Extract<CatalogEdit, { action: 'upload-attach
 // ReadonlySet<string> lets app.ts validate any catalog action against this set.
 export const attachmentEditActions: ReadonlySet<string> = new Set<AttachmentEditAction['action']>(['upload-attachment', 'remove-attachment']);
 
-interface RegistryEntry {
+interface RegistryEntry extends Record<string, unknown> {
   file: string;
   name: string;
   kind: 'image' | 'pdf';
@@ -132,11 +131,15 @@ interface ParsedRegistry {
   data: RegistryData;
   hash: string;
   bytes: Buffer;
-  filesRange: ByteRange;
-  filesFlow: boolean;
+  yaml: string;
+  yamlStart: number;
+  files: YAMLSeq;
+  mapFlow: boolean;
   filesIndent: string;
+  emptyIndent: string;
   newline: string;
 }
+type RegistryTextEdit = { start: number; end: number; text: string };
 interface DirectoryIdentity { filename: string; stat: BigIntStats }
 interface DirectoryGuard { originalRoot: string; root: string; relativeDirectory: string; directories: DirectoryIdentity[] }
 export interface StoredAttachment { relativePath: string; remove: () => Promise<void> }
@@ -275,12 +278,13 @@ function validAddedAt(value: unknown): value is string {
   return !Number.isNaN(Date.parse(value));
 }
 
-function validateRegistry(value: unknown, cardId: string): RegistryData {
+// 2026-11-09: retain the raw parse result for post-write verification; projecting known fields would hide data loss.
+function validateRegistry(value: unknown, cardId: string): asserts value is RegistryData {
   const key = attachmentKey(cardId);
   if (!record(value) || value.schema !== 1 || value.card !== cardId) throw new Error(serverText(messages).registryCardMismatch);
   const filesValue = value.files;
   if (!Array.isArray(filesValue) || filesValue.length > maximumRegistryEntries) throw new Error(serverText(messages).invalidAttachmentList);
-  const files: RegistryEntry[] = filesValue.map(entry => {
+  const filePaths = filesValue.map(entry => {
     if (!record(entry) || !boundedText(entry.file, 300) || !isCardAttachmentPath(entry.file, key)) throw new Error(serverText(messages).invalidRegistryPath);
     const extension = entry.file.split('.').pop() as keyof typeof mimeByExtension;
     const expected = mimeByExtension[extension];
@@ -289,27 +293,32 @@ function validateRegistry(value: unknown, cardId: string): RegistryData {
     if (typeof bytes !== 'number' || !Number.isSafeInteger(bytes) || bytes < 1 || bytes > maximumAttachmentBytes) throw new Error(serverText(messages).invalidRegistrySize);
     if (!validAddedAt(addedAt)) throw new Error(serverText(messages).invalidRegistryDate);
     if (addedBy !== null && (typeof addedBy !== 'string' || !boundedText(addedBy, 80))) throw new Error(serverText(messages).invalidRegistryAuthor);
-    return { file: entry.file, name, kind: expected.kind, mime: expected.mime, bytes, addedAt, addedBy };
+    return entry.file;
   });
-  if (new Set(files.map(file => file.file)).size !== files.length) throw new Error(serverText(messages).duplicateAttachments);
-  return { ...value, schema: 1, card: cardId, files };
+  if (new Set(filePaths).size !== filePaths.length) throw new Error(serverText(messages).duplicateAttachments);
 }
 
 function parseRegistry(bytes: Buffer, cardId: string): ParsedRegistry {
-  const text = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(bytes);
+  let text: string;
+  try { text = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(bytes); }
+  catch { throw new Error(serverText(messages).invalidAttachmentList); }
   const match = registryHeadPattern.exec(text);
   if (!match || match.index !== 0) throw new Error(serverText(messages).missingRegistryHeader);
   const yaml = match[2];
-  const document = parseDocument(yaml);
-  if (document.errors.length) throw document.errors[0];
-  const data = validateRegistry(document.toJS({ maxAliasCount: 0 }), cardId);
+  const document = parseDocument(yaml, { keepSourceTokens: true });
+  if (document.errors.length || !isMap(document.contents)) throw new Error(serverText(messages).invalidAttachmentList);
+  let value: unknown;
+  try { value = document.toJS({ maxAliasCount: 0 }); }
+  catch { throw new Error(serverText(messages).invalidAttachmentList); }
+  validateRegistry(value, cardId);
   const files = document.get('files', true);
-  if (!isSeq(files) || !files.range) throw new Error(serverText(messages).invalidAttachmentList);
-  const [start, end] = files.range;
-  const yamlStart = text.indexOf('\n') + 1;
-  return { data, hash: digest(bytes), bytes, newline: match[1], filesFlow: files.flow ?? false,
-    filesIndent: ' '.repeat(start - (yaml.lastIndexOf('\n', start - 1) + 1)),
-    filesRange: { start: Buffer.byteLength(text.slice(0, yamlStart + start)), end: Buffer.byteLength(text.slice(0, yamlStart + end)) } };
+  const key = document.contents.items.find(pair => isScalar(pair.key) && pair.key.value === 'files')?.key;
+  if (!isSeq(files) || !files.range || !files.srcToken || !isScalar(key) || !key.range) throw new Error(serverText(messages).invalidAttachmentList);
+  const keyColumn = key.range[0] - (yaml.lastIndexOf('\n', key.range[0] - 1) + 1);
+  const emptyIndent = ' '.repeat(keyColumn + 2);
+  const filesIndent = files.srcToken.type === 'block-seq' ? ' '.repeat(files.srcToken.indent) : emptyIndent;
+  return { data: value, hash: digest(bytes), bytes, yaml, files, filesIndent, emptyIndent, newline: match[1],
+    mapFlow: document.contents.flow ?? false, yamlStart: Buffer.byteLength(text.slice(0, text.indexOf('\n') + 1)) };
 }
 
 const registryBriefs = {
@@ -322,14 +331,90 @@ async function registryBrief(root: string): Promise<string> {
   return registryBriefs[await projectLanguage(root)];
 }
 
+function registryLineEnd(yaml: string, offset: number): number {
+  const newline = yaml.indexOf('\n', offset);
+  return newline < 0 ? yaml.length : newline + 1;
+}
+
+function blockItemRange(previous: ParsedRegistry, index: number): [number, number] {
+  const token = previous.files.srcToken;
+  const item = previous.files.items[index];
+  const marker = token?.type === 'block-seq'
+    ? token.items.filter(item => item.value)[index]?.start.find(part => part.type === 'seq-item-ind') : undefined;
+  if (!marker || !isMap(item) || !item.range) throw new Error(serverText(messages).invalidAttachmentList);
+  const start = previous.yaml.lastIndexOf('\n', marker.offset - 1) + 1;
+  // 2026-11-09: node-end may include standalone comments and even the next item's indentation; value-end does not.
+  const end = item.range[1];
+  return [start, previous.yaml[end - 1] === '\n' ? end : registryLineEnd(previous.yaml, end)];
+}
+
+function appendRegistryItem(previous: ParsedRegistry, entry: RegistryEntry): RegistryTextEdit[] {
+  const { files, yaml, newline, filesIndent } = previous;
+  const token = files.srcToken;
+  if (!files.range || !token) throw new Error(serverText(messages).invalidAttachmentList);
+  if (token.type === 'flow-collection' && (files.items.length || previous.mapFlow)) {
+    const last = files.items.at(-1);
+    if (last !== undefined && (!isMap(last) || !last.range)) throw new Error(serverText(messages).invalidAttachmentList);
+    const start = isMap(last) && last.range ? last.range[1] : files.range[0] + 1;
+    const value = stringify(entry, { collectionStyle: 'flow', lineWidth: 0 }).replace(/\n$/u, '');
+    return [{ start, end: start, text: (files.items.length ? ', ' : '') + value }];
+  }
+  const block = filesIndent + stringify([entry], { lineWidth: 0 }).replace(/\n$/u, '').replace(/\n/gu, newline + filesIndent) + newline;
+  if (token.type === 'block-seq') {
+    const [, end] = blockItemRange(previous, files.items.length - 1);
+    return [{ start: end, end, text: block }];
+  }
+  if (token.type !== 'flow-collection') throw new Error(serverText(messages).invalidAttachmentList);
+  const close = token.end.find(part => part.type === 'flow-seq-end');
+  if (!close) throw new Error(serverText(messages).invalidAttachmentList);
+  const start = token.start.offset;
+  const lineStart = yaml.lastIndexOf('\n', start - 1) + 1;
+  const lineEnd = registryLineEnd(yaml, close.offset + 1);
+  if (/^[ \t]*$/u.test(yaml.slice(lineStart, start)) && /^\s*$/u.test(yaml.slice(start + 1, close.offset))
+    && /^\s*$/u.test(yaml.slice(close.offset + 1, lineEnd))) {
+    return [{ start: lineStart, end: lineEnd, text: block }];
+  }
+  // 2026-11-09: removing just the brackets leaves empty-list comments in place, including those on files: itself.
+  return [{ start, end: start + 1, text: '' }, { start: close.offset, end: close.offset + 1, text: '' },
+    { start: lineEnd, end: lineEnd, text: block }];
+}
+
+function removeRegistryItem(previous: ParsedRegistry, index: number): RegistryTextEdit[] {
+  const { files } = previous;
+  const token = files.srcToken;
+  const item = files.items[index];
+  if (!isMap(item) || !item.range || !token) throw new Error(serverText(messages).invalidAttachmentList);
+  if (token.type === 'block-seq') {
+    const [start, end] = blockItemRange(previous, index);
+    return [{ start, end, text: files.items.length === 1 ? previous.emptyIndent + '[]' + previous.newline : '' }];
+  }
+  if (token.type !== 'flow-collection') throw new Error(serverText(messages).invalidAttachmentList);
+  const properties = token.items[index].start.filter(part => part.type === 'anchor' || part.type === 'tag');
+  const start = Math.min(item.range[0], ...properties.map(part => part.offset));
+  const edits: RegistryTextEdit[] = [{ start, end: item.range[1], text: '' }];
+  const separatorIndex = index < files.items.length - 1 || files.items.length === 1 ? index + 1 : index;
+  const comma = token.items[separatorIndex]?.start.find(part => part.type === 'comma');
+  if (comma) edits.push({ start: comma.offset, end: comma.offset + 1, text: '' });
+  else if (files.items.length > 1) throw new Error(serverText(messages).invalidAttachmentList);
+  return edits;
+}
+
 function renderRegistry(data: RegistryData, previous: ParsedRegistry | null, body: string): Buffer {
   if (!previous) return Buffer.from('---\n' + stringify(data, { lineWidth: 0 }) + '---\n' + body, 'utf8');
-  // 2026-11-09: replace only files, so legacy covers, comments, BOM, delimiters and body keep their original bytes.
-  const { start, end } = previous.filesRange;
-  const ending = previous.bytes.subarray(start, end).toString('utf8').match(/\r?\n$/u)?.[0] ?? '';
-  const files = previous.filesFlow ? JSON.stringify(data.files)
-    : stringify(data.files, { lineWidth: 0 }).trimEnd().replace(/\n/gu, previous.newline + previous.filesIndent);
-  return Buffer.concat([previous.bytes.subarray(0, start), Buffer.from(files + ending, 'utf8'), previous.bytes.subarray(end)]);
+  let edits: RegistryTextEdit[];
+  if (data.files.length === previous.data.files.length + 1) edits = appendRegistryItem(previous, data.files.at(-1)!);
+  else if (data.files.length === previous.data.files.length - 1) {
+    const removedIndex = previous.data.files.findIndex(entry => !data.files.some(file => file.file === entry.file));
+    edits = removeRegistryItem(previous, removedIndex);
+  } else throw new Error(serverText(messages).registryRewriteChangesData);
+  // 2026-11-09: source offsets are UTF-16 positions; only the changed spans are encoded and spliced into the original bytes.
+  let bytes = previous.bytes;
+  for (const edit of edits.sort((first, second) => second.start - first.start)) {
+    const start = previous.yamlStart + Buffer.byteLength(previous.yaml.slice(0, edit.start));
+    const end = previous.yamlStart + Buffer.byteLength(previous.yaml.slice(0, edit.end));
+    bytes = Buffer.concat([bytes.subarray(0, start), Buffer.from(edit.text), bytes.subarray(end)]);
+  }
+  return bytes;
 }
 
 async function readRegistry(guard: DirectoryGuard, cardId: string): Promise<{ bytes: Buffer; parsed: ParsedRegistry } | null> {
@@ -354,6 +439,7 @@ async function publishRegistry(guard: DirectoryGuard, cardId: string, expectedHa
   const body = previous ? '' : await registryBrief(guard.root);
   const nextBytes = renderRegistry(data, previous, body);
   const reparsed = parseRegistry(nextBytes, cardId);
+  // 2026-11-09: data includes raw opaque fields, not merely the public attachment projection.
   if (!isDeepStrictEqual(reparsed.data, data)) throw new Error(serverText(messages).registryRewriteChangesData);
   await checkDirectories(guard);
   const temporaryPath = path.join(guard.root, `${guard.relativeDirectory}/.${randomUUID()}.tmp`);
@@ -429,7 +515,8 @@ export async function readCardAttachments(root: string, cardId: string): Promise
     let missing = false;
     try { await checkedAttachmentFile(guard, entry.file); }
     catch { missing = true; warnings.push(serverText(messages).missingAttachment(entry.name)); }
-    files.push({ ...entry, ...(missing ? { missing: true } : {}) });
+    const { file, name, kind, mime, bytes, addedAt, addedBy } = entry;
+    files.push({ file, name, kind, mime, bytes, addedAt, addedBy, ...(missing ? { missing: true } : {}) });
   }
   return { hash: registry.parsed.hash, files, warnings };
 }
@@ -459,10 +546,11 @@ async function uploadAttachment(root: string, edit: Extract<AttachmentEditAction
   const asset = await storeAttachmentFile(guard, decoded);
   try {
     const registry = await readRegistry(guard, edit.cardId);
-    const data = registry?.parsed.data ?? { schema: 1 as const, card: edit.cardId, files: [] };
-    if (data.files.length >= maximumRegistryEntries) throw new Error(serverText(messages).tooManyAttachments);
-    data.files.push({ file: asset.relativePath, name: await displayFileName(root, edit.fileName, decoded.extension),
-      kind: decoded.kind, mime: decoded.mime, bytes: decoded.bytes.length, addedAt: new Date().toISOString(), addedBy });
+    const previous = registry?.parsed.data ?? { schema: 1 as const, card: edit.cardId, files: [] };
+    if (previous.files.length >= maximumRegistryEntries) throw new Error(serverText(messages).tooManyAttachments);
+    const entry: RegistryEntry = { file: asset.relativePath, name: await displayFileName(root, edit.fileName, decoded.extension),
+      kind: decoded.kind, mime: decoded.mime, bytes: decoded.bytes.length, addedAt: new Date().toISOString(), addedBy };
+    const data = { ...previous, files: [...previous.files, entry] };
     await publishRegistry(guard, edit.cardId, edit.attachmentsHash, data, registry?.parsed ?? null);
   } catch (error) {
     try { await asset.remove(); }
@@ -481,8 +569,7 @@ async function removeAttachment(root: string, edit: Extract<AttachmentEditAction
   if (!registry || digest(registry.bytes) !== edit.attachmentsHash) throw new Error('ATTACHMENTS_CONFLICT');
   const entry = registry.parsed.data.files.find(file => file.file === edit.file);
   if (!entry) throw new Error(serverText(messages).attachmentNotListed);
-  const data = registry.parsed.data;
-  data.files = data.files.filter(file => file.file !== edit.file);
+  const data = { ...registry.parsed.data, files: registry.parsed.data.files.filter(file => file.file !== edit.file) };
   await publishRegistry(guard, edit.cardId, edit.attachmentsHash, data, registry.parsed);
   // The registry is published; a leftover file is unused data, not data loss, so mark the error saved.
   try { await checkedAttachmentFile(guard, edit.file); await unlink(path.join(guard.root, edit.file)); }

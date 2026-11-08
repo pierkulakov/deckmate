@@ -12,13 +12,13 @@
 
 A local Markdown project board for teams of people and AI agents.
 
-**Status:** 0.2, an early release. The project file format (schema 1) may change before 1.0.
+**Status:** 0.3, an early release. The project file format (schema 1) may change before 1.0.
 
 [![npm](https://img.shields.io/npm/v/deckmate?color=7a52d6)](https://www.npmjs.com/package/deckmate)
 [![License: AGPL-3.0](docs/badges/license.svg)](LICENSE)
 [![Node](docs/badges/node.svg)](#cli)
 
-[Quick start](#quick-start) · [Your project](#use-it-with-your-project) · [Concepts](#how-it-works) · [Agents](#working-with-ai-agents) · [FAQ](#faq)
+[Quick start](#quick-start) · [Your project](#use-it-with-your-project) · [Concepts](#how-it-works) · [Decks and Inbox](#decks-inbox-and-sub-cards) · [Agents](#working-with-ai-agents) · [FAQ](#faq)
 
 **English** · [Русский](README.ru.md)
 
@@ -61,6 +61,7 @@ The board opens at `http://127.0.0.1:4317/`. The sample is a small fictional gam
 Without a project, choose **Open folder…** to select an existing project in the system dialog, or **Create project** to start in an empty folder.
 Recent projects show their last-opened time and can be removed from the list; language (EN/RU) and theme controls are also available.
 The last project opens automatically on the next launch. Use **File → Switch project** (`Ctrl+Shift+O`) to return to the start screen, or `Ctrl+O` to open another folder.
+The project menu in the board also lists other recent projects for one-click switching.
 Desktop runs the same local Deckmate server on `127.0.0.1` with a randomly selected free port; project data remains in the project folder.
 Recent and last-project settings are stored in `%APPDATA%\Deckmate\desktop.json`; the index remains in the cache folder.
 
@@ -107,6 +108,8 @@ Open a deck to work with its cards, description, progress and activity:
 
 Press `?` in the app for all keyboard shortcuts: `N` creates a card, `/` searches, `Shift+1`–`Shift+4` switch between Hand, Decks, Timeline and Vision, and hovering a card with `O`, `E`, `P` or `,` changes its owner, effort, priority or Run.
 
+On an open card, use its properties for quick settings and click a tag to open project tags. A Hero shows its Journey as mini-cards; the Journey name opens a menu of steps and assignees. Open a step to see its Sub Card, then press `Esc` to return to the Hero. In the text editor, use the paperclip to insert an attachment, or copy its Markdown link from the attachments panel; card covers are no longer used.
+
 <table>
 <tr>
 <td width="50%" valign="top">
@@ -129,6 +132,41 @@ Press `?` in the app for all keyboard shortcuts: `N` creates a card, `/` searche
 </td>
 </tr>
 </table>
+
+## Decks, Inbox and Sub Cards
+
+### Deck types
+
+Each deck accepts certain card types:
+
+| Deck type | Cards it accepts |
+|---|---|
+| Asset | Hero |
+| Task | Task |
+| Knowledge | Doc |
+| Mixed | Hero, Task and Doc |
+
+Use Asset decks for GDD features (Heroes), Task decks for work, and Knowledge decks for reference. Mixed decks can combine them. When moving cards, incompatible decks appear dimmed in the transfer dock.
+
+### Sub Cards
+
+A Sub Card is a Task or Doc linked to a Hero. It usually belongs in a department's working deck, such as Art or Coding, rather than the Hero's Asset deck, so the people doing the work can find it there. The link to the Hero remains across decks.
+
+Open the Hero, choose **New Sub Card**, select a destination under **Create Card in**, enter a title and optional description, and choose **Create**. A Knowledge deck creates a Doc; the other choices create a Task. The initial choice is the current suitable deck if available, then a recently used deck, Inbox, a deck that accepts Tasks, or no deck. A Hero-only Asset deck is not selected.
+
+The automatic option says **Auto: Inbox →** followed by the deck name when Inbox is available, or **No deck (Unassigned)** otherwise. If no suitable deck is available, the Sub Card is still created without a deck.
+
+### Inbox
+
+Inbox is an ordinary deck designated as the receiver, not a separate built-in deck. Open an existing deck's settings and check **Inbox deck**; its cover shows a tray icon. Only Task and Mixed decks can be assigned; the checkbox is disabled for Asset and Knowledge. Changing an Inbox deck to a type that cannot accept Tasks removes its Inbox assignment.
+
+When no deck is selected for a new card, it goes to Inbox only if Inbox accepts its type; otherwise it is created without a deck. The new-card form shows **→ Inbox:** and the deck name, or **→ No deck**. Without an assigned Inbox, cards created without a selected deck are also left without one: find them on the Decks home screen under **Without a deck** and **Sort into decks**.
+
+Starter templates assign Inbox to their first Task deck if none is set; in the demo, Inbox is Production.
+
+### Only an Asset deck?
+
+If you have only an Asset deck and expect a Sub Card not to be created, it now creates without a deck. For a useful destination, create a Task deck, or designate an existing Task or Mixed deck as Inbox; then move the card into a suitable deck.
 
 ## Working with AI agents
 
@@ -186,6 +224,8 @@ Deckmate also ships an agent skill in the open Agent Skills format. Once the pro
 ## Contributing
 
 Bug reports, ideas and pull requests are welcome; [SUPPORT.md](SUPPORT.md) explains where to ask questions and report bugs. [CONTRIBUTING.md](CONTRIBUTING.md) covers running from source, tests and project rules; [AGENTS.md](AGENTS.md) is the short guide for coding agents. Please follow the [Code of Conduct](CODE_OF_CONDUCT.md) and report vulnerabilities through [SECURITY.md](SECURITY.md), not public issues. Changes are listed in the [changelog](CHANGELOG.md).
+
+For source development, `npm run dev` starts the watched server and Vite with hot reload at `http://127.0.0.1:4318/`; pass server options after `--`, for example `npm run dev -- --data deckmate-demo`.
 
 ## License
 

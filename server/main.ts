@@ -1,5 +1,6 @@
 import { createApp } from './app.ts';
 import { loadConfig } from './config.ts';
+import { installShutdownHandlers, type ParentPort } from './shutdown.ts';
 
 const config = await loadConfig();
 const app = await createApp(config);
@@ -11,4 +12,4 @@ try {
 }
 export const address = `http://127.0.0.1:${config.port}`;
 console.log(`Deckmate: ${address}`);
-for (const signal of ['SIGINT', 'SIGTERM'] as const) process.on(signal, () => { void app.close(); });
+installShutdownHandlers(app, (process as NodeJS.Process & { parentPort?: ParentPort }).parentPort);

@@ -4,6 +4,18 @@ Notable changes are grouped by version using [Keep a Changelog](https://keepacha
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-11-08
+
+### Added
+
+- **Deckmate Desktop.** An Electron shell for Windows in `desktop/`: launches from an icon, opens a start screen with Open folder, Create project and recent projects, and reopens the last project on launch. It runs the same local server on a free port inside the app, remembers zoom (Ctrl+wheel, Ctrl+=/−/0) and window size, and has an EN/RU menu. It builds as a portable folder and an unsigned NSIS installer.
+- **Clean shutdown.** The server stops cleanly on a `shutdown` message from the desktop shell.
+
+### Changed
+
+- **README.** Leads with the desktop flow (Quick start: Desktop, then CLI) and has a Start screen section with a screenshot.
+- **Social preview.** Mentions the desktop app.
+
 ## [0.1.0] - 2026-11-07
 
 First public release.
@@ -56,5 +68,6 @@ First public release.
 - Third-party notices: `dist/client/third-party-licenses.md` now carries full license texts for bundled packages that ship no license file and for code embedded in prebuilt packages (Chevrotain, Langium, the vscode-languageserver libraries and lodash-es inside `@mermaid-js/parser`, js-yaml inside `mermaid`); the build fails on an empty section or on undeclared embedded code.
 - Source-checkout instructions also open the demo, and the `/deckmate` analyze and audit workflows move new cards to `discussing` after creating them.
 
-[Unreleased]: https://github.com/pierkulakov/deckmate/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/pierkulakov/deckmate/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/pierkulakov/deckmate/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/pierkulakov/deckmate/releases/tag/v0.1.0

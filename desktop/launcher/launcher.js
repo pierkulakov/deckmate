@@ -94,7 +94,7 @@ function projectName(folder) {
 const tilePalette = ['#7a52d6', '#3f8f7c', '#b2742a', '#4d6fb8', '#a84a6e', '#5f8a3a', '#8a5bb0', '#2f7f99'];
 function tileColor(name) {
   let hash = 0;
-  for (const char of name) hash = (hash * 31 + char.codePointAt(0)) >>> 0;
+  for (const char of String(name ?? '')) hash = (hash * 31 + char.codePointAt(0)) >>> 0;
   return tilePalette[hash % tilePalette.length];
 }
 
@@ -319,7 +319,7 @@ function mockBridge() {
     { path: 'C:\\Users\\Someone\\Documents\\Долгий путь к релизу', name: 'Долгий путь к релизу', lastOpened: new Date(now - 3 * 86400e3).toISOString() },
   ];
   return {
-    async getState() { return { recent, lastProject: recent[0].path, version: '0.2.0', deckmateVersion: '0.2.0', locale: 'en-US' }; },
+    async getState() { return { recent, lastProject: recent[0].path, version: '0.3.0', deckmateVersion: '0.3.0', locale: 'en-US' }; },
     async chooseFolder() { return 'D:\\Projects\\New Deck'; },
     async openProject() { await new Promise(resolve => setTimeout(resolve, 1200)); return { ok: false, code: 'missing' }; },
     async createProject() { await new Promise(resolve => setTimeout(resolve, 900)); return { ok: false, code: 'not-empty' }; },

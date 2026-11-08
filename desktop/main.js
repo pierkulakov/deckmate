@@ -1,7 +1,7 @@
 import { app, BrowserWindow, dialog, ipcMain, Menu, screen, shell, utilityProcess } from 'electron';
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { mkdirSync, renameSync, unlinkSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
-import { appendFile, mkdir, readdir, readFile, stat, writeFile } from 'node:fs/promises';
+import { appendFile, mkdir, readdir, readFile, stat, unlink, writeFile } from 'node:fs/promises';
 import net from 'node:net';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -30,6 +30,8 @@ let launchCounter = 0;
 let pendingStatus = null;
 let settings = defaultSettings();
 let saveQueue = Promise.resolve();
+let settingsGeneration = 0;
+let settingsTempCounter = 0;
 let boundsTimer = null;
 
 // ---------- settings ----------
@@ -51,14 +53,32 @@ function validBounds(value) {
   return { x: Math.round(x), y: Math.round(y), width: Math.round(width), height: Math.round(height) };
 }
 
+function normalizeRecent(value) {
+  const recent = [];
+  if (!Array.isArray(value)) return recent;
+  for (const entry of value) {
+    if (typeof entry?.path !== 'string' || !path.isAbsolute(entry.path)) continue;
+    if (recent.some(candidate => samePath(candidate.path, entry.path))) continue;
+    const lastOpened = typeof entry.lastOpened === 'string' && !Number.isNaN(Date.parse(entry.lastOpened))
+      ? entry.lastOpened : null;
+    recent.push({
+      path: entry.path,
+      name: typeof entry.name === 'string' ? entry.name : path.basename(entry.path),
+      lastOpened,
+    });
+    if (recent.length === MAX_RECENT) break;
+  }
+  return recent;
+}
+
 async function loadSettings() {
   settings = defaultSettings();
   try {
     // 2026-11-08: a hand edit in Notepad or PowerShell may add a BOM, which JSON.parse rejects.
     const parsed = JSON.parse((await readFile(settingsFile(), 'utf8')).replace(/^﻿/, ''));
     settings = {
-      lastProject: typeof parsed.lastProject === 'string' ? parsed.lastProject : null,
-      recent: Array.isArray(parsed.recent) ? parsed.recent.filter(entry => typeof entry?.path === 'string') : [],
+      lastProject: typeof parsed.lastProject === 'string' && path.isAbsolute(parsed.lastProject) ? parsed.lastProject : null,
+      recent: normalizeRecent(parsed.recent),
       language: LANGUAGES.has(parsed.language) ? parsed.language : null,
       zoomFactor: Number.isFinite(parsed.zoomFactor) ? clampZoom(parsed.zoomFactor) : 1,
       windowBounds: validBounds(parsed.windowBounds),
@@ -70,11 +90,31 @@ async function loadSettings() {
 
 const settingsText = () => JSON.stringify(settings, null, 2) + '\n';
 
+function settingsTempFile(file) {
+  settingsTempCounter += 1;
+  return `${file}.tmp-${process.pid}-${settingsTempCounter}`;
+}
+
 /** 2026-11-08: writes go through one queue so a debounced bounds save never interleaves with a project save. */
 function saveSettings() {
   const write = async () => {
-    await mkdir(path.dirname(settingsFile()), { recursive: true });
-    await writeFile(settingsFile(), settingsText());
+    const text = settingsText();
+    const generation = settingsGeneration;
+    const file = settingsFile();
+    const temporary = settingsTempFile(file);
+    try {
+      await mkdir(path.dirname(file), { recursive: true });
+      await writeFile(temporary, text);
+      if (generation !== settingsGeneration) {
+        await unlink(temporary);
+        return;
+      }
+      // A synchronous close save cannot interleave between this generation check and the rename.
+      renameSync(temporary, file);
+    } catch (error) {
+      try { await unlink(temporary); } catch { /* the original write error is more useful */ }
+      throw error;
+    }
   };
   saveQueue = saveQueue.then(write, write);
   return saveQueue.catch(error => log(`settings save failed: ${error.message}`));
@@ -82,10 +122,19 @@ function saveSettings() {
 
 /** The window is gone right after 'close', so its last bounds are written synchronously. */
 function saveSettingsSync() {
+  let temporary = null;
   try {
-    mkdirSync(path.dirname(settingsFile()), { recursive: true });
-    writeFileSync(settingsFile(), settingsText());
+    const file = settingsFile();
+    temporary = settingsTempFile(file);
+    const text = settingsText();
+    settingsGeneration += 1;
+    mkdirSync(path.dirname(file), { recursive: true });
+    writeFileSync(temporary, text);
+    renameSync(temporary, file);
   } catch (error) {
+    if (temporary) {
+      try { unlinkSync(temporary); } catch { /* the original write error is more useful */ }
+    }
     void log(`settings save failed: ${error.message}`);
   }
 }
@@ -272,7 +321,7 @@ async function showLauncher(status = null) {
   await mainWindow.loadFile(launcherFile);
 }
 
-/** `trusted` is passed only by main-process callers (menu, startup, createProject after its own check), never from IPC. */
+/** 2026-11-08: only main-process callers choose `trusted`; board IPC may open only a stored recent entry. */
 async function openProject(input, trusted = false) {
   const invalid = trusted ? null : checkFolderInput(input);
   if (invalid) return invalid;
@@ -298,10 +347,14 @@ async function openProject(input, trusted = false) {
   rememberProject(folder);
   buildMenu();
   await saveSettings();
+  if (!windowAlive() || launch !== launchCounter || server !== started) {
+    return fail('superseded', 'Another action replaced this launch.');
+  }
   return loadBoard(started, folder);
 }
 
 async function loadBoard(started, folder) {
+  if (!windowAlive()) return fail('closed', 'The window was closed.');
   mainWindow.setTitle(`Deckmate — ${path.basename(folder)}`);
   try {
     await mainWindow.loadURL(started.url);
@@ -575,6 +628,31 @@ function handleFromLauncher(channel, handler) {
   });
 }
 
+function boardSenderAllowed({ sender, mainWebContents, senderFrame, mainFrame, serverUrl }) {
+  if (!mainWebContents || sender !== mainWebContents || !senderFrame || senderFrame !== mainFrame || !serverUrl) return false;
+  try {
+    return new URL(senderFrame.url).origin === new URL(serverUrl).origin;
+  } catch {
+    return false;
+  }
+}
+
+function findRecent(recent, folder) {
+  if (typeof folder !== 'string') return undefined;
+  return recent.find(entry => samePath(entry.path, folder));
+}
+
+/** 2026-11-08: same-origin Vision iframes render project content and must not control the shell. */
+function handleFromBoard(channel, handler) {
+  ipcMain.handle(channel, (event, ...args) => {
+    if (!boardSenderAllowed({
+      sender: event.sender, mainWebContents: mainWindow?.webContents,
+      senderFrame: event.senderFrame, mainFrame: event.sender.mainFrame, serverUrl: server?.url,
+    })) return fail('forbidden', 'Only the main board frame of the current project may call this.');
+    return handler(...args);
+  });
+}
+
 async function removeRecent(folder) {
   if (typeof folder !== 'string' || !path.isAbsolute(folder)) return fail('invalid-path', 'An absolute folder path is required.');
   // A network folder in the list came from the dialog earlier, so only such a listed path may be named here.
@@ -597,6 +675,20 @@ function registerIpc() {
   handleFromLauncher('desktop:openProject', folder => openProject(folder));
   handleFromLauncher('desktop:createProject', options => createProject(options));
   handleFromLauncher('desktop:removeRecent', folder => removeRecent(folder));
+  handleFromBoard('board:recentProjects', () => settings.recent.map(entry => ({
+    path: entry.path, name: entry.name, lastOpened: entry.lastOpened, current: samePath(entry.path, server.path),
+  })));
+  // 2026-11-08: one renderer argument only; trust the stored entry, never the supplied spelling or extra arguments.
+  handleFromBoard('board:switchProject', folder => {
+    const entry = findRecent(settings.recent, folder);
+    if (!entry) return fail('not-recent', 'Only a recent project may be opened from the board.');
+    if (samePath(entry.path, server.path)) return ok();
+    return openProject(entry.path, true);
+  });
+  handleFromBoard('board:showStartScreen', async () => {
+    await showLauncher();
+    return ok();
+  });
 }
 
 // ---------- startup ----------

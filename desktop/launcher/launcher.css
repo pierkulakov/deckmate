@@ -195,6 +195,8 @@ button { font: inherit; color: inherit; }
 .status[data-phase="error"] .status-dot { background: var(--danger); }
 .status-text { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .link { padding: 0; border: 0; background: none; color: var(--link-ink, var(--accent)); text-decoration: underline; text-underline-offset: 3px; cursor: pointer; white-space: nowrap; }
+/* 2026-11-08: the retry link is the only .link; a 24 px tall target keeps it reachable (audit L-1) and the 52 px bar centers it. */
+.status .link { display: inline-flex; align-items: center; min-height: 24px; }
 .link:hover { color: var(--accent-hover); }
 :root.dark .link:hover { color: var(--ink); }
 @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .35; } }

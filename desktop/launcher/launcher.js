@@ -319,7 +319,7 @@ function mockBridge() {
     { path: 'C:\\Users\\Someone\\Documents\\Долгий путь к релизу', name: 'Долгий путь к релизу', lastOpened: new Date(now - 3 * 86400e3).toISOString() },
   ];
   return {
-    async getState() { return { recent, lastProject: recent[0].path, version: '0.1.0', deckmateVersion: '0.1.0', locale: 'en-US' }; },
+    async getState() { return { recent, lastProject: recent[0].path, version: '0.2.0', deckmateVersion: '0.2.0', locale: 'en-US' }; },
     async chooseFolder() { return 'D:\\Projects\\New Deck'; },
     async openProject() { await new Promise(resolve => setTimeout(resolve, 1200)); return { ok: false, code: 'missing' }; },
     async createProject() { await new Promise(resolve => setTimeout(resolve, 900)); return { ok: false, code: 'not-empty' }; },

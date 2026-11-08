@@ -12,7 +12,7 @@
 
 A local Markdown project board for teams of people and AI agents.
 
-**Status:** 0.1, an early release. The project file format (schema 1) may change before 1.0.
+**Status:** 0.2, an early release. The project file format (schema 1) may change before 1.0.
 
 [![npm](https://img.shields.io/npm/v/deckmate?color=7a52d6)](https://www.npmjs.com/package/deckmate)
 [![License: AGPL-3.0](docs/badges/license.svg)](LICENSE)
@@ -37,9 +37,9 @@ Deckmate turns a folder of Markdown files into a project board for game and soft
 
 ### Desktop
 
-Deckmate Desktop is an Electron app for Windows; macOS support is planned later. The prototype is in preparation and the installer is not published yet; it will appear on the [Releases page](https://github.com/pierkulakov/deckmate/releases). Windows will warn about an unknown publisher because the build is not code-signed.
+Deckmate Desktop is an Electron app for Windows 10 and 11 (x64); macOS support is planned later. Download the installer (`Deckmate Setup <version>.exe`) or the portable zip from the [latest release](https://github.com/pierkulakov/deckmate/releases/latest). The build is not code-signed, so Windows SmartScreen warns about an unknown publisher: choose **More info → Run anyway**.
 
-Once available, download and run the installer, launch Deckmate from its icon, then open an existing project folder or create a project in an empty folder. You do not need to install Node.js or open a terminal.
+Run the installer and launch Deckmate from its icon, or unzip the portable build and start `Deckmate.exe`. Then open an existing project folder or create a project in an empty folder. You do not need to install Node.js or open a terminal.
 
 ### CLI
 
@@ -50,7 +50,7 @@ npx deckmate init deckmate-demo
 npx deckmate --data deckmate-demo
 ```
 
-If `npx` cannot find the package yet, follow [CONTRIBUTING.md](CONTRIBUTING.md) and run from source: `npm ci && npm run build`, then `node bin/deckmate.mjs init deckmate-demo` creates the demo and `node bin/deckmate.mjs --data deckmate-demo` opens it.
+To run from source instead, follow [CONTRIBUTING.md](CONTRIBUTING.md): `npm ci && npm run build`, then `node bin/deckmate.mjs init deckmate-demo` creates the demo and `node bin/deckmate.mjs --data deckmate-demo` opens it.
 
 The board opens at `http://127.0.0.1:4317/`. The sample is a small fictional game studio: five decks, two Heroes with Sub Cards, people and agents, a Journey, a Run and a Vision board. The interface is English by default; switch to Russian in the app menu. Stop the server with `Ctrl+C`.
 

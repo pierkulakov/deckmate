@@ -37,9 +37,9 @@ Deckmate превращает папку с Markdown в доску проект�
 
 ### Настольное приложение
 
-Deckmate Desktop — настольное приложение на Electron для Windows; поддержка macOS планируется позже. Скачайте установщик (`Deckmate Setup <версия>.exe`) или portable-архив zip из [последнего выпуска](https://github.com/pierkulakov/deckmate/releases/latest). Windows предупредит о неизвестном издателе, поскольку сборка не подписана.
+Deckmate Desktop — настольное приложение на Electron для Windows 10 и 11 (x64); поддержка macOS планируется позже. Скачайте установщик (`Deckmate Setup <версия>.exe`) или portable-архив zip из [последнего выпуска](https://github.com/pierkulakov/deckmate/releases/latest). Сборка не подписана, поэтому Windows SmartScreen предупредит о неизвестном издателе: нажмите **Подробнее → Выполнить в любом случае**.
 
-Запустите установщик, откройте Deckmate по значку и выберите существующую папку проекта или создайте проект в пустой папке. Устанавливать Node.js и открывать терминал не нужно.
+Запустите установщик и откройте Deckmate по значку или распакуйте portable-архив и запустите `Deckmate.exe`. Затем выберите существующую папку проекта или создайте проект в пустой папке. Устанавливать Node.js и открывать терминал не нужно.
 
 ### Командная строка
 
@@ -50,7 +50,7 @@ npx deckmate init deckmate-demo
 npx deckmate --data deckmate-demo
 ```
 
-Если `npx` пока не находит пакет, запустите проект из исходников по [CONTRIBUTING.md](CONTRIBUTING.md): `npm ci && npm run build`, затем `node bin/deckmate.mjs init deckmate-demo` создаст демо, а `node bin/deckmate.mjs --data deckmate-demo` — откроет его.
+Чтобы запустить проект из исходников, следуйте [CONTRIBUTING.md](CONTRIBUTING.md): `npm ci && npm run build`, затем `node bin/deckmate.mjs init deckmate-demo` создаст демо, а `node bin/deckmate.mjs --data deckmate-demo` — откроет его.
 
 Доска откроется на `http://127.0.0.1:4317/`. Демо — маленькая вымышленная игровая студия: пять колод, два Hero с Sub Cards, люди и агенты, Journey, Run и доска Vision. Интерфейс по умолчанию английский, русский включается в меню приложения. Остановить сервер — `Ctrl+C`.
 

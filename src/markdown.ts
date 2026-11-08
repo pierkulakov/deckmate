@@ -6,7 +6,7 @@ import { cardStateMarkWords, readCardState, type CardState } from './format-voca
 const messages = defineText({
   missingBlock: (relativePath: string, line: number) => `board.py heading has no mdast block: ${relativePath}:${line}`,
 }, {
-  missingBlock: (relativePath: string, line: number) => `board.py heading has no mdast block: ${relativePath}:${line}`,
+  missingBlock: (relativePath: string, line: number) => `У заголовка board.py нет блока mdast: ${relativePath}:${line}`,
 });
 
 const sliceHeading = /^###\s+(?:✅\s+)?(\d+\.\d+[a-z]?)\s+(.+?)\s*$/u;

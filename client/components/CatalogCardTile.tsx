@@ -12,6 +12,7 @@ import { CardIndicators } from './CardIndicators.tsx';
 import { statusClass } from './StatusMenu.tsx';
 import { CardFamilyPopover, SubCardProgress } from './CardFamily.tsx';
 import { familyFinished, useJustFinished } from '../done-impact.ts';
+import { useCardTilt } from '../useCardTilt.ts';
 import { cardHeroEffort } from './CardPropertiesPanel.tsx';
 import { CardOwnerAvatar, type CardQuickSettingsTab } from './CardQuickSettings.tsx';
 import { TagColorIndicator, TagTitlePrefix } from './CardTags.tsx';
@@ -41,21 +42,21 @@ const text = defineText({
 }, {
   docCard: 'Doc Card',
   transferCard: (title: string) => 'Перенести в колоду: ' + title,
-  transferHint: 'Перенести в колоду · Space и стрелки',
-  transferLimit: 'Можно перенести до 1000 выбранных карт',
+  transferHint: 'Перенести в колоду · Пробел и стрелки',
+  transferLimit: 'Можно перенести до 1000 выбранных карточек',
   openQuestions: (count: string) => 'Открытых вопросов: ' + count,
   attachments: (count: string) => 'Вложения: ' + count,
   open: 'Открыть',
   deselect: 'Снять выбор',
   select: 'Выбрать',
   selectCard: (title: string) => 'Выбрать: ' + title,
-  totalEffort: (effort: string) => 'Effort: свой и Sub Cards — ' + effort,
+  totalEffort: (effort: string) => 'Оценка: своя и Sub Cards — ' + effort,
   archived: 'В архиве',
-  owner: (owner: string) => 'Owner: ' + owner,
-  effort: (effort: string) => 'Effort: ' + effort,
-  priority: (priority: string) => 'Priority: ' + priority,
+  owner: (owner: string) => 'Исполнитель: ' + owner,
+  effort: (effort: string) => 'Оценка: ' + effort,
+  priority: (priority: string) => 'Приоритет: ' + priority,
   noPriority: 'Без приоритета',
-  noSubCards: 'Без подзадач',
+  noSubCards: 'Без Sub Cards',
   wordCount: (count: string) => 'Число слов: ' + count,
   tags: (names: string) => 'теги: ' + names,
 });
@@ -95,32 +96,6 @@ export function useCardTransferDrag(card: CatalogCard) {
     title={enabled ? t.transferHint : t.transferLimit}
     onKeyDown={event => { if (enabled) drag.listeners?.onKeyDown?.(event); }}><GripVertical size={14} /></button> : null;
   return { ...drag, isDragging: drag.isDragging || Boolean(context.sourceIds?.has(card.id)), enabled, anyDragging: context.active, onPointerDown, handle };
-}
-
-export function useCardTilt<Element extends HTMLElement>(maximum: number, disabled = false) {
-  const element = useRef<Element>(null);
-  const frame = useRef(0);
-  const reducedMotion = useRef(window.matchMedia('(prefers-reduced-motion: reduce)'));
-  function reset() {
-    cancelAnimationFrame(frame.current);
-    element.current?.style.setProperty('--tilt-x', '0deg');
-    element.current?.style.setProperty('--tilt-y', '0deg');
-  }
-  useEffect(() => () => cancelAnimationFrame(frame.current), []);
-  useEffect(() => { if (disabled) reset(); }, [disabled]);
-  function tilt(event: PointerEvent<HTMLElement>) {
-    if (disabled || event.pointerType === 'touch' || reducedMotion.current.matches) return;
-    const rectangle = event.currentTarget.getBoundingClientRect();
-    const horizontal = Math.min(1, Math.max(0, (event.clientX - rectangle.left) / rectangle.width));
-    const vertical = Math.min(1, Math.max(0, (event.clientY - rectangle.top) / rectangle.height));
-    cancelAnimationFrame(frame.current);
-    frame.current = requestAnimationFrame(() => {
-      element.current?.style.setProperty('--tilt-x', `${(0.5 - vertical) * maximum * 2}deg`);
-      element.current?.style.setProperty('--tilt-y', `${(horizontal - 0.5) * maximum * 2}deg`);
-      element.current?.style.setProperty('--glare-x', `${horizontal * 100}%`);
-    });
-  }
-  return { element, tilt, reset };
 }
 
 /** Rule Doc question count from its open-questions section, shared by tiles and table rows. */
@@ -202,7 +177,8 @@ export const CatalogCardTile = memo(function CatalogCardTile({ card, lookups, me
   const [hovered, setHovered] = useState(false);
   const tileElement = useRef<HTMLElement | null>(null);
   const transfer = useCardTransferDrag(card);
-  const { element, tilt, reset } = useCardTilt<HTMLElement>(6, checked || disabled || familyHovered || transfer.anyDragging);
+  // 2026-11-09: the author's reference video measures ±12deg (perspective 850px); the author asked for a touch less.
+  const { element, tilt, reset } = useCardTilt<HTMLElement>(10, checked || disabled || familyHovered || transfer.anyDragging);
   const progress = card.kind === 'hero' ? { children: lookups.childrenByParent.get(card.id) ?? emptyCards } : null;
   // Own effort plus Sub Cards' effort matches the table row and properties panel.
   const heroEffort = progress ? cardHeroEffort(card, { cards: progress.children }) : null;
@@ -226,7 +202,7 @@ export const CatalogCardTile = memo(function CatalogCardTile({ card, lookups, me
   const effortLabel = card.effort == null ? '—' : effortFormat.format(card.effort);
   const cardPriorityLabel = card.priority ? priorityLabel(card.priority, lang) : t.noPriority;
   const cardStateLabel = stateLabel(card.state ?? 'not-started', lang);
-  const style = { '--tilt-x': '0deg', '--tilt-y': '0deg', '--glare-x': '35%', '--glare-y': '25%' } as CSSProperties;
+  const style = { '--tilt-x': '0deg', '--tilt-y': '0deg', '--glare-x': '50%', '--glare-opacity': 0 } as CSSProperties;
   const canStart = card.kind === 'task' && card.state !== 'started' && Boolean(onStart) && !disabled;
   const attachmentBadge = <CardAttachmentBadge cardId={card.id} refreshKey={catalog?.indexedAt} tile={tileElement} />;
   function startWithSpace(event: KeyboardEvent) {
@@ -244,7 +220,7 @@ export const CatalogCardTile = memo(function CatalogCardTile({ card, lookups, me
     window.addEventListener('keydown', listener, true);
     return () => window.removeEventListener('keydown', listener, true);
   }, [hovered, canStart, onStart]);
-  return <div ref={node => { transfer.setNodeRef(node); tileElement.current = node; }} className={'deck-card-space' + (hovered ? ' is-hovered' : '')} data-card-id={card.id} data-card-hovered={hovered || undefined} data-card-transfer-enabled={transfer.enabled || undefined} data-card-transfer-source={transfer.isDragging || undefined} onPointerEnter={() => setHovered(true)} onPointerDown={transfer.onPointerDown} onPointerMove={tilt} onPointerLeave={() => { setHovered(false); reset(); }} onKeyDown={event => { if (!hovered) startWithSpace(event.nativeEvent); }}>
+  return <div ref={node => { transfer.setNodeRef(node); tileElement.current = node; }} className={'deck-card-space' + (hovered ? ' is-hovered' : '')} data-card-id={card.id} data-card-hovered={hovered || undefined} data-card-transfer-enabled={transfer.enabled || undefined} data-card-transfer-source={transfer.isDragging || undefined} onPointerEnter={event => { setHovered(true); tilt(event); }} onPointerDown={transfer.onPointerDown} onPointerMove={tilt} onPointerLeave={() => { setHovered(false); reset(); }} onKeyDown={event => { if (!hovered) startWithSpace(event.nativeEvent); }}>
     <article ref={element} className={`deck-card catalog-card-${card.kind} deck-state-${statusClass(card.state ?? '')}${familyDone ? ' is-family-done' : ''}${justDone ? ' is-just-done' : ''}${selected ? ' is-selected' : ''}${checked ? ' is-multi-selected' : ''}`} style={style} data-deck-card={card.id}>
       {transfer.handle}
       {selectable && <input className="catalog-card-checkbox" type="checkbox" checked={checked} disabled={disabled} aria-label={t.selectCard(card.title)} onChange={event => onToggle(card.id, Boolean((event.nativeEvent as MouseEvent).shiftKey))} />}
@@ -262,17 +238,21 @@ export const CatalogCardTile = memo(function CatalogCardTile({ card, lookups, me
           onQuickSettings={!disabled && !card.deleted && onQuickSettings ? (tab, anchor) => onQuickSettings(card.id, tab, anchor) : undefined} />
         {/* Bottom hints place state on the left and the tag color dot on the right. */}
         <span className="deck-card-hints">
-          {(card.archived || card.kind === 'task') && <span className="deck-card-state-mark" title={card.archived ? t.archived : cardStateLabel}>
-            {card.archived && <Archive size={15} aria-label={t.archived} />}
+          {((card.archived && !card.deleted) || card.kind === 'task') && <span className="deck-card-state-mark" title={card.archived && !card.deleted ? t.archived : cardStateLabel}>
+            {card.archived && !card.deleted && <Archive size={15} aria-label={t.archived} />}
             {card.kind === 'task' && <><StateIcon size={15} /><span className="visually-hidden">{cardStateLabel}</span></>}
           </span>}
           <TagColorIndicator tags={card.tags} definitions={tagDefinitions} />
         </span>
       </div>
       <div className="deck-card-band">{card.owner && <span className="deck-card-owner-medallion" title={t.owner(card.owner)} aria-label={t.owner(card.owner)}><CardOwnerAvatar owner={card.owner} members={members} /></span>}
-        {card.kind === 'task' ? <div className="deck-card-task-metrics"><span data-shortcut-property="effort" onPointerEnter={event => markShortcutPropertyHover(event.currentTarget, true)} onPointerLeave={event => markShortcutPropertyHover(event.currentTarget, false)} title={t.effort(effortLabel)}><Gauge size={18} /><strong>{effortLabel}</strong></span><span data-shortcut-property="priority" onPointerEnter={event => markShortcutPropertyHover(event.currentTarget, true)} onPointerLeave={event => markShortcutPropertyHover(event.currentTarget, false)} title={t.priority(cardPriorityLabel)}><Layers size={17} /><span className="visually-hidden">{cardPriorityLabel}</span></span>{attachmentBadge}</div> : <div className="deck-card-identity">{showEffortTotal && <Gauge className="catalog-card-effort-icon" size={16} aria-hidden="true" data-shortcut-property="effort" onPointerEnter={event => markShortcutPropertyHover(event.currentTarget, true)} onPointerLeave={event => markShortcutPropertyHover(event.currentTarget, false)} />}<strong className={identityClassName} title={identityTitle}>{identityValue}</strong>{openQuestionCount > 0 && <OpenQuestionsBadge card={card} />}{attachmentBadge}<Icon size={18} aria-hidden="true" /></div>}
+        <span className="card-material-glare" aria-hidden="true" />
+        {card.kind === 'task' && <div className="deck-card-task-metrics"><span data-shortcut-property="effort" onPointerEnter={event => markShortcutPropertyHover(event.currentTarget, true)} onPointerLeave={event => markShortcutPropertyHover(event.currentTarget, false)} title={t.effort(effortLabel)}><Gauge size={18} /><strong>{effortLabel}</strong></span><span data-shortcut-property="priority" onPointerEnter={event => markShortcutPropertyHover(event.currentTarget, true)} onPointerLeave={event => markShortcutPropertyHover(event.currentTarget, false)} title={t.priority(cardPriorityLabel)}><Layers size={17} /><span className="visually-hidden">{cardPriorityLabel}</span></span>{attachmentBadge}</div>}
+        {/* 2026-11-09: no attachment badge on the Hero band — it stacked above the crown and made the band taller (author). */}
+        {card.kind === 'hero' && <div className="deck-card-identity">{showEffortTotal && <Gauge className="catalog-card-effort-icon" size={16} aria-hidden="true" data-shortcut-property="effort" onPointerEnter={event => markShortcutPropertyHover(event.currentTarget, true)} onPointerLeave={event => markShortcutPropertyHover(event.currentTarget, false)} />}<strong className={identityClassName} title={identityTitle}>{identityValue}</strong><Icon size={18} aria-hidden="true" /></div>}
+        {card.kind === 'doc' && <div className="deck-card-identity"><span className="deck-card-doc-kind" role="img" title={cardKinds.doc} aria-label={cardKinds.doc}><Icon size={18} aria-hidden="true" /></span>{openQuestionCount > 0 && <OpenQuestionsBadge card={card} />}</div>}
         {progress && (progress.children.length ? <SubCardProgress cards={progress.children} cardsById={lookups.cardById} /> : <span className="catalog-card-progress">{t.noSubCards}</span>)}
-        {card.kind === 'doc' && <span className="catalog-card-progress">Markdown{wordCount > 0 && <> · <span title={t.wordCount(numberFormat.format(wordCount))} aria-label={t.wordCount(numberFormat.format(wordCount))}>{numberFormat.format(wordCount)}</span></>}</span>}
+        {card.kind === 'doc' && <span className="catalog-card-progress"><span className="deck-card-doc-caption">Markdown{wordCount > 0 && <> · <span title={t.wordCount(numberFormat.format(wordCount))} aria-label={t.wordCount(numberFormat.format(wordCount))}>{numberFormat.format(wordCount)}</span></>}</span>{attachmentBadge}</span>}
       </div>
     </article>
   </div>;

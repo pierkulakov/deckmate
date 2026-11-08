@@ -223,10 +223,21 @@ it('types attachments by content and keeps honest uploads working', async () => 
   expect(await upload(`data:image/png;base64,${Buffer.from('<svg onload="alert(1)"><script>alert(2)</script>').toString('base64')}`)).toBe(422);
   expect(await upload(`data:image/png;base64,${png.toString('base64')}`)).toBe(200);
   const attachments = (await app.inject({ url: '/api/attachments?cardId=' + encodeURIComponent(cardId), headers })).json();
+  expect(attachments).not.toHaveProperty('cover');
   expect(attachments.files).toHaveLength(1);
   expect(attachments.files[0].mime).toBe('image/png');
   const stored = await readFile(path.join(root, attachments.files[0].file));
   expect(stored.equals(png)).toBe(true);
+});
+
+it('rejects the retired card cover action without creating an attachment registry', async () => {
+  const { root, app, headers } = await project({ readOnly: false, port: 44363 });
+  const snapshot = (await app.inject({ url: '/api/snapshot', headers })).json();
+  const response = await app.inject({ method: 'POST', url: '/api/catalog', headers: { ...headers, 'x-deckmate-token': snapshot.token },
+    payload: { action: 'set-card-cover', source: 'sandbox', manifestHash: '', cardId, attachmentsHash: '',
+      coverFile: null, coverPosition: 50, coverTitleMode: 'light', coverBlur: false } });
+  expect(response.statusCode).toBe(400);
+  await expect(readdir(path.join(root, 'tasks/deckmate-assets/cards'))).rejects.toMatchObject({ code: 'ENOENT' });
 });
 
 it('decodeAttachment rejects oversize and noncanonical base64 without touching the filesystem', async () => {

@@ -7,8 +7,8 @@ const text = defineText({
   invalidRange: 'Invalid byte range',
   modelChanged: 'Block model changed during serialization; use raw Markdown',
 }, {
-  invalidRange: 'Invalid byte range',
-  modelChanged: 'Block model changed during serialization; use raw Markdown',
+  invalidRange: 'Некорректный диапазон байтов',
+  modelChanged: 'Модель блока изменилась при сериализации; используйте исходный Markdown',
 });
 
 export function replaceMarkdownBlock(

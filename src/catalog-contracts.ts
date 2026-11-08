@@ -40,6 +40,23 @@ export function deckAcceptsCard(deck: DeckKind, card: CardKind): boolean {
     || (deck === 'task' && card === 'task') || (deck === 'knowledge' && card === 'doc');
 }
 
+/** Only decks that take Tasks can be the Inbox: new cards and Sub Cards are Tasks by default (2026-11-08). */
+export function deckCanBeInbox(deck: DeckKind): boolean {
+  return deckAcceptsCard(deck, 'task');
+}
+
+/**
+ * Where a new card lands when the request names no deck (`deckId: null`), following the Codecks flow (2026-11-08):
+ * the project's Inbox when it accepts the card's kind, otherwise no deck at all (Unassigned). Creation never fails
+ * for want of a deck; an explicit deckId still has to accept the card's kind. Server and client both use this.
+ */
+export function newCardDeckId(requested: string | null, inboxDeckId: string | null | undefined,
+  decks: readonly Pick<CatalogDeck, 'id' | 'kind'>[], kind: CardKind): string | null {
+  if (requested !== null) return requested;
+  const inbox = inboxDeckId ? decks.find(deck => deck.id === inboxDeckId) : undefined;
+  return inbox && deckAcceptsCard(inbox.kind, kind) ? inbox.id : null;
+}
+
 export interface CatalogDocument {
   path: string;
   title: string;
@@ -76,7 +93,7 @@ export interface CatalogCard extends CardOptions {
 
 export interface CatalogOpenQuestion { text: string; taskRef: string | null }
 
-// Attachment files live in the data project. Their list and cover metadata are stored
+// Attachment files live in the data project. Their list is stored
 // alongside them in the managed attachments.md file (server/attachments.ts).
 export type AttachmentKind = 'image' | 'pdf';
 export interface CardAttachment {
@@ -90,9 +107,7 @@ export interface CardAttachment {
   /** The registry entry exists, but its file is missing from disk. */
   missing?: boolean;
 }
-// Card image covers include position, title color, and bottom blur settings.
-export interface CardCover { file: string; position: number; titleMode: 'light' | 'dark'; blur: boolean }
-export interface CardAttachments { hash: string; files: CardAttachment[]; cover: CardCover | null; warnings: string[] }
+export interface CardAttachments { hash: string; files: CardAttachment[]; warnings: string[] }
 
 export interface CatalogJourneyStep {
   id: string;
@@ -484,5 +499,4 @@ export type CatalogEdit = { manifestHash: string; sourceHash?: string } & (
   // attachmentsHash is the card's attachment registry hash ('' before any attachments); conflicts return 409.
   | { action: 'upload-attachment'; cardId: string; attachmentsHash: string; dataUrl: string; fileName: string | null; addedBy: string | null }
   | { action: 'remove-attachment'; cardId: string; attachmentsHash: string; file: string }
-  | { action: 'set-card-cover'; cardId: string; attachmentsHash: string; coverFile: string | null; coverPosition: number; coverTitleMode: 'light' | 'dark'; coverBlur: boolean }
 );

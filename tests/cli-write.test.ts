@@ -122,6 +122,19 @@ it('sends the session token and actor through the real API and matches offline b
   expect(events[0].actorMemberId).toBe('codex');
 });
 
+it.each(['files', 'server'] as const)('creates an Unassigned card without a deck through the shared CLI service via %s', async via => {
+  const { root, config } = await fixture();
+  if (via === 'server') await connect(config); else offline();
+  const catalog = await readProjectCatalog(root);
+  const cardId = 'card:33333333-3333-4333-8333-333333333333';
+  const manifest = await readFile(path.join(root, 'tasks/deckmate.md'));
+  const result = await writeCatalog(config, 'sandbox', { action: 'create-card', manifestHash: catalog.manifestHash,
+    cardId, kind: 'task', title: 'Captured', markdown: '', deckId: null, parentId: null, trackIds: [], owner: null, effort: null, priority: null }, 'codex');
+  expect(result).toEqual({ warnings: [], via });
+  expect((await readProjectCatalog(root)).cards.find(card => card.id === cardId)).toMatchObject({ deckId: null });
+  expect(await readFile(path.join(root, 'tasks/deckmate.md'))).toEqual(manifest);
+});
+
 it.each(['files', 'server'] as const)('rejects a stale sourceHash with 409 and no writes via %s', async via => {
   const { root, config, edit } = await fixture();
   if (via === 'server') await connect(config); else offline();

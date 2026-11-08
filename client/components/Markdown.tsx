@@ -24,8 +24,8 @@ const text = defineText({
   checklist: (done: number, total: number) => `Checklist: ${done} of ${total}`,
   completed: (done: number, total: number) => `${done}/${total} completed`,
 }, {
-  missingCard: 'Карта не найдена',
-  missingCardInline: (label: string) => `${label} — карта не найдена`,
+  missingCard: 'Карточка не найдена',
+  missingCardInline: (label: string) => `${label} — карточка не найдена`,
   unavailableImage: 'Изображение: недоступная ссылка',
   item: 'пункт',
   human: 'Человек',

@@ -20,8 +20,8 @@ const text = defineText({
 }, {
   waiting: 'ждёт:',
   inProgress: 'Изменение уже выполняется.',
-  single: (title: string, total: number) => `«${title}» ждёт ${total} незакрыты${total === 1 ? 'й' : 'х'} зависимост${total === 1 ? 'ь' : 'и'}. Перевести карту в новое состояние всё равно?`,
-  multiple: (cards: number, total: number) => `У ${cards} карт есть незакрытые входящие зависимости (всего ${total}). Перевести их всё равно?`,
+  single: (title: string, total: number) => `«${title}» ждёт ${total} незакрыты${total === 1 ? 'й' : 'х'} зависимост${total === 1 ? 'ь' : 'и'}. Перевести карточку в новое состояние всё равно?`,
+  multiple: (cards: number, total: number) => `У ${cards} карточек есть незакрытые входящие зависимости (всего ${total}). Перевести их всё равно?`,
   cancel: 'Отмена',
   anyway: 'Всё равно',
   noStatus: 'без статуса',

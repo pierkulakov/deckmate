@@ -23,12 +23,12 @@ const text = defineText({
   remaining: (count: number) => ' and ' + new Intl.NumberFormat('en-US').format(count) + ' more',
   trash: ' · Trash', archive: ' · Archive',
 }, {
-  asset: 'Asset Deck', task: 'Task Deck', knowledge: 'Knowledge', mixed: 'Mixed Deck',
+  asset: 'Колода Asset', task: 'Колода Task', knowledge: 'Knowledge', mixed: 'Колода Mixed',
   assetAccepts: 'Принимает Hero Cards', taskAccepts: 'Принимает Task Cards', knowledgeAccepts: 'Принимает Doc Cards', mixedAccepts: 'Принимает Hero, Task и Doc Cards',
   assetDescription: 'Hero Cards для ключевых частей проекта: персонажи, уровни, фичи. Хранит шаблоны Journey, из которых создаются повторяемые Sub Cards.',
   taskDescription: 'Работа, которая воплощает Asset. Колода на направление даёт команде сфокусированный бэклог; шаги Journey могут приходить сюда.',
   knowledgeDescription: 'Самостоятельные справочные материалы: вики, руководства, заметки встреч. Doc Cards остаются документами без состояния задачи.',
-  mixedDescription: 'Гибкая колода для любых карт — для процессов, где деления Asset / Task мало. Может хранить Journey и принимать их шаги.',
+  mixedDescription: 'Гибкая колода для любых карточек — для процессов, где деления Asset / Task мало. Может хранить Journey и принимать их шаги.',
   sandboxOnly: 'Тип колоды меняется только в sandbox.',
   catalogChanged: 'Каталог изменился. Закройте и снова откройте выбор типа.', saveFailed: 'Не удалось сохранить тип колоды.',
   notSaved: 'Тип не сохранён. Проверьте сообщение каталога и повторите.',
@@ -93,7 +93,7 @@ export function DeckTypePicker({ deck, cards, journeys, pending, writable, manif
   useEffect(() => () => { request.current += 1; }, [deck.id]);
 
   const issues = useMemo(() => new Map(deckTypeOrder.map((kind): [DeckKind, string | null] => [kind,
-    kind === deck.kind ? null : deckTypeChangeIssue(deck.id, kind, cards, journeys)])), [deck.id, deck.kind, cards, journeys, lang]);
+    kind === deck.kind ? null : deckTypeChangeIssue(deck.id, kind, cards, journeys, lang)])), [deck.id, deck.kind, cards, journeys, lang]);
   let errorMessage = '';
   if (error && 'key' in error) errorMessage = t[error.key];
   else if (error && 'kind' in error) errorMessage = options[error.kind].label + ': ' + (issues.get(error.kind) ?? '');

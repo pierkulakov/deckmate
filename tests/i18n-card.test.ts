@@ -1,4 +1,6 @@
 import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { createElement } from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
 
 vi.stubGlobal('document', { documentElement: { lang: '' }, cookie: '' });
 vi.stubGlobal('window', { dispatchEvent: vi.fn(), location: { origin: 'http://localhost' } });
@@ -8,6 +10,7 @@ const { setLang } = await import('../client/i18n.ts');
 const { formatEditorSelection } = await import('../client/editor-formatting.ts');
 const { formatAttachmentDate, formatAttachmentSize, validateAttachmentFile } = await import('../client/attachments.ts');
 const { getEditorOptions } = await import('../client/editor-commands.ts');
+const { QuickSettingsList } = await import('../client/components/QuickSettingsList.tsx');
 
 const catalog = { cards: [], decks: [], members: [] } as never;
 
@@ -26,6 +29,31 @@ describe('card interface language', () => {
     expect(getEditorOptions(trigger, catalog)[0]).toMatchObject({ detail: '[text](url)', insert: '[text](https://)', selection: [1, 5] });
     setLang('ru');
     expect(getEditorOptions(trigger, catalog)[0]).toMatchObject({ detail: '[текст](url)', insert: '[текст](https://)', selection: [1, 6] });
+  });
+
+  it('translates commands and member kinds while retaining English command search', () => {
+    const trigger = { kind: 'command', start: 0, end: 1, query: '' } as const;
+    expect(getEditorOptions(trigger, catalog).find(option => option.id === 'heading-1')?.label).toBe('Heading 1');
+    setLang('ru');
+    const options = getEditorOptions(trigger, catalog);
+    expect(options.find(option => option.id === 'heading-1')?.label).toBe('Заголовок 1');
+    expect(options.find(option => option.id === 'emoji')?.label).toBe('Эмодзи');
+    expect(getEditorOptions({ ...trigger, query: 'heading' }, catalog)[0].label).toBe('Заголовок 1');
+    const members = { cards: [], decks: [], members: [{ id: 'one', label: 'One', aliases: [], kind: 'human' }, { id: 'two', label: 'Two', aliases: [], kind: 'agent' }] } as never;
+    expect(getEditorOptions({ kind: 'member', start: 0, end: 1, query: '' }, members).map(option => option.detail)).toEqual(['Человек', 'Агент']);
+  });
+
+  it('localizes the quick settings heading, current marker and keyboard hint', () => {
+    const render = (title: string) => renderToStaticMarkup(createElement(QuickSettingsList, {
+      title, choices: [{ key: '', label: 'None' }], current: '', disabled: false, tabs: true, onChoose: () => {},
+    }));
+    expect(render('Owner')).toContain('Choose Owner');
+    setLang('ru');
+    const russian = render('Исполнитель');
+    expect(russian).toContain('Выбрать: Исполнитель');
+    expect(russian).toContain('текущее');
+    expect(russian).toContain('подтвердить');
+    expect(russian).not.toContain('Use ');
   });
 
   it('formats attachment sizes and dates with the selected locale', () => {

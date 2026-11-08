@@ -12,9 +12,9 @@ const text = defineText({
   selectTag: (name: string) => `Select cards tagged #${name}`,
 }, {
   heading: 'Теги', selectByTags: 'Показ и выбор по тегам', match: 'Совпадение тегов',
-  allTags: 'Карты со всеми выбранными тегами', anyTag: 'Карты с любым из выбранных тегов',
-  selectUntagged: 'Выбрать карты без тегов', notTagged: 'Без тегов',
-  selectTag: (name: string) => `Выбрать карты с тегом #${name}`,
+  allTags: 'Карточки со всеми выбранными тегами', anyTag: 'Карточки с любым из выбранных тегов',
+  selectUntagged: 'Выбрать карточки без тегов', notTagged: 'Без тегов',
+  selectTag: (name: string) => `Выбрать карточки с тегом #${name}`,
 });
 
 /**

@@ -69,10 +69,10 @@
 
 /* 2026-11-05: the lane label filters; its separate checkbox selects, revealed by hover or keyboard focus. */
 .catalog-card-group-heading .catalog-group-label { display: inline-flex; align-items: center; gap: 8px; min-width: 0; font-weight: 400; line-height: 14px; }
-.catalog-group-filter { display: inline-flex; align-items: center; gap: 4px; min-width: 0; padding: 0; border: 0; background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.catalog-group-filter { display: inline-flex; align-items: center; gap: 4px; min-width: 0; padding: 5px 0; margin: -5px 0; border: 0; background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer; }
 .catalog-group-filter:hover:not(:disabled) { color: var(--ink); text-decoration: underline; text-underline-offset: 3px; }
 .catalog-group-filter:disabled { cursor: default; }
-.catalog-group-select { display: inline-flex; align-items: center; opacity: 0; }
+.catalog-group-select { display: inline-flex; align-items: center; opacity: 0; cursor: pointer; }
 .catalog-card-group-heading:hover .catalog-group-select,
 .catalog-card-group-heading:focus-within .catalog-group-select,
 .catalog-card-group-heading[data-selecting] .catalog-group-select,

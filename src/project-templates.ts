@@ -42,7 +42,7 @@ const messages = defineText({
   order: 'order: требуется целое число от 1 до 30.',
   color: (field: string) => `${field}: требуется цвет в формате #RRGGBB.`,
   roleDeck: (field: string) => `${field}: роли Journey принадлежат Task-колодам в пространстве Production (tasks).`,
-  assetDeck: (field: string) => `${field}: Journey и примеры карт требуют Asset-колоду.`,
+  assetDeck: (field: string) => `${field}: Journey и примеры карточек требуют Asset-колоду.`,
   deckKind: (field: string) => `${field}: колоды Production должны иметь тип task.`,
 });
 

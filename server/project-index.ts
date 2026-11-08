@@ -15,7 +15,7 @@ const messages = defineText({
   duplicateKey: (table: string, key: string) => `Duplicate ${table} key in catalog: ${key}`,
 }, {
   invalidLimit: (maximum: number, value: number) => `limit должен быть целым числом от 1 до ${maximum}, получено ${value}`,
-  duplicateCard: (id: string) => `Повторяющийся ID карты в каталоге: ${id}`,
+  duplicateCard: (id: string) => `Повторяющийся ID карточки в каталоге: ${id}`,
   duplicateKey: (table: string, key: string) => `Повторяющийся ключ ${table} в каталоге: ${key}`,
 });
 

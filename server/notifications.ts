@@ -1,4 +1,4 @@
-import { defineText, serverText } from './i18n.ts';
+import { defineText, serverLang, serverText } from './i18n.ts';
 import { createHash } from 'node:crypto';
 import { isAlias, isMap, isScalar, isSeq, parseDocument, visit, type Document } from 'yaml';
 import type { DeckActivityEvent } from '../src/activity-contracts.ts';
@@ -7,7 +7,7 @@ import { memberIdForOwner, memberIdPattern } from '../src/members.ts';
 import type { NotificationCard, NotificationChange, NotificationDismissRequest, NotificationMember, NotificationsView, NotificationStack, NotificationWatchRequest } from '../src/notification-contracts.ts';
 import type { DataSource } from '../src/workspace-contracts.ts';
 import type { FormatLanguage } from '../src/format-vocabulary.ts';
-import { journalEntries, listJournal } from './activity.ts';
+import { displayActivityChange, journalEntries, listJournal } from './activity.ts';
 import { localIsoDate } from '../src/catalog-hand.ts';
 import { CatalogError, type CatalogService } from './catalog-service.ts';
 import { assertWritable, type ServerConfig } from './config.ts';
@@ -36,6 +36,7 @@ const messages = defineText({
   invalidState: (memberId: string) => `Notification state for “${memberId}” skipped: invalid format.`,
   invalidWatch: (memberId: string) => `The watch list for “${memberId}” must contain card IDs.`,
   allShown: (file: string, error: string) => `${file}: ${error}. All notifications are shown.`,
+  owned: 'Cards you own', watching: 'Cards you watch', due: 'Due Cards',
 }, {
   frontMatter: "В файле уведомлений нет YAML-шапки.",
   invalidYaml: "Некорректный YAML файла уведомлений.",
@@ -56,8 +57,9 @@ const messages = defineText({
   verifyWatch: "Не удалось проверить список наблюдения.",
   fileChanged: "Файл уведомлений изменился во время записи. Повторите действие.",
   invalidState: (memberId: string) => `Состояние уведомлений «${memberId}» пропущено: неверный формат.`,
-  invalidWatch: (memberId: string) => `Список наблюдения «${memberId}» должен содержать ID карт.`,
+  invalidWatch: (memberId: string) => `Список наблюдения «${memberId}» должен содержать ID карточек.`,
   allShown: (file: string, error: string) => `${file}: ${error}. Показаны все уведомления.`,
+  owned: 'Ваши карточки', watching: 'Карточки под наблюдением', due: 'Карточки со сроком',
 });
 
 
@@ -219,8 +221,9 @@ function readableChange(change: string): string {
     return enabled ? serverText(messages).deleted : serverText(messages).restored;
   }
   // Card Options values are journaled as JSON; a quote or null means nothing to a reader.
-  if (/^(Run|Milestone|Срок|Due date): /u.test(change)) return change.replace(/"/gu, '').replace(/\bnull\b/gu, '—');
-  return change;
+  const display = displayActivityChange(change, serverLang());
+  if (/^(Run|Milestone|Срок|Due date): /u.test(display)) return display.replace(/"/gu, '').replace(/\bnull\b/gu, '—');
+  return display;
 }
 
 function actorLabel(event: DeckActivityEvent, members: CatalogMember[]): string {
@@ -258,7 +261,7 @@ function ownedStack(events: DeckActivityEvent[], catalog: CatalogView, member: C
       }
       if (!notifies || !card || !recipients.has(member.id)) continue;
       if ((dismissals.owned && event.at <= dismissals.owned) || event.at <= (dismissals.seenCards.get(cardId) ?? '')) continue;
-      const lines = system ? changes : changes.filter(change => ownerFields.test(change)).map(readableChange);
+      const lines = (system ? changes : changes.filter(change => ownerFields.test(change))).map(readableChange);
       if (!lines.length) continue;
       groups.set(cardId, [...groups.get(cardId) ?? [], { eventId: event.id, at: event.at, actor: actorLabel(event, members), lines }]);
     }
@@ -269,7 +272,7 @@ function ownedStack(events: DeckActivityEvent[], catalog: CatalogView, member: C
     return { cardId, title: card.title, deckTitle: decks.get(card.deckId ?? '') ?? null, latestAt: changes[0].at,
       changes: changes.slice(0, cardChangeLimit), hiddenChanges: Math.max(0, changes.length - cardChangeLimit) };
   }).sort((left, right) => (right.latestAt ?? '').localeCompare(left.latestAt ?? ''));
-  return { id: 'owned', title: 'Cards you own', dismissible: true, total: cards.length, hidden: Math.max(0, cards.length - stackCardLimit),
+  return { id: 'owned', title: serverText(messages).owned, dismissible: true, total: cards.length, hidden: Math.max(0, cards.length - stackCardLimit),
     latestAt: cards[0]?.latestAt ?? null, cards: cards.slice(0, stackCardLimit) };
 }
 
@@ -330,7 +333,7 @@ function watchingStack(events: DeckActivityEvent[], catalog: CatalogView, member
     return { cardId, title: card.title, deckTitle: decks.get(card.deckId ?? '') ?? null, latestAt: changes[0].at,
       changes: changes.slice(0, cardChangeLimit), hiddenChanges: Math.max(0, changes.length - cardChangeLimit) };
   }).sort((left, right) => (right.latestAt ?? '').localeCompare(left.latestAt ?? ''));
-  return { id: 'watching', title: 'Cards you watch', dismissible: true, total: cards.length, hidden: Math.max(0, cards.length - stackCardLimit),
+  return { id: 'watching', title: serverText(messages).watching, dismissible: true, total: cards.length, hidden: Math.max(0, cards.length - stackCardLimit),
     latestAt: cards[0]?.latestAt ?? null, cards: cards.slice(0, stackCardLimit) };
 }
 
@@ -343,7 +346,7 @@ function dueStack(catalog: CatalogView, member: CatalogMember, today: string): N
     .sort((left, right) => left.title.localeCompare(right.title, 'ru'));
   const cards: NotificationCard[] = due.map(card => ({ cardId: card.id, title: card.title, deckTitle: decks.get(card.deckId ?? '') ?? null,
     latestAt: null, dueDate: card.dueDate ?? undefined, state: card.state, changes: [], hiddenChanges: 0 }));
-  return { id: 'due', title: 'Due Cards', dismissible: false, total: cards.length, hidden: Math.max(0, cards.length - stackCardLimit),
+  return { id: 'due', title: serverText(messages).due, dismissible: false, total: cards.length, hidden: Math.max(0, cards.length - stackCardLimit),
     latestAt: null, cards: cards.slice(0, stackCardLimit) };
 }
 

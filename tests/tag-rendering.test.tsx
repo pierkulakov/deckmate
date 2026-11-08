@@ -57,6 +57,28 @@ describe('shared tag presentation', () => {
     expect(html).toContain('🇩🇪');
   });
 
+  it('uses badge plaques and makes every preview tag a button, including personal hashtags', () => {
+    const html = renderToStaticMarkup(<CardTags tags={['engine', 'звук', 'plain', 'личный', 'engine']} definitions={projectTags}
+      onOpenCard={() => {}} onEditTags={() => {}} />);
+    expect(html.match(/<button\b/gu)).toHaveLength(4);
+    expect(html.match(/tag-badge is-project/gu)).toHaveLength(3);
+    expect(html).toContain('tag-badge is-personal');
+    expect(html).toContain('tag-badge-glyph');
+    expect(html).not.toContain('card-meta-tag');
+    expect(html).not.toContain('card-tag-pie');
+    expect(html).toContain('🔈');
+    expect(html).toContain('>plain</span>');
+    expect(html).toContain('>#личный</span>');
+    expect(html).toContain('aria-label="Tags: engine, звук, plain, личный"');
+  });
+
+  it('keeps preview tag buttons mounted and disabled while navigation is locked', () => {
+    const html = renderToStaticMarkup(<CardTags tags={['engine', 'звук', 'personal']} definitions={projectTags}
+      onOpenCard={() => {}} onEditTags={() => {}} disabled />);
+    expect(html.match(/<button\b/gu)).toHaveLength(3);
+    expect(html.match(/disabled=""/gu)).toHaveLength(3);
+  });
+
   // 2026-11-05: colored tags get a dot; emoji tags show their glyph, and the default color adds no decoration.
   it('renders no dot for personal-only tags, one exact color for one project tag, and a project-only pie', () => {
     expect(renderToStaticMarkup(<TagColorIndicator tags={['personal']} definitions={projectTags} />)).toBe('');

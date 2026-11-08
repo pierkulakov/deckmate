@@ -51,7 +51,6 @@ export async function fetchCardAttachments(source: DataSource, cardId: string): 
 export function attachmentFileUrl(source: DataSource, file: string): string {
   return `/api/file?source=${source}&path=${encodeURIComponent(file)}`;
 }
-
 export function validateAttachmentFile(file: File): string | null {
   const t = textNow(text);
   if (!attachmentAcceptedTypes.includes(file.type)) return t.invalidType(file.name);

@@ -42,6 +42,7 @@ const text = defineText({
   uiManual: "Manual",
   uiOwner: "Owner",
   uiLastUpdated: "Last updated",
+  uiLastUpdatedFull: "Last updated",
   uiCreationDate: "Creation date",
   uiTitle: "Title",
   uiHeroCard: "Hero Card",
@@ -63,40 +64,42 @@ const text = defineText({
   laterEarlier: "Поздние → ранние",
   earlierLater: "Ранние → поздние",
   learnMore: "Подробнее",
-  tagsHint: (label: string) => `Tags · ${label}. Не бывает вторичным порядком и не сворачивается Compact.`,
-  manualHint: "Manual · порядок перетаскиванием и зоны колоды, общий для всех",
+  tagsHint: (label: string) => `Теги · ${label}. Не бывают вторичным порядком и не сворачиваются в компактный вид.`,
+  manualHint: "Вручную · порядок перетаскиванием и зоны колоды, общий для всех",
   ascending: "по возрастанию",
   descending: "по убыванию",
   flipHint: (label: string, direction: string) => `${label} · ${direction}. Повторное нажатие меняет направление.`,
   multiSortHint: "Добавляет вторичные порядки; Ctrl+клик по кнопке порядка — то же без переключателя",
-  compactHint: "Все карты в одной полосе",
-  hideEmptyHint: "Скрывает пустые зоны порядка Manual",
+  compactHint: "Все карточки в одной полосе",
+  hideEmptyHint: "Скрывает пустые зоны ручного порядка",
   resetHint: "Вернуть порядок колоды по умолчанию",
   saveHint: "Сделать этот порядок порядком колоды для всех, кто ещё не выбрал свой",
   helpPrimary: "Щелчок по порядку делает его основным",
-  helpSecondary: "Ctrl+клик (⌘ на Mac) добавляет вторичный порядок — как переключатель Multi Sort",
+  helpSecondary: "Ctrl+клик (⌘ на Mac) добавляет вторичный порядок — как переключатель мультисортировки",
   helpDefault: "Сбросить / Сохранить — порядок колоды по умолчанию",
   uiPriority: "Приоритет",
   uiHighLow: "Высокий → низкий",
   uiLowHigh: "Низкий → высокий",
-  uiEffort: "Effort",
+  uiEffort: "Оценка",
   uiState: "Состояние",
   uiRun: "Run",
-  uiMilestone: "Веха",
+  uiMilestone: "Milestone",
   uiProjectTags: "Теги проекта",
   uiProjectPersonalTags: "Теги проекта и личные",
   uiPersonalTags: "Личные теги",
-  uiManual: "Manual",
+  uiManual: "Вручную",
   uiOwner: "Исполнитель",
-  uiLastUpdated: "Последнее изменение",
+  /* 2026-11-08: the one-tap button shows the short label («Изменено» fits the 120 px column, audit DW-06); the full wording stays in its title. */
+  uiLastUpdated: "Изменено",
+  uiLastUpdatedFull: "Последнее изменение",
   uiCreationDate: "Дата создания",
   uiTitle: "Название",
   uiHeroCard: "Hero Card",
   uiDeck: "Колода",
   uiOrdering: "Порядок",
   uiTags: "Теги",
-  uiMultiSort: "Multi Sort",
-  uiCompact: "Compact",
+  uiMultiSort: "Мультисортировка",
+  uiCompact: "Компактно",
   uiHideEmpty: "Скрыть пустые",
   uiTable: "Таблица",
   uiDefaultView: "Вид по умолчанию",
@@ -117,15 +120,16 @@ const tagScopes = [
 
 // One-tap orders: the first tap takes the natural direction; dates and Title flip on a repeat tap.
 // Cards have no creator field or change-order definition, so neither is offered as an order.
-const oneTapOrders = [
+// hintLabel is the full wording for the title when the visible label is shortened.
+const oneTapOrders: readonly { key: CardOrderKey; label: string; hintLabel?: string; natural: SortDirection; flips: boolean }[] = [
   { key: 'manual', get label() { return textNow(text).uiManual; }, natural: 'asc', flips: false },
   { key: 'owner', get label() { return textNow(text).uiOwner; }, natural: 'asc', flips: false },
-  { key: 'updated', get label() { return textNow(text).uiLastUpdated; }, natural: 'desc', flips: true },
+  { key: 'updated', get label() { return textNow(text).uiLastUpdated; }, get hintLabel() { return textNow(text).uiLastUpdatedFull; }, natural: 'desc', flips: true },
   { key: 'created', get label() { return textNow(text).uiCreationDate; }, natural: 'desc', flips: true },
   { key: 'title', get label() { return textNow(text).uiTitle; }, natural: 'asc', flips: true },
   { key: 'hero', get label() { return textNow(text).uiHeroCard; }, natural: 'asc', flips: false },
   { key: 'deck', get label() { return textNow(text).uiDeck; }, natural: 'asc', flips: false },
-] as const satisfies readonly { key: CardOrderKey; label: string; natural: SortDirection; flips: boolean }[];
+];
 
 export interface DefaultViewControls { canReset: boolean; canSave: boolean; onReset: () => void; onSave: () => void }
 
@@ -250,9 +254,10 @@ export function CardOrdering({ value, onChange, disabled = false, inDeck = false
             let next: SortDirection = order.natural;
             if (current) next = order.flips ? (current === 'asc' ? 'desc' : 'asc') : current;
             const shown = current ?? order.natural;
-            let hint: string = order.label;
+            const hintLabel = order.hintLabel ?? order.label;
+            let hint: string = hintLabel;
             if (order.key === 'manual') hint = t.manualHint;
-            else if (order.flips) hint = t.flipHint(order.label, shown === 'asc' ? t.ascending : t.descending);
+            else if (order.flips) hint = t.flipHint(hintLabel, shown === 'asc' ? t.ascending : t.descending);
             return <button key={order.key} type="button" className="deck-panel-button is-wide" aria-pressed={selected || Boolean(secondary)} title={hint}
               onClick={event => choose({ order: order.key, direction: next }, event)}>
               <span>{order.label}</span>{rankBadge(selected ? 1 : secondary ? value.then.indexOf(secondary) + 2 : null)}

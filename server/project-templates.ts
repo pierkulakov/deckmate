@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { lstat, readFile, readdir } from 'node:fs/promises';
 import path from 'node:path';
 import type { CatalogDeck, CatalogEdit, CatalogJourney, CatalogJourneyTemplate, CatalogView, ProjectTemplate, ProjectTemplatePlan, ProjectTemplatePlanItem } from '../src/catalog-contracts.ts';
+import { deckCanBeInbox } from '../src/catalog-contracts.ts';
 import { parseProjectTemplate } from '../src/project-templates.ts';
 import { catalogPath, editProjectCatalog, readProjectCatalog } from './catalog.ts';
 import { decodeCatalogCover } from './catalog-covers.ts';
@@ -34,7 +35,7 @@ const messages = defineText({
   roleMissing: (role: string) => `Нет колоды Production для роли Journey: ${role}`,
   journeyExists: 'У колоды уже есть Journey; он будет сохранён.',
   incompatibleDeck: 'Тип существующей колоды несовместим; она будет сохранена.',
-  incompatibleRole: 'Существующая колода роли не принимает Task-карты.',
+  incompatibleRole: 'Существующая колода роли не принимает Task-карточки.',
   sampleExists: 'Пример с таким именем или идентификатором уже есть; он будет сохранён.',
   sampleChanged: 'У примера есть дети другой версии или экземпляра, либо перенесённый шаг; он будет сохранён.',
   sampleJourneyChanged: 'Существующий Journey отличается от этого шаблона; пример будет сохранён.',
@@ -276,6 +277,13 @@ export async function applyProjectTemplate(root: string, edit: ApplyEdit, actor:
         const cover = catalog.decks.find(candidate => candidate.id === deckId)?.cover;
         if (cover) changed.add(cover);
       }
+    }
+    // 2026-11-08: the first Task deck is the starter's general receiver; never replace a project's chosen Inbox.
+    if (!catalog.inboxDeckId) {
+      const matches = deckMatches(template, catalog);
+      const inbox = template.decks.filter(deck => deck.kind === 'task')
+        .map(deck => matches.get(deck.id)).find(deck => deck && deckCanBeInbox(deck.kind));
+      if (inbox) await run({ action: 'set-inbox-deck', deckId: inbox.id });
     }
     for (const deck of template.decks.filter(candidate => candidate.journey)) {
       const matches = deckMatches(template, catalog);

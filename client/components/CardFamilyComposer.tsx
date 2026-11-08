@@ -1,7 +1,7 @@
 import { readStoredValue } from '../storage.ts';
 import { useEffect, useRef, useState } from 'react';
 import { Layers, LoaderCircle, Plus } from 'lucide-react';
-import { deckAcceptsCard, type CatalogCard, type CatalogEdit, type CatalogView } from '../../src/catalog-contracts.ts';
+import { deckAcceptsCard, newCardDeckId, type CatalogCard, type CatalogEdit, type CatalogView } from '../../src/catalog-contracts.ts';
 import { Button } from './ui/button.tsx';
 import { defineText, useText } from '../i18n.ts';
 import { failureMessage } from '../failure-message.ts';
@@ -15,7 +15,8 @@ const text = defineText({
   recentDecks: 'Recent decks',
   placeholder: 'Card title\nWork description in Markdown',
   contentHint: 'The first line is the title. The rest is the work description.',
-  noDeck: 'A Tasks, Knowledge or Custom deck is required for a new Sub Card.',
+  autoInbox: (deck: string) => `Auto: Inbox → ${deck}`,
+  noDeckChoice: 'No deck (Unassigned)',
   parentUnavailable: 'The parent card is no longer available for new Sub Cards. The draft is preserved.',
   conflict: 'The parent or catalog changed. The text is preserved; check the selected deck.',
   useCurrent: 'Use current data',
@@ -23,7 +24,6 @@ const text = defineText({
   keep: 'Keep editing',
   discard: 'Discard',
   createCardIn: 'Create Card in',
-  chooseDeck: 'Choose Deck',
   content: 'Content',
   cancel: 'Cancel',
   create: 'Create',
@@ -35,15 +35,15 @@ const text = defineText({
   recentDecks: 'Недавние колоды',
   placeholder: 'Название карточки\nОписание работы в Markdown',
   contentHint: 'Первая строка — название. Дальше — описание работы.',
-  noDeck: 'Нужна колода Tasks, Knowledge или Custom для новой Sub Card.',
-  parentUnavailable: 'Родительская карта больше не доступна для новых Sub Cards. Черновик сохранён.',
+  autoInbox: (deck: string) => `Авто: Inbox → ${deck}`,
+  noDeckChoice: 'Без колоды',
+  parentUnavailable: 'Родительская карточка больше не доступна для новых Sub Cards. Черновик сохранён.',
   conflict: 'Родитель или каталог изменился. Текст сохранён; проверьте выбранную колоду.',
   useCurrent: 'Использовать актуальные данные',
   discardQuestion: 'Отбросить черновик Sub Card?',
   keep: 'Продолжить',
   discard: 'Отбросить',
-  createCardIn: 'Создать карту в',
-  chooseDeck: 'Выберите колоду',
+  createCardIn: 'Создать карточку в',
   content: 'Содержимое',
   cancel: 'Отмена',
   create: 'Создать',
@@ -72,9 +72,15 @@ export function CardFamilyComposer({ parent, catalog, initialDeckId, active = tr
     } catch { return []; }
   });
   const availableDecks = catalog.decks.filter(deck => deckAcceptsCard(deck.kind, 'task') || deckAcceptsCard(deck.kind, 'doc'));
+  // 2026-11-08: a Sub Card always has somewhere to land — the project Inbox when it takes Tasks, else no deck (deckId: null).
+  const inboxDeck = catalog.decks.find(deck => deck.id === catalog.inboxDeckId);
+  const autoDeckId = newCardDeckId(null, catalog.inboxDeckId, catalog.decks, 'task');
+  // Default choice: the deck the panel opened in (never the Hero deck — it does not take Tasks), the last used deck,
+  // the Inbox, then the first Task deck; «no deck» closes the chain so creation is never blocked.
   const [deckId, setDeckId] = useState(() => availableDecks.find(deck => deck.id === initialDeckId)?.id
     ?? recent.find(id => availableDecks.some(deck => deck.id === id))
-    ?? availableDecks.find(deck => deckAcceptsCard(deck.kind, 'task'))?.id ?? availableDecks[0]?.id ?? '');
+    ?? (autoDeckId ? '' : undefined)
+    ?? availableDecks.find(deck => deckAcceptsCard(deck.kind, 'task'))?.id ?? '');
   const originalDeckId = useRef(deckId);
   const [cardId] = useState(() => 'card:' + crypto.randomUUID());
   const [content, setContent] = useState('');
@@ -107,22 +113,26 @@ export function CardFamilyComposer({ parent, catalog, initialDeckId, active = tr
   }
 
   async function create() {
-    if (busy || readOnly || inFlight.current || !selectedDeck || !parentValid || conflict) return;
+    if (busy || readOnly || inFlight.current || (deckId !== '' && !selectedDeck) || !parentValid || conflict) return;
     if (!validContent) { setError(t.invalidContent); return; }
     inFlight.current = true; setSaving(true); setError('');
+    const kind = selectedDeck?.kind === 'knowledge' ? 'doc' : 'task';
     try {
+      // Without an explicit deck the request names none: the server routes the card to the Inbox, or to no deck at all.
       const saved = await onCreate({ action: 'create-card', cardId, manifestHash: base.manifestHash,
-        kind: selectedDeck.kind === 'knowledge' ? 'doc' : 'task', title, markdown, deckId: selectedDeck.id,
+        kind, title, markdown, deckId: selectedDeck?.id ?? null,
         parentId: parent.id, trackIds: [], owner: null, effort: null, priority: null });
       if (!saved) { setError(t.notConfirmed); return; }
-      try {
-        const key = 'deckmate:recent-decks:' + catalog.rootIdentity;
-        const value: unknown = JSON.parse(readStoredValue(localStorage, key) ?? '[]');
-        const previous = Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : [];
-        localStorage.setItem(key, JSON.stringify([...new Set([selectedDeck.id, ...previous])].slice(0, 3)));
-      } catch { /* 2026-11-03: optional recents must not turn a saved card into a failed creation. */ }
+      if (selectedDeck) {
+        try {
+          const key = 'deckmate:recent-decks:' + catalog.rootIdentity;
+          const value: unknown = JSON.parse(readStoredValue(localStorage, key) ?? '[]');
+          const previous = Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : [];
+          localStorage.setItem(key, JSON.stringify([...new Set([selectedDeck.id, ...previous])].slice(0, 3)));
+        } catch { /* 2026-11-03: optional recents must not turn a saved card into a failed creation. */ }
+      }
       onDirtyChange?.(false);
-      onCreated(cardId, selectedDeck.id);
+      onCreated(cardId, selectedDeck?.id ?? newCardDeckId(null, catalog.inboxDeckId, catalog.decks, kind) ?? '');
     } catch (failure) { setError(failureMessage(failure, t.createFailed)); }
     finally { inFlight.current = false; setSaving(false); }
   }
@@ -136,7 +146,7 @@ export function CardFamilyComposer({ parent, catalog, initialDeckId, active = tr
     }}>
     <label className="card-family-composer-deck"><span>{t.createCardIn}</span><span><Layers size={15} />
       <select value={deckId} disabled={busy} onChange={event => { setDeckId(event.target.value); setError(''); }}>
-        {!selectedDeck && <option value="">{t.chooseDeck}</option>}
+        <option value="">{inboxDeck && autoDeckId === inboxDeck.id ? t.autoInbox(inboxDeck.title) : t.noDeckChoice}</option>
         {availableDecks.map(deck => <option key={deck.id} value={deck.id}>{deck.title} · {deck.kind === 'knowledge' ? 'Doc' : 'Task'}</option>)}
       </select>
     </span></label>
@@ -145,7 +155,6 @@ export function CardFamilyComposer({ parent, catalog, initialDeckId, active = tr
     <label className="card-family-composer-content"><span>{t.content}</span><textarea ref={contentField} value={content} disabled={busy}
       rows={7} placeholder={t.placeholder} aria-describedby={cardId + '-hint'} onChange={event => { setContent(event.target.value); setError(''); }} /></label>
     <p className="card-family-composer-hint" id={cardId + '-hint'}>{t.contentHint}</p>
-    {!availableDecks.length && <p className="card-family-composer-error" role="alert">{t.noDeck}</p>}
     {!parentValid && <p className="card-family-composer-error" role="alert">{t.parentUnavailable}</p>}
     {conflict && parentValid && <div className="card-family-composer-error" role="alert"><span>{t.conflict}</span>
       <Button type="button" variant="outline" size="sm" disabled={busy} onClick={() => { setBase({ manifestHash: catalog.manifestHash, parentHash: currentParent!.sourceHash }); setError(''); }}>{t.useCurrent}</Button></div>}
@@ -155,7 +164,7 @@ export function CardFamilyComposer({ parent, catalog, initialDeckId, active = tr
       <Button type="button" variant="outline" size="sm" disabled={busy} onClick={onCancel}>{t.discard}</Button>
     </div></div>}
     <footer><Button type="button" variant="ghost" size="sm" disabled={busy} onClick={cancel}>{t.cancel}</Button><span>Ctrl + Enter</span>
-      <Button type="submit" size="sm" disabled={busy || readOnly || !validContent || !selectedDeck || !parentValid || conflict}>{saving ? <LoaderCircle size={14} className="spin" /> : <Plus size={14} />}{t.create}</Button>
+      <Button type="submit" size="sm" disabled={busy || readOnly || !validContent || (deckId !== '' && !selectedDeck) || !parentValid || conflict}>{saving ? <LoaderCircle size={14} className="spin" /> : <Plus size={14} />}{t.create}</Button>
     </footer>
   </form>;
 }

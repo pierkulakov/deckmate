@@ -19,16 +19,16 @@ const text = defineText({
   templateNote: 'The template fills the empty body and unset properties of new cards in this deck.',
   sandboxOnly: 'Automation can only be changed in the test copy.', saving: 'Saving…', save: 'Save',
 }, {
-  hint: (tag: string | null | undefined, template: boolean) => 'Автоматизация колоды' + (tag ? ' · автотег «' + tag + '»' : ' · автотега нет') + (template ? ' · шаблон карты задан' : ''),
+  hint: (tag: string | null | undefined, template: boolean) => 'Автоматизация колоды' + (tag ? ' · автотег «' + tag + '»' : ' · автотега нет') + (template ? ' · шаблон карточки задан' : ''),
   label: (tag: string | null | undefined) => 'Автоматизация колоды' + (tag ? ': автотег «' + tag + '»' : ''),
-  invalidEffort: 'Effort шаблона — число не меньше нуля.',
+  invalidEffort: 'Оценка шаблона — число не меньше нуля.',
   saveFailed: 'Автоматизация не сохранена. Проверьте сообщение каталога и повторите.',
   heading: 'Автоматизации', autoTagging: 'Автотег', deckTag: 'Тег колоды', tagPlaceholder: 'имя тега',
   keepTag: 'Оставлять тег при выносе из колоды',
-  tagNote: 'Тег ставится картам при создании и переносе в колоду, при выносе снимается. Выключение автотега не снимает тег с карт.',
-  template: 'Шаблон карты', content: 'Содержимое новых карт', markdownPlaceholder: 'Markdown-шаблон тела новой карты',
-  owner: 'Исполнитель', effort: 'Effort', priority: 'Приоритет', high: 'Высокий', medium: 'Средний', low: 'Низкий',
-  templateNote: 'Шаблон наполняет пустое тело и незаданные свойства новой карты этой колоды.',
+  tagNote: 'Тег ставится карточкам при создании и переносе в колоду, при выносе снимается. Выключение автотега не снимает тег с карточек.',
+  template: 'Шаблон карточки', content: 'Содержимое новых карточек', markdownPlaceholder: 'Markdown-шаблон тела новой карточки',
+  owner: 'Исполнитель', effort: 'Оценка', priority: 'Приоритет', high: 'Высокий', medium: 'Средний', low: 'Низкий',
+  templateNote: 'Шаблон наполняет пустое тело и незаданные свойства новой карточки этой колоды.',
   sandboxOnly: 'Автоматизация меняется только в тестовой копии.', saving: 'Сохраняем…', save: 'Сохранить',
 });
 

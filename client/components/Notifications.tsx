@@ -4,10 +4,11 @@
 // holding a stack's button dismisses the whole stack. Due cards cannot be dismissed manually.
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react';
 import { CalendarClock, ChevronDown, ChevronUp, Eye, UserRound } from 'lucide-react';
-import type { NotificationCard, NotificationStack, NotificationsView } from '../../src/notification-contracts.ts';
+import type { NotificationCard, NotificationStack, NotificationStackId, NotificationsView } from '../../src/notification-contracts.ts';
 import type { WorkspaceSnapshot } from '../../src/workspace-contracts.ts';
 import { onMemberChange, rememberMember, storedMemberId } from '../current-member.ts';
-import { defineText, locale, textNow, useLang, useText, type Lang } from '../i18n.ts';
+import { defineText, locale, textNow, useLang, useText } from '../i18n.ts';
+import { relativeTimeAgo } from '../relative-time.ts';
 import { stateLabel } from '../locales/common.ts';
 import '../notifications.css';
 
@@ -37,12 +38,12 @@ const text = defineText({
   for: 'для',
   member: 'Чьи уведомления показать',
   noneFor: (name: string) => `Нет уведомлений для ${name}`,
-  dueHint: 'Напоминание о сроке кнопкой не убирается: карта уйдёт, когда её примут, уберут в архив, сменят срок или Owner; иначе — завтра.',
-  dueAccepted: 'уйдёт, когда карта принята',
+  dueHint: 'Напоминание о сроке кнопкой не убирается: карточка уйдёт, когда её примут, уберут в архив, сменят срок или исполнителя; иначе — завтра.',
+  dueAccepted: 'уйдёт, когда карточка принята',
   noDeck: 'Без колоды',
   dueToday: 'Срок сегодня',
   moreChanges: (count: number) => `и ещё изменений: ${count.toLocaleString(locale())}`,
-  moreCards: (count: number) => `Ещё карт: ${count.toLocaleString(locale())} — покажутся, когда уберёте эти.`,
+  moreCards: (count: number) => `Ещё карточек: ${count.toLocaleString(locale())} — покажутся, когда уберёте эти.`,
   dismissStack: (label: string) => `Убрать стек «${label}»: нажмите и удерживайте`,
   holdTitle: 'Нажмите и удерживайте, чтобы убрать весь стек',
   dismiss: 'Убрать',
@@ -60,17 +61,31 @@ const openCardCheckMs = 1000;
 const dueRefreshMs = 60000;
 const stackIcons = { owned: UserRound, watching: Eye, due: CalendarClock } as const;
 
-// 2026-11-05: «Due Cards» cannot be dismissed by hand and covered the open card's last controls at 1280 px, so the viewer can
-// fold it into a pill with the count; the choice is kept per viewer. Without storage it lasts until reload.
-const dueCollapsedKey = (memberId: string) => `deckmate-notifications-due-collapsed:${memberId}`;
-function storedDueCollapsed(memberId: string): boolean {
-  try { return localStorage.getItem(dueCollapsedKey(memberId)) === '1'; } catch { return false; }
-}
-function rememberDueCollapsed(memberId: string, collapsed: boolean): void {
+// Keep the existing Due Cards key so an earlier collapse choice is not lost.
+const collapsedKey = (memberId: string, stack: NotificationStackId) => `deckmate-notifications-${stack}-collapsed:${memberId}`;
+function storedCollapsed(memberId: string, stack: NotificationStackId): boolean | undefined {
   try {
-    if (collapsed) localStorage.setItem(dueCollapsedKey(memberId), '1');
-    else localStorage.removeItem(dueCollapsedKey(memberId));
-  } catch { /* a full or blocked store keeps the choice in memory only */ }
+    const value = localStorage.getItem(collapsedKey(memberId, stack));
+    if (value === '1') return true;
+    if (value === '0') return false;
+  } catch { /* a blocked store keeps the choice in memory only */ }
+  return undefined;
+}
+function rememberCollapsed(memberId: string, stack: NotificationStackId, collapsed: boolean): void {
+  try { localStorage.setItem(collapsedKey(memberId, stack), collapsed ? '1' : '0'); }
+  catch { /* a full or blocked store keeps the choice in memory only */ }
+}
+
+function useCompactNotifications(): boolean {
+  const [compact, setCompact] = useState(() => window.matchMedia('(max-width: 480px)').matches);
+  useEffect(() => {
+    const media = window.matchMedia('(max-width: 480px)');
+    const update = () => setCompact(media.matches);
+    update();
+    media.addEventListener('change', update);
+    return () => media.removeEventListener('change', update);
+  }, []);
+  return compact;
 }
 
 type DismissTarget = { cardId: string } | { stack: 'owned' | 'watching' };
@@ -80,22 +95,19 @@ function failureMessage(failure: unknown): string {
   return textNow(text).failure;
 }
 
-function ago(moment: string, lang: Lang): string {
-  const relativeTime = new Intl.RelativeTimeFormat(locale(lang), { numeric: 'auto' });
-  const minutes = Math.round((Date.parse(moment) - Date.now()) / 60000);
-  if (Math.abs(minutes) < 60) return relativeTime.format(minutes, 'minute');
-  const hours = Math.round(minutes / 60);
-  return Math.abs(hours) < 24 ? relativeTime.format(hours, 'hour') : relativeTime.format(Math.round(hours / 24), 'day');
-}
-
 /** 2026-11-05: the corner is fixed over the scrolling views. The height it covers from the window bottom becomes
  *  --notifications-clearance, the bottom padding of the scroll owners (styles.css, workspace.css), so their last rows scroll out from under it. */
 function publishClearance(corner: HTMLElement | null) {
   if (!corner) return;
   const root = document.documentElement.style;
-  const observer = new ResizeObserver(() => root.setProperty('--notifications-clearance', `${Math.ceil(innerHeight - corner.getBoundingClientRect().top)}px`));
+  let frame = 0;
+  // 2026-11-09: defer the scroll-owner padding change so it does not re-enter ResizeObserver delivery.
+  const observer = new ResizeObserver(() => {
+    cancelAnimationFrame(frame);
+    frame = requestAnimationFrame(() => root.setProperty('--notifications-clearance', `${Math.ceil(innerHeight - corner.getBoundingClientRect().top)}px`));
+  });
   observer.observe(corner);
-  return () => { observer.disconnect(); root.removeProperty('--notifications-clearance'); };
+  return () => { observer.disconnect(); cancelAnimationFrame(frame); root.removeProperty('--notifications-clearance'); };
 }
 
 export function Notifications({ snapshot, refreshKey, onOpenCard }: {
@@ -112,9 +124,10 @@ export function Notifications({ snapshot, refreshKey, onOpenCard }: {
   const requestNumber = useRef(0);
   const currentView = useRef<NotificationsView | null>(null);
   const lastSeen = useRef('');
-  const [dueCollapsedBy, setDueCollapsedBy] = useState<Record<string, boolean>>({});
+  const compact = useCompactNotifications();
+  const [collapsedBy, setCollapsedBy] = useState<Record<string, Partial<Record<NotificationStackId, boolean>>>>({});
   // The toggled control unmounts, so focus moves to its counterpart instead of falling to the page.
-  const focusAfterToggle = useRef<'pill' | 'collapse' | null>(null);
+  const focusAfterToggle = useRef<{ stack: NotificationStackId; target: 'pill' | 'collapse' } | null>(null);
   currentView.current = view;
   const token = (snapshot as WorkspaceSnapshot & { token?: string }).token;
 
@@ -193,15 +206,14 @@ export function Notifications({ snapshot, refreshKey, onOpenCard }: {
   }
 
   const viewerId = view?.member?.id ?? '';
-  const dueCollapsed = viewerId !== '' && (dueCollapsedBy[viewerId] ?? storedDueCollapsed(viewerId));
-  function collapseDue(collapsed: boolean) {
+  function collapseStack(stack: NotificationStackId, collapsed: boolean) {
     if (!viewerId) return;
-    focusAfterToggle.current = collapsed ? 'pill' : 'collapse';
-    setDueCollapsedBy(current => ({ ...current, [viewerId]: collapsed }));
-    rememberDueCollapsed(viewerId, collapsed);
+    focusAfterToggle.current = { stack, target: collapsed ? 'pill' : 'collapse' };
+    setCollapsedBy(current => ({ ...current, [viewerId]: { ...current[viewerId], [stack]: collapsed } }));
+    rememberCollapsed(viewerId, stack, collapsed);
   }
-  const focusOnMount = (target: 'pill' | 'collapse') => (element: HTMLButtonElement | null) => {
-    if (!element || focusAfterToggle.current !== target) return;
+  const focusOnMount = (stack: NotificationStackId, target: 'pill' | 'collapse') => (element: HTMLButtonElement | null) => {
+    if (!element || focusAfterToggle.current?.stack !== stack || focusAfterToggle.current.target !== target) return;
     focusAfterToggle.current = null;
     element.focus();
   };
@@ -214,11 +226,11 @@ export function Notifications({ snapshot, refreshKey, onOpenCard }: {
   if (!visibleStacks.length && !error && !otherMemberChosen) return null;
   return <section ref={publishClearance} className="notifications-corner" aria-label={t.notifications}>
     {error && <p className="notifications-error" role="alert">{error}</p>}
-    {visibleStacks.map(stack => stack.id === 'due' && dueCollapsed
-      ? <CollapsedStack key={stack.id} stack={stack} buttonRef={focusOnMount('pill')} onExpand={() => collapseDue(false)} />
+    {visibleStacks.map(stack => viewerId && (collapsedBy[viewerId]?.[stack.id] ?? storedCollapsed(viewerId, stack.id) ?? compact)
+      ? <CollapsedStack key={stack.id} stack={stack} buttonRef={focusOnMount(stack.id, 'pill')} onExpand={() => collapseStack(stack.id, false)} />
       : <NotificationStackView key={stack.id} stack={stack} canDismiss={Boolean(view?.writable && token) && !busy}
         onOpen={openCard} onDismiss={() => dismissStack(stack)}
-        collapse={stack.id === 'due' && viewerId ? { ref: focusOnMount('collapse'), onCollapse: () => collapseDue(true) } : undefined} />)}
+        collapse={viewerId ? { ref: focusOnMount(stack.id, 'collapse'), onCollapse: () => collapseStack(stack.id, true) } : undefined} />)}
     {!visibleStacks.length && !error && <p className="notifications-note">{t.noneFor(view?.member?.label ?? '')}</p>}
     {view && !view.writable && visibleStacks.some(stack => stack.dismissible) && <p className="notifications-note">{t.readOnly}</p>}
     {view && view.members.length > 1 && <label className="notifications-member"><span>{t.for}</span>
@@ -262,7 +274,7 @@ function NotificationStackView({ stack, canDismiss, onOpen, onDismiss, collapse 
           {stack.id === 'due'
             ? <span className="notification-line">{t.dueToday}{card.state ? ` · ${stateLabel(card.state, lang)}` : ''}</span>
             : card.changes.map(change => <span key={change.eventId} className="notification-change">
-              <span className="notification-meta">{change.actor} · <time dateTime={change.at} title={new Intl.DateTimeFormat(locale(lang), { dateStyle: 'short', timeStyle: 'medium' }).format(new Date(change.at))}>{ago(change.at, lang)}</time></span>
+              <span className="notification-meta">{change.actor} · <time dateTime={change.at} title={new Intl.DateTimeFormat(locale(lang), { dateStyle: 'short', timeStyle: 'medium' }).format(new Date(change.at))}>{relativeTimeAgo(change.at, lang)}</time></span>
               {change.lines.map((line, index) => <span key={index} className="notification-line">{line}</span>)}
             </span>)}
           {card.hiddenChanges > 0 && <span className="notification-line notification-line-muted">{t.moreChanges(card.hiddenChanges)}</span>}

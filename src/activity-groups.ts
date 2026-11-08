@@ -44,7 +44,7 @@ const fieldGroups: Record<string, ActivityEventGroup> = {
   'Название': 'content', 'Обновлено описание': 'content',
   'Статус': 'status', 'Архив': 'status', 'Удаление': 'status',
   'Hero': 'links', 'Колода': 'links', 'Треки': 'links', 'Зависимости': 'links',
-  'Исполнитель': 'properties', 'Effort': 'properties', 'Priority': 'properties', 'Тип': 'properties',
+  'Исполнитель': 'properties', 'Effort': 'properties', 'Priority': 'properties', 'Оценка': 'properties', 'Приоритет': 'properties', 'Тип': 'properties',
   'Hand': 'properties', 'Теги': 'properties', 'Run': 'properties', 'Milestone': 'properties',
   'Срок': 'properties', 'Закладка': 'properties',
   'Создана карточка': 'created',

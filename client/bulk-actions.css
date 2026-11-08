@@ -1,5 +1,11 @@
 .bulk-actions { display: inline-flex; align-items: center; gap: 2px; min-width: 0; }
 .bulk-actions .bulk-action-button { flex-shrink: 0; }
+/* 2026-11-08: Decks and Timeline fold the same actions into More using the selection bar's available width. */
+.card-selection-toolbar.card-selection-bar, .planning-selection { container: selection-bar / inline-size; }
+/* Widths are the bar's content box: full deck row ≈ 890px, without secondary ≈ 762px, without narrow ≈ 506px. */
+@container selection-bar (max-width: 900px) { :is(.card-selection-bar, .planning-selection) .bulk-action-secondary { display: none; } }
+@container selection-bar (max-width: 770px) { :is(.card-selection-bar, .planning-selection) .bulk-action-narrow { display: none; } }
+@container selection-bar (max-width: 520px) { :is(.card-selection-bar, .planning-selection) .bulk-action-button { display: none; } }
 .card-selection-bar .bulk-actions .bulk-action-effort { width: 34px; min-width: 34px; height: 32px; padding: 1px 3px; flex-direction: column; gap: 0; }
 .bulk-action-effort small { max-width: 34px; overflow: hidden; text-overflow: ellipsis; font-size: 9px; line-height: 11px; font-variant-numeric: tabular-nums; }
 .card-selection-bar .bulk-action-button[data-active] { box-shadow: inset 0 0 0 1px #d5f5e980; }

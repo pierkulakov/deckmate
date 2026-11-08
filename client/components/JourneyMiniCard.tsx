@@ -3,6 +3,7 @@ import type { MouseEventHandler, ReactNode } from 'react';
 import type { CardPriority } from '../../src/catalog-contracts.ts';
 import { defineText, locale, textNow, useLang, useText } from '../i18n.ts';
 import { priorityLabel } from '../locales/common.ts';
+import { journeyStepTitle } from './journey-step-title.ts';
 
 const text = defineText({
   priority: (priority: CardPriority) => `Priority: ${priorityLabel(priority, 'en')}`,
@@ -12,8 +13,8 @@ const text = defineText({
   taskCardInDeck: (deck: string) => `Task Card in deck “${deck}”`,
   noDeck: 'No deck selected',
 }, {
-  priority: (priority: CardPriority) => `Priority: ${priorityLabel(priority, 'ru')}`,
-  effort: (value: string) => `Effort: ${value}`,
+  priority: (priority: CardPriority) => `Приоритет: ${priorityLabel(priority, 'ru')}`,
+  effort: (value: string) => `Оценка: ${value}`,
   newStep: 'Новый шаг',
   noPriority: 'Без приоритета',
   taskCardInDeck: (deck: string) => `Task Card в колоде «${deck}»`,
@@ -22,7 +23,7 @@ const text = defineText({
 
 // %PARENT_TITLE% becomes the Hero Card title when the Journey starts; on step cards it reads as a short token.
 export function journeyStepLabel(title: string) {
-  return title.trim() ? title.replaceAll('%PARENT_TITLE%', '‹Hero›') : textNow(text).newStep;
+  return journeyStepTitle(title, '‹Hero›', textNow(text).newStep);
 }
 
 export function JourneyPriorityIcon({ priority, size = 16 }: { priority?: CardPriority | null; size?: number }) {

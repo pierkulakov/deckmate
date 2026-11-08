@@ -1,6 +1,24 @@
-import { defineConfig } from 'vite';
+import { defineConfig, type ProxyOptions } from 'vite';
 import tailwindcss from '@tailwindcss/vite';
+import { rewriteProxyOrigin } from './tools/dev-proxy.ts';
 import { thirdPartyNoticesPlugin } from './tools/third-party-notices.ts';
+
+const serverOrigin = `http://127.0.0.1:${process.env.DECKMATE_PORT ?? '4317'}`;
+const devPort = 4318;
+const devOrigins = new Set([`http://127.0.0.1:${devPort}`, `http://localhost:${devPort}`, `http://[::1]:${devPort}`]);
+
+function proxyToDeckmate(webSocket = false): ProxyOptions {
+  return {
+    target: serverOrigin,
+    changeOrigin: true,
+    ws: webSocket,
+    configure(proxy) {
+      // 2026-11-08: Deckmate accepts only its own Origin; the loopback-only dev proxy rewrites browser HTTP and WebSocket origins.
+      proxy.on('proxyReq', (request, incoming) => rewriteProxyOrigin(request, incoming, serverOrigin, devOrigins));
+      proxy.on('proxyReqWs', (request, incoming) => rewriteProxyOrigin(request, incoming, serverOrigin, devOrigins));
+    },
+  };
+}
 
 export default defineConfig({
   root: 'client',
@@ -27,5 +45,8 @@ export default defineConfig({
       },
     },
   },
-  server: { host: '127.0.0.1', port: 4318, strictPort: true },
+  server: {
+    host: '127.0.0.1', port: devPort, strictPort: true,
+    proxy: { '/api': proxyToDeckmate(true), '/r': proxyToDeckmate() },
+  },
 });

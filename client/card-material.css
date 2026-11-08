@@ -1,4 +1,4 @@
-/* 2026-11-03: One satin-metal finish for card footers; reading surfaces stay matte. */
+/* 2026-11-08: Footers and Hero affiliation strips share satin; reading surfaces stay matte. */
 :root {
   --sub-card-state-accepted: var(--accepted-metal);
   --sub-card-state-working: var(--champagne);
@@ -6,7 +6,10 @@
   --sub-card-state-blocked: var(--danger);
   --sub-card-state-planned: var(--muted);
   /* Highlight tone of the satin; Hero surfaces tint it with --hero-sheen (2026-11-05). */
-  --metal-sheen: #fff8df;
+  --metal-sheen: #fff8e8;
+  --metal-shadow: #241b24;
+  /* 2026-11-08: warm shadow that deepens gold to the reference's amber without greying it. */
+  --metal-amber: #6b3f0a;
 }
 .sub-card-progress { display: flex; gap: 2px; width: 100%; height: 8px; }
 .sub-card-progress-segment { display: block; flex: 1 1 0; min-width: 0; height: 100%; padding: 0; border: 0; border-radius: 2px; background-color: var(--sub-card-state-planned); }
@@ -26,65 +29,154 @@ button.sub-card-progress-segment { cursor: pointer; }
 /* A Hero tile's unstarted steps use the Hero tint; --hero-step-empty distinguishes them from working steps. */
 .catalog-card-hero { --sub-card-state-planned: var(--hero-step-empty); --metal-sheen: var(--hero-sheen); }
 
+.catalog-card-hero:not(.is-family-done) > .deck-card-band,
+.hand-card.kind-hero > .sprint-task-band,
+.card-preview-hero .card-preview-sheet:not([data-family-done]) > .card-preview-material-band,
+.deck-card > .card-family-trigger,
+.card-preview-main > .card-preview-parent,
+.sprint-task > .sprint-task-parent {
+  --metal-base: var(--hero-metal);
+  --metal-sheen: var(--hero-sheen);
+  --metal-polish: 24%;
+  /* 2026-11-08: the author's reference ribbon runs from deep amber to pale cream; Hero gold shows it at full strength. */
+  --metal-deep: color-mix(in srgb, var(--metal-base) 64%, var(--metal-amber));
+  --metal-glare-opacity: 1;
+}
+
 .deck-card > .deck-card-band,
+.deck-card > .card-family-trigger,
+.card-preview-main > .card-preview-parent,
 .card-preview-sheet > .card-preview-material-band,
+.sprint-task > .sprint-task-parent,
 .sprint-task > .sprint-task-band,
 .journey-step-card > .journey-step-card-deck {
   --material-base: var(--metal-base, var(--card-metal));
-  --material-low: color-mix(in srgb, var(--material-base) 92%, var(--card-metal-ink));
-  --material-high: color-mix(in srgb, var(--material-base) 84%, var(--metal-sheen));
-  position: relative;
+  --material-low: color-mix(in srgb, var(--material-base) 90%, var(--metal-shadow));
+  --material-high: color-mix(in srgb, var(--metal-sheen) var(--metal-polish, 16%), var(--material-base));
+  position: var(--material-position, relative);
   isolation: isolate;
   background-color: var(--material-base);
-  background-image: linear-gradient(112deg,
+  background-image:
+    repeating-linear-gradient(178deg,
+      color-mix(in srgb, var(--metal-sheen) 3%, transparent) 0 .5px,
+      transparent .5px 2px),
+    linear-gradient(112deg,
     var(--material-low) 0%,
-    var(--material-base) 19%,
-    var(--material-high) 32%,
-    var(--material-base) 46%,
-    var(--material-low) 71%,
-    var(--material-high) 94%,
+    var(--material-base) 22%,
+    var(--material-high) 48%,
+    var(--material-base) 76%,
     var(--material-base) 100%);
-  border-top-color: color-mix(in srgb, var(--material-base) 67%, var(--metal-sheen));
-  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--metal-sheen) 26%, transparent), inset 0 -1px 2px #17203916;
+  border-top-color: color-mix(in srgb, var(--material-base) 94%, var(--metal-shadow));
+  --material-inset: inset 0 1px 2px color-mix(in srgb, var(--metal-shadow) 12%, transparent), inset 0 -1px 0 color-mix(in srgb, var(--metal-shadow) 22%, transparent);
+  box-shadow: var(--material-inset);
 }
 
-.deck-card > .deck-card-band::before,
-.card-preview-sheet > .card-preview-material-band::before,
-.sprint-task > .sprint-task-band::before,
-.journey-step-card > .journey-step-card-deck::before {
-  content: '';
+/* 2026-11-08: only the reflection is clipped; owner medallions can still protrude from the metal. */
+.card-material-glare {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  border-radius: inherit;
+  pointer-events: none;
+}
+
+/* 2026-11-09: a tile that can tilt keeps its own compositor layer. Otherwise Chromium promotes the card only while the
+   tilt transition (or a moving ribbon layer) runs and drops it when that ends; the content then re-snaps to whole
+   device pixels, and the band's numbers and icons jumped about a pixel on hover and ~200ms after the pointer left
+   (author's recording). The ribbon itself stays unpromoted and repaints inside this one layer. */
+@media (hover: hover) and (pointer: fine) and (prefers-reduced-motion: no-preference) {
+  .deck-card-space > .deck-card { will-change: transform; }
+}
+
+/* 2026-11-08: tiles follow the author's reference ("макетный референс"): one rigid ribbon of metal slides across the
+   tile — a long ramp from deep amber to a cream hot edge, a crisp cut, a second ramp to pale gold, a crisp cut to deep
+   amber. At rest only the first ramp shows, so the band reads as plain metal, dark to light. useCardTilt sweeps it in
+   on enter, moves it with the tilt and sweeps it out on leave; --glare-shift is its cut in band widths at the tile's
+   mid-height, and --glare-rest mirrors RIBBON_REST there. Band centers share one tile-space ribbon whose cuts lean
+   22deg off vertical; the clipping layer supplies cqh, so footer content can change height without measuring it in JS.
+   The ribbon replaces the satin under the ink (z-index -1), so numbers and icons stay on top of it. */
+.deck-card > .card-family-trigger { --glare-band-y: 50cqh; }
+.deck-card > .deck-card-band { --glare-band-y: calc(var(--tile-height) - 2px - 50cqh); }
+/* done-impact.css registers --material-base without inheritance, so the ribbon reads copies made on the band. */
+.deck-card > :is(.card-family-trigger, .deck-card-band) {
+  --ribbon-base: var(--material-base);
+  --ribbon-deep: var(--metal-deep, color-mix(in srgb, var(--material-base) 75%, var(--metal-shadow)));
+  --ribbon-dark: color-mix(in srgb, var(--ribbon-deep) 90%, var(--metal-shadow));
+}
+.deck-card > :is(.card-family-trigger, .deck-card-band) > .card-material-glare {
   position: absolute;
   z-index: -1;
   inset: 0;
+  container-type: size;
+  --glare-rest: 1.39;
+  --glare-reference-y: calc((var(--tile-height) - 2px) / 2);
+  --glare-band-offset: calc((var(--glare-reference-y) - var(--glare-band-y)) * tan(22deg));
+  /* Task, Doc and accepted metal keep the satin half visible through a quieter ribbon. */
+  opacity: var(--metal-glare-opacity, .55);
+}
+/* The band's inset edge stays above the ribbon. */
+.deck-card > :is(.card-family-trigger, .deck-card-band) > .card-material-glare::after {
+  content: '';
+  position: absolute;
+  inset: 0;
   border-radius: inherit;
-  pointer-events: none;
-  background: linear-gradient(112deg, transparent 46%, color-mix(in srgb, var(--metal-sheen) 33%, transparent) 49%, color-mix(in srgb, var(--metal-sheen) 60%, transparent) 50%, color-mix(in srgb, var(--metal-sheen) 13%, transparent) 52%, transparent 55%);
-  background-size: 200% 100%;
-  background-position: var(--glare-x, 38%) 50%;
-  opacity: .18;
-  transition: opacity var(--motion-material) var(--ease-out), background-position var(--motion-material) var(--ease-out);
+  box-shadow: var(--material-inset);
+}
+/* Stops are fractions of a ribbon five band widths long whose hot cut sits at 50%: 1% = 0.05 band widths. */
+.deck-card > :is(.card-family-trigger, .deck-card-band) > .card-material-glare::before {
+  content: '';
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 500%;
+  background: linear-gradient(90deg,
+    var(--ribbon-dark) 24.3%,
+    var(--ribbon-deep) 30%,
+    color-mix(in srgb, var(--ribbon-base) 40%, var(--ribbon-deep)) 35.7%,
+    var(--ribbon-base) 41.2%,
+    color-mix(in srgb, var(--metal-sheen) 33%, var(--ribbon-base)) 46.6%,
+    color-mix(in srgb, var(--metal-sheen) 58%, var(--ribbon-base)) 47.7%,
+    color-mix(in srgb, var(--metal-sheen) 80%, var(--ribbon-base)) 48.9%,
+    color-mix(in srgb, var(--metal-sheen) 93%, var(--ribbon-base)) 49.93%,
+    color-mix(in srgb, var(--ribbon-base) 27%, var(--ribbon-deep)) 50.07%,
+    color-mix(in srgb, var(--ribbon-base) 60%, var(--ribbon-deep)) 54.6%,
+    var(--ribbon-base) 59.2%,
+    color-mix(in srgb, var(--metal-sheen) 30%, var(--ribbon-base)) 63.8%,
+    color-mix(in srgb, var(--metal-sheen) 56%, var(--ribbon-base)) 68.4%,
+    color-mix(in srgb, var(--metal-sheen) 58%, var(--ribbon-base)) 69.1%,
+    var(--ribbon-dark) 69.24%,
+    color-mix(in srgb, var(--ribbon-dark) 80%, var(--ribbon-deep)) 74.4%,
+    color-mix(in srgb, var(--ribbon-dark) 60%, var(--ribbon-deep)));
+  transform: translateX(calc((var(--glare-shift, var(--glare-rest)) - 2.5) * 20% + var(--glare-band-offset, 0px))) skewX(-22deg);
 }
 
-/* The shared underlay replaces the old overlay, so text and owner badges remain crisp. */
-
-@media (hover: hover) and (pointer: fine) {
-  .deck-card-space:hover > .deck-card:not(.is-multi-selected):has(.deck-card-open:not(:disabled)) > .deck-card-band::before,
-  .card-preview-sheet:hover > .card-preview-material-band::before,
-  .sprint-task:hover > .sprint-task-band::before,
-  .journey-step-card:not(:disabled):hover > .journey-step-card-deck::before {
-    opacity: .38;
-    background-position: var(--glare-x, 57%) 50%;
-  }
+/* 2026-11-08: the open card's band is not a tile — the author's reference gives it only a soft glow: a broad warm light
+   that rests a little right of center and drifts slowly towards the pointer, with no sharp plane and no wash over the
+   ink. The author asked that it spread over the whole band rather than gather under the cursor, so the light is
+   1.6 band widths across and follows only 30% of the pointer's travel: its center moves from 35% to 65% of the band.
+   2026-11-09: the gold parent bar above a Sub Card carries the same light, at the author's request. */
+/* z-index -1 keeps the light in the metal, under the ink and controls: the owner medallion is not lifted below the band
+   edge (author, 2026-11-08), and the parent bar's title and the band's labels keep their contrast (2026-11-09). */
+:is(.card-preview-sheet > .card-preview-material-band, .card-preview-main > .card-preview-parent) > .card-material-glare {
+  z-index: -1;
+  mix-blend-mode: soft-light;
+  opacity: calc(.7 + var(--glare-opacity, 0) * .3);
+  transition: opacity 400ms ease-out;
+}
+/* The light keeps one layer for good (there is a single open card): a layer created only for each 700ms drift would
+   re-snap the owner medallion above it when the drift ends, the same jump the tiles had (2026-11-09). */
+:is(.card-preview-sheet > .card-preview-material-band, .card-preview-main > .card-preview-parent) > .card-material-glare::before {
+  content: '';
+  position: absolute;
+  will-change: transform;
+  inset: -80% auto -80% 0;
+  width: 160%;
+  background: radial-gradient(closest-side, color-mix(in srgb, var(--metal-sheen) 62%, #ffffff), color-mix(in srgb, var(--metal-sheen) 36%, transparent) 45%, color-mix(in srgb, var(--metal-sheen) 12%, transparent) 78%, transparent);
+  transform: translateX(calc(var(--glare-x, 72%) * .1875 - 28.125%));
+  transition: transform 700ms cubic-bezier(.22, .61, .36, 1);
 }
 
-.deck-card:not(.is-multi-selected):has(:focus-visible) > .deck-card-band::before,
-.card-preview-material-band:focus-within::before,
-.sprint-task:focus-visible > .sprint-task-band::before,
-.journey-step-card:focus-visible > .journey-step-card-deck::before { opacity: .3; }
-
-@media (prefers-reduced-motion: reduce) {
-  .deck-card > .deck-card-band::before,
-  .card-preview-sheet > .card-preview-material-band::before,
-  .sprint-task > .sprint-task-band::before,
-  .journey-step-card > .journey-step-card-deck::before { display: none; transition: none; }
+@media (prefers-reduced-motion: reduce), (hover: none), (pointer: coarse) {
+  /* The ribbon and the open card's glow are the material at rest, so both stay — the ribbon pinned where it rests;
+     the glow does not drift because useCardTilt ignores touch and reduced motion. */
+  .deck-card > :is(.card-family-trigger, .deck-card-band) > .card-material-glare { --glare-shift: var(--glare-rest); }
 }

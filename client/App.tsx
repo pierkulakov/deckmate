@@ -20,6 +20,8 @@ import { MembersEditor } from './components/MembersEditor.tsx';
 import { CsvImport } from './components/CsvImport.tsx';
 import { ProjectTemplates } from './components/ProjectTemplates.tsx';
 import { DocumentPreviewProvider } from './components/DocumentPreview.tsx';
+import { RecentProjects, ProjectTile } from './RecentProjects.tsx';
+import { desktopBoard } from './desktop-bridge.ts';
 import './workspace.css';
 import { DeckmateMark } from './components/DeckmateMark.tsx';
 import { matchShortcut, shortcutTargetBlocked } from './keyboard-shortcuts.ts';
@@ -64,6 +66,13 @@ const text = defineText({
   stop: 'Stop Deckmate',
   projectSections: 'Project sections',
   refresh: 'Refresh',
+  openAnotherFolder: 'Open another folder…',
+  recentFailed: 'Could not load recent projects.',
+  switchNotRecent: 'This folder is no longer in the recent list.',
+  switchMissing: 'That folder was not found on this computer.',
+  switchTimeout: 'The switch took too long; try again.',
+  switchStartFailed: 'Deckmate could not start in that folder.',
+  switchFailed: 'Could not switch the project.',
 }, {
   hand: 'Hand', deck: 'Decks', timeline: 'Timeline', vision: 'Vision',
   sectionFailedTitle: 'Не удалось открыть раздел',
@@ -86,12 +95,19 @@ const text = defineText({
   members: 'Участники…',
   membersCaption: 'Реестр людей и агентов',
   importCsv: 'Импорт CSV…',
-  importCaption: 'Карты из таблицы',
+  importCaption: 'Карточки из таблицы',
   projectTemplates: 'Начать с шаблона…',
   refreshPage: 'Обновить страницу',
   stop: 'Остановить Deckmate',
   projectSections: 'Разделы проекта',
   refresh: 'Обновить',
+  openAnotherFolder: 'Открыть другую папку…',
+  recentFailed: 'Не удалось загрузить недавние проекты.',
+  switchNotRecent: 'Этой папки больше нет в списке недавних.',
+  switchMissing: 'Папка не найдена на этом компьютере.',
+  switchTimeout: 'Переключение заняло слишком много времени; попробуйте ещё раз.',
+  switchStartFailed: 'Deckmate не удалось запустить проект в этой папке.',
+  switchFailed: 'Не удалось переключить проект.',
 });
 
 class WorkspaceBoundary extends Component<{ children: ReactNode }, { failed: boolean }> {
@@ -131,6 +147,9 @@ export default function App() {
   const [dark, setDark] = useState(() => { const enabled = readStoredValue(localStorage, 'deckmate-theme') !== 'light'; document.documentElement.classList.toggle('dark', enabled); return enabled; });
   const onEditing = useCallback((value: boolean) => setEditing(value), []);
   const snapshot = workspace.snapshot;
+  // 2026-11-08: with the Desktop bridge the current project row wears the same tile as the recent list below it;
+  // in a browser there is no bridge and the row keeps its plain avatar.
+  const board = desktopBoard();
   // The browser tab names the project first, so several open projects tell apart (2026-11-05).
   const projectName = snapshot?.projectName.trim();
   useEffect(() => { document.title = projectName ? `${projectName} — Deckmate` : 'Deckmate'; }, [projectName]);
@@ -196,10 +215,13 @@ export default function App() {
           <header className="mission-control-head"><DeckmateMark /><Dialog.Title>Deckmate</Dialog.Title>
             <Dialog.Close asChild><Button variant="ghost" size="icon" aria-label={t.closeMenu}><X size={17} /></Button></Dialog.Close></header>
           <section className="mission-control-project" aria-label={t.project}><h2>{t.project}</h2>
-            <div className="mission-control-project-row"><span className="mission-control-avatar" aria-hidden="true">{snapshot?.projectName.slice(0, 1) ?? 'D'}</span>
+            <div className="mission-control-project-row">{board
+              ? <ProjectTile name={snapshot?.projectName ?? 'Deckmate'} />
+              : <span className="mission-control-avatar" aria-hidden="true">{snapshot?.projectName.slice(0, 1) ?? 'D'}</span>}
               <div><strong title={snapshot?.projectName ?? t.project}>{snapshot?.projectName ?? t.project}</strong><span>{!snapshot ? '' : snapshot.editMode === 'direct' ? t.modeDirect
                 : snapshot.editMode === 'sandbox' ? (workspace.source === 'sandbox' ? sourceLabels.testCopy : sourceLabels.original) + ' · ' + (snapshot.writable ? sourceLabels.editable : sourceLabels.readOnly)
                 : t.modeReadOnly}</span></div></div>
+            <RecentProjects open={sidebarOpen} disabled={editing} labels={t} />
           </section>
           <nav className="mission-control-menu" aria-label={t.appMenu}>
             <button type="button" disabled={editing || !snapshot} onClick={() => { setSidebarOpen(false); setTemplatesOpen(true); }}><Layers size={18} aria-hidden="true" /><span>{t.projectTemplates}</span></button>
@@ -230,11 +252,11 @@ export default function App() {
       {snapshot && <LevelBadge snapshot={snapshot} refreshKey={workspace.updatedAt} onNavigate={navigate} />}
     </div></header>
       {snapshot && !snapshot.writable && <div className="readonly-banner">{snapshot.editMode === 'sandbox' ? sourceLabels.originalReadOnly : sourceLabels.projectReadOnly}{snapshot.editMode === 'sandbox' && <button onClick={() => workspace.setSource('sandbox')}>{sourceLabels.openTestCopy}</button>}</div>}
-      {workspace.failure && !editing && <div className="error-banner" role="alert">{workspace.failure.message}<Button variant="ghost" size="sm" onClick={() => { workspace.clearFailure(); void workspace.refresh(); }}>{t.refresh}</Button></div>}
+      {workspace.failure && !editing && !stopped && <div className="error-banner" role="alert">{workspace.failure.message}<Button variant="ghost" size="sm" onClick={() => { workspace.clearFailure(); void workspace.refresh(); }}>{t.refresh}</Button></div>}
       <main className="workspace-main board-main">
         <WorkspaceBoundary key={`${view}-${workspace.source}-${navigationKey}`}>{renderContent()}</WorkspaceBoundary>
       </main>
-      {snapshot && <Notifications snapshot={snapshot} refreshKey={workspace.updatedAt} onOpenCard={openCard} />}
+      {snapshot && !stopped && <Notifications snapshot={snapshot} refreshKey={workspace.updatedAt} onOpenCard={openCard} />}
     </div>
     {snapshot && <MembersEditor snapshot={snapshot} refreshKey={workspace.updatedAt} open={membersOpen} onOpenChange={setMembersOpen} />}
     {snapshot && <CsvImport snapshot={snapshot} refreshKey={workspace.updatedAt} open={importOpen} initialDeckId={importDeckId} onOpenChange={setImportOpen} />}

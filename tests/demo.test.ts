@@ -40,6 +40,7 @@ it('creates a complete indie studio with illustrated decks, two Journey families
   expect(pulse.accepted.days.at(-1)).toBe(3);
   expect(pulse.review).toMatchObject({ count: 6, oldestSince: new Date().toISOString() });
   expect(catalog.decks.map(deck => deck.kind)).toEqual(['mixed', 'task', 'task', 'task', 'knowledge']);
+  expect(catalog.inboxDeckId).toBe('production');
   expect(catalog.members?.map(member => member.kind)).toEqual(['human', 'human', 'agent', 'agent']);
   expect(catalog.cards).toHaveLength(30);
   expect(catalog.cards.filter(card => card.kind === 'doc')).toHaveLength(4);

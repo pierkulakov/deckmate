@@ -9,7 +9,7 @@ const text = defineText({
   journeyTemplate: 'A Deck with a Journey template must use Asset or Mixed.',
   journeySteps: 'Journey steps target this Deck: use Task or Mixed.',
 }, {
-  incompatibleCards: (kind: DeckKind, count: number) => `Тип ${kind} не принимает ${count} карт этой колоды, включая Archive и Trash. Сначала перенесите несовместимые карты.`,
+  incompatibleCards: (kind: DeckKind, count: number) => `Тип ${kind} не принимает карточки этой колоды (${count}), включая архив и корзину. Сначала перенесите несовместимые карточки.`,
   journeyTemplate: 'Колода с шаблоном Journey должна иметь тип Asset или Mixed.',
   journeySteps: 'В эту колоду направлены шаги Journey: нужен тип Task или Mixed.',
 });

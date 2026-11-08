@@ -26,3 +26,9 @@ it('ignores unrelated decks and requires Mixed if one deck is both Journey sourc
   for (const kind of ['asset', 'task', 'knowledge'] as DeckKind[]) expect(deckTypeChangeIssue('target', kind, [], [circularDestination])).not.toBeNull();
   expect(deckTypeChangeIssue('target', 'mixed', [], [circularDestination])).toBeNull();
 });
+
+it('localizes the warning without translating the deck kind identifier', () => {
+  expect(deckTypeChangeIssue('target', 'asset', [card('task', { deleted: true })], [], 'ru'))
+    .toBe('Тип asset не принимает карточки этой колоды (1), включая архив и корзину. Сначала перенесите несовместимые карточки.');
+  expect(deckTypeChangeIssue('target', 'asset', [card('task')], [], 'en')).toContain('Type asset does not accept');
+});

@@ -50,7 +50,7 @@ it('switches tooltip dates and wording without changing card data', () => {
   const russian = renderCard(value);
   expect(russian).toContain('aria-label="Свойства карточки"');
   expect(russian).toContain('Срок: 06.11.2026 · 1 рабочих дней');
-  expect(russian).toContain('Milestone: Релиз · 30.11.2026 · 1 карт · принято 0');
+  expect(russian).toContain('Milestone: Релиз · 30.11.2026 · карточек: 1 · принято 0');
   expect(value).toEqual(original);
 });
 
@@ -66,4 +66,12 @@ it('shows unknown registry IDs as data with translated explanations', () => {
   setLang('ru');
   expect(renderCard(value)).toContain('Run номер-проекта · нет в реестре');
   expect(renderCard(value)).toContain('Milestone веха-проекта · нет в реестре');
+});
+
+it('renders a translated Trash indicator even without planning metadata', () => {
+  expect(renderCard(card())).toBe('');
+  const deleted = card({ deleted: true });
+  expect(renderCard(deleted)).toContain('class="card-indicator card-trash-indicator" role="img" title="In Trash" aria-label="In Trash"');
+  setLang('ru');
+  expect(renderCard(deleted)).toContain('title="В корзине" aria-label="В корзине"');
 });

@@ -23,7 +23,7 @@
 .vision-toolbar select, .vision-toolbar input { color: var(--ink); background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 7px 10px; }
 .sprint-task { display: flex; flex-direction: column; width: 100%; padding: 0; margin-bottom: 12px; text-align: left; overflow: hidden; background: var(--card-face); border: 1px solid var(--card-edge); border-radius: 8px; color: var(--card-ink); box-shadow: var(--card-shadow); transition: border-color var(--motion-feedback), box-shadow var(--motion-material); }
 .sprint-task:hover, .sprint-task:focus-visible { border-color: var(--card-highlight); box-shadow: var(--card-hover-shadow); }
-.sprint-task-parent { display: flex; align-items: center; gap: 5px; width: 100%; min-width: 0; padding: 5px 11px; background: linear-gradient(110deg, color-mix(in srgb, var(--hero-metal) 90%, var(--hero-sheen)), var(--hero-metal)); color: var(--hero-ink); font-size: 11px; font-weight: 500; }
+.sprint-task-parent { display: flex; align-items: center; gap: 5px; width: 100%; min-width: 0; padding: 3px 11px; color: var(--hero-ink); font-size: 10px; font-weight: 600; line-height: 14px; letter-spacing: 0; }
 .sprint-task-parent > svg { flex-shrink: 0; }.sprint-task-parent > span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .sprint-task-body { display: flex; flex-direction: column; gap: 9px; min-height: 110px; padding: 13px 12px; }
 .sprint-task strong { font-size: 13px; font-weight: 500; line-height: 1.5; overflow-wrap: anywhere; }
@@ -39,6 +39,7 @@
 .sprint-task-band .status-accepted { --band-state-dot: var(--band-state-accepted); }.sprint-task-band > svg { flex-shrink: 0; }
 .sprint-task-effort { display: inline-flex; align-items: center; gap: 4px; margin-left: auto; font: 11px 'Geist Mono', monospace; }
 .vision-workspace { display: flex; flex-direction: column; height: 100%; min-height: 480px; }
+.workspace-main:has(> .vision-workspace) { scrollbar-gutter: auto; }
 .vision-toolbar { background: var(--panel-gradient); display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 12px 20px; border-bottom: 1px solid var(--line); }
 .vision-toolbar input { width: 210px; }
 /* A fixed width: the select no longer grows from «New board» to the longest title when the board list arrives, pushing the title field. */
@@ -76,13 +77,14 @@
   .global-topbar .topbar-actions { flex-wrap: wrap; justify-content: flex-end; }
   .global-tabs { order: 3; flex-basis: 100%; padding-left: 8px; }
 }
-/* 2026-11-06: on phone widths Timeline's three actions and the search need the whole first row; the rail steps down
-   beside the tabs, so every view keeps the same two rows and switching tabs never changes the bar's height. */
+/* 2026-11-08: search gets its own full-width line on phones, so Timeline's actions never squeeze its input.
+   The rail stays beside the tabs; smaller tab insets keep all four section names whole. */
 @media (max-width: 480px) {
-  .global-topbar .topbar-actions { order: -1; flex: 1 1 100%; min-width: 0; flex-wrap: nowrap; padding-left: 8px; }
-  .global-topbar .global-search { flex: 1 1 150px; min-width: 0; }
+  .global-topbar .topbar-actions { order: -1; flex: 1 1 100%; min-width: 0; flex-wrap: wrap; gap: 6px; padding: 8px 0 8px 8px; }
+  .global-topbar .global-search { order: -1; flex: 1 0 100%; min-width: 0; }
   .global-topbar .breadcrumb { min-height: 0; padding-right: 4px; }
   .global-tabs { flex: 1 1 0; padding-left: 0; }
+  .global-tabs button { flex: 1 0 auto; padding-inline: 8px; text-overflow: clip; }
 }
 @media (max-width: 760px) {
   .planning-view { padding: 22px 16px; }

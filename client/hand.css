@@ -27,7 +27,8 @@
 .hand-all-toggle input:checked + .hand-all-track { border-color: var(--accent); background: var(--accent); }
 .hand-all-toggle input:checked + .hand-all-track .hand-all-thumb { translate: 14px 0; background: var(--surface); }
 .hand-all-toggle input:focus-visible + .hand-all-track { outline: 2px solid var(--focus); outline-offset: 1px; }
-.hand-member-picker select { height: 24px; padding: 0 24px 0 8px; border: 0.67px solid var(--line); border-radius: 4.8px; background: var(--ground); color: var(--ink); font-size: 12px; font-weight: 600; }
+.hand-member-picker { width: 280px; min-width: 0; max-width: 100%; }
+.hand-member-picker select { width: 100%; min-width: 0; max-width: 100%; height: 24px; padding: 0 24px 0 8px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; border: 0.67px solid var(--line); border-radius: 4.8px; background: var(--ground); color: var(--ink); font-size: 12px; font-weight: 600; }
 
 /* All Hands uses one row per member in registry order (humans, then agents), with tiles sized as in the single hand. */
 .hand-all-list { display: flex; flex-direction: column; gap: 20px; }
@@ -109,12 +110,14 @@
 .hand-run { display: flex; flex-direction: column; gap: 8px; padding: 12px 0; border-top: 1px solid var(--line); }
 .hand-section > .hand-run:first-child { border-top: 0; padding-top: 0; }
 .hand-run-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 10px; }
+.hand-run-name, .hand-milestone-title { min-width: 0; max-width: 100%; overflow-wrap: anywhere; text-align: left; }
 .hand-run-name { padding: 0; border: 0; background: none; color: var(--ink); font-size: 14px; font-weight: 700; line-height: 16px; }
 .hand-run-name:hover { color: var(--focus); text-decoration: underline; }
 /* 2026-11-06: plain Hand buttons press 1px like the shared .ui-button; translate leaves the sortable row's transform alone. */
 .hand-queue-handle:active:not(:disabled), .hand-queue-open:active:not(:disabled), .hand-show-all:active:not(:disabled), .hand-section-row:active:not(:disabled), .hand-run-name:active:not(:disabled) { translate: 0 1px; }
 .hand-run-dates { color: var(--muted); font-size: 11px; }
-.hand-milestone-title { display: flex; flex-wrap: wrap; min-width: 0; overflow-wrap: anywhere; align-items: baseline; gap: 10px; margin: 0; font-size: 14px; font-weight: 700; line-height: 16px; color: var(--ink); }
+.hand-milestone-title { display: flex; flex-wrap: wrap; align-items: baseline; gap: 10px; margin: 0; font-size: 14px; font-weight: 700; line-height: 16px; color: var(--ink); }
+.hand-milestone-title > span { min-width: 0; max-width: 100%; }
 .hand-milestone-title small { color: var(--muted); font-size: 11px; font-weight: 400; }
 .hand-section .hand-empty { padding: 8px 0; }
 

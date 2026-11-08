@@ -6,7 +6,7 @@ import { isMap, isScalar, isSeq, parse, parseDocument as parseYamlDocument, stri
 import { isMechanicPath, parseDocument } from '../src/markdown.ts';
 import { appendCardReport, readCardContent, readHeroSections, updateCardContent } from './card-content.ts';
 import type { CatalogCard, CatalogDeck, CatalogDeckManualOrder, CatalogDeckZone, CatalogEdit, CatalogMember, CatalogSpace, CatalogTrack, CatalogView, DeckKind } from '../src/catalog-contracts.ts';
-import { deckAcceptsCard } from '../src/catalog-contracts.ts';
+import { deckAcceptsCard, deckCanBeInbox, newCardDeckId } from '../src/catalog-contracts.ts';
 import { resolveMember } from '../src/members.ts';
 import { linkDecisionTask, openQuestionsOf, parseOpenQuestions, recordDecision } from '../src/open-questions.ts';
 import { resolveReference, shortReference } from '../src/references.ts';
@@ -53,6 +53,7 @@ const catalogText = defineText({
   subCardOrder: "Sub Cards order must map each Hero to a list of IDs.",
   subCardOrderIds: "Invalid or duplicate ID in Sub Cards order.",
   inboxMissing: "Inbox deck not found in the catalog.",
+  inboxKind: "Inbox must take Tasks: choose a Task or Mixed deck.",
   emptyName: "Empty name or duplicate ID in the catalog.",
   duplicateMembership: "Duplicate card in membership.",
   yamlMissing: "Catalog YAML header is missing from tasks/deckmate.md.",
@@ -116,7 +117,6 @@ const catalogText = defineText({
   newCardKind: "A new card type must be task, hero or doc.",
   newCardTitle: "Card title must be one line of 1 to 1000 characters.",
   newCardText: "Card text must be a string of up to 200000 characters.",
-  newCardDeck: "Choose a deck for the new card or set the Inbox destination deck.",
   newCardTracks: "Invalid Tracks for the new card.",
   newCardEffort: "Card Effort must be a nonnegative number.",
   newCardPriority: "Card Priority must be high, medium or low.",
@@ -172,7 +172,6 @@ const catalogText = defineText({
   missingEntryCard: (entry: { cardId: string }) => `Card not found: ${entry.cardId}`,
   explicitYaml: (key: string) => `${key} must be an explicit YAML value.`,
   explicitYamlField: (key: string) => `${key} must be an explicit YAML value.`,
-  incompatibleNewCard: (edit: { kind: string }, deck: { title: string }) => `Type ${edit.kind} is incompatible with deck ${deck.title}.`,
   decisionIdTaken: (existing: { id: string }) => `taskCardId is already used by card ${existing.id}.`,
   questionTaskMissing: (taskRef: string) => `Question Task ${taskRef} not found in the catalog.`,
   linkedJourneys: (deck: { title: string }, journeyBlockers: { title: string }[]) => `First delete the Journeys linked to deck “${deck.title}”: ${journeyBlockers.map(journey => `“${journey.title}”`).join(', ')}.`,
@@ -183,25 +182,26 @@ const catalogText = defineText({
 }, {
   invalidMembers: "Некорректный список участников проекта.",
   invalidMember: "Некорректный участник проекта или повтор ID.",
-  invalidDeckOrderMap: "Порядок колод должен быть объектом колода → зоны и порядок карт.",
+  invalidDeckOrderMap: "Порядок колод должен быть объектом колода → зоны и порядок карточек.",
   deckParticipants: "Список участников колоды — до 200 ID реестра.",
   memberMissing: "Участник не найден в реестре проекта.",
-  reportRollbackFailed: "Отчёт мог сохраниться, но запись состояния и безопасное восстановление исходной карты не удались. Прочитайте карту перед повтором.",
+  reportRollbackFailed: "Отчёт мог сохраниться, но запись состояния и безопасное восстановление исходной карточки не удались. Прочитайте карточку перед повтором.",
   autoTag: "Автотег колоды — непустая строка до 80 символов.",
   autoTagFlag: "Флаг автотега должен быть boolean.",
   deckYaml: "Колоду можно убрать в стопку или вернуть на полку точечно, только если она — явная YAML-карта без alias.",
-  templateText: "Шаблон карты колоды — текст до 50000 символов.",
+  templateText: "Шаблон карточки колоды — текст до 50000 символов.",
   templateOwner: "Владелец шаблона — одна строка до 120 символов.",
   defaultOrder: "Порядок колоды по умолчанию — строка вида order=state&direction=asc до 200 символов.",
-  templateEffort: "Effort шаблона — число не меньше нуля.",
+  templateEffort: "Оценка шаблона — число не меньше нуля.",
   templatePriority: "Приоритет шаблона — high, medium или low.",
   yamlObject: "Каталог должен содержать YAML-объект.",
   unsupportedSchema: "Неподдерживаемая схема каталога.",
   invalidFormatLanguage: "formatLanguage должен быть en или ru.",
-  pinnedMilestone: "Некорректный ID закреплённой вехи.",
+  pinnedMilestone: "Некорректный ID закреплённого Milestone.",
   subCardOrder: "Порядок Sub Cards должен быть объектом Hero → список ID.",
   subCardOrderIds: "Некорректный или повторяющийся ID в порядке Sub Cards.",
   inboxMissing: "Колода Inbox не найдена в каталоге.",
+  inboxKind: "Inbox должен принимать задачи: выберите колоду Task или Mixed.",
   emptyName: "Пустое имя или повтор ID в каталоге.",
   duplicateMembership: "Повтор карточки в membership.",
   yamlMissing: "В tasks/deckmate.md отсутствует YAML-шапка каталога.",
@@ -212,7 +212,7 @@ const catalogText = defineText({
   selfDeckOrder: "Нельзя поставить колоду перед самой собой.",
   deckInsertion: "Колода для вставки должна находиться в целевом пространстве.",
   autoTagOrNull: "Автотег колоды — непустая строка до 80 символов или null.",
-  templateEffortOrNull: "Effort шаблона — число не меньше нуля или null.",
+  templateEffortOrNull: "Оценка шаблона — число не меньше нуля или null.",
   titleLength: "Название должно содержать от 1 до 120 символов.",
   deckKind: "Тип колоды — asset, task, knowledge или mixed.",
   selectionSize: "Выберите от 1 до 1000 карточек.",
@@ -243,7 +243,7 @@ const catalogText = defineText({
   invalidZone: "Зона — идентификатор и название до 120 символов.",
   zoneLimit: "В колоде не больше 20 зон.",
   zoneNotEmpty: "Удалять можно только пустые зоны.",
-  zoneDeck: "Зоны упорядочивают карты одной колоды; для смены колоды перенесите карточку в колоду.",
+  zoneDeck: "Зоны упорядочивают карточки одной колоды; для смены колоды перенесите карточку в колоду.",
   zoneMissing: "Зона не найдена в этой колоде.",
   noZones: "У колоды ещё нет зон: порядок задаётся одним плоским списком.",
   cardInsertion: "Карточка вставки должна находиться в целевой зоне.",
@@ -254,7 +254,7 @@ const catalogText = defineText({
   stateTaskOnly: "Состояние можно менять только у Task.",
   invalidState: `Недопустимое состояние Task. Допустимо: ${cardStates.flatMap(cardStateWords).join(', ')}.`,
   returnReason: "Причина возврата — одна строка до 500 символов.",
-  returnFromReview: "Причина пишется только при возврате карты с приёмки.",
+  returnFromReview: "Причина пишется только при возврате карточки с приёмки.",
   stateStage: "статус",
   ownerStage: "исполнитель по старту",
   handStage: "голова руки",
@@ -265,7 +265,6 @@ const catalogText = defineText({
   newCardKind: "Тип новой карточки — task, hero или doc.",
   newCardTitle: "Название карточки — одна строка от 1 до 1000 символов.",
   newCardText: "Текст карточки — строка до 200000 символов.",
-  newCardDeck: "Новая карточка создаётся внутри выбранной колоды: выберите колоду или назначьте колоду-приёмник Inbox.",
   newCardTracks: "Некорректные треки новой карточки.",
   newCardEffort: "Цена карточки — число не меньше нуля.",
   newCardPriority: "Приоритет карточки — high, medium или low.",
@@ -276,7 +275,7 @@ const catalogText = defineText({
   questionText: "Нужен текущий текст вопроса.",
   decisionId: "Ключ повтора — идентификатор задачи вида card:<uuid>.",
   decisionDeck: "Нужна колода Task/Mixed для задачи «Решение».",
-  questionChanged: "Вопрос в «Открыто» изменился — обновите карту.",
+  questionChanged: "Вопрос в «Открыто» изменился — обновите карточку.",
   decisionAlreadyLinked: "Эта задача «Решение» уже привязана к другому вопросу карточки.",
   decisionStage: "задача «Решение»",
   memberHandStage: "рука участника",
@@ -293,11 +292,11 @@ const catalogText = defineText({
   invalidDeckOrder: (deckId: string) => `Некорректный порядок колоды: ${deckId}`,
   zoneListLimit: (deckId: string) => `Зоны колоды ${deckId} — список до 20 записей.`,
   invalidDeckZone: (deckId: string) => `Некорректная зона колоды ${deckId}.`,
-  zonedDeckOrder: (deckId: string) => `У колоды ${deckId} есть зоны: порядок карт хранится по зонам.`,
+  zonedDeckOrder: (deckId: string) => `У колоды ${deckId} есть зоны: порядок карточек хранится по зонам.`,
   flatDeckOrder: (deckId: string) => `Плоский порядок колоды ${deckId} не может ссылаться на зоны.`,
   orderUnknownZone: (zoneId: string, deckId: string) => `Порядок ссылается на неизвестную зону «${zoneId}» колоды ${deckId}.`,
   invalidOrderCard: (deckId: string) => `Некорректный или повторяющийся ID в порядке колоды ${deckId}.`,
-  duplicateOrderCard: (id: string, deckId: string) => `Карта ${id} встречается в порядке колоды ${deckId} дважды.`,
+  duplicateOrderCard: (id: string, deckId: string) => `Карточка ${id} встречается в порядке колоды ${deckId} дважды.`,
   invalidSpace: (space: { id: string }) => `Некорректное пространство: ${space.id}`,
   invalidDeck: (deck: { id: string }) => `Некорректная колода: ${deck.id}`,
   pileFlag: (deckId: string) => `Колода ${deckId}: piled — только true или false.`,
@@ -305,7 +304,7 @@ const catalogText = defineText({
   invalidParent: (entry: { card: string }) => `Некорректный Hero-родитель у ${entry.card}`,
   unknownMembershipDeck: (entry: { card: string }) => `Неизвестная колода у ${entry.card}`,
   invalidMembershipTracks: (entry: { card: string }) => `Некорректные треки у ${entry.card}`,
-  tagMissingCard: (tag: { name: string; cardId?: string | null }) => `Тег «${tag.name}» ссылается на отсутствующую карту: ${tag.cardId}`,
+  tagMissingCard: (tag: { name: string; cardId?: string | null }) => `Тег «${tag.name}» ссылается на отсутствующую карточку: ${tag.cardId}`,
   missingMembership: (membership: { card: string }) => `Ссылка не найдена: ${membership.card}`,
   nativeMembership: (card: { id: string; path: string }) => `Native-карточка ${card.id} игнорирует membership каталога: метаданные находятся в ${card.path}.`,
   incompatibleDeckType: (card: { id: string; kind: string }, deck: { title: string }) => `Тип ${card.kind} не подходит колоде ${deck.title}: ${card.id}`,
@@ -321,13 +320,12 @@ const catalogText = defineText({
   missingEntryCard: (entry: { cardId: string }) => `Карточка не найдена: ${entry.cardId}`,
   explicitYaml: (key: string) => `${key} должен быть явным YAML-значением.`,
   explicitYamlField: (key: string) => `${key} должно быть явным YAML-значением.`,
-  incompatibleNewCard: (edit: { kind: string }, deck: { title: string }) => `Тип ${edit.kind} не подходит колоде ${deck.title}.`,
   decisionIdTaken: (existing: { id: string }) => `taskCardId уже занят карточкой ${existing.id}.`,
   questionTaskMissing: (taskRef: string) => `Задача вопроса ${taskRef} не найдена в каталоге.`,
   linkedJourneys: (deck: { title: string }, journeyBlockers: { title: string }[]) => `Сначала удалите Journey, связанные с колодой «${deck.title}»: ${journeyBlockers.map(journey => `«${journey.title}»`).join(', ')}.`,
   partialChanges: (updated: string[], changes: readonly unknown[], pending: string[], error: unknown) => `Часть изменений сохранена: ${updated.length} из ${changes.length}. Сохранены: ${updated.join(', ')}. Остались: ${pending.join(', ') || 'нет'}. Обновите каталог перед повтором. ${error instanceof Error ? error.message : String(error)}`,
-  guardianActor: (deck: { title: string } | undefined, guardianNames: string[], actorName: string) => `Принять карту колоды «${deck!.title}» может только страж: ${guardianNames.join(', ')}. Автор запроса ${actorName} — не страж.`,
-  guardianRequired: (deck: { title: string } | undefined, guardianNames: string[]) => `Принять карту колоды «${deck!.title}» может только страж: ${guardianNames.join(', ')}. Назовите стража полем acceptedBy (точное имя) или передайте карту стражу.`,
+  guardianActor: (deck: { title: string } | undefined, guardianNames: string[], actorName: string) => `Принять карточку колоды «${deck!.title}» может только страж: ${guardianNames.join(', ')}. Автор запроса ${actorName} — не страж.`,
+  guardianRequired: (deck: { title: string } | undefined, guardianNames: string[]) => `Принять карточку колоды «${deck!.title}» может только страж: ${guardianNames.join(', ')}. Назовите стража полем acceptedBy (точное имя) или передайте карточку стражу.`,
   partialAction: (done: string[], remaining: string[], repeatHint: string, error: unknown) => `Действие выполнено частично: сделано — ${done.join(', ') || 'ничего'}; не сделано — ${remaining.join(', ')}. ${repeatHint} ${error instanceof Error ? error.message : String(error)}`,
 });
 
@@ -453,6 +451,7 @@ function validateManifest(value: unknown): CatalogManifest {
         || new Set(cardIds).size !== cardIds.length) throw new Error(serverText(catalogText).subCardOrderIds);
     }
   }
+  // 2026-11-08: legacy Inbox kinds remain readable; new assignments are checked by setInboxDeck.
   if (manifest.inboxDeckId != null && (typeof manifest.inboxDeckId !== 'string' || !manifest.inboxDeckId
     || manifest.inboxDeckId.length > 80 || !manifest.decks.some(deck => deck.id === manifest.inboxDeckId))) throw new Error(serverText(catalogText).inboxMissing);
   validateDeckOrder(manifest);
@@ -812,6 +811,8 @@ function assembleCatalog(inputs: CatalogInputs): CatalogView {
   documents.push(...journeyCatalog.documents);
   warnings.push(...journeyCatalog.warnings);
   warnings.push(...templateCatalog.warnings);
+  const inbox = source.manifest.decks.find(deck => deck.id === source.manifest.inboxDeckId);
+  if (inbox && !deckCanBeInbox(inbox.kind)) warnings.push(serverText(catalogText).inboxKind);
   for (const card of cards) {
     Object.assign(card, options.options[card.id] ?? {});
     if (!card.id.startsWith('card:') && card.kindOverride) card.kind = card.kindOverride;
@@ -1040,7 +1041,7 @@ async function applyCatalogEdit(root: string, manifest: CatalogManifest, edit: C
     if (edit.coverPosition !== undefined) deck.coverPosition = edit.coverPosition;
     manifest.decks.push(deck);
     // Quick Capture creates a deck named Inbox; the first such deck also becomes the project's default receiver.
-    if (!manifest.inboxDeckId && deck.title.toLocaleLowerCase('ru-RU') === 'inbox') manifest.inboxDeckId = deck.id;
+    if (!manifest.inboxDeckId && deckCanBeInbox(deck.kind) && deck.title.toLocaleLowerCase('ru-RU') === 'inbox') manifest.inboxDeckId = deck.id;
   }
   if (edit.action === 'update-deck') {
     const deck = requiredDeck(manifest, edit.deckId);
@@ -1077,6 +1078,7 @@ async function setDeckKind(root: string, source: ManifestSource, edit: Extract<C
   });
   const baseline = dependencies(catalog);
   deck.kind = edit.kind;
+  if (source.manifest.inboxDeckId === deck.id && !deckCanBeInbox(deck.kind)) source.manifest.inboxDeckId = null;
   validateManifest(source.manifest);
   await writeManifest(root, source, edit.manifestHash, async () => {
     const current = await readFreshProjectCatalog(root);
@@ -1934,7 +1936,7 @@ async function moveCardsInDeck(root: string, source: ManifestSource, edit: Extra
 
 /** The default Inbox Deck receives cards created without an explicit deck. */
 async function setInboxDeck(root: string, source: ManifestSource, edit: Extract<CatalogEdit, { action: 'set-inbox-deck' }>): Promise<string[]> {
-  if (edit.deckId !== null) requiredDeck(source.manifest, edit.deckId);
+  if (edit.deckId !== null && !deckCanBeInbox(requiredDeck(source.manifest, edit.deckId).kind)) throw new Error(serverText(catalogText).inboxKind);
   const catalog = await readProjectCatalog(root);
   if (catalog.manifestHash !== edit.manifestHash) throw new Error('CATALOG_CONFLICT');
   const deckId = edit.deckId ?? null;
@@ -2162,25 +2164,23 @@ async function createCard(root: string, edit: CreateCardEdit, source?: ManifestS
   const title = edit.title.trim();
   if (!title || title.length > 1000 || /[\r\n]/u.test(title)) throw new Error(serverText(catalogText).newCardTitle);
   if (typeof edit.markdown !== 'string' || edit.markdown.length > 200000) throw new Error(serverText(catalogText).newCardText);
-  // Without an explicit deck, use the project's Inbox; if none exists, require a deck choice.
-  const deckId = edit.deckId ?? manifestSource.manifest.inboxDeckId ?? null;
-  if (deckId === null) throw new Error(serverText(catalogText).newCardDeck);
   const catalog = await readProjectCatalog(root);
   if (catalog.manifestHash !== edit.manifestHash) throw new Error('CATALOG_CONFLICT');
+  const deckId = newCardDeckId(edit.deckId, manifestSource.manifest.inboxDeckId, catalog.decks, edit.kind);
   const deck = catalog.decks.find(candidate => candidate.id === deckId);
-  if (!deck) throw new Error(serverText(catalogText).deckMissing);
-  if (!deckAcceptsCard(deck.kind, edit.kind)) throw new Error(serverText(catalogText).incompatibleNewCard(edit, deck));
+  if (deckId !== null && !deck) throw new Error(serverText(catalogText).deckMissing);
+  if (deck && !deckAcceptsCard(deck.kind, edit.kind)) throw new Error(serverText(catalogText).incompatibleCard);
   if (new Set(edit.trackIds).size !== edit.trackIds.length
     || edit.trackIds.some(trackId => !catalog.tracks.some(track => track.id === trackId))) throw new Error(serverText(catalogText).newCardTracks);
   const newChild = { id: edit.cardId, kind: edit.kind, parentId: edit.parentId };
   const parent = edit.parentId === null ? undefined : validateCardFamily(catalog, [newChild], edit.parentId);
   // Fill an empty body and unset properties from the deck's Template Card.
-  const markdown = edit.markdown.trim() === '' ? deck.templateMarkdown ?? '' : edit.markdown;
-  const requestedOwner = edit.owner ?? deck.templateOwner ?? null;
+  const markdown = edit.markdown.trim() === '' ? deck?.templateMarkdown ?? '' : edit.markdown;
+  const requestedOwner = edit.owner ?? deck?.templateOwner ?? null;
   validateOwner(requestedOwner);
   const owner = requestedOwner === null ? null : resolveMember(requestedOwner.trim(), catalog.members ?? []) ?? requestedOwner.trim();
-  const effort = edit.effort ?? deck.templateEffort ?? null;
-  const priority = edit.priority ?? deck.templatePriority ?? null;
+  const effort = edit.effort ?? deck?.templateEffort ?? null;
+  const priority = edit.priority ?? deck?.templatePriority ?? null;
   if (effort !== null && (typeof effort !== 'number' || !Number.isFinite(effort) || effort < 0)) {
     throw new Error(serverText(catalogText).newCardEffort);
   }
@@ -2188,14 +2188,14 @@ async function createCard(root: string, edit: CreateCardEdit, source?: ManifestS
   if (edit.zoneId != null && (typeof edit.zoneId !== 'string' || !zoneIdPattern.test(edit.zoneId))) throw new Error(serverText(catalogText).newCardZone);
 
   // A Zone's add button selects that lane; other new cards go to the end of the topmost lane.
-  const currentOrder = catalog.deckOrder?.[deckId];
+  const currentOrder = deckId === null ? undefined : catalog.deckOrder?.[deckId];
   const alreadyOrdered = Boolean(currentOrder && ((currentOrder.flatOrder ?? []).includes(edit.cardId)
     || Object.values(currentOrder.zoneOrder ?? {}).some(cardIds => cardIds.includes(edit.cardId))));
   const nextOrder = currentOrder && !alreadyOrdered
     ? appendCardsToDeckOrder(catalog.cards.filter(card => card.deckId === deckId), currentOrder, [edit.cardId], edit.zoneId, serverLang())
     : null;
   if (!currentOrder && edit.zoneId) throw new Error(serverText(catalogText).zoneMissing);
-  const orderBytes = nextOrder ? patchDeckOrder(manifestSource, deckId, nextOrder) : null;
+  const orderBytes = nextOrder && deckId !== null ? patchDeckOrder(manifestSource, deckId, nextOrder) : null;
   const metadata: NativeCardMetadata = { deckmate: 'card', schema: 1, id: edit.cardId.slice(5), kind: edit.kind, title,
     state: edit.kind === 'task' ? writeCardState('not-started', manifestLanguage(manifestSource)) : null, owner, deckId, trackIds: edit.trackIds, parentId: edit.parentId };
   if (effort !== null) metadata.effort = effort;
@@ -2229,7 +2229,7 @@ async function createCard(root: string, edit: CreateCardEdit, source?: ManifestS
       changedPaths.push(catalogPath);
       saved = true;
     }
-    if (deck.autoTag) {
+    if (deck?.autoTag) {
       await verifyManifestHash(root, manifestHash);
       await verifyCreatedCard();
       const autoTagPaths = await applyDeckAutoTags(root, [autoTagMove(catalog, edit.cardId, null, deckId)]);

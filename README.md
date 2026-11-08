@@ -16,9 +16,9 @@ A local Markdown project board for teams of people and AI agents.
 
 [![npm](https://img.shields.io/npm/v/deckmate?color=7a52d6)](https://www.npmjs.com/package/deckmate)
 [![License: AGPL-3.0](docs/badges/license.svg)](LICENSE)
-[![Node](docs/badges/node.svg)](#try-it-in-a-minute)
+[![Node](docs/badges/node.svg)](#cli)
 
-[Try it](#try-it-in-a-minute) · [Your project](#use-it-with-your-project) · [Concepts](#how-it-works) · [Agents](#working-with-ai-agents) · [FAQ](#faq)
+[Quick start](#quick-start) · [Your project](#use-it-with-your-project) · [Concepts](#how-it-works) · [Agents](#working-with-ai-agents) · [FAQ](#faq)
 
 **English** · [Русский](README.ru.md)
 
@@ -33,9 +33,17 @@ Deckmate turns a folder of Markdown files into a project board for game and soft
 - **People and AI agents share one workflow.** An agent takes the next card from its Hand, reads only the rules it needs, asks questions on the card and hands in a report for review.
 - **Local and safe with your files.** No account, cloud sync, telemetry or automatic commits. After installation, the only network access is downloading Excalidraw's handwritten fonts when Vision is first opened. A save rewrites only the edited block; a stale write is rejected instead of overwriting someone else's work.
 
-## Try it in a minute
+## Quick start
 
-**Deckmate your backlog.** Install [Node.js](https://nodejs.org) 26 or newer (Deckmate is developed and tested on Node 26, the current release line; older versions are not tested), then create the sample project and open it:
+### Desktop
+
+Deckmate Desktop is an Electron app for Windows; macOS support is planned later. The prototype is in preparation and the installer is not published yet; it will appear on the [Releases page](https://github.com/pierkulakov/deckmate/releases). Windows will warn about an unknown publisher because the build is not code-signed.
+
+Once available, download and run the installer, launch Deckmate from its icon, then open an existing project folder or create a project in an empty folder. You do not need to install Node.js or open a terminal.
+
+### CLI
+
+The CLI works independently of Desktop, for agents and anyone who prefers a terminal. Install [Node.js](https://nodejs.org) 26 or newer (Deckmate is developed and tested on Node 26, the current release line; older versions are not tested), then create the sample project and open it:
 
 ```sh
 npx deckmate init deckmate-demo
@@ -46,18 +54,28 @@ If `npx` cannot find the package yet, follow [CONTRIBUTING.md](CONTRIBUTING.md) 
 
 The board opens at `http://127.0.0.1:4317/`. The sample is a small fictional game studio: five decks, two Heroes with Sub Cards, people and agents, a Journey, a Run and a Vision board. The interface is English by default; switch to Russian in the app menu. Stop the server with `Ctrl+C`.
 
+## Start screen
+
+![Deckmate Desktop start screen: open a folder, create a project, recent projects](docs/screenshots/desktop-start.png)
+
+Without a project, choose **Open folder…** to select an existing project in the system dialog, or **Create project** to start in an empty folder.
+Recent projects show their last-opened time and can be removed from the list; language (EN/RU) and theme controls are also available.
+The last project opens automatically on the next launch. Use **File → Switch project** (`Ctrl+Shift+O`) to return to the start screen, or `Ctrl+O` to open another folder.
+Desktop runs the same local Deckmate server on `127.0.0.1` with a randomly selected free port; project data remains in the project folder.
+Recent and last-project settings are stored in `%APPDATA%\Deckmate\desktop.json`; the index remains in the cache folder.
+
 ## Use it with your project
 
-**An existing folder.** Run Deckmate from the folder you want to manage; Markdown files you already have stay as they are, and new cards go into `cards/`:
+**An existing folder.** In Desktop, open the folder from the start screen. With the CLI, run Deckmate from the folder you want to manage; Markdown files you already have stay as they are, and new cards go into `cards/`:
 
 ```sh
 cd my-project
 npx deckmate
 ```
 
-**A new project.** Create an empty folder and open it: `mkdir my-game`, then `npx deckmate --data my-game`. On the Decks tab choose **Start from template** (or click the logo in the top-left corner → **Start from template…**). Starters come for games and for software, on the **Games** and **Software** shelves: ten game genres — Action, Adventure, Platformer, Puzzle, Roguelike, RPG, Simulation, Sports, Strategy and Survival — plus software starters such as pet projects, web apps and libraries. A starter creates decks and Journeys for its kind of project, optionally with example cards.
+**A new project.** In Desktop, choose **Create project** and an empty folder. With the CLI, create an empty folder and open it: `mkdir my-game`, then `npx deckmate --data my-game`. On the Decks tab choose **Start from template** (or click the logo in the top-left corner → **Start from template…**). Starters come for games and for software, on the **Games** and **Software** shelves: ten game genres — Action, Adventure, Platformer, Puzzle, Roguelike, RPG, Simulation, Sports, Strategy and Survival — plus software starters such as pet projects, web apps and libraries. A starter creates decks and Journeys for its kind of project, optionally with example cards.
 
-Edits are saved straight into the project folder. Commit with git to keep a history; Deckmate never commits for you. To look without changing anything, add `--read-only`.
+Edits are saved straight into the project folder. Commit with git to keep a history; Deckmate never commits for you. With the CLI, add `--read-only` to look without changing anything.
 
 | Option | What it does |
 |---|---|
@@ -66,7 +84,7 @@ Edits are saved straight into the project folder. Commit with git to keep a hist
 | `--read-only` | Disable all writes. |
 | `--no-open` | Do not open the browser. |
 
-The same settings can live in `.env.local` in the folder you start from — see [.env.example](.env.example).
+These CLI settings can also live in `.env.local` in the folder you start from — see [.env.example](.env.example).
 
 ## How it works
 
@@ -153,7 +171,7 @@ Deckmate also ships an agent skill in the open Agent Skills format. Once the pro
 
 ## FAQ
 
-**Where is my data?** In your project folder: Markdown cards and instructions, the catalog manifest and `.excalidraw` boards. The SQLite index lives in a cache folder and is rebuilt from the files.
+**Where is my data?** In your project folder: Markdown cards and instructions, the catalog manifest and `.excalidraw` boards. The SQLite index lives in a cache folder and is rebuilt from the files. Desktop keeps its recent and last-project settings separately in `%APPDATA%\Deckmate\desktop.json`.
 
 **Do I need the internet?** Only to install and to download Excalidraw's handwritten fonts when Vision is first opened. The board runs locally on `127.0.0.1`; agents can read the files with the server stopped.
 

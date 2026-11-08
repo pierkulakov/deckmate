@@ -16,6 +16,8 @@ Maintainer notes for [pierkulakov/deckmate](https://github.com/pierkulakov/deckm
 
 Committing the image does not install it as the repository's social preview. Confirm the uploaded image in Settings; the GraphQL repository field `usesCustomOpenGraphImage` should be `true`. Anonymous chat crawlers cannot produce the public preview before the repository is public. After opening it, test the repository URL in the intended chat and allow for cached previews. The local application and `social-preview.html` are not a public website; GitHub and npm supply the public search and link metadata.
 
+The preview was refreshed on 2026-11-08 with the Desktop release artwork. [social-preview.png](social-preview.png) stays 1280×640 and is rebuilt by the capture script from [social-preview.html](social-preview.html); review it at full size and at 320×160 before re-uploading.
+
 ### Visibility, CI and branch protection
 
 Pushing `main` runs [CI](../.github/workflows/ci.yml) on Ubuntu and Windows; it does not publish a release.
@@ -77,15 +79,23 @@ Keep `package.json`, `package-lock.json`, the intended `v<version>` tag and the 
 With the current token-based workflow, confirm that the `NPM_TOKEN` repository secret is present, unexpired and permitted to publish before every release tag. After owner approval, successful CI/CodeQL and npm-secret setup, create and push the version tag from the verified commit:
 
 ```sh
-git tag -a v0.1.0 -m "Deckmate 0.1.0"
-git push origin v0.1.0
+git tag -a v0.2.0 -m "Deckmate 0.2.0"
+git push origin v0.2.0
 ```
 
 [release.yml](../.github/workflows/release.yml) requires a public repository and a working `NPM_TOKEN`. It validates the version and notes, runs checks, builds the package and container, publishes npm with provenance, pushes GHCR, then creates the GitHub Release. Prereleases use npm's `next` tag and do not update the container's `latest` tag. Adding the secret or pushing `main` alone publishes nothing.
 
 If publication stops partway through, fix the reported access or service problem and rerun the **same tag's** workflow. An already published npm version is skipped only when its integrity matches the newly built tarball; a mismatch stops the run. An existing GitHub Release has its tarball uploaded again. Keep published tags fixed: npm versions are immutable, so code changes or different package bytes require a new version. Do not use unpublishing or a moved tag as rollback; publish a corrective patch release instead.
 
-After success, verify the npm version/provenance, installation from npm, the GitHub tarball, and anonymous access to the GHCR image. The first release push creates the GHCR package as private (GitHub's default; linking it to the repository does not copy the repository's visibility), so before announcing the release open the package settings → **Change visibility** → **Public** and verify an anonymous `docker pull` of `ghcr.io/pierkulakov/deckmate:0.1.0` and `ghcr.io/pierkulakov/deckmate:latest`. Set the repository website to the npm package page and replace/revoke the broad bootstrap token.
+After success, verify the npm version/provenance, installation from npm, the GitHub tarball, and anonymous access to the GHCR image. The first release push creates the GHCR package as private (GitHub's default; linking it to the repository does not copy the repository's visibility), so before announcing the release open the package settings → **Change visibility** → **Public** and verify an anonymous `docker pull` of `ghcr.io/pierkulakov/deckmate:0.2.0` and `ghcr.io/pierkulakov/deckmate:latest`. Set the repository website to the npm package page and replace/revoke the broad bootstrap token.
+
+### Desktop artifacts
+
+The `desktop` job in [release.yml](../.github/workflows/release.yml) builds the Windows Electron shell and attaches the installer `Deckmate Setup <version>.exe` and the portable zip to the GitHub Release. After the release workflow finishes, check the Release page for both files. If the `desktop` job failed but the rest of the release succeeded, build the installer locally in `desktop/` (`npm run dist:nsis`) and upload it manually:
+
+```sh
+gh release upload v<version> "desktop/release/Deckmate Setup <version>.exe"
+```
 
 ### Move to trusted publishing after bootstrap
 

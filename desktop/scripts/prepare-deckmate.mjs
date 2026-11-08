@@ -91,4 +91,11 @@ console.log('4/4 Installing dependencies (npm install)...');
 if (process.env.ELECTRON_MIRROR) console.log(`    ELECTRON_MIRROR=${process.env.ELECTRON_MIRROR}`);
 run('npm', ['install', '--no-audit', '--no-fund'], { cwd: shellDir, stdio: 'inherit', env: process.env });
 
+// Electron 45 has no postinstall download: its binary comes from install.js on request,
+// and electron-builder fails without node_modules/electron/dist (2026-11-08).
+if (!fs.existsSync(path.join(shellDir, 'node_modules', 'electron', 'dist'))) {
+  console.log('    downloading the Electron binary...');
+  run('node', [path.join('node_modules', 'electron', 'install.js')], { cwd: shellDir, stdio: 'inherit', env: process.env });
+}
+
 console.log('Done. Start the app with: npm start');

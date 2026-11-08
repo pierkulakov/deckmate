@@ -39,7 +39,7 @@ Deckmate is a local project board over Markdown. The files in the user's project
 
 ## Checks
 
-On Windows, run tests from a cwd with an uppercase drive letter (for example, `D:\GitHub\deckmate`): Vitest fixes its root before setup and registers mocks under the cwd spelling.
+On Windows, run tests from a cwd with an uppercase drive letter (for example, `C:\src\deckmate`): Vitest fixes its root before setup and registers mocks under the cwd spelling.
 
 Run checks through `npm run quiet -- <command>`: on success it prints a short summary and the path to the full log; on failure it prints the errors.
 

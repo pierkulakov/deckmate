@@ -144,6 +144,9 @@ kbd { display: inline-flex; align-items: center; justify-content: center; min-wi
 .workspace-main { position: relative; overflow: auto; min-height: 0; flex: 1; scroll-behavior: smooth; scroll-padding-top: 32px; scrollbar-gutter: stable; } /* Reserve scrollbar space so the layout stays stable when it appears. */
 /* 2026-11-06: an empty open deck has no scrollbar; reserving its gutter left a blank strip beside the full-width toolbar. */
 .workspace-main:has(> .catalog-view.is-deck-open) { scrollbar-gutter: auto; }
+/* 2026-11-09: a priority drop can add a tile row and reveal the workspace scrollbar. Keep its gutter reserved while the
+   editor is open so the percentage-based preview column and the deck do not contract when that row is committed. */
+.workspace-main:has(> .catalog-view.is-deck-open.has-preview) { scrollbar-gutter: stable; }
 /* 2026-11-05: the fixed notifications corner publishes the height it covers (Notifications.tsx); the scroll end clears it, so the last
    rows scroll out from under it. Vision's canvas fills the view, and its side panel clears the corner instead (workspace.css). */
 .workspace-main:not(:has(> .vision-workspace)) { padding-bottom: var(--notifications-clearance, 0px); }

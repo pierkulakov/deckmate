@@ -4,6 +4,10 @@ schema: 1
 id: action-maps
 title: "Action: Maps"
 description: Turn a combat layout into a navigable and readable encounter space.
+locales:
+  ru:
+    title: "Экшен: карты"
+    description: Превратить боевую схему в удобное для навигации и чтения пространство стычки.
 category: Production
 tags:
   - Action

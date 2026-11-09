@@ -6,6 +6,7 @@ import { Check, CircleHelp, Crown, Eye, FileText, Gauge, GripVertical, Hourglass
 import type { CardKind, CatalogCard, CatalogMember, CatalogView } from '../../src/catalog-contracts.ts';
 import { countCatalogCardWords } from '../card-word-count.ts';
 import { sameCardTileData, type CardTileCatalog, type CardTileLookups } from '../card-tile-equality.ts';
+import { familyChildren } from '../catalog-lookups.ts';
 import { HOVER_CARD_SHORTCUTS, markShortcutPropertyHover, matchShortcut, shortcutTargetBlocked } from '../keyboard-shortcuts.ts';
 import { attachmentSource, fetchCardAttachments } from '../attachments.ts';
 import { CardIndicators } from './CardIndicators.tsx';
@@ -39,6 +40,7 @@ const text = defineText({
   noSubCards: 'No Sub Cards',
   wordCount: (count: string) => 'Word count: ' + count,
   tags: (names: string) => 'tags: ' + names,
+  familyDone: 'Hero done: all Sub Cards accepted',
 }, {
   docCard: 'Doc Card',
   transferCard: (title: string) => 'Перенести в колоду: ' + title,
@@ -59,6 +61,7 @@ const text = defineText({
   noSubCards: 'Без Sub Cards',
   wordCount: (count: string) => 'Число слов: ' + count,
   tags: (names: string) => 'теги: ' + names,
+  familyDone: 'Hero выполнена: все Sub Cards приняты',
 });
 
 export const cardKinds: Record<CardKind, string> = {
@@ -178,8 +181,9 @@ export const CatalogCardTile = memo(function CatalogCardTile({ card, lookups, me
   const tileElement = useRef<HTMLElement | null>(null);
   const transfer = useCardTransferDrag(card);
   // 2026-11-09: the author's reference video measures ±12deg (perspective 850px); the author asked for a touch less.
-  const { element, tilt, reset } = useCardTilt<HTMLElement>(10, checked || disabled || familyHovered || transfer.anyDragging);
-  const progress = card.kind === 'hero' ? { children: lookups.childrenByParent.get(card.id) ?? emptyCards } : null;
+  const { element, tilt, reset } = useCardTilt<HTMLElement>(8, checked || disabled || familyHovered || transfer.anyDragging);
+  const children = card.kind === 'hero' ? familyChildren(lookups, card.id) : emptyCards;
+  const progress = card.kind === 'hero' ? { children: children.filter(child => child.kind === 'task') } : null;
   // Own effort plus Sub Cards' effort matches the table row and properties panel.
   const heroEffort = progress ? cardHeroEffort(card, { cards: progress.children }) : null;
   // A Hero whose whole family is finished wears the done band too; finishing plays the done impact once (2026-11-06).
@@ -224,7 +228,7 @@ export const CatalogCardTile = memo(function CatalogCardTile({ card, lookups, me
     <article ref={element} className={`deck-card catalog-card-${card.kind} deck-state-${statusClass(card.state ?? '')}${familyDone ? ' is-family-done' : ''}${justDone ? ' is-just-done' : ''}${selected ? ' is-selected' : ''}${checked ? ' is-multi-selected' : ''}`} style={style} data-deck-card={card.id}>
       {transfer.handle}
       {selectable && <input className="catalog-card-checkbox" type="checkbox" checked={checked} disabled={disabled} aria-label={t.selectCard(card.title)} onChange={event => onToggle(card.id, Boolean((event.nativeEvent as MouseEvent).shiftKey))} />}
-      {parent && <CardFamilyPopover projectTags={tagDefinitions} members={members} hero={parent} children={lookups.childrenByParent.get(parent.id) ?? emptyCards} disabled={disabled} onOpen={onFamilyOpen} onOpenChange={setFamilyHovered} />}
+      {parent && <CardFamilyPopover projectTags={tagDefinitions} members={members} hero={parent} children={familyChildren(lookups, parent.id)} disabled={disabled} onOpen={onFamilyOpen} onOpenChange={setFamilyHovered} />}
       {/* 2026-11-05: property controls are siblings of the face button so keyboard focus never enters a nested button. */}
       <div className="deck-card-face" onClick={event => {
         if (disabled || !(event.target as Element).closest('.card-indicators')) return;
@@ -245,13 +249,16 @@ export const CatalogCardTile = memo(function CatalogCardTile({ card, lookups, me
           <TagColorIndicator tags={card.tags} definitions={tagDefinitions} />
         </span>
       </div>
-      <div className="deck-card-band">{card.owner && <span className="deck-card-owner-medallion" title={t.owner(card.owner)} aria-label={t.owner(card.owner)}><CardOwnerAvatar owner={card.owner} members={members} /></span>}
+      <div className="deck-card-band">{/* 2026-11-09: a finished Hero shows a done medallion in the owner's place (author); the owner stays in the open card. */}
+        {familyDone
+          ? <span className="deck-card-owner-medallion deck-card-done-medallion" role="img" title={t.familyDone} aria-label={t.familyDone}><Check size={14} strokeWidth={3.25} aria-hidden="true" /></span>
+          : card.owner && <span className="deck-card-owner-medallion" title={t.owner(card.owner)} aria-label={t.owner(card.owner)}><CardOwnerAvatar owner={card.owner} members={members} /></span>}
         <span className="card-material-glare" aria-hidden="true" />
         {card.kind === 'task' && <div className="deck-card-task-metrics"><span data-shortcut-property="effort" onPointerEnter={event => markShortcutPropertyHover(event.currentTarget, true)} onPointerLeave={event => markShortcutPropertyHover(event.currentTarget, false)} title={t.effort(effortLabel)}><Gauge size={18} /><strong>{effortLabel}</strong></span><span data-shortcut-property="priority" onPointerEnter={event => markShortcutPropertyHover(event.currentTarget, true)} onPointerLeave={event => markShortcutPropertyHover(event.currentTarget, false)} title={t.priority(cardPriorityLabel)}><Layers size={17} /><span className="visually-hidden">{cardPriorityLabel}</span></span>{attachmentBadge}</div>}
         {/* 2026-11-09: no attachment badge on the Hero band — it stacked above the crown and made the band taller (author). */}
         {card.kind === 'hero' && <div className="deck-card-identity">{showEffortTotal && <Gauge className="catalog-card-effort-icon" size={16} aria-hidden="true" data-shortcut-property="effort" onPointerEnter={event => markShortcutPropertyHover(event.currentTarget, true)} onPointerLeave={event => markShortcutPropertyHover(event.currentTarget, false)} />}<strong className={identityClassName} title={identityTitle}>{identityValue}</strong><Icon size={18} aria-hidden="true" /></div>}
         {card.kind === 'doc' && <div className="deck-card-identity"><span className="deck-card-doc-kind" role="img" title={cardKinds.doc} aria-label={cardKinds.doc}><Icon size={18} aria-hidden="true" /></span>{openQuestionCount > 0 && <OpenQuestionsBadge card={card} />}</div>}
-        {progress && (progress.children.length ? <SubCardProgress cards={progress.children} cardsById={lookups.cardById} /> : <span className="catalog-card-progress">{t.noSubCards}</span>)}
+        {progress && (children.length ? progress.children.length > 0 && <SubCardProgress cards={progress.children} cardsById={lookups.cardById} /> : <span className="catalog-card-progress">{t.noSubCards}</span>)}
         {card.kind === 'doc' && <span className="catalog-card-progress"><span className="deck-card-doc-caption">Markdown{wordCount > 0 && <> · <span title={t.wordCount(numberFormat.format(wordCount))} aria-label={t.wordCount(numberFormat.format(wordCount))}>{numberFormat.format(wordCount)}</span></>}</span>{attachmentBadge}</span>}
       </div>
     </article>

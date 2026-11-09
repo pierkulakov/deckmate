@@ -4,6 +4,10 @@ schema: 1
 id: platformer
 title: Platformer
 description: Movement abilities, levels, enemies and power-ups for precise jumps and readable traversal challenges.
+locales:
+  ru:
+    title: Платформер
+    description: Способности передвижения, уровни, враги и бонусы для точных прыжков и читаемых испытаний на перемещение.
 category: games
 genre: platformer
 order: 3

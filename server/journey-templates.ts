@@ -1,7 +1,8 @@
-import { defineText, serverText } from './i18n.ts';
+import { defineText, serverLang, serverText } from './i18n.ts';
 import { createHash, randomUUID } from 'node:crypto';
 import { lstat, readFile, readdir } from 'node:fs/promises';
 import path from 'node:path';
+import { containedFile } from './config.ts';
 import { createManagedMarkdown } from './native-cards.ts';
 import { packagePath } from './package-path.ts';
 import { parse } from 'yaml';
@@ -10,6 +11,8 @@ import type {
   CatalogJourneyTemplateStep, CatalogJourneyZone, CatalogView, JourneyTemplateSource,
 } from '../src/catalog-contracts.ts';
 import type { FormatLanguage } from '../src/format-vocabulary.ts';
+import { parseTemplateLocales } from '../src/template-locales.ts';
+import { templateText } from '../src/template-text.ts';
 import {
   assertManifestHash, orderedDependencies, publishJourney, readJourney, requireSourceDeck, requireTaskDeck,
   stepFileHashes, validateJourneyZones, validateStepZones, validText,
@@ -140,8 +143,25 @@ function stringList(value: unknown, maximum: number): string[] {
   return value as string[];
 }
 
-async function readTemplate(id: string, directory: string, source: JourneyTemplateSource): Promise<CatalogJourneyTemplate> {
-  const index = parseTemplateFile(await readFile(path.join(directory, 'index.md')));
+/**
+ * 2026-11-09: template folders as a root and a directory relative to it. Every read resolves through containedFile,
+ * so a junction or symlink in a cloned project cannot pull outside files into the catalog or its fingerprint.
+ */
+export function journeyTemplateDirectories(bundledDirectory: string, projectRoot: string): Array<{
+  root: string; directory: string; source: JourneyTemplateSource; label: string;
+}> {
+  return [
+    { root: path.dirname(bundledDirectory), directory: path.basename(bundledDirectory), source: 'bundled', label: 'assets/journey-templates' },
+    { root: projectRoot, directory: 'tasks/journey-templates', source: 'project', label: 'tasks/journey-templates' },
+  ];
+}
+
+async function readTemplateFile(root: string, relative: string): Promise<TemplateFile> {
+  return parseTemplateFile(await readFile(await containedFile(root, relative)));
+}
+
+async function readTemplate(id: string, root: string, directory: string, source: JourneyTemplateSource): Promise<CatalogJourneyTemplate> {
+  const index = await readTemplateFile(root, path.posix.join(directory, 'index.md'));
   const metadata = index.metadata;
   if ((metadata.deckmate ?? metadata.freetion) !== 'journey-template' || metadata.schema !== 1 || metadata.id !== id || !templateIdPattern.test(id)) {
     throw new Error(serverText(messages).invalidTemplateHeader);
@@ -150,6 +170,7 @@ async function readTemplate(id: string, directory: string, source: JourneyTempla
   if (metadata.description !== undefined && (typeof metadata.description !== 'string' || metadata.description.length > 2000)) {
     throw new Error(serverText(messages).invalidTemplateDescription);
   }
+  const locales = parseTemplateLocales(metadata.locales, serverLang());
   if (!validText(metadata.category, 60)) throw new Error(serverText(messages).invalidTemplateCategory);
   if (!validText(metadata.author, 120)) throw new Error(serverText(messages).invalidTemplateAuthor);
   if (typeof metadata.updated !== 'string' || !datePattern.test(metadata.updated)) throw new Error(serverText(messages).invalidTemplateDate);
@@ -170,7 +191,7 @@ async function readTemplate(id: string, directory: string, source: JourneyTempla
   const documents: Array<[string, string]> = [['index.md', index.fileHash]];
   for (const reference of references) {
     const stepId = stepReferencePattern.exec(reference)![1];
-    const file = parseTemplateFile(await readFile(path.join(directory, reference)));
+    const file = await readTemplateFile(root, path.posix.join(directory, reference));
     if (file.metadata.id !== stepId) throw new Error(serverText(messages).stepIdMismatch(reference));
     if (!validText(file.metadata.title, 300) || typeof file.markdown !== 'string' || file.markdown.length > 200000) {
       throw new Error(serverText(messages).invalidTemplateStep(reference));
@@ -202,22 +223,28 @@ async function readTemplate(id: string, directory: string, source: JourneyTempla
   // As with Journeys, the aggregate revision covers the index, its order, and all instructions.
   return { id, source, title: (metadata.title as string).trim(), description: (metadata.description as string | undefined) ?? '',
     category: (metadata.category as string).trim(), tags, author: (metadata.author as string).trim(), updated: metadata.updated as string,
-    roles, zones, steps, fileHash: digest(Buffer.from(JSON.stringify(documents))) };
+    roles, zones, steps, ...(locales ? { locales } : {}), fileHash: digest(Buffer.from(JSON.stringify(documents))) };
 }
 
-async function collectTemplates(directory: string, source: JourneyTemplateSource, label: string,
+async function collectTemplates({ root, directory, source, label }: ReturnType<typeof journeyTemplateDirectories>[number],
   templates: CatalogJourneyTemplate[], warnings: string[]): Promise<void> {
   let entries;
-  try { entries = await readdir(directory, { withFileTypes: true }); }
-  catch (error) { if ((error as NodeJS.ErrnoException).code === 'ENOENT') return; throw error; }
+  try { entries = await readdir(await containedFile(root, directory), { withFileTypes: true }); }
+  catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    if (code === 'ENOENT') return;
+    if (code === 'OUTSIDE_PROJECT') { warnings.push(`${label}: ${(error as Error).message}`); return; }
+    throw error;
+  }
   for (const entry of entries.sort((first, second) => (first.name < second.name ? -1 : first.name > second.name ? 1 : 0))) {
     if (!entry.isDirectory() || entry.isSymbolicLink() || !templateIdPattern.test(entry.name)) continue;
+    const templateDirectory = path.posix.join(directory, entry.name);
     // index.md marks a published template; ignore orphaned step files, as with Journeys.
     try {
-      const indexStat = await lstat(path.join(directory, entry.name, 'index.md'));
+      const indexStat = await lstat(path.join(root, templateDirectory, 'index.md'));
       if (!indexStat.isFile() || indexStat.isSymbolicLink()) continue;
     } catch (error) { if ((error as NodeJS.ErrnoException).code === 'ENOENT') continue; throw error; }
-    try { templates.push(await readTemplate(entry.name, path.join(directory, entry.name), source)); }
+    try { templates.push(await readTemplate(entry.name, root, templateDirectory, source)); }
     catch (error) { warnings.push(`${label}/${entry.name}/index.md: ${error instanceof Error ? error.message : String(error)}`); }
   }
 }
@@ -226,8 +253,7 @@ async function collectTemplates(directory: string, source: JourneyTemplateSource
 export async function readJourneyTemplates(bundledDirectory: string, projectRoot: string): Promise<{ templates: CatalogJourneyTemplate[]; warnings: string[] }> {
   const templates: CatalogJourneyTemplate[] = [];
   const warnings: string[] = [];
-  await collectTemplates(bundledDirectory, 'bundled', 'assets/journey-templates', templates, warnings);
-  await collectTemplates(path.join(projectRoot, 'tasks/journey-templates'), 'project', 'tasks/journey-templates', templates, warnings);
+  for (const location of journeyTemplateDirectories(bundledDirectory, projectRoot)) await collectTemplates(location, templates, warnings);
   return { templates, warnings };
 }
 
@@ -388,8 +414,9 @@ export async function importJourneyTemplate(root: string, catalog: CatalogView, 
     requireSourceDeck(catalog, edit.deckId);
     orderedDependencies(imported);
     validateStepZones(imported, template.zones);
-    return publishJourney(root, verifySources, { id: randomUUID(), version: 1, title: template.title,
-      deckId: edit.deckId, description: template.description, zones: template.zones, steps: imported }, catalog.formatLanguage);
+    const localized = templateText(template, catalog.formatLanguage);
+    return publishJourney(root, verifySources, { id: randomUUID(), version: 1, title: localized.title,
+      deckId: edit.deckId, description: localized.description, zones: template.zones, steps: imported }, catalog.formatLanguage);
   }
   const current = await requireImportTarget(root, edit);
   const existing = { steps: current.journey.steps, hashes: stepFileHashes(current.documents), indexHash: current.documents[0].hash };

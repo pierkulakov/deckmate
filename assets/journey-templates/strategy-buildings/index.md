@@ -4,6 +4,10 @@ schema: 1
 id: strategy-buildings
 title: "Strategy: Buildings"
 description: Take a building through 3D production, gameplay integration, sound and economy tuning.
+locales:
+  ru:
+    title: "Стратегия: здания"
+    description: Провести здание через 3D-производство, интеграцию в геймплей, звук и настройку экономики.
 category: Production
 tags:
   - Strategy

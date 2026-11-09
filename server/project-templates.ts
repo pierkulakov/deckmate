@@ -11,6 +11,7 @@ import { bundledDeckArt } from './deck-art.ts';
 import { packagePath } from './package-path.ts';
 import { journeyCardId, journeyInstanceId } from './journeys.ts';
 import { defineText, serverLang, serverText } from './i18n.ts';
+import { templateText } from '../src/template-text.ts';
 
 const messages = defineText({
   missing: (id: string) => `Project template not found: ${id}`,
@@ -153,7 +154,8 @@ function templateJourney(deck: ProjectTemplate['decks'][number], bundle: Templat
   matches: Map<string, CatalogDeck | undefined>): CatalogJourney | undefined {
   const expected = deck.journey && bundle.journeys.get(deck.journey);
   const journey = catalog.journeys?.find(candidate => candidate.deckId === matches.get(deck.id)?.id);
-  if (!expected || !journey || journey.title !== expected.title || journey.description !== expected.description
+  const localized = expected && templateText(expected, catalog.formatLanguage);
+  if (!expected || !localized || !journey || journey.title !== localized.title || journey.description !== localized.description
     || JSON.stringify(journey.zones ?? []) !== JSON.stringify(expected.zones) || journey.steps.length !== expected.steps.length) return undefined;
   // 2026-11-05: imported Journeys have no provenance marker; require the full mapped template, not just its title.
   const unchanged = expected.steps.every((step, index) => {

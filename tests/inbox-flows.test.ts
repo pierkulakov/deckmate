@@ -22,6 +22,7 @@ describe.skipIf(!browserPath)('Inbox flows (browser)', () => {
   let cache: string | undefined;
   let socket: WebSocket | undefined;
   let sequence = 0;
+  let executionContextId: number | undefined;
   const pending = new Map<number, { resolve: (value: any) => void; reject: (error: Error) => void }>();
   const errors: string[] = [];
 
@@ -31,6 +32,14 @@ describe.skipIf(!browserPath)('Inbox flows (browser)', () => {
   }
   async function evaluate(expression: string): Promise<any> {
     const result = await send('Runtime.evaluate', { expression, returnByValue: true, awaitPromise: true });
+    if (result.exceptionDetails) throw new Error(result.exceptionDetails.exception?.description ?? result.exceptionDetails.text);
+    return result.result?.value;
+  }
+  // 2026-11-09: values cross into the page as callFunctionOn arguments, not as text baked into the evaluated code
+  // (CodeQL js/bad-code-sanitization flags JSON.stringify interpolation).
+  async function callFunction(functionDeclaration: string, ...args: unknown[]): Promise<any> {
+    const result = await send('Runtime.callFunctionOn', { functionDeclaration, executionContextId,
+      arguments: args.map(value => ({ value })), returnByValue: true, awaitPromise: true });
     if (result.exceptionDetails) throw new Error(result.exceptionDetails.exception?.description ?? result.exceptionDetails.text);
     return result.result?.value;
   }
@@ -46,10 +55,10 @@ describe.skipIf(!browserPath)('Inbox flows (browser)', () => {
     await delay(60);
   }
   async function type(selector: string, text: string) {
-    await evaluate(`(() => { const field = document.querySelector(${JSON.stringify(selector)});
+    await callFunction(`(selector, text) => { const field = document.querySelector(selector);
       const prototype = field instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
-      Object.getOwnPropertyDescriptor(prototype, 'value').set.call(field, ${JSON.stringify(text)});
-      field.dispatchEvent(new Event('input', { bubbles: true })); })()`);
+      Object.getOwnPropertyDescriptor(prototype, 'value').set.call(field, text);
+      field.dispatchEvent(new Event('input', { bubbles: true })); }`, selector, text);
     await delay(60);
   }
   async function key(key: string, code: number) {
@@ -92,6 +101,8 @@ describe.skipIf(!browserPath)('Inbox flows (browser)', () => {
     await new Promise(resolve => socket!.addEventListener('open', resolve, { once: true }));
     socket.addEventListener('message', event => {
       const message = JSON.parse(String(event.data));
+      if (message.method === 'Runtime.executionContextCreated' && message.params.context.auxData?.isDefault)
+        executionContextId = message.params.context.id;
       if (message.id) {
         const request = pending.get(message.id);
         pending.delete(message.id);

@@ -2,6 +2,7 @@ import { parse } from 'yaml';
 import type { ProjectTemplate, ProjectTemplateCategory, ProjectTemplateDeck, ProjectTemplateSample, ProjectTemplateSpace, SpaceKind } from './catalog-contracts.ts';
 import { defaultLang, defineText, type Lang } from './i18n.ts';
 import { validateProjectTag } from './project-tags.ts';
+import { parseTemplateLocales } from './template-locales.ts';
 
 export const projectTemplateIcons = ['layers', 'code', 'palette', 'gamepad', 'audio', 'bug', 'book', 'image', 'tasks', 'users', 'box', 'activity', 'swords', 'flag'] as const;
 export const projectTemplateRoles = ['design', 'art', 'animation', 'audio', 'code', 'qa', 'ui'] as const;
@@ -165,6 +166,7 @@ export function parseProjectTemplate(markdown: string, fileHash = '', lang: Lang
   reader.unique(tags.map(tag => tag.name), 'tags.name');
   const samples = reader.list(metadata.samples, 'samples', 2, 3).map((sample, index) => reader.sample(sample, index, decks));
   reader.unique(samples.map(sample => `${sample.deck}/${sample.title}`), 'samples');
+  const locales = parseTemplateLocales(metadata.locales, lang);
   return {
     id: reader.identifier(metadata.id, 'id'),
     title: reader.string(metadata.title, 'title', 120),
@@ -173,6 +175,6 @@ export function parseProjectTemplate(markdown: string, fileHash = '', lang: Lang
     genre: metadata.genre === null ? null : reader.choice(metadata.genre, 'genre', projectTemplateGenres),
     order: metadata.order, spaces, decks, tags, samples,
     details: reader.string(source.slice(frontmatter[0].length).trim(), 'details', 600, 0, true),
-    fileHash,
+    ...(locales ? { locales } : {}), fileHash,
   };
 }

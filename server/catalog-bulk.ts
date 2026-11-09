@@ -112,9 +112,9 @@ async function currentHash(root: string, relative: string): Promise<string> {
 
 /** 2026-11-03: Preflight all cards and build all candidates before publishing any file. */
 export async function editCatalogBulk(root: string, edit: BulkEditRequest, actorMemberId: string | null = null): Promise<BulkResult> {
-  if (!Array.isArray(edit.cards) || edit.cards.length < 1 || edit.cards.length > 1000) throw new Error(serverText(bulkText).selectionSize);
   if (typeof edit.manifestHash !== 'string' || typeof edit.optionsHash !== 'string' || !/^(?:[0-9a-f]{64})?$/u.test(edit.optionsHash)) throw new Error(serverText(bulkText).currentVersions);
   if (!record(edit.change)) throw new Error(serverText(bulkText).actionRequired);
+  if (!Array.isArray(edit.cards) || (edit.cards.length < 1 && edit.change.kind !== 'promote-parent') || edit.cards.length > 1000) throw new Error(serverText(bulkText).selectionSize);
   const catalog = await readProjectCatalog(root);
   if (catalog.manifestHash !== edit.manifestHash) throw new Error('CATALOG_CONFLICT');
   if (catalog.optionsHash !== edit.optionsHash) throw new Error('CARD_OPTIONS_CONFLICT');
@@ -372,7 +372,8 @@ export async function editCatalogBulk(root: string, edit: BulkEditRequest, actor
   if (promotion) {
     const candidateId = promotion.id;
     const candidatePath = promotion.path;
-    const selectedIds = selected.map(card => card.id);
+    // Without Sub Cards the promoted card itself is the only card the outcome reports.
+    const selectedIds = selected.length ? selected.map(card => card.id) : [candidateId];
     for (const publication of publications) {
       if (publication.ids.includes(candidateId)) publication.ids = [...new Set([...publication.ids.filter(id => id !== candidateId), ...selectedIds])];
     }
@@ -381,14 +382,15 @@ export async function editCatalogBulk(root: string, edit: BulkEditRequest, actor
     publications.sort((left, right) => rank(left) - rank(right));
   }
   await guard();
-  const required = new Map(selected.map(card => [card.id, publications.filter(plan => plan.ids.includes(card.id)).length]));
+  const tracked: CatalogCard[] = promotion && !selected.length ? [promotion] : selected;
+  const required = new Map(tracked.map(card => [card.id, publications.filter(plan => plan.ids.includes(card.id)).length]));
   const completed = new Map<string, number>();
   const changedPaths: string[] = [];
   const created: string[] = [];
   const result = (warnings: string[]): BulkResult => ({ changedPaths, outcome: {
-    applied: selected.filter(card => required.get(card.id)! > 0 && completed.get(card.id) === required.get(card.id)).map(card => card.id),
-    unchanged: selected.filter(card => !required.get(card.id)).map(card => card.id),
-    pending: selected.filter(card => required.get(card.id)! > (completed.get(card.id) ?? 0)).map(card => card.id), created, warnings,
+    applied: tracked.filter(card => required.get(card.id)! > 0 && completed.get(card.id) === required.get(card.id)).map(card => card.id),
+    unchanged: tracked.filter(card => !required.get(card.id)).map(card => card.id),
+    pending: tracked.filter(card => required.get(card.id)! > (completed.get(card.id) ?? 0)).map(card => card.id), created, warnings,
   } });
   for (const publication of publications) {
     let saved = false;

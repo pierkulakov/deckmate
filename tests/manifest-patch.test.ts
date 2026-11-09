@@ -142,7 +142,7 @@ it.each(['\n', '\r\n'])('appends before trailing comments without consuming an i
 });
 
 it.each(['templateMarkdown', 'templateMarkdown: null'])('updates a flow null without touching its neighbors: %s', async field => {
-  const data = await fixture(base + `decks: [${flowDeck.replace('}', `, ${field}}`)}]`);
+  const data = await fixture(base + `decks: [${flowDeck.slice(0, -1)}, ${field}}]`);
   await checkEdit(data, { name: 'flow null', edit: automation, change: m => { m.decks[0].templateMarkdown = 'new'; } },
     data.original.replace(field, 'templateMarkdown: new'));
 });

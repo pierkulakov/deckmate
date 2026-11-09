@@ -4,6 +4,10 @@ schema: 1
 id: platformer-levels
 title: "Platformer: Levels"
 description: Teach a movement skill through a complete route with fair checkpoints.
+locales:
+  ru:
+    title: "Платформер: уровни"
+    description: Научить игровому приёму передвижения с помощью законченного маршрута и честных чекпоинтов.
 category: Production
 tags:
   - Platformer

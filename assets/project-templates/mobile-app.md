@@ -4,6 +4,10 @@ schema: 1
 id: mobile-app
 title: Mobile App
 description: Screens, platform notes, store releases and bugs for an iOS and Android app.
+locales:
+  ru:
+    title: Мобильное приложение
+    description: Экраны, заметки по платформам, релизы в сторах и баги для приложения на iOS и Android.
 category: software
 genre: null
 order: 13

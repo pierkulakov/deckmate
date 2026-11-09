@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { CatalogCard } from '../src/catalog-contracts.ts';
-import { buildCatalogLookups } from '../client/catalog-lookups.ts';
+import { buildCatalogLookups, familyChildren } from '../client/catalog-lookups.ts';
+import { familyFinished } from '../client/done-impact.ts';
 
 function card(id: string, overrides: Partial<CatalogCard> = {}): CatalogCard {
   return { id, kind: 'task', path: 'features/sound.md', version: null, title: id, state: 'not-started', owner: null,
@@ -46,7 +47,7 @@ describe('catalog lookups', () => {
       card('doc', { kind: 'doc', parentId: 'hero', state: 'done', trackIds: ['sound'] }),
     ];
     const lookup = buildCatalogLookups(cards);
-    expect(lookup.childrenByParent.get('hero')?.map(child => child.id)).toEqual(['accepted', 'planned']);
+    expect(lookup.childrenByParent.get('hero')?.map(child => child.id)).toEqual(['accepted', 'planned', 'doc']);
     expect(lookup.acceptedChildrenByParent.get('hero')).toBe(1);
     expect(lookup.trackCounts.get('sound')).toBe(4);
     expect(lookup.trackProgress.get('sound')).toEqual({ total: 2, accepted: 1 });
@@ -54,6 +55,28 @@ describe('catalog lookups', () => {
     expect(lookup.deckCounts.get('tasks')).toBe(2);
     expect(lookup.deckCounts.get(null)).toBe(1);
     expect(lookup.kindCounts).toEqual({ task: 2, hero: 1, doc: 1 });
+  });
+
+  it('keeps live Task and Doc children in family order without archived or deleted cards', () => {
+    const cards = [
+      card('hero', { kind: 'hero', state: null }),
+      card('doc', { kind: 'doc', parentId: 'hero', state: null }),
+      card('task', { parentId: 'hero' }),
+      card('archived', { kind: 'doc', parentId: 'hero', state: null, archived: true }),
+      card('deleted', { parentId: 'hero', deleted: true }),
+    ];
+    const lookup = buildCatalogLookups(cards, { hero: ['task', 'doc'] });
+    expect(lookup.childrenByParent.get('hero')?.map(child => child.id)).toEqual(['task', 'doc', 'archived', 'deleted']);
+    expect(familyChildren(lookup, 'hero').map(child => child.id)).toEqual(['task', 'doc']);
+  });
+
+  it('finishes a family from Task children only, ignoring Doc cards', () => {
+    const done = card('done', { state: 'done' });
+    const started = card('started', { state: 'started' });
+    const doc = card('doc', { kind: 'doc', state: 'done' });
+    expect(familyFinished([doc])).toBe(false);
+    expect(familyFinished([done, doc])).toBe(true);
+    expect(familyFinished([started, doc])).toBe(false);
   });
 
   it('preserves literal substring search, Russian casing and adjacent fields', () => {

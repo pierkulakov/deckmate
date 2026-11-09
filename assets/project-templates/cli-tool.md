@@ -4,6 +4,10 @@ schema: 1
 id: cli-tool
 title: CLI Tool
 description: Commands, flags, compatibility and documentation for a tool developers run daily.
+locales:
+  ru:
+    title: CLI-инструмент
+    description: Команды, флаги, совместимость и документация для инструмента, которым разработчики пользуются каждый день.
 category: software
 genre: null
 order: 15

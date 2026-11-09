@@ -4,6 +4,10 @@ schema: 1
 id: data-ml
 title: Data / ML
 description: Datasets, experiments, models and metrics for a data or machine-learning project.
+locales:
+  ru:
+    title: Данные / ML
+    description: Датасеты, эксперименты, модели и метрики для проекта по данным или машинному обучению.
 category: software
 genre: null
 order: 18

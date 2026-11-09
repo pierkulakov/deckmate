@@ -4,6 +4,10 @@ schema: 1
 id: game-mechanic
 title: Game Mechanic
 description: Take a mechanic from a plain-language rule through questions for its author, prototyping, rule testing, visuals, balance, and acceptance.
+locales:
+  ru:
+    title: Игровая механика
+    description: Провести механику от правила простым языком через вопросы автору, прототип, проверку правила, визуал, баланс и приёмку.
 category: Design
 tags: [Design]
 author: Deckmate

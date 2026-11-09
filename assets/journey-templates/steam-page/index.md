@@ -4,6 +4,10 @@ schema: 1
 id: steam-page
 title: Steam Page
 description: Build a Steam page from registration and positioning through copy, capsules, a trailer, tags and publication.
+locales:
+  ru:
+    title: Страница Steam
+    description: Собрать страницу Steam от регистрации и позиционирования через тексты, капсулы, трейлер, теги и публикацию.
 category: Marketing
 tags: [Marketing]
 author: Deckmate

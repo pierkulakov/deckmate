@@ -4,6 +4,10 @@ schema: 1
 id: puzzle-mechanics
 title: "Puzzle: Mechanics"
 description: Define a consistent puzzle rule with reversible state changes.
+locales:
+  ru:
+    title: "Головоломка: механики"
+    description: Определить согласованное правило головоломки с обратимыми изменениями состояния.
 category: Production
 tags:
   - Puzzle

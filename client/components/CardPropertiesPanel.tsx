@@ -11,6 +11,7 @@ import { Button } from './ui/button.tsx';
 import { defineText, locale, useLang, useText } from '../i18n.ts';
 import { priorityLabel } from '../locales/common.ts';
 import { orderedRunChoices, runChoiceLabel } from '../run-label.ts';
+import { subCardWeight } from '../sub-card-state.ts';
 import '../card-properties.css';
 
 const text = defineText({
@@ -91,8 +92,8 @@ export function cardHeroEffort(card: CatalogCard, catalog: Pick<CatalogView, 'ca
   if (card.kind !== 'hero') return null;
   const children = catalog.cards.filter(candidate => candidate.parentId === card.id && candidate.kind === 'task' && !candidate.archived && !candidate.deleted);
   if (!children.length && card.effort == null) return null;
-  // 2026-11-04: unestimated work contributes one point; a Hero's own estimate is additional work.
-  return (card.effort ?? 0) + children.reduce((total, child) => total + (child.effort ?? 1), 0);
+  // A Hero's own estimate is additional work; each Sub Card adds its weight (unestimated work counts one point).
+  return (card.effort ?? 0) + children.reduce((total, child) => total + subCardWeight(child), 0);
 }
 
 export function CardPropertiesPanel({ id, card, catalog, disabled, visible, onEdit, onActiveChange, onQuickSettings, children }: {

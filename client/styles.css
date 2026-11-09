@@ -36,7 +36,7 @@
 :root { color-scheme: light; --font-sans: 'Source Sans 3', sans-serif; --canvas: #f4eef9; --surface: #fdfaff; --ground: #eee6f4; --sidebar: #e9e0f2; --ink: #2f2440; --muted: #6b587b; --line: #d5c5e5; --hover: #e8d9f3; --accent: #7443a6; --accent-soft: #ecdaf8; --focus: #8251ba; --danger: #b64267; --warning-bg: #f9edcf; --warning-ink: #80531c; --mark-back: #a184e0; --mark-front: #6538a3; --mark-pip: #e8ad2e; --edit-bg: #fbf8ff; --edit-line: #a38acb; --edit-link: #4a3a63; --edit-cancel: #b64267; --edit-hint: #6b587b; --edit-save: #7a5aae; --plum: #9c6acf; --champagne: #cb973c; --shadow: 0 8px 28px #30243812; --panel-gradient: linear-gradient(145deg, color-mix(in srgb, var(--surface) 93%, var(--plum)), var(--surface) 72%); --chrome-gradient: linear-gradient(120deg, color-mix(in srgb, var(--sidebar) 92%, var(--plum)), var(--sidebar) 58%, color-mix(in srgb, var(--sidebar) 96%, var(--champagne))); --tab-gradient: linear-gradient(145deg, color-mix(in srgb, var(--surface) 88%, var(--plum)), var(--surface) 75%); font-family: var(--font-sans); font-synthesis: none; }
 /* Dark is the default theme. */
 :root.dark { color-scheme: dark; --canvas: #322f40; --surface: #39354a; --ground: #27242f; --sidebar: #1c1a24; --chrome: #27242f; --ink: #edeef2; --muted: #cdc8dc; --line: #4a4560; --hover: #443f59; --accent: #9258e5; --accent-soft: #442b5d; --focus: #b79cf2; --danger: #ff8a80; --warning-bg: #4a3a22; --warning-ink: #fde793; --plum: #9258e5; --champagne: #f7e18e; --shadow: 0 10px 28px #0c0a1366; --scrim: color-mix(in srgb, #11151f 38%, transparent);
-  --tab-idle: #6e6884; --tab-idle-ink: var(--count-face); --tab-ink: #e2dcee; --mint: #a8eedf; --mint-ink: #0c5547; --mint-edge: #74dcc8; --mint-hover: #b2f0e3; --quote-bg: #0f3a35; --quote-bar: #a8eedf; --quote-edge: #2a8a7b; --hero-glow: #e5b65066; --hero-chip: #f4e4b8; --hero-step-empty: #24180a42; --gold-chip-ink: #8a5300; --mark-back: #7a52d6; --mark-front: #b08af3; --mark-pip: #f5c24c;
+  --tab-idle: #6e6884; --tab-idle-ink: var(--count-face); --tab-ink: #e2dcee; --mint: #a8eedf; --mint-ink: #0c5547; --mint-edge: #74dcc8; --mint-hover: #b2f0e3; --quote-bg: #0f3a35; --quote-bar: #a8eedf; --quote-edge: #2a8a7b; --hero-glow: #e5b65066; --hero-chip: #f4e4b8; --gold-chip-ink: #8a5300; --mark-back: #7a52d6; --mark-front: #b08af3; --mark-pip: #f5c24c;
   /* Card edit-mode tokens. */
   /* 2026-11-06: Save takes the --button-line violet #8362b1: white text on #9074bb reached 3.89:1, now 4.88:1. */
   --edit-bg: #2e1e34; --edit-line: #a38acb; --edit-link: #e7dff7; --edit-cancel: #e7a9ab; --edit-hint: #e3dff0; --edit-save: #8362b1;
@@ -52,7 +52,7 @@
 /* Shared card material keeps the same identity in Decks, Board and Hand. */
 /* Light cards use a #fff face, .67 px #cdc8dc edge, #2a2440 text and #cdc8dc Task band. Dark cards keep their dark face. Image overlays use a fixed pair (--overlay-*). */
 /* 2026-11-06: --scrim backs every dialog. The light theme veils the page with the palette's violet-black (as Deck settings does), so the page under a dialog stays lilac instead of turning cold gray; the dark theme overrides it with a navy veil. --scrim-heavy is the image viewer's near-black field in both themes. */
-:root { --card-face: #ffffff; --card-ink: #2a2440; --card-muted: #514a66; --card-edge: #cdc8dc; --card-metal: #cdc8dc; --card-metal-ink: #40465a; --overlay-ink: #f9f9fa; --overlay-face: #322f40; --hero-metal: #edc451; --hero-ink: #24180a; --hero-sheen: #fff4c2; --hero-strip: #bf8f34; --hero-chip: #f4e4b8; --hero-step-empty: #fcf9ea99; --doc-metal: #9bd4c7; --accepted-metal: #34a865; --accepted-metal-ink: #102016; --card-highlight: #2b9e7f; --card-shadow: 0 5px 12px #18213624; --card-hover-shadow: 0 9px 20px #18213638; --kind-hero-bg: #f4e7c6; --kind-hero-ink: #876125; --kind-task-bg: #c5d9ed; --kind-task-ink: #1d4873; --kind-doc-bg: #f6e3a6; --kind-doc-ink: #9d5f00; --quote-bg: #e2f7ef; --quote-bar: #2fae97; --quote-edge: #74dcc8; --count-face: #ffffff; --count-foot: #e2dcee; --count-ink: #4c5060; --cover-window: #1c1a24; --motion-feedback: 150ms; --scrim: color-mix(in srgb, #24182d 40%, transparent); --scrim-heavy: #080b12cc; --busy-dim-delay: 300ms; --motion-material: 220ms; --ease-out: cubic-bezier(.16, 1, .3, 1); }
+:root { --card-face: #ffffff; --card-ink: #2a2440; --card-muted: #514a66; --card-edge: #cdc8dc; --card-metal: #cdc8dc; --card-metal-ink: #40465a; --overlay-ink: #f9f9fa; --overlay-face: #322f40; --hero-metal: #edc451; --hero-ink: #24180a; --hero-sheen: #fff4c2; --hero-strip: #bf8f34; --hero-chip: #f4e4b8; --hero-step-done: #fff9dd; --hero-step-working: #fff4c2b8; --hero-step-review: #e0ced7b3; --hero-step-blocked: #eea39abf; --hero-step-empty: #fff4c257; --doc-metal: #9bd4c7; --accepted-metal: #34a865; --accepted-metal-ink: #102016; --card-highlight: #2b9e7f; --card-shadow: 0 5px 12px #18213624; --card-hover-shadow: 0 9px 20px #18213638; --kind-hero-bg: #f4e7c6; --kind-hero-ink: #876125; --kind-task-bg: #c5d9ed; --kind-task-ink: #1d4873; --kind-doc-bg: #f6e3a6; --kind-doc-ink: #9d5f00; --quote-bg: #e2f7ef; --quote-bar: #2fae97; --quote-edge: #74dcc8; --count-face: #ffffff; --count-foot: #e2dcee; --count-ink: #4c5060; --cover-window: #1c1a24; --motion-feedback: 150ms; --scrim: color-mix(in srgb, #24182d 40%, transparent); --scrim-heavy: #080b12cc; --busy-dim-delay: 300ms; --motion-material: 220ms; --ease-out: cubic-bezier(.16, 1, .3, 1); }
 /* 2026-11-06: Decks home. The cover rim lights the deck color the same in both themes; the lift and the pulse strip follow the page. */
 :root { --cover-rim: inset 0 1px 0 rgb(255 255 255 / .32), inset 0 0 0 1px rgb(255 255 255 / .1); --cover-lift: 0 1px 0 rgb(48 36 56 / .2), 0 10px 20px -10px rgb(48 36 56 / .5); --cover-progress: #a6f2c8;
   --pulse-face: var(--surface); --pulse-bar: #52917a; --pulse-today: #2b9e7f; --pulse-track: #e8dff0; }
@@ -93,6 +93,10 @@ input[type="checkbox"]:not([role="switch"]):focus-visible { outline: 2px solid v
 @media (forced-colors: active) { input[type="checkbox"]:not([role="switch"]) { appearance: auto; } input[type="checkbox"]:not([role="switch"])::before { content: none; } }
 :root.dark { --quick-choice-ink: var(--sidebar); --link-ink: var(--edit-link); }
 button, input, textarea, select { font: inherit; }
+/* 2026-11-09: a select with a transparent background hands its light ink to the native list, which Chrome draws on
+   white — unreadable in the dark theme. Options carry the theme's own surface and ink everywhere. */
+option { background-color: var(--surface); color: var(--ink); }
+option:disabled { color: var(--muted); }
 button { cursor: pointer; }
 button:disabled { cursor: default; opacity: .5; transition: opacity var(--motion-feedback) var(--busy-dim-delay); }
 button, a { -webkit-tap-highlight-color: transparent; }
@@ -306,9 +310,6 @@ kbd { display: inline-flex; align-items: center; justify-content: center; min-wi
 .catalog-card-doc .catalog-card-progress { display: flex; align-items: center; justify-content: space-between; gap: 4px; }
 .deck-card-doc-caption { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .catalog-card-hero .deck-card-band { --metal-base: var(--hero-metal); --card-metal-ink: var(--hero-ink); }
-/* 2026-11-06: a Hero whose Sub Cards are all finished wears the done band; its progress steps turn white on the green. */
-.catalog-card-hero.is-family-done > .deck-card-band { --metal-base: var(--accepted-metal); --card-metal-ink: var(--accepted-metal-ink); --metal-sheen: #ffffff; }
-.catalog-card-hero.is-family-done .sub-card-progress-segment { background-color: rgb(255 255 255 / .9); }
 .catalog-card-progress { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 10px; line-height: 14px; }
 .catalog-create-form { border: 1px solid var(--line); background: var(--panel-gradient); border-radius: 8px; padding: 20px; margin-bottom: 28px; }
 .catalog-create-form > header { display: flex; justify-content: space-between; align-items: center; gap: 16px; margin-bottom: 17px; }
@@ -326,10 +327,6 @@ kbd { display: inline-flex; align-items: center; justify-content: center; min-wi
 .catalog-error > button { flex-shrink: 0; }
 .catalog-saved-warning { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
 .catalog-saved-warning > span { flex: 1 1 250px; }
-.catalog-warnings { margin-top: 28px; color: var(--warning-ink); font-size: 12px; line-height: 1.6; }
-.catalog-warnings summary { cursor: pointer; }
-.catalog-warnings li { overflow-wrap: anywhere; }
-.catalog-source { margin-top: 32px; padding-top: 18px; border-top: 1px solid var(--line); color: var(--muted); font-size: 11px; line-height: 1.6; }
 .dark .catalog-field input:disabled, .dark .catalog-field select:disabled, .dark .catalog-field textarea:disabled { color: #9299a7; background: #262b35; opacity: 1; }
 .dark .catalog-field select:hover, .dark .catalog-search:hover, .dark .catalog-track-picker select:hover:not(:disabled), .dark .global-search-field:hover:not(:focus-within) { border-color: #505967; }
 @media (max-width: 760px) { .catalog-heading { gap: 18px; align-items: stretch; } .catalog-heading-actions { justify-content: space-between; } .catalog-search { flex-basis: 100%; } .catalog-space-heading { gap: 5px; } .catalog-space-heading h2 > button { font-size: 13px; gap: 6px; flex-wrap: wrap; } .catalog-space-heading small { font-size: 10px; } .catalog-space-heading > button { flex-shrink: 0; } .catalog-create-form { padding: 16px; } .catalog-create-form fieldset { grid-template-columns: minmax(0, 1fr); } .catalog-error { align-items: start; flex-direction: column; } }
@@ -384,9 +381,8 @@ kbd { display: inline-flex; align-items: center; justify-content: center; min-wi
 .catalog-resize-handle:focus-visible > span { left: 2px; width: 3px; }
 .catalog-view-toggle, .catalog-panel-controls { display: flex; align-items: center; gap: 4px; }
 .catalog-view.is-deck-open { max-width: none; padding: 12px 16px 40px; }
-/* 2026-11-05: in an open deck the columns run down to the footer line, so the divider and the sidebar scroller end on it
-   instead of stopping short; the breathing room moves inside the columns. */
-.catalog-view.is-deck-open > .catalog-source { margin-top: 0; }
+/* 2026-11-05: in an open deck the breathing room below the cards sits inside the columns, so the divider and the sidebar
+   scroller run the full height of the list. */
 .catalog-view.is-deck-open .catalog-content-layout > :is(.catalog-results, .catalog-preview-slot) { padding-bottom: 24px; }
 .catalog-view-toggle { border: 1px solid var(--line); border-radius: 6px; padding: 1px; }
 .catalog-view-toggle button[aria-pressed="true"] { background: var(--accent-soft); color: var(--accent); }

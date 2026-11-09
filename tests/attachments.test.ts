@@ -300,7 +300,7 @@ it.each(['en', 'ru'])('localizes registry parse errors in %s and leaves failed u
   registerRequestLang(app);
   app.get('/read', async () => readCardAttachments(root, cardId));
   app.post('/upload', async () => {
-    await applyAttachmentEdit(root, { ...upload, attachmentsHash: createHash('sha256').update(await readFile(filename)).digest('hex') });
+    await applyAttachmentEdit(root, { ...upload, attachmentsHash: (await readCardAttachments(root, cardId)).hash });
     return {};
   });
   try {

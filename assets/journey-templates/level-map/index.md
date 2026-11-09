@@ -4,6 +4,10 @@ schema: 1
 id: level-map
 title: Map / Level
 description: Take a level from concept and blockout through traversal, assets, lighting, optimization, and playtesting.
+locales:
+  ru:
+    title: Карта / Уровень
+    description: Провести уровень от концепта и блокаута через проходимость, ассеты, свет, оптимизацию и плейтесты.
 category: Design
 tags: [Level]
 author: Deckmate

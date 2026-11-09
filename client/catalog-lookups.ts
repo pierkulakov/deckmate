@@ -71,12 +71,11 @@ export function buildCatalogLookups(cards: readonly CatalogCard[], subCardOrder?
     if (card.kind === 'task') {
       checklistByCard.set(card.id, checklistProgress(card));
       if (card.state) states.add(card.state);
-      if (card.parentId) {
-        // Parents can be Hero or Doc cards; the outer kind check counts only Tasks toward family progress.
-        if (!childrenByParent.has(card.parentId)) childrenByParent.set(card.parentId, []);
-        childrenByParent.get(card.parentId)!.push(card);
-        if (card.state === 'done') acceptedChildrenByParent.set(card.parentId, (acceptedChildrenByParent.get(card.parentId) ?? 0) + 1);
-      }
+    }
+    if ((card.kind === 'task' || card.kind === 'doc') && card.parentId) {
+      if (!childrenByParent.has(card.parentId)) childrenByParent.set(card.parentId, []);
+      childrenByParent.get(card.parentId)!.push(card);
+      if (card.kind === 'task' && card.state === 'done') acceptedChildrenByParent.set(card.parentId, (acceptedChildrenByParent.get(card.parentId) ?? 0) + 1);
     }
     for (const trackId of new Set(card.trackIds)) {
       trackCounts.set(trackId, (trackCounts.get(trackId) ?? 0) + 1);
@@ -97,3 +96,7 @@ export function buildCatalogLookups(cards: readonly CatalogCard[], subCardOrder?
 }
 
 export type CatalogLookups = ReturnType<typeof buildCatalogLookups>;
+
+export function familyChildren(lookups: Pick<CatalogLookups, 'childrenByParent'>, heroId: string): CatalogCard[] {
+  return (lookups.childrenByParent.get(heroId) ?? []).filter(card => !card.archived && !card.deleted);
+}

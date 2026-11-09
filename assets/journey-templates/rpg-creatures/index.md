@@ -4,6 +4,10 @@ schema: 1
 id: rpg-creatures
 title: "RPG: Creatures"
 description: Build a creature for turn-based encounters with a clear role, readable attacks, sound cues and combat checks.
+locales:
+  ru:
+    title: "RPG: существа"
+    description: Создать существо для пошаговых боёв с ясной ролью, читаемыми атаками, звуковыми подсказками и боевыми проверками.
 category: Production
 tags:
   - RPG

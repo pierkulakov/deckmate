@@ -109,9 +109,3 @@ export function attachmentAddedByLabel(catalog: CatalogView, addedBy: string | n
     candidate.id === addedBy || candidate.label === addedBy || candidate.aliases.includes(addedBy));
   return member ? member.label : addedBy;
 }
-
-/** Markdown links are relative to the card's directory, with attachments resolved from the project root. */
-export function attachmentMarkdownReference(file: string, cardPath: string): string {
-  const directoryDepth = cardPath.slice(0, Math.max(0, cardPath.lastIndexOf('/'))).split('/').filter(Boolean).length;
-  return '../'.repeat(directoryDepth) + file;
-}

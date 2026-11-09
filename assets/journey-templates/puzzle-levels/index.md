@@ -4,6 +4,10 @@ schema: 1
 id: puzzle-levels
 title: "Puzzle: Levels"
 description: Build a solvable level with a deliberate teaching goal and tested difficulty.
+locales:
+  ru:
+    title: "Головоломка: уровни"
+    description: Собрать решаемый уровень с продуманной обучающей целью и проверенной сложностью.
 category: Production
 tags:
   - Puzzle

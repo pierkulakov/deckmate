@@ -4,6 +4,10 @@ schema: 1
 id: backend-service
 title: Backend Service
 description: Endpoints, data model, runbooks and incidents for an API service other teams call.
+locales:
+  ru:
+    title: Backend-сервис
+    description: Эндпоинты, модель данных, инструкции по эксплуатации и инциденты для API-сервиса, который вызывают другие команды.
 category: software
 genre: null
 order: 17

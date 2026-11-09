@@ -4,6 +4,10 @@ schema: 1
 id: sound-event
 title: Sound Event
 description: Develop a sound event from its brief through source selection, mixing, integration and combat volume checks.
+locales:
+  ru:
+    title: Звуковое событие
+    description: Разработать звуковое событие от брифа через подбор источников, сведение, интеграцию и проверку громкости в бою.
 category: Audio
 tags: [Audio]
 author: Deckmate

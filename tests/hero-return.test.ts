@@ -21,6 +21,7 @@ describe.skipIf(!browserPath)('one-step Hero return (browser)', () => {
   let temporary: string | undefined;
   let socket: WebSocket | undefined;
   let sequence = 0;
+  let executionContextId: number | undefined;
   const pending = new Map<number, { resolve: (value: any) => void; reject: (error: Error) => void }>();
   const errors: string[] = [];
   const tile = (id: string) => `.catalog-results [data-card-id="card:${id}"] .deck-card-open`;
@@ -37,6 +38,14 @@ describe.skipIf(!browserPath)('one-step Hero return (browser)', () => {
     if (result.exceptionDetails) throw new Error(result.exceptionDetails.exception?.description ?? result.exceptionDetails.text);
     return result.result?.value;
   }
+  // 2026-11-09: values cross into the page as callFunctionOn arguments, not as text baked into the evaluated code
+  // (CodeQL js/bad-code-sanitization flags JSON.stringify interpolation, and arguments survive undefined too).
+  async function callFunction(functionDeclaration: string, ...args: unknown[]): Promise<any> {
+    const result = await send('Runtime.callFunctionOn', { functionDeclaration, executionContextId,
+      arguments: args.map(value => ({ value })), returnByValue: true, awaitPromise: true });
+    if (result.exceptionDetails) throw new Error(result.exceptionDetails.exception?.description ?? result.exceptionDetails.text);
+    return result.result?.value;
+  }
   async function until(expression: string, attempts = 100) {
     for (let attempt = 0; attempt < attempts; attempt++) {
       if (await evaluate(`Boolean(${expression})`)) return;
@@ -45,8 +54,8 @@ describe.skipIf(!browserPath)('one-step Hero return (browser)', () => {
     throw new Error('Timed out: ' + expression + '\n' + errors.join('\n'));
   }
   async function click(selector: string) {
-    const point = await evaluate(`(() => { const element = document.querySelector(${JSON.stringify(selector)}); element.scrollIntoView({block: 'nearest'});
-      const box = element.getBoundingClientRect(); return { x: box.x + box.width / 2, y: box.y + box.height / 2 }; })()`);
+    const point = await callFunction(`selector => { const element = document.querySelector(selector); element.scrollIntoView({ block: 'nearest' });
+      const box = element.getBoundingClientRect(); return { x: box.x + box.width / 2, y: box.y + box.height / 2 }; }`, selector);
     await send('Input.dispatchMouseEvent', { type: 'mouseMoved', ...point });
     await send('Input.dispatchMouseEvent', { type: 'mousePressed', button: 'left', clickCount: 1, ...point });
     await send('Input.dispatchMouseEvent', { type: 'mouseReleased', button: 'left', clickCount: 1, ...point });
@@ -112,6 +121,8 @@ describe.skipIf(!browserPath)('one-step Hero return (browser)', () => {
     await new Promise(resolve => socket!.addEventListener('open', resolve, { once: true }));
     socket.addEventListener('message', event => {
       const message = JSON.parse(String(event.data));
+      if (message.method === 'Runtime.executionContextCreated' && message.params.context.auxData?.isDefault)
+        executionContextId = message.params.context.id;
       if (message.id) {
         const request = pending.get(message.id);
         pending.delete(message.id);

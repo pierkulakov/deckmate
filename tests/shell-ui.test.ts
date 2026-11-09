@@ -259,8 +259,7 @@ describe.skipIf(!browserPath)('application shell (browser)', () => {
     for (const title of ['Cards you own', 'Cards you watch', 'Due Cards']) {
       await click(`.notification-pill[title*="${title}"]`);
       await until(`document.activeElement?.classList.contains('notification-collapse')`);
-      await delay(350);
-      expect(await evaluate(`(() => { const corner = document.querySelector('.notifications-corner'); return corner.scrollWidth <= corner.clientWidth; })()`)).toBe(true);
+      await until(`(() => { const corner = document.querySelector('.notifications-corner'); return corner.scrollWidth <= corner.clientWidth; })()`);
     }
     await until(`document.querySelectorAll('.notification-stack').length === 3`);
     expect(await evaluate(`(() => {

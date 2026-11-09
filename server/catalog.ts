@@ -15,7 +15,7 @@ import { parseCached } from './parse-cache.ts';
 import { assertCatalogCoverFile, isCatalogCoverPath, storeCatalogCover, type StoredCatalogCover } from './catalog-covers.ts';
 import { createManagedMarkdown, editNativeCard, ensureManagedDirectory, editNativeCardParent, editNativeCardContent, editNativeCardProperties, nativeCardPath, readNativeCard, readNativeCards, readProjectMarkdown, replaceProjectMarkdown, validateNativeCardMetadata, type NativeCardFile, type NativeCardMetadata } from './native-cards.ts';
 import { applyJourney, createJourney, readJourneys } from './journeys.ts';
-import { bundledJourneyTemplatesDirectory, readJourneyTemplates } from './journey-templates.ts';
+import { bundledJourneyTemplatesDirectory, journeyTemplateDirectories, readJourneyTemplates } from './journey-templates.ts';
 import { updateLegacyCardState } from './card-properties.ts';
 import type { CardOptions } from '../src/bulk-contracts.ts';
 import { cardOptionsPath, prepareCardOptionsPatch, readCardOptions, sourceComments, type CardOptionsPatch } from './card-options.ts';
@@ -604,7 +604,15 @@ function parseFileCards(relative: string, bytes: Buffer, sourceHash: string): Pa
 }
 
 /** A directory-tree fingerprint combines each file's content hash and path to cache parsed templates. */
-async function directoryDigest(directory: string): Promise<string> {
+async function directoryDigest(root: string, relativeDirectory: string): Promise<string> {
+  let directory: string;
+  try { directory = await containedFile(root, relativeDirectory); }
+  catch (error) {
+    // 2026-11-09: a missing folder and one linked outside its root hash as their code; nothing outside is read.
+    const code = (error as NodeJS.ErrnoException).code;
+    if (code === 'ENOENT' || code === 'OUTSIDE_PROJECT') return digest(code);
+    throw error;
+  }
   const files: string[] = [];
   async function visit(relative: string) {
     let entries;
@@ -683,8 +691,9 @@ async function readLegacyFile(root: string, relative: string, previous?: FileRes
 
 async function readTemplates(root: string): Promise<CatalogInputs['templateCatalog']> {
   const bundledDirectory = bundledJourneyTemplatesDirectory();
-  const [bundledDigest, projectDigest] = await Promise.all([directoryDigest(bundledDirectory), directoryDigest(path.join(root, 'tasks/journey-templates'))]);
-  return parseCached('journey-templates', JSON.stringify([root, bundledDigest, projectDigest]), 65536,
+  const digests = await Promise.all(journeyTemplateDirectories(bundledDirectory, root)
+    .map(location => directoryDigest(location.root, location.directory)));
+  return parseCached('journey-templates', JSON.stringify([root, ...digests]), 65536,
     () => readJourneyTemplates(bundledDirectory, root));
 }
 

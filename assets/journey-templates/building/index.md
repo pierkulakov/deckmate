@@ -4,6 +4,10 @@ schema: 1
 id: building
 title: Building
 description: Take a building from its gameplay role through sketches, a model or sprite, construction and destruction stages, logic, and verification.
+locales:
+  ru:
+    title: Здание
+    description: Провести здание от игровой роли через эскизы, модель или спрайт, стадии постройки и разрушения, логику и проверку.
 category: Production
 tags: [3D, 2D]
 author: Deckmate

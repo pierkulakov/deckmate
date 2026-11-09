@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useRef, type MouseEvent, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type MouseEvent, type ReactNode } from 'react';
+import { ImageOff } from 'lucide-react';
 import type { Root, RootContent, PhrasingContent } from 'mdast';
 import type { DataSource } from '../../src/workspace-contracts.ts';
 import type { CatalogCard, CatalogMember } from '../../src/catalog-contracts.ts';
@@ -16,6 +17,8 @@ const text = defineText({
   missingCard: 'Card not found',
   missingCardInline: (label: string) => `${label} — card not found`,
   unavailableImage: 'Image: unavailable link',
+  missingImage: 'File not found: it was deleted or moved',
+  missingImageInline: (name: string) => name ? `${name} — file not found` : 'Image — file not found',
   item: 'item',
   human: 'Human',
   agent: 'Agent',
@@ -27,6 +30,8 @@ const text = defineText({
   missingCard: 'Карточка не найдена',
   missingCardInline: (label: string) => `${label} — карточка не найдена`,
   unavailableImage: 'Изображение: недоступная ссылка',
+  missingImage: 'Файл не найден: его удалили или перенесли',
+  missingImageInline: (name: string) => name ? `${name} — файл не найден` : 'Изображение — файл не найден',
   item: 'пункт',
   human: 'Человек',
   agent: 'Агент',
@@ -63,6 +68,15 @@ function CardReferenceChip({ reference, card, href, onOpenCard }: {
     title={target.state ? `${target.title} · ${stateLabel(target.state)}` : target.title} onClick={open}>
     <span className="card-reference-chip-id">{label}</span> <span className="card-reference-chip-title">{target.title}</span>
   </a>;
+}
+
+/** An image whose file is gone (a deleted attachment, a moved file) shows a quiet chip instead of the broken-image icon. */
+function MarkdownImage({ src, alt }: { src: string; alt: string }) {
+  const t = useText(text);
+  const [failedSrc, setFailedSrc] = useState<string>();
+  if (failedSrc === src) return <span className="card-reference-chip is-missing is-image" title={t.missingImage}><ImageOff size={12} aria-hidden="true" /><span>{t.missingImageInline(alt)}</span></span>;
+  // No lazy loading: a lazy image that never intersects (0×0 while unloaded) never fires `error`, and the chip would not appear.
+  return <img src={src} alt={alt} onError={() => setFailedSrc(src)} />;
 }
 
 function referenceLink(url: URL, source: DataSource): string | undefined {
@@ -139,7 +153,7 @@ export function Markdown({ tree, source, path = 'features/match.md', onTaskToggl
   }
   function image(url: string, alt: string, key: number | string): ReactNode {
     const src = safeLink(url, source, path);
-    return src ? <img key={key} src={src} alt={alt} loading="lazy" /> : <span key={key}>{alt || t.unavailableImage}</span>;
+    return src ? <MarkdownImage key={key} src={src} alt={alt} /> : <span key={key}>{alt || t.unavailableImage}</span>;
   }
   function renderText(value: string, key: number | string, rawValue?: string): ReactNode {
     return splitMarkdownTags(value, rawValue).map((part, partIndex) => {

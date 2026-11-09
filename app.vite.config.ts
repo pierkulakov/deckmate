@@ -47,6 +47,6 @@ export default defineConfig({
   },
   server: {
     host: '127.0.0.1', port: devPort, strictPort: true,
-    proxy: { '/api': proxyToDeckmate(true), '/r': proxyToDeckmate() },
+    proxy: { '^/api/': proxyToDeckmate(true), '^/r/': proxyToDeckmate() },
   },
 });

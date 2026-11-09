@@ -4,6 +4,10 @@ schema: 1
 id: playtest
 title: Playtest
 description: Take a playtest from its goal and build through the scenario, sessions, recording review and decisions.
+locales:
+  ru:
+    title: Плейтест
+    description: Провести плейтест от цели и сборки через сценарий, сессии, разбор записей и решения.
 category: QA
 tags: [QA]
 author: Deckmate

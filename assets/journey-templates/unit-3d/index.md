@@ -4,6 +4,10 @@ schema: 1
 id: unit-3d
 title: Unit / Character (3D)
 description: Develop a 3D unit or character from design and concept art through modeling, rigging, animation, sound and combat testing.
+locales:
+  ru:
+    title: Юнит / Персонаж (3D)
+    description: Развить 3D-юнита или персонажа от дизайна и концепт-арта через моделирование, риггинг, анимацию, звук и боевые тесты.
 category: Production
 tags: [3D, Production]
 author: Deckmate

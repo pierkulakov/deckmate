@@ -28,6 +28,10 @@
 
 .attachments-message { margin: 0; color: var(--edit-hint); font-size: 12px; line-height: 16px; overflow-wrap: anywhere; }
 .attachments-message.is-error { color: var(--danger); }
+/* Asked only when the file is inserted in the card text; sits right under the row it belongs to. */
+.attachments-confirm { display: flex; flex-direction: column; gap: 8px; padding: 12px; border: 1px solid var(--edit-line); border-radius: 8px; background: var(--edit-bg); }
+.attachments-confirm p { margin: 0; color: var(--ink); font-size: 13px; line-height: 18px; overflow-wrap: anywhere; }
+.attachments-confirm-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 
 /* Each file shows its author, date, size and actions; image previews open the viewer. */
 .attachments-list { display: flex; flex-direction: column; gap: 24px; margin: 0; padding: 0; list-style: none; }

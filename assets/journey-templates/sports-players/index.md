@@ -4,6 +4,10 @@ schema: 1
 id: sports-players
 title: "Sports: Players"
 description: Develop a player archetype through attributes, presentation, controls and a comparative match test.
+locales:
+  ru:
+    title: "Спорт: игроки"
+    description: Разработать архетип игрока через атрибуты, подачу, управление и сравнительный матч-тест.
 category: Production
 tags:
   - Sports

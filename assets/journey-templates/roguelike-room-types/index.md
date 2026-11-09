@@ -4,6 +4,10 @@ schema: 1
 id: roguelike-room-types
 title: "Roguelike: Room Types"
 description: Design a reusable room, build its functional template, add readable art and establish its ambience.
+locales:
+  ru:
+    title: "Roguelike: типы комнат"
+    description: Спроектировать многоразовую комнату, собрать её функциональный шаблон, добавить читаемый арт и задать атмосферу.
 category: Production
 tags:
   - Roguelike

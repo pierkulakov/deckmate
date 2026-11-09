@@ -14,6 +14,40 @@ describe('project template format', () => {
     expect(template.tags[0]).toMatchObject({ name: 'bug', emoji: '🐞' });
     expect(template.samples.map(sample => sample.title)).toEqual(['Footman', 'Archer']);
     expect(template.details).toBe('Create a small unit roster and its implementation work.');
+    expect(template.locales).toBeUndefined();
+  });
+
+  it('reads trimmed Russian picker text and ignores other locale keys', () => {
+    const localized = fixture.replace('description: A small project template for catalog integration tests.', [
+      'description: A small project template for catalog integration tests.',
+      'locales:',
+      '  fr: ignored',
+      '  ru:',
+      "    title: '  Тестовый проект  '",
+      "    description: '  Небольшой шаблон проекта.  '",
+    ].join('\n'));
+    expect(parseProjectTemplate(localized).locales).toEqual({ ru: { title: 'Тестовый проект', description: 'Небольшой шаблон проекта.' } });
+    const blank = localized.replace("title: '  Тестовый проект  '", "title: '   '");
+    expect(parseProjectTemplate(blank).locales).toEqual({ ru: { description: 'Небольшой шаблон проекта.' } });
+  });
+
+  it.each([
+    'locales: []',
+    'locales: ru',
+    'locales:\n  ru: []',
+    'locales:\n  ru:\n    title: 42',
+    `locales:\n  ru:\n    title: ${'x'.repeat(201)}`,
+    `locales:\n  ru:\n    description: ${'x'.repeat(2001)}`,
+  ])('rejects invalid locales', header => {
+    const invalid = fixture.replace('description: A small project template for catalog integration tests.',
+      `description: A small project template for catalog integration tests.\n${header}`);
+    expect(() => parseProjectTemplate(invalid)).toThrow('locales');
+  });
+
+  it('localizes locales validation errors', () => {
+    const invalid = fixture.replace('description: A small project template for catalog integration tests.',
+      'description: A small project template for catalog integration tests.\nlocales: []');
+    expect(() => parseProjectTemplate(invalid, '', 'ru')).toThrow('locales: ожидается объект.');
   });
 
   it.each([

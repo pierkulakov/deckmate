@@ -1,6 +1,6 @@
 # Changelog
 
-Notable changes are grouped by version using [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
+Notable changes are grouped by version using [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Russian version: [CHANGELOG.ru.md](CHANGELOG.ru.md).
 
 ## [Unreleased]
 

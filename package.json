@@ -106,6 +106,7 @@
     "README.ru.md",
     "SECURITY.md",
     "CHANGELOG.md",
+    "CHANGELOG.ru.md",
     ".env.example",
     "assets/fonts/**/OFL.txt"
   ],

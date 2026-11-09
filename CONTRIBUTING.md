@@ -72,6 +72,7 @@ Why a CLA: it lets the maintainer offer a paid hosted version of Deckmate and co
 3. Before submitting, run `npm run typecheck`, `npm test` and `npm run build` — all green. The PR template lists them as a checklist.
 4. For UI changes, attach screenshots (light and dark theme where relevant).
 5. If your change writes project data files, explain in the PR which bytes change and which are preserved.
+6. Every release section is written in both `CHANGELOG.md` and `CHANGELOG.ru.md` with the same version heading.
 
 ## Project rules for code and data
 

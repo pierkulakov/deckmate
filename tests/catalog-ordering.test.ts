@@ -45,7 +45,7 @@ describe('card ordering', () => {
     const known = [['High', ['high']], ['Medium', ['medium']], ['Low', ['low']]];
     for (const direction of ['asc', 'desc'] as const) {
       expect(groups(cards, { direction }).map(group => [group.title, group.cards.map(entry => entry.id)]))
-        .toEqual([...(direction === 'desc' ? known : [...known].reverse()), ['No priority', ['none']], ['Hero Cards', ['hero']], ['Doc Cards', ['doc']]]);
+        .toEqual([['Hero Cards', ['hero']], ...(direction === 'desc' ? known : [...known].reverse()), ['No priority', ['none']], ['Doc Cards', ['doc']]]);
     }
   });
 
@@ -53,8 +53,8 @@ describe('card ordering', () => {
     const cards = [card('hero', { kind: 'hero', state: 'done' }), card('custom', { state: 'На внешней проверке' as CatalogCard['state'] }),
       card('accepted', { state: 'done' }), card('working', { state: 'started' }), card('missing', { state: null }), card('doc', { kind: 'doc' })];
     const result = groups(cards, { order: 'state', direction: 'asc' });
-    expect(result.map(group => group.state)).toEqual(['started', 'done', 'На внешней проверке', null, null, null]);
-    expect(result.map(group => group.title)).toEqual(['Started', 'Done', 'На внешней проверке', 'No state', 'Hero Cards', 'Doc Cards']);
+    expect(result.map(group => group.state)).toEqual([null, 'started', 'done', 'На внешней проверке', null, null]);
+    expect(result.map(group => group.title)).toEqual(['Hero Cards', 'Started', 'Done', 'На внешней проверке', 'No state', 'Doc Cards']);
     expect(result.flatMap(group => group.cards.map(entry => entry.id)).sort()).toEqual(cards.map(entry => entry.id).sort());
   });
 

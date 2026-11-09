@@ -245,12 +245,14 @@ function pruneStagedDependencies() {
 
   const inside = (file, dir) => file.startsWith(`${dir}${path.sep}`);
   // Whole directories first, outer before inner (visit order). A directory that somehow holds
-  // an entry file is kept whole rather than breaking the package that reaches into it.
+  // an entry file or a license/notice file is kept whole rather than breaking the package that
+  // reaches into it or dropping a license (2026-11-09: a docs/LICENSE would otherwise vanish).
   const removedDirs = [];
   for (const dir of dirs) {
     if (!PRUNED_DIRECTORY_NAMES.has(path.basename(dir).toLowerCase())) continue;
     if (removedDirs.some(pruned => inside(dir, pruned))) continue;
-    if (files.some(file => inside(file.path, dir) && protectedFiles.has(file.path))) continue;
+    if (files.some(file => inside(file.path, dir)
+      && (protectedFiles.has(file.path) || PROTECTED_FILE_TEST.test(path.basename(file.path))))) continue;
     removedDirs.push(dir);
   }
 

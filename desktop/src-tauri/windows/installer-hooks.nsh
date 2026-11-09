@@ -54,6 +54,8 @@ LangString DeckmateOldUninstallFailed 1033 "The previous Deckmate installation c
 LangString DeckmateOldUninstallFailed 1049 "Не удалось полностью удалить предыдущую установку Deckmate. Новая установка остановлена, а старая запись об удалении сохранена. Закройте Deckmate и снова запустите этот установщик. Если ошибка повторится, сначала восстановите или удалите старую установку через параметры Windows."
 LangString DeckmateOldExitCode 1033 "Exit code:"
 LangString DeckmateOldExitCode 1049 "Код выхода:"
+LangString DeckmateOldUninstallerExited 1033 "The previous Deckmate uninstaller finished with an error."
+LangString DeckmateOldUninstallerExited 1049 "Предыдущий деинсталлятор Deckmate завершился с ошибкой."
 
 ; The Tauri build provides the nsis_tauri_utils plugin through !addplugindir,
 ; which the bundler's installer.nsi registers after !including this file. The
@@ -119,7 +121,7 @@ LangString DeckmateOldExitCode 1049 "Код выхода:"
 
 !macro DECKMATE_OLD_CHECK_UNINSTALL
   ${If} $R6 <> 0
-    DetailPrint "The previous Deckmate uninstaller exited with code $R6."
+    DetailPrint "$(DeckmateOldUninstallerExited) $(DeckmateOldExitCode) $R6"
   ${EndIf}
   ${If} ${FileExists} "$R9\${DECKMATE_OLD_APP_EXE}"
     !insertmacro DECKMATE_OLD_ABORT_UNINSTALL

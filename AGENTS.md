@@ -13,7 +13,7 @@ Deckmate is a local project board over Markdown. The files in the user's project
 | `bin/deckmate.mjs` | Published command: `deckmate`, `deckmate init <folder>`, and `deckmate project`, `skills`, `agents` — the same functions as the npm scripts of those names. |
 | `skills/deckmate/` | Agent skill in the open Agent Skills format: router, workflows, lenses, genres, engines. |
 | `assets/` | Fonts, logo, deck art, starter project templates and Journey templates. |
-| `desktop/` | Electron shell: start screen, window and menu, the bundled server as a child process; its own package.json, see [desktop/README.md](desktop/README.md). |
+| `desktop/` | Tauri 2 shell: Rust in `desktop/src-tauri/`, start screen, window and menu, the bundled Node server as a sidecar; its own package.json, see [desktop/README.md](desktop/README.md). |
 | `tests/` | Vitest suites. |
 | `docs/` | Data contract ([catalog.md](docs/catalog.md)), local API ([api.md](docs/api.md)), skills and agent configuration. |
 
@@ -48,6 +48,8 @@ npm run quiet -- npm run typecheck
 npm run quiet -- npx vitest run <test files that cover your change>
 npm run quiet -- npm run build
 ```
+
+The desktop shell has its own tests: `cargo test --manifest-path desktop/src-tauri/Cargo.toml`; they need Rust, and `npm test` does not build them. `npm run desktop:smoke` additionally drives the real debug shell end to end over CDP (Windows only; needs `cargo build` first).
 
 Run the full `npm test` before opening a pull request. The running app serves `dist/`: client changes need `npm run build` and a page reload; server changes need `npm run build` and a restart.
 

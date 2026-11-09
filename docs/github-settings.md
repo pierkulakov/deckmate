@@ -91,10 +91,10 @@ After success, verify the npm version/provenance, installation from npm, the Git
 
 ### Desktop artifacts
 
-The `desktop` job in [release.yml](../.github/workflows/release.yml) builds the Windows Electron shell and attaches the installer `Deckmate Setup <version>.exe` and the portable zip to the GitHub Release. After the release workflow finishes, check the Release page for both files. If the `desktop` job failed but the rest of the release succeeded, build the installer locally in `desktop/` (`npm run dist:nsis`) and upload it manually:
+The `desktop` job in [release.yml](../.github/workflows/release.yml) builds the Windows Tauri shell and attaches the installer `Deckmate Setup <version>.exe` and the portable zip `Deckmate-<version>-win-x64.zip` to the GitHub Release; the job also self-tests the unpacked build, the installer and the uninstaller. After the release workflow finishes, check the Release page for both files. If the `desktop` job failed but the rest of the release succeeded, build locally (`node desktop/scripts/prepare-sidecar.mjs`, then `npm run dist` in `desktop/`; the NSIS installer comes from `desktop/src-tauri/target/release/bundle/nsis/`), pack the assets into `desktop/release/` as the workflow does, and upload them manually:
 
 ```sh
-gh release upload v<version> "desktop/release/Deckmate Setup <version>.exe"
+gh release upload v<version> "desktop/release/Deckmate Setup <version>.exe" "desktop/release/Deckmate-<version>-win-x64.zip"
 ```
 
 ### Move to trusted publishing after bootstrap

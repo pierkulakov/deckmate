@@ -38,6 +38,8 @@ npm run dev -- --data ../deckmate-demo
 npm run quiet -- <command>   # short output; the full log goes to .deckmate/quiet/
 ```
 
+The Windows desktop shell in `desktop/` is a Tauri app with its own requirements and loop; see [desktop/README.md](desktop/README.md).
+
 Agent commands from source mirror the published `deckmate` subcommands and call the same functions (`tools/project.ts`, `tools/deckmate-skills.ts`, `tools/deckmate-run.ts`, compiled into `dist/tools/` for the package):
 
 ```sh

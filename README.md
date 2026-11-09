@@ -1,45 +1,48 @@
-<div align="center">
+<p align="center">
+  <a id="deckmate" href="https://github.com/pierkulakov/deckmate/releases/latest">
+    <img src="docs/social-preview.png" width="1012" alt="Deckmate — you hold all the cards. A glowing hand of real cards; people and AI agents share Markdown files. Native Windows app on Tauri 2 with Node.js included; npx deckmate for agents and terminals." />
+  </a>
+</p>
 
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="assets/logo/deckmate-256.png" />
-  <source media="(prefers-color-scheme: light)" srcset="assets/logo/deckmate-256-light.png" />
-  <img src="assets/logo/deckmate-256-light.png" alt="Deckmate logo" width="88" height="88" />
-</picture>
+<h3 align="center" id="you-hold-all-the-cards">You hold all the cards.</h3>
 
-# Deckmate
+<p align="center">
+  <b>A local project board for people and AI agents.</b><br />
+  Your cards are Markdown files in your repository. Work in the app; your agents work on the same files.
+</p>
 
-### You hold all the cards.
+<p align="center">
+  <a href="https://github.com/pierkulakov/deckmate/releases/latest"><b>Download for Windows →</b></a>
+  &nbsp; · &nbsp;
+  <a href="#cli"><code>npx deckmate</code></a> for agents &amp; terminals
+</p>
 
-A local Markdown project board for teams of people and AI agents.
+<p align="center">
+  Open a project folder, create a new one, or pick up a recent project.<br />
+  <sub>Lightweight native app · Tauri 2 · Node.js included · Nothing else to install</sub>
+</p>
 
-**Status:** 0.5.0, an early release. The project file format (schema 1) may change before 1.0.
+<p align="center">
+  <a href="https://github.com/pierkulakov/deckmate/releases/latest"><img src="https://img.shields.io/github/v/release/pierkulakov/deckmate?style=flat&amp;label=release&amp;color=9258e5&amp;labelColor=27242f" alt="Latest release" /></a>
+  <a href="https://github.com/pierkulakov/deckmate/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/pierkulakov/deckmate/ci.yml?branch=main&amp;style=flat&amp;label=CI&amp;labelColor=27242f" alt="CI status" /></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-AGPL--3.0--only-9258e5?style=flat&amp;labelColor=27242f" alt="License: AGPL-3.0-only" /></a>
+</p>
 
-[![npm](https://img.shields.io/npm/v/deckmate?color=7a52d6)](https://www.npmjs.com/package/deckmate)
-[![License: AGPL-3.0](docs/badges/license.svg)](LICENSE)
-[![Node](docs/badges/node.svg)](#cli)
+<p align="center"><sub>Early release · macOS planned · Project file format (schema 1) may change before 1.0.</sub></p>
 
-[Quick start](#quick-start) · [Your project](#use-it-with-your-project) · [Concepts](#how-it-works) · [Decks and Inbox](#decks-inbox-and-sub-cards) · [Agents](#working-with-ai-agents) · [FAQ](#faq)
+<p align="center">
+  <a href="#quick-start">Quick start</a> · <a href="#use-it-with-your-project">Your project</a> · <a href="#how-it-works">Concepts</a> · <a href="#decks-inbox-and-sub-cards">Decks and Inbox</a> · <a href="#working-with-ai-agents">Agents</a> · <a href="#faq">FAQ</a>
+</p>
 
-**English** · [Русский](README.ru.md)
-
-</div>
-
-![Decks: document and card counts under the project name, project pulse and illustrated deck covers](docs/screenshots/decks.png)
-
-Deckmate turns a folder of Markdown files into a project board for game and software teams: decks, Hero cards with Sub Cards, a Hand for each teammate, Runs and Milestones on a timeline, repeatable Journeys and a Vision canvas. Every card is a plain file in your repository, so people edit it in the app and AI agents read and write the same file directly.
-
-- **Your board lives beside your work.** Local-first: cards are Markdown files in your repository, canvases are Excalidraw files, git keeps the history. The search index can be deleted and rebuilt at any time.
-- **See what needs attention.** The project pulse shows work in progress, the review queue, accepted tasks over 14 days, the current Run and cards without a deck.
-- **People and AI agents share one workflow.** An agent takes the next card from its Hand, reads only the rules it needs, asks questions on the card and hands in a report for review.
-- **Local and safe with your files.** No account, cloud sync, telemetry or automatic commits. The board runs locally; Vision may download Excalidraw's handwritten fonts, and external embeds need internet access. A save rewrites only the edited block; a stale write is rejected instead of overwriting someone else's work.
+<p align="center"><b>English</b> · <a href="README.ru.md">Русский</a></p>
 
 ## Quick start
 
 ### Desktop
 
-Deckmate Desktop is an Electron app for Windows 10 and 11 (x64); macOS support is planned later. Download the installer (`Deckmate Setup <version>.exe`) or the portable zip from the [latest release](https://github.com/pierkulakov/deckmate/releases/latest). The build is not code-signed, so Windows SmartScreen warns about an unknown publisher: choose **More info → Run anyway**.
+Deckmate Desktop is a lightweight native app built on Tauri for Windows 10 and 11 (x64); macOS support is planned later. Download the installer (`Deckmate Setup <version>.exe`) or the portable zip (`Deckmate-<version>-win-x64.zip`) from the [latest release](https://github.com/pierkulakov/deckmate/releases/latest). The build is not code-signed, so Windows SmartScreen warns about an unknown publisher: choose **More info → Run anyway**.
 
-Run the installer and launch Deckmate from its icon, or unzip the portable build and start `Deckmate.exe`. Then open an existing project folder or create a project in an empty folder. You do not need to install Node.js or open a terminal.
+Run the installer and launch Deckmate from its icon, or unzip the portable build and start `Deckmate.exe` (the zip holds `Deckmate.exe`, `node.exe` and the `deckmate/` folder). Then open an existing project folder or create a project in an empty folder. The interface renders through the system Microsoft Edge WebView2 runtime, which is part of Windows 11; on Windows 10 the installer sets it up when it is missing. The app ships its own Node.js 26 runtime for the local server, so you install nothing else and need no terminal. Upgrading from an Electron version (0.5.0 and earlier): the new installer removes the old app first and keeps the settings — recent projects, language, zoom and window position carry over.
 
 ### CLI
 
@@ -63,7 +66,7 @@ Recent projects show their last-opened time and can be removed from the list; la
 The last project opens automatically on the next launch. Use **File → Switch project** (`Ctrl+Shift+O`) to return to the start screen, or `Ctrl+O` to open another folder.
 The project menu in the board also lists other recent projects for one-click switching.
 Desktop runs the same local Deckmate server on `127.0.0.1` with a randomly selected free port; project data remains in the project folder.
-Recent and last-project settings are stored in `%APPDATA%\Deckmate\desktop.json`; the index remains in the cache folder.
+Settings — recent projects, last project, language, zoom and window position — live in `%APPDATA%\Deckmate\desktop.json`; the server log is `server.log` next to it, and the disposable index is in `%APPDATA%\Deckmate\index`.
 
 ## Use it with your project
 
@@ -215,7 +218,7 @@ Deckmate also ships an agent skill in the open Agent Skills format. Once the pro
 
 ## FAQ
 
-**Where is my data?** In your project folder: Markdown cards and instructions, the catalog manifest and `.excalidraw` boards. The SQLite index lives in a cache folder and is rebuilt from the files. Desktop keeps its recent and last-project settings separately in `%APPDATA%\Deckmate\desktop.json`.
+**Where is my data?** In your project folder: Markdown cards and instructions, the catalog manifest and `.excalidraw` boards. The SQLite index lives in a cache folder and is rebuilt from the files. Desktop keeps its settings and the index separately in `%APPDATA%\Deckmate\` (`desktop.json` and `index`).
 
 **Do I need the internet?** For installation, downloading Excalidraw's handwritten fonts and loading external embeds in Vision. The board itself runs locally on `127.0.0.1`; agents can read the files with the server stopped.
 

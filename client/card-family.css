@@ -198,6 +198,8 @@ button.card-parent-picker-option { width: 100%; background: transparent; color: 
 .card-family-composer-deck svg { flex-shrink: 0; color: var(--muted); }
 .card-family-composer-deck select { flex: 1; min-width: 0; width: 100%; height: 34px; padding: 0; border: 0; background: transparent; color: var(--ink); font: inherit; font-size: 12px; }
 .card-family-composer-deck:focus-within > span:last-child { outline: 2px solid var(--focus); outline-offset: 1px; }
+/* The framed row above already shows focus; the select's own ring would draw a second frame inside it. */
+.card-family-composer-deck select:focus-visible { outline: none; }
 .card-family-composer-recents { display: flex; flex-wrap: wrap; gap: 6px; margin-top: -5px; }
 .card-family-composer-recents .ui-button { max-width: 100%; min-height: 25px; padding: 3px 8px; overflow: hidden; text-overflow: ellipsis; font-size: 11px; }
 .card-family-composer-recents .ui-button[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent); }

@@ -93,6 +93,10 @@ input[type="checkbox"]:not([role="switch"]):focus-visible { outline: 2px solid v
 @media (forced-colors: active) { input[type="checkbox"]:not([role="switch"]) { appearance: auto; } input[type="checkbox"]:not([role="switch"])::before { content: none; } }
 :root.dark { --quick-choice-ink: var(--sidebar); --link-ink: var(--edit-link); }
 button, input, textarea, select { font: inherit; }
+/* 2026-11-09: a select with a transparent background hands its light ink to the native list, which Chrome draws on
+   white — unreadable in the dark theme. Options carry the theme's own surface and ink everywhere. */
+option { background-color: var(--surface); color: var(--ink); }
+option:disabled { color: var(--muted); }
 button { cursor: pointer; }
 button:disabled { cursor: default; opacity: .5; transition: opacity var(--motion-feedback) var(--busy-dim-delay); }
 button, a { -webkit-tap-highlight-color: transparent; }

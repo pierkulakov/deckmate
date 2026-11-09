@@ -12,7 +12,7 @@
 
 A local Markdown project board for teams of people and AI agents.
 
-**Status:** 0.3, an early release. The project file format (schema 1) may change before 1.0.
+**Status:** 0.4.0, an early release. The project file format (schema 1) may change before 1.0.
 
 [![npm](https://img.shields.io/npm/v/deckmate?color=7a52d6)](https://www.npmjs.com/package/deckmate)
 [![License: AGPL-3.0](docs/badges/license.svg)](LICENSE)
@@ -24,14 +24,14 @@ A local Markdown project board for teams of people and AI agents.
 
 </div>
 
-![Deckmate's Decks screen: project pulse, illustrated deck covers and task progress](docs/screenshots/decks.png)
+![Decks: document and card counts under the project name, project pulse and illustrated deck covers](docs/screenshots/decks.png)
 
 Deckmate turns a folder of Markdown files into a project board for game and software teams: decks, Hero cards with Sub Cards, a Hand for each teammate, Runs and Milestones on a timeline, repeatable Journeys and a Vision canvas. Every card is a plain file in your repository, so people edit it in the app and AI agents read and write the same file directly.
 
 - **Your board lives beside your work.** Local-first: cards are Markdown files in your repository, canvases are Excalidraw files, git keeps the history. The search index can be deleted and rebuilt at any time.
 - **See what needs attention.** The project pulse shows work in progress, the review queue, accepted tasks over 14 days, the current Run and cards without a deck.
 - **People and AI agents share one workflow.** An agent takes the next card from its Hand, reads only the rules it needs, asks questions on the card and hands in a report for review.
-- **Local and safe with your files.** No account, cloud sync, telemetry or automatic commits. After installation, the only network access is downloading Excalidraw's handwritten fonts when Vision is first opened. A save rewrites only the edited block; a stale write is rejected instead of overwriting someone else's work.
+- **Local and safe with your files.** No account, cloud sync, telemetry or automatic commits. The board runs locally; Vision may download Excalidraw's handwritten fonts, and external embeds need internet access. A save rewrites only the edited block; a stale write is rejected instead of overwriting someone else's work.
 
 ## Quick start
 
@@ -76,6 +76,8 @@ npx deckmate
 
 **A new project.** In Desktop, choose **Create project** and an empty folder. With the CLI, create an empty folder and open it: `mkdir my-game`, then `npx deckmate --data my-game`. On the Decks tab choose **Start from template** (or click the logo in the top-left corner → **Start from template…**). Starters come for games and for software, on the **Games** and **Software** shelves: ten game genres — Action, Adventure, Platformer, Puzzle, Roguelike, RPG, Simulation, Sports, Strategy and Survival — plus software starters such as pet projects, web apps and libraries. A starter creates decks and Journeys for its kind of project, optionally with example cards.
 
+Built-in project and Journey templates show Russian titles and descriptions in the Russian interface. Importing a Journey into a Russian-format project also gives it a Russian name.
+
 Edits are saved straight into the project folder. Commit with git to keep a history; Deckmate never commits for you. With the CLI, add `--read-only` to look without changing anything.
 
 | Option | What it does |
@@ -100,34 +102,38 @@ These CLI settings can also live in `.env.local` in the folder you start from �
 | **Track** | A thread that links cards across decks, such as a release or a feature area. |
 | **Vision** | An Excalidraw canvas with live links to cards. |
 
-Start on **Decks**: jump from the project pulse to work in progress, reviews, the current Run or cards that need a deck. Compact covers show card counts and task progress. Arrange decks with the mouse or keyboard; move less-used decks into a **pile** at the end of their space from deck settings, and bring them back when needed. Search deck names to find a deck even inside a pile.
+Start on **Decks**: document and card counts sit under the project name; source warnings open from the same line. Jump from the project pulse to work in progress, reviews, the current Run or cards that need a deck. Compact covers show card counts and task progress. Arrange decks with the mouse or keyboard; move less-used decks into a **pile** at the end of their space from deck settings, and bring them back when needed. Search deck names to find a deck even inside a pile.
 
 Open a deck to work with its cards, description, progress and activity:
 
-![An open deck with Hero cards, task states, owners, effort and a progress summary](docs/screenshots/deck.png)
+![An open Deck with Hero Sub Card progress strips, task states, owners and effort](docs/screenshots/deck.png)
+
+A Hero tile shows Sub Card progress as a quiet line, with each step sized by its effort. When all its task Sub Cards are accepted, the Hero gains holographic foil, an iridescent rim and a done medallion. The foil follows the pointer; with reduced motion or touch it stays still.
+
+![Moonwake Lantern with holographic foil and a done medallion after its Sub Cards are accepted](docs/screenshots/deck-accepted.png)
 
 Press `?` in the app for all keyboard shortcuts: `N` creates a card, `/` searches, `Shift+1`–`Shift+4` switch between Hand, Decks, Timeline and Vision, and hovering a card with `O`, `E`, `P` or `,` changes its owner, effort, priority or Run.
 
-On an open card, use its properties for quick settings and click a tag to open project tags. A Hero shows its Journey as mini-cards; the Journey name opens a menu of steps and assignees. Open a step to see its Sub Card, then press `Esc` to return to the Hero. In the text editor, use the paperclip to insert an attachment, or copy its Markdown link from the attachments panel; card covers are no longer used.
+On an open card, use its properties for quick settings and click a tag to open project tags. A Hero shows its Journey as mini-cards; the Journey name opens a menu of steps and assignees. Open a step to see its Sub Card, then press `Esc` to return to the Hero. In the text editor, use the paperclip to insert an attachment, or copy its Markdown link from the attachments panel. Deleting an attachment used in the text offers to remove its links too. An image whose file is missing shows a “file not found” chip. Card covers are no longer used.
 
 <table>
 <tr>
 <td width="50%" valign="top">
-<a href="docs/screenshots/card.png"><img src="docs/screenshots/card.png" alt="An open Hero card with properties and task Sub Cards" width="100%" /></a>
+<a href="docs/screenshots/card.png"><img src="docs/screenshots/card.png" alt="Moonwake Lantern Hero with properties, Journey steps and task Sub Cards" width="100%" /></a>
 <strong>Cards and Journeys</strong><br />Markdown with owners, effort, dependencies and a Journey's progress.
 </td>
 <td width="50%" valign="top">
-<a href="docs/screenshots/timeline.png"><img src="docs/screenshots/timeline.png" alt="Timeline with a Run and a Milestone" width="100%" /></a>
+<a href="docs/screenshots/timeline.png"><img src="docs/screenshots/timeline.png" alt="Timeline with the First playable Run, its cards and the Harbor playtest Milestone" width="100%" /></a>
 <strong>Runs and Milestones</strong><br />Dates on a timeline; unfinished cards carry into the next Run.
 </td>
 </tr>
 <tr>
 <td width="50%" valign="top">
-<a href="docs/screenshots/hand.png"><img src="docs/screenshots/hand.png" alt="A teammate's Hand with cards in the current Run" width="100%" /></a>
+<a href="docs/screenshots/hand.png"><img src="docs/screenshots/hand.png" alt="Maya Chen's Hand with focus cards, a done pile and the Your Runs tab" width="100%" /></a>
 <strong>A Hand for each teammate</strong><br />Focus slots, reserve and done pile, for people and agents alike.
 </td>
 <td width="50%" valign="top">
-<a href="docs/screenshots/vision.png"><img src="docs/screenshots/vision.png" alt="Vision, an Excalidraw canvas with ideas and linked cards" width="100%" /></a>
+<a href="docs/screenshots/vision.png"><img src="docs/screenshots/vision.png" alt="Moonwake Vision canvas with creative direction, linked Heroes and Production progress" width="100%" /></a>
 <strong>Vision</strong><br />Sketch on an Excalidraw canvas with live card and progress nodes.
 </td>
 </tr>
@@ -193,7 +199,7 @@ Make the path readable without revealing the whole forest.
 - [ ] Ask a teammate to review the result.
 ```
 
-States are `not-started`, `discussing`, `in-iteration`, `started`, `review` and `done`. Decks, members and tracks live in `tasks/deckmate.md`; Runs and Milestones in `tasks/deckmate-runs.md` and `tasks/deckmate-milestones.md`; Journeys in `tasks/journeys/`; Vision boards in `boards/`. The file format also has Russian words (`план`, `в работе`, `принято`…): a project writes in the language recorded in its manifest, and Deckmate reads both.
+States are `not-started`, `discussing`, `in-iteration`, `started`, `review` and `done`; `wont-do` marks work decided against. Decks, members and tracks live in `tasks/deckmate.md`; Runs and Milestones in `tasks/deckmate-runs.md` and `tasks/deckmate-milestones.md`; Journeys in `tasks/journeys/`; Vision boards in `boards/`. The file format also has Russian words (`план`, `в работе`, `принято`…): a project writes in the language recorded in its manifest, and Deckmate reads both.
 
 Add people and agents in the logo menu → **Members…**; `<member>` below is a name or ID from there. The `project` command gives an agent compact JSON or Markdown without a running server, so it reads only what the task needs (add `--json` to `brief` for JSON):
 
@@ -211,7 +217,7 @@ Deckmate also ships an agent skill in the open Agent Skills format. Once the pro
 
 **Where is my data?** In your project folder: Markdown cards and instructions, the catalog manifest and `.excalidraw` boards. The SQLite index lives in a cache folder and is rebuilt from the files. Desktop keeps its recent and last-project settings separately in `%APPDATA%\Deckmate\desktop.json`.
 
-**Do I need the internet?** Only to install and to download Excalidraw's handwritten fonts when Vision is first opened. The board runs locally on `127.0.0.1`; agents can read the files with the server stopped.
+**Do I need the internet?** For installation, downloading Excalidraw's handwritten fonts and loading external embeds in Vision. The board itself runs locally on `127.0.0.1`; agents can read the files with the server stopped.
 
 **Do I need Python?** Only projects with their own `Tools/board.py` need Python.
 

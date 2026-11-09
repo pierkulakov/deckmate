@@ -221,7 +221,10 @@ describe.skipIf(!browserPath)('application shell (browser)', () => {
         const chip = row.querySelector('.shortcuts-panel-key'); if (!chip) return true;
         const chipRect = chip.getBoundingClientRect();
         const remove = row.querySelector('.mission-control-workspace-remove').getBoundingClientRect();
-        const mark = row.querySelector('.mission-control-workspace-current')?.getBoundingClientRect();
+        // 2026-11-09: under (hover: none) — headless Chrome on Linux CI — the current mark is display: none and its
+        // rect is all zeros, so only a rendered mark takes part in the comparison.
+        const markElement = row.querySelector('.mission-control-workspace-current');
+        const mark = markElement?.getClientRects().length ? markElement.getBoundingClientRect() : undefined;
         const name = row.querySelector('.mission-control-workspace-copy strong').getBoundingClientRect();
         return chipRect.right <= remove.left - 2 && (!mark || chipRect.right <= mark.left - 2)
           && name.right <= chipRect.left + 1 && name.height <= 40 && row.scrollWidth <= row.clientWidth;

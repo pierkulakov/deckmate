@@ -87,6 +87,18 @@ function visibleBounds(grid: HTMLElement) {
   return { top, bottom };
 }
 
+/**
+ * 2026-11-09: the open deck slides in under its shelf by a transform on the page's parts; every rect read during that
+ * move is off by the remaining distance, and the window would keep a missing bottom row once the deck has landed.
+ */
+function movingAncestor(grid: HTMLElement): Animation | undefined {
+  return document.getAnimations().find(animation => {
+    const effect = animation.effect;
+    if (!(effect instanceof KeyframeEffect) || !(effect.target instanceof Element)) return false;
+    return effect.target !== grid && effect.target.contains(grid) && effect.getKeyframes().some(frame => 'transform' in frame);
+  });
+}
+
 function interactionIds(grid: HTMLElement): string[] {
   const ids = new Set<string>();
   const focused = document.activeElement;
@@ -120,9 +132,18 @@ export function VirtualCardGrid({ cards, enabled, pinnedIds, children }: Virtual
     const grid = element.current;
     if (!enabled || !grid) return;
     let frame: number | null = null;
+    let active = true;
+    let measured = false;
     const measure = () => {
       frame = null;
+      const moving = movingAncestor(grid);
+      // Measure again once the move ends; the first read still runs, so a grid never starts as one column.
+      if (moving) {
+        moving.finished.then(schedule, schedule);
+        if (measured) return;
+      }
       if (grid.getBoundingClientRect().width === 0) return;
+      measured = true;
       const metrics = gridMetrics(grid);
       const bounds = grid.getBoundingClientRect();
       const viewport = visibleBounds(grid);
@@ -135,7 +156,7 @@ export function VirtualCardGrid({ cards, enabled, pinnedIds, children }: Virtual
       virtualGrids.set(grid, { ...metrics, cards });
       setVisibleWindow(previous => sameWindow(previous, next) ? previous : next);
     };
-    const schedule = () => { if (frame === null) frame = requestAnimationFrame(measure); };
+    const schedule = () => { if (active && frame === null) frame = requestAnimationFrame(measure); };
     measure();
     const observer = typeof ResizeObserver === 'function' ? new ResizeObserver(schedule) : null;
     observer?.observe(grid);
@@ -144,6 +165,7 @@ export function VirtualCardGrid({ cards, enabled, pinnedIds, children }: Virtual
     document.addEventListener('focusin', schedule);
     document.addEventListener('focusout', schedule);
     return () => {
+      active = false;
       if (frame !== null) cancelAnimationFrame(frame);
       observer?.disconnect();
       window.removeEventListener('scroll', schedule, true);

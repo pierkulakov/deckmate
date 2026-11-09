@@ -1,4 +1,4 @@
-import { defineText, locale, textNow, useLang, useText } from '../i18n.ts';
+import { defineText, formatNumber, locale, textNow, useLang, useText } from '../i18n.ts';
 import { stateLabel } from '../locales/common.ts';
 import { readStoredValue } from '../storage.ts';
 import { navigateTabs } from '../tab-navigation.ts';
@@ -77,7 +77,7 @@ import { shelfAndPile } from '../deck-shelf.ts';
 import { ProjectPulseStrip } from './ProjectPulse.tsx';
 import { navigateToPlanning } from '../planning-navigation.ts';
 
-const number = (value: number) => new Intl.NumberFormat(locale(), { maximumFractionDigits: 2 }).format(value);
+const number = (value: number) => formatNumber(value);
 
 const text = defineText({
   iconDeck: "Deck",
@@ -723,10 +723,25 @@ function storedPanelWidth(key: string, fallback: number, minimum: number, maximu
   } catch { return fallback; }
 }
 
+type StickyLayout = Record<'--catalog-scroll-height' | '--deck-sticky-offset' | '--catalog-content-offset', string> & { toolbarSticky: string; selectionSticky: string };
+
+// 2026-11-09: the last measured layout of each view shape (deck or not, selection or not). The page renders it before its
+// first style pass, so opening or closing a deck no longer changes these inherited properties on the root right after that
+// pass; the second pass restyled the whole open deck (~2,000 elements, ~100 ms at 4x CPU). The measurement still corrects it.
+const stickyLayouts = new Map<string, StickyLayout>();
+let lastStickyLayout: StickyLayout | undefined;
+
+function stickyLayoutProps(layout: StickyLayout | undefined): { style?: Record<string, string>; 'data-toolbar-sticky'?: string; 'data-selection-sticky'?: string } {
+  if (!layout) return {};
+  const { toolbarSticky, selectionSticky, ...style } = layout;
+  return { style, 'data-toolbar-sticky': toolbarSticky, 'data-selection-sticky': selectionSticky };
+}
+
 function useCatalogStickyLayout(hasDeck: boolean, hasSelection: boolean) {
   const root = useRef<HTMLElement>(null);
   const toolbar = useRef<HTMLElement>(null);
   const selection = useRef<HTMLDivElement>(null);
+  const shape = `${hasDeck}:${hasSelection}`;
   useLayoutEffect(() => {
     const element = root.current;
     const scrollport = element?.closest<HTMLElement>('.workspace-main');
@@ -740,19 +755,24 @@ function useCatalogStickyLayout(hasDeck: boolean, hasSelection: boolean) {
       const toolbarOffset = toolbarPinned ? toolbarHeight + 8 : 0;
       const selectionPinned = window.innerWidth > 900 && selectionHeight > 0 && toolbarOffset + selectionHeight < viewportHeight * .4;
       const selectionOffset = selectionPinned ? selectionHeight + 8 : 0;
-      element.dataset.toolbarSticky = String(toolbarPinned);
-      element.dataset.selectionSticky = String(selectionPinned);
-      element.style.setProperty('--catalog-scroll-height', viewportHeight + 'px');
-      element.style.setProperty('--deck-sticky-offset', toolbarOffset + 'px');
-      element.style.setProperty('--catalog-content-offset', toolbarOffset + selectionOffset + 'px');
+      const layout: StickyLayout = { toolbarSticky: String(toolbarPinned), selectionSticky: String(selectionPinned),
+        '--catalog-scroll-height': viewportHeight + 'px', '--deck-sticky-offset': toolbarOffset + 'px',
+        '--catalog-content-offset': toolbarOffset + selectionOffset + 'px' };
+      stickyLayouts.set(shape, layout);
+      lastStickyLayout = layout;
+      if (element.dataset.toolbarSticky !== layout.toolbarSticky) element.dataset.toolbarSticky = layout.toolbarSticky;
+      if (element.dataset.selectionSticky !== layout.selectionSticky) element.dataset.selectionSticky = layout.selectionSticky;
+      for (const name of ['--catalog-scroll-height', '--deck-sticky-offset', '--catalog-content-offset'] as const) {
+        if (element.style.getPropertyValue(name) !== layout[name]) element.style.setProperty(name, layout[name]);
+      }
     };
     const observer = new ResizeObserver(measure);
     [scrollport, toolbar.current, selection.current].forEach(node => { if (node) observer.observe(node); });
     measure();
     window.addEventListener('resize', measure);
     return () => { observer.disconnect(); window.removeEventListener('resize', measure); };
-  }, [hasDeck, hasSelection]);
-  return { root, toolbar, selection };
+  }, [shape]);
+  return { root, toolbar, selection, rendered: stickyLayoutProps(stickyLayouts.get(shape) ?? lastStickyLayout) };
 }
 
 // The left column is 503 px on desktop and shrinks for narrow windows.
@@ -782,7 +802,7 @@ function PanelResize({ label, value, minimum, maximum, direction, onChange }: { 
     onPointerMove={event => { if (start.current) onChange(bounded(start.current.value + (event.clientX - start.current.pointer) * direction)); }}
     onPointerUp={event => { start.current = null; if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId); }}
     onPointerCancel={() => { start.current = null; }}
-    onKeyDown={event => { if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return; event.preventDefault(); if (event.key === 'Home') onChange(minimum); else if (event.key === 'End') onChange(maximum); else onChange(bounded(value + (event.key === 'ArrowRight' ? 16 : -16) * direction)); }}><span /></div>;
+    onKeyDown={event => { if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return; event.preventDefault(); if (event.key === 'Home') onChange(minimum); else if (event.key === 'End') onChange(maximum); else onChange(bounded(value + (event.key === 'ArrowRight' ? 16 : -16) * direction)); }}><span className="catalog-resize-line" /></div>;
 }
 
 function groupEffort(group: CardGroup, lookups: CatalogLookups) {
@@ -800,9 +820,8 @@ function groupEffort(group: CardGroup, lookups: CatalogLookups) {
   const total = cards.reduce((sum, card) => sum + (card.effort ?? 1), 0);
   const done = cards.reduce((sum, card) => sum + (card.state === 'done' ? card.effort ?? 1 : 0), 0);
   const missing = cards.filter(card => card.effort == null).length;
-  const format = (value: number) => value.toLocaleString(locale(), { maximumFractionDigits: 2 });
-  return { label: (done ? format(done) + ' / ' : '') + format(total) + (missing ? ' (' + number(missing) + ')' : ''),
-    description: t.effortProgress(format(done), format(total), missing) };
+  return { label: (done ? number(done) + ' / ' : '') + number(total) + (missing ? ' (' + number(missing) + ')' : ''),
+    description: t.effortProgress(number(done), number(total), missing) };
 }
 
 function CardGroupHeading({ group, tagDefinitions, lookups, selectedIds, disabled, onToggleGroup, onFilter, onCreate, zone }: {
@@ -833,7 +852,7 @@ function CardGroupHeading({ group, tagDefinitions, lookups, selectedIds, disable
     {zone && zone.dragHandle}
     <div className="catalog-group-label">
     <label className="catalog-group-select" title={t.selectAll(group.title)}>
-    <input type="checkbox" aria-label={t.selectGroup(group.title)} checked={ids.length > 0 && selectedCount === ids.length}
+    <input className="catalog-group-check" type="checkbox" aria-label={t.selectGroup(group.title)} checked={ids.length > 0 && selectedCount === ids.length}
       ref={input => { if (input) input.indeterminate = selectedCount > 0 && selectedCount < ids.length; }}
       disabled={disabled || ids.length === 0} onChange={() => onToggleGroup(ids)} />
     </label>
@@ -1174,9 +1193,9 @@ function CatalogTableRow({ card, lookups, members, tagDefinitions, catalog, curr
   return <tr ref={node => { transfer.setNodeRef(node); orderDrop.setNodeRef(node); }} onPointerDown={transfer.onPointerDown} data-card-transfer-enabled={transfer.enabled || undefined} data-card-transfer-source={transfer.isDragging || undefined} data-card-id={card.id}
     data-kind={card.kind} data-state={card.kind === 'task' ? statusClass(card.state ?? '') : undefined}
     className={'deck-table-row' + (checked ? ' is-multi-selected' : '') + (openedId === card.id ? ' is-opened' : '') + (orderDrop.isOver ? ' is-card-order-target' : '')}>
-    <td className="deck-table-select"><input type="checkbox" checked={checked} disabled={disabled} aria-label={t.selectCard(card.title)} onChange={event => onToggle(card.id, Boolean((event.nativeEvent as MouseEvent).shiftKey))} /></td>
+    <td className="deck-table-select"><input className="deck-table-check" type="checkbox" checked={checked} disabled={disabled} aria-label={t.selectCard(card.title)} onChange={event => onToggle(card.id, Boolean((event.nativeEvent as MouseEvent).shiftKey))} /></td>
     <td className={'deck-table-priority' + (card.priority ? '' : ' is-empty')}><span data-shortcut-property="priority"><JourneyPriorityIcon priority={card.priority} size={16} /></span></td>
-    <td className={'deck-table-effort' + (effort == null ? ' is-empty' : '')}><span data-shortcut-property="effort"><Gauge size={16} aria-hidden="true" />{effort == null ? <span className="visually-hidden">{t.noEffort}</span> : <span>{effort.toLocaleString(locale(lang), { maximumFractionDigits: 2 })}</span>}</span></td>
+    <td className={'deck-table-effort' + (effort == null ? ' is-empty' : '')}><span data-shortcut-property="effort"><Gauge size={16} aria-hidden="true" />{effort == null ? <span className="visually-hidden">{t.noEffort}</span> : <span>{formatNumber(effort, 2, lang)}</span>}</span></td>
     <td className="deck-table-card">{parent && <CardFamilyPopover projectTags={tagDefinitions} members={members} hero={parent} children={familyChildren(lookups, parent.id)} disabled={disabled} onOpen={onFamilyOpen} />}
       {heroChildren.length > 0 ? <span className="deck-table-hero">{titleButton}<SubCardProgress cards={heroChildren} cardsById={lookups.cardById} /></span> : titleButton}
       </td>
@@ -2330,7 +2349,7 @@ export function Deck({ snapshot, refreshKey, onEditing, onImportCsv, onStartFrom
     } }}>
     <CardTransferContext.Provider value={transferContext}>
     <CardAttachmentRefreshContext.Provider value={catalog?.indexedAt}>
-    <section ref={sticky.root} onClickCapture={event => { if (transferBaseline.current || Date.now() < suppressTransferClickUntil.current) { event.preventDefault(); event.stopPropagation(); } }} className={'deck-view catalog-view' + (cardTransfer ? ' is-card-transfer-active' : '') + (cardDragPreview ? ' is-card-pointer-transfer' : '') + (selectedDeck ? ' is-deck-open' : '') + (hasPreview ? ' has-preview' : '') + (!selectedDeck && !showCards ? ' deck-gallery' : '')} style={{ '--left-panel-width': panels.leftPanelWidth + 'px' } as CSSProperties} aria-label={t.projectCatalog}>
+    <section ref={sticky.root} onClickCapture={event => { if (transferBaseline.current || Date.now() < suppressTransferClickUntil.current) { event.preventDefault(); event.stopPropagation(); } }} className={'deck-view catalog-view' + (cardTransfer ? ' is-card-transfer-active' : '') + (cardDragPreview ? ' is-card-pointer-transfer' : '') + (selectedDeck ? ' is-deck-open' : '') + (hasPreview ? ' has-preview' : '') + (!selectedDeck && !showCards ? ' deck-gallery' : '')} data-toolbar-sticky={sticky.rendered['data-toolbar-sticky']} data-selection-sticky={sticky.rendered['data-selection-sticky']} style={{ ...sticky.rendered.style, '--left-panel-width': panels.leftPanelWidth + 'px' } as CSSProperties} aria-label={t.projectCatalog}>
     {selectedDeck && catalog && <nav className="deck-neighbor-rail" aria-label={t.spaceDecks}>{catalog.decks.filter(deck => deck.spaceId === selectedDeck.spaceId).map(deck => {
       const counts = deckCounts.get(deck.id) ?? emptyDeckCounts;
       return <DeckNeighborCover key={deck.id} deck={deck} counts={counts} source={snapshot.source} current={deck.id === selectedDeck.id} disabled={navigationLocked} baseline={cardTransfer} catalogCards={cards} onOpen={() => openDeck(deck)} />;
@@ -2440,7 +2459,8 @@ export function Deck({ snapshot, refreshKey, onEditing, onImportCsv, onStartFrom
               <Button variant="ghost" size="sm" disabled={navigationLocked} aria-expanded={orderingOpen} aria-controls="catalog-ordering-panel" onClick={() => setOrderingOpen(!orderingOpen)}>{t.labelOrdering}</Button>
             </div>
           </div>}
-          <div id="catalog-ordering-panel" className="catalog-ordering-panel" hidden={!orderingOpen || Boolean(selectedDeck)}><CardOrdering value={ordering} onChange={changeOrdering} disabled={navigationLocked} /></div>
+          {/* 2026-11-09: inside a deck the order lives in the side panel; this hidden copy cost the open deck ~130 elements. */}
+          {!selectedDeck && <div id="catalog-ordering-panel" className="catalog-ordering-panel" hidden={!orderingOpen}><CardOrdering value={ordering} onChange={changeOrdering} disabled={navigationLocked} /></div>}
           <div className={hasFilters || !selectedDeck ? "catalog-result-summary" : "visually-hidden"}><span role="status">{t.cardResults(searchScope, visibleCards.length, scopedCards.length)}</span>{hasFilters && <Button variant="ghost" size="sm" disabled={navigationLocked} onClick={resetCardFilters}>{t.resetFilters}</Button>}</div>
           {labeledLaneSearch.length > 0 && <div className="deck-lane-search" aria-label={t.laneFilters}>{labeledLaneSearch.map((entry, index) => <button type="button" key={entry.ordering.order + ':' + entry.key} className="deck-panel-button" disabled={navigationLocked} aria-label={t.removeFilter(entry.title)} onClick={() => setLaneSearch(entries => entries.filter((_, position) => position !== index))}>{entry.title}<X size={12} aria-hidden="true" /></button>)}</div>}
           {visibleCards.length === 0 && !manualOrdering && <p className="catalog-empty">{cardsEmptyText}</p>}
@@ -2693,7 +2713,7 @@ function DeckPileToggle({ spaceId, decks, open, disabled, onToggle }: { spaceId:
   const fan = decks.slice(0, 3).reverse();
   const spread = fan.length > 1 ? 10 / (fan.length - 1) : 0;
   return <button type="button" className="catalog-pile" disabled={disabled} aria-expanded={open} aria-controls={open ? `pile-${spaceId}` : undefined} aria-label={open ? t.collapsePile : t.showPile(decks.length)} onClick={onToggle}>
-    <span className="catalog-pile-fan" aria-hidden="true">{fan.map((deck, index) => <span key={deck.id} style={{ '--deck-color': deckColor(deck), '--fan': `${(fan.length > 1 ? -5 : 0) + index * spread}deg` } as CSSProperties} />)}</span>
+    <span className="catalog-pile-fan" aria-hidden="true">{fan.map((deck, index) => <span key={deck.id} className="catalog-pile-card" style={{ '--deck-color': deckColor(deck), '--fan': `${(fan.length > 1 ? -5 : 0) + index * spread}deg` } as CSSProperties} />)}</span>
     <span className="catalog-pile-label" aria-hidden="true">{open
       ? <><FoldHorizontal size={20} /><span>{t.collapsePile}</span></>
       : <><strong>{number(decks.length)}</strong><span>{t.inPile}</span></>}</span>
@@ -3153,7 +3173,7 @@ export function DeckSettingsForm({ creation, catalog, source, disabled, pending,
               </div>
               <div className="deck-settings-picker-content">
                 <div role="tabpanel" id="deck-cover-panel-browse" aria-labelledby="deck-cover-tab-browse" hidden={coverTab !== 'browse'} tabIndex={0}>
-                  {deckArt.length > 0 ? <div className="deck-art-library">{deckArt.map(art => <button key={art.id} type="button" className="deck-art-option" disabled={unavailable} onClick={() => void pickArt(art)} aria-label={t.cover(art.title)} title={art.title} aria-pressed={imageName === art.id + '.webp'}><img src={art.url} alt="" loading="lazy" /></button>)}</div> : <p className="catalog-form-help">{settings.emptyLibrary}</p>}
+                  {deckArt.length > 0 ? <div className="deck-art-library">{deckArt.map(art => <button key={art.id} type="button" className="deck-art-option" disabled={unavailable} onClick={() => void pickArt(art)} aria-label={t.cover(art.title)} title={art.title} aria-pressed={imageName === art.id + '.webp'}><img className="deck-art-image" src={art.url} alt="" loading="lazy" /></button>)}</div> : <p className="catalog-form-help">{settings.emptyLibrary}</p>}
                 </div>
                 <div role="tabpanel" id="deck-cover-panel-upload" aria-labelledby="deck-cover-tab-upload" hidden={coverTab !== 'upload'} tabIndex={0}>
                   <fieldset disabled={unavailable} className="deck-settings-upload">

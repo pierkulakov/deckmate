@@ -156,6 +156,7 @@ function Workspace({ board, open, disabled }: { board: DesktopWorkspaceBridge; o
       <SortableContext items={entries.map(project => project.path)} strategy={verticalListSortingStrategy}>
         <ul ref={list} className="mission-control-workspace-list" aria-label={t.workspace} aria-busy={pending} data-dragging={dragging || undefined}>
           {entries.map((project, index) => <WorkspaceRow key={project.path} project={project} disabled={busy} hintId={hintId}
+            shortcut={index < 9 ? index + 1 : null}
             switching={navigation.switching === project.path} onSwitch={() => { setFailure(null); void navigation.switchTo(project.path); }}
             onRemove={() => remove(project, index)} onMove={direction => move(project, index + direction)} />)}
         </ul>
@@ -174,8 +175,8 @@ function Workspace({ board, open, disabled }: { board: DesktopWorkspaceBridge; o
   </section>;
 }
 
-function WorkspaceRow({ project, disabled, switching, hintId, onSwitch, onRemove, onMove }: {
-  project: DesktopWorkspaceProject; disabled: boolean; switching: boolean; hintId: string;
+function WorkspaceRow({ project, disabled, switching, shortcut, hintId, onSwitch, onRemove, onMove }: {
+  project: DesktopWorkspaceProject; disabled: boolean; switching: boolean; shortcut: number | null; hintId: string;
   onSwitch: () => void; onRemove: () => void; onMove: (direction: number) => void;
 }) {
   const t = useText(text);
@@ -187,7 +188,7 @@ function WorkspaceRow({ project, disabled, switching, hintId, onSwitch, onRemove
       transition: sortable.transition ? 'transform var(--motion-feedback) var(--ease-out)' : undefined }}>
     <button ref={sortable.setActivatorNodeRef} type="button" className="mission-control-project-row mission-control-workspace-open"
       title={project.path} data-path={project.path} aria-disabled={unavailable} aria-current={project.current ? 'true' : undefined}
-      aria-busy={switching} aria-describedby={hintId} aria-keyshortcuts="Alt+ArrowUp Alt+ArrowDown"
+      aria-busy={switching} aria-describedby={hintId} aria-keyshortcuts={(shortcut ? `Control+${shortcut} ` : '') + 'Alt+ArrowUp Alt+ArrowDown'}
       onMouseDown={event => sortable.listeners?.onMouseDown?.(event)} onTouchStart={event => sortable.listeners?.onTouchStart?.(event)}
       onClick={() => { if (!unavailable && !sortable.isDragging) onSwitch(); }}
       onKeyDown={event => {
@@ -200,6 +201,11 @@ function WorkspaceRow({ project, disabled, switching, hintId, onSwitch, onRemove
         <span className="mission-control-workspace-path">{compactPath(project.path)}</span>
         {project.missing && <span className="mission-control-workspace-missing">{t.missing}</span>}
       </div>
+      {/* The shell's workspace menu pins Ctrl+1…9 to the first nine entries in stored order (desktop/src-tauri/src/menu.rs),
+          and board_workspace_projects returns that exact order with the current project in place, so the row's position
+          names the key that opens it. The chip reuses the shortcuts window's keycap; aria-keyshortcuts carries it for
+          screen readers, so the chip itself stays quiet. */}
+      {shortcut && <kbd className="shortcuts-panel-key" aria-hidden="true">Ctrl+{shortcut}</kbd>}
       {project.current && <Check className="mission-control-workspace-current" size={14} aria-label={t.current} />}
     </button>
     <button type="button" className="mission-control-workspace-remove" disabled={disabled} title={t.remove} aria-label={t.removeNamed(project.name)} onClick={onRemove}><X size={14} aria-hidden="true" /></button>

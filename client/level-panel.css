@@ -5,15 +5,15 @@
 :root.dark { --level-done: var(--card-highlight); }
 
 /* While the panel is docked the page under the top bar narrows by its width instead of hiding under it; the top bar
-   keeps its full width, so the badge stays where it was clicked. The common container .global-shell (App.tsx) holds
-   the panel as a descendant, so :has() needs no extra state. */
-.global-shell:has(.level-panel) .workspace > :not(.topbar) { margin-right: var(--level-panel-width); }
+   keeps its full width, so the badge stays where it was clicked. LevelPanel marks the root with data-level-panel while it is
+   open (2026-11-09): a :has() on the app shell restyled the whole page on every DOM change under it. */
+:root[data-level-panel] .workspace > :not(.topbar) { margin-right: var(--level-panel-width); }
 @media (min-width: 900px) {
-  .global-shell:has(.level-panel) .notifications-corner { right: calc(var(--level-panel-width) + 12px); }
-  .global-shell:has(.level-panel) .deck-gallery .deck-gallery-header,
-  .global-shell:has(.level-panel) .deck-gallery .catalog-heading-actions,
-  .global-shell:has(.level-panel) .deck-gallery .catalog-browser-navigation { flex-wrap: wrap; }
-  .global-shell:has(.level-panel) .deck-gallery .catalog-browser-navigation { row-gap: 8px; }
+  :root[data-level-panel] .notifications-corner { right: calc(var(--level-panel-width) + 12px); }
+  :root[data-level-panel] .deck-gallery .deck-gallery-header,
+  :root[data-level-panel] .deck-gallery .catalog-heading-actions,
+  :root[data-level-panel] .deck-gallery .catalog-browser-navigation { flex-wrap: wrap; }
+  :root[data-level-panel] .deck-gallery .catalog-browser-navigation { row-gap: 8px; }
 }
 
 .level-panel { position: fixed; top: 52px; right: 0; bottom: 0; z-index: 65; display: flex; flex-direction: column; width: var(--level-panel-width); background: var(--sidebar); border-left: 1px solid var(--line); animation: level-panel-in var(--motion-material) var(--ease-out); }
@@ -21,7 +21,7 @@
 
 /* In windows narrower than 900 px the panel lies over the page instead of squeezing it. */
 @media (max-width: 899px) {
-  .global-shell:has(.level-panel) .workspace > :not(.topbar) { margin-right: 0; }
+  :root[data-level-panel] .workspace > :not(.topbar) { margin-right: 0; }
   .level-panel { width: min(var(--level-panel-width), calc(100vw - 24px)); box-shadow: var(--shadow); }
 }
 

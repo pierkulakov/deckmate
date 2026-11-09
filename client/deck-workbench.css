@@ -111,12 +111,14 @@
 .catalog-group-effort { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; font-variant-numeric: tabular-nums; white-space: nowrap; opacity: 0; transition: opacity var(--motion-feedback); }
 :is(.catalog-card-group:hover, .catalog-card-group:focus-within, .catalog-card-group-heading:hover, .catalog-card-group-heading:focus-within) :is(.catalog-group-add, .catalog-group-effort) { opacity: 1; }
 @media (hover: none) { .catalog-card-group-heading :is(.catalog-group-add, .catalog-group-effort) { opacity: 1; } }
-/* The checkbox overlaps the start of the name; hover or selection mode shifts the name right to reveal it. */
+/* The checkbox overlaps the start of the name; hover or selection mode shifts the name right to reveal it. 2026-11-09: the
+   label's parts are named; a :not(.catalog-group-select) after :hover made every hover change anywhere restyle the whole
+   hovered subtree (a whole lane, ~800 elements, on each move between cards). */
 .catalog-card-group > .catalog-card-group-heading .catalog-group-label { position: relative; }
 .catalog-card-group > .catalog-card-group-heading .catalog-group-select { position: absolute; left: -5px; top: 50%; z-index: 2; translate: 0 -50%; padding: 5px; transition: opacity var(--motion-feedback) ease-out; }
-.catalog-card-group > .catalog-card-group-heading .catalog-group-label > :not(.catalog-group-select) { position: relative; z-index: 1; background: var(--ground); transition: transform var(--motion-feedback) var(--ease-out); }
-.catalog-card-group > .catalog-card-group-heading:is(:hover, :focus-within, [data-selecting]) .catalog-group-label > :not(.catalog-group-select),
-.catalog-card-group > .catalog-card-group-heading:has(.catalog-group-select input:is(:checked, :indeterminate)) .catalog-group-label > :not(.catalog-group-select) { transform: translateX(var(--group-select-shift, 24px)); }
+.catalog-card-group > .catalog-card-group-heading .catalog-group-label > :is(.catalog-group-filter, .catalog-zone-title-input, .catalog-group-count) { position: relative; z-index: 1; background: var(--ground); transition: transform var(--motion-feedback) var(--ease-out); }
+.catalog-card-group > .catalog-card-group-heading:is(:hover, :focus-within, [data-selecting]) .catalog-group-label > :is(.catalog-group-filter, .catalog-zone-title-input, .catalog-group-count),
+.catalog-card-group > .catalog-card-group-heading:has(.catalog-group-select input:is(:checked, :indeterminate)) .catalog-group-label > :is(.catalog-group-filter, .catalog-zone-title-input, .catalog-group-count) { transform: translateX(var(--group-select-shift, 24px)); }
 /* 2026-11-06: the shifted name and count ran into the dashed rule, which showed through the gap between them ("High - 3 ---").
    The rule now starts 24 px later with them and keeps its end, so Add Card and effort stay where they were. */
 .catalog-card-group > .catalog-card-group-heading > .catalog-group-rule { transition: transform var(--motion-feedback) var(--ease-out), clip-path var(--motion-feedback) var(--ease-out); }

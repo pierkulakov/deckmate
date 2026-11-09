@@ -144,7 +144,7 @@ export function CardFamilyComposer({ parent, catalog, initialDeckId, active = tr
       if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') { event.preventDefault(); void create(); }
       if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); cancel(); }
     }}>
-    <label className="card-family-composer-deck"><span>{t.createCardIn}</span><span><Layers size={15} />
+    <label className="card-family-composer-deck"><span>{t.createCardIn}</span><span className="card-family-composer-field"><Layers size={15} />
       <select value={deckId} disabled={busy} onChange={event => { setDeckId(event.target.value); setError(''); }}>
         <option value="">{inboxDeck && autoDeckId === inboxDeck.id ? t.autoInbox(inboxDeck.title) : t.noDeckChoice}</option>
         {availableDecks.map(deck => <option key={deck.id} value={deck.id}>{deck.title} · {deck.kind === 'knowledge' ? 'Doc' : 'Task'}</option>)}

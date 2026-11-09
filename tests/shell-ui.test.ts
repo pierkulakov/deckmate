@@ -189,6 +189,48 @@ describe.skipIf(!browserPath)('application shell (browser)', () => {
     }
   });
 
+  it('workspace: Ctrl+1…9 label the first nine rows in list order, the current row keeping its place', async () => {
+    const projects = Array.from({ length: 10 }, (_, index) => ({
+      path: `C:\\Work\\Проект_${index + 1}`, name: `Длинное русское название проекта номер ${index + 1}`,
+      current: index === 2, missing: false,
+    }));
+    await workspace({ workspace: projects }, 375);
+    // The shell menu pins Ctrl+N to the Nth workspace entry, and the bridge returns that order, so the Nth row wears it.
+    expect(await evaluate(`[...document.querySelectorAll('.mission-control-workspace-row')]
+      .map(row => row.querySelector('.shortcuts-panel-key')?.textContent ?? null)`))
+      .toEqual(['Ctrl+1', 'Ctrl+2', 'Ctrl+3', 'Ctrl+4', 'Ctrl+5', 'Ctrl+6', 'Ctrl+7', 'Ctrl+8', 'Ctrl+9', null]);
+    expect(await evaluate(`(() => {
+      const rows = [...document.querySelectorAll('.mission-control-workspace-row')];
+      return [rows[0].querySelector('.mission-control-workspace-open').getAttribute('aria-keyshortcuts'),
+        rows[2].querySelector('.mission-control-workspace-open').getAttribute('aria-current'),
+        rows[2].querySelector('.shortcuts-panel-key').textContent,
+        rows[9].querySelector('.mission-control-workspace-open').getAttribute('aria-keyshortcuts')];
+    })()`)).toEqual(['Control+1 Alt+ArrowUp Alt+ArrowDown', 'true', 'Ctrl+3', 'Alt+ArrowUp Alt+ArrowDown']);
+    // The chip is the shortcuts window's keycap, and the tile windows spell the projects' initials in white.
+    expect(await evaluate(`(() => {
+      const chip = getComputedStyle(document.querySelector('.shortcuts-panel-key'));
+      const currentTile = document.querySelector('.mission-control-project .mission-control-recent-tile');
+      const rowTile = document.querySelector('.mission-control-workspace-row .mission-control-recent-tile');
+      const window = getComputedStyle(rowTile, '::before');
+      return [chip.textTransform, chip.borderTopStyle, currentTile.getAttribute('data-initials'),
+        rowTile.getAttribute('data-initials'), window.color, window.fontSize];
+    })()`)).toEqual(['uppercase', 'solid', 'ST', 'ДР', 'rgb(255, 255, 255)', '10px']);
+    // Phone width: the chip clears the remove button, the current mark and the two-line clamped name.
+    expect(await evaluate(`(() => {
+      return [...document.querySelectorAll('.mission-control-workspace-row')].every(row => {
+        const chip = row.querySelector('.shortcuts-panel-key'); if (!chip) return true;
+        const chipRect = chip.getBoundingClientRect();
+        const remove = row.querySelector('.mission-control-workspace-remove').getBoundingClientRect();
+        const mark = row.querySelector('.mission-control-workspace-current')?.getBoundingClientRect();
+        const name = row.querySelector('.mission-control-workspace-copy strong').getBoundingClientRect();
+        return chipRect.right <= remove.left - 2 && (!mark || chipRect.right <= mark.left - 2)
+          && name.right <= chipRect.left + 1 && name.height <= 40 && row.scrollWidth <= row.clientWidth;
+      });
+    })()`)).toBe(true);
+    await click('.mission-control-workspace-row:nth-child(3) .mission-control-workspace-open');
+    expect(await evaluate('window.shellTest.workspaceCalls')).toEqual([]);
+  });
+
   it('workspace: empty state adds current, dialog and recent projects only on request', async () => {
     await workspace({ workspace: [] });
     expect(await evaluate(`document.querySelector('.mission-control-workspace-empty').textContent`)).toBe('Pin the projects you work on and switch between them in one click.');

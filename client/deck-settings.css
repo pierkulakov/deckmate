@@ -76,8 +76,8 @@
 /* Covers as a picture grid: the picture is the choice, its name lives in the tooltip and the label (2026-11-05). */
 .deck-art-library { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(128px, 100%), 1fr)); gap: 8px; }
 .deck-art-option { display: block; width: 100%; aspect-ratio: 10 / 7; padding: 0; overflow: hidden; border: 0; border-radius: 4px; background: var(--deck-settings-art-row); }
-.deck-art-option img { display: block; width: 100%; height: 100%; object-fit: cover; image-rendering: pixelated; transition: transform 180ms var(--ease-out, ease-out), filter 180ms ease; }
-.deck-art-option:hover:not(:disabled) img { transform: scale(1.04); filter: brightness(1.06); }
+.deck-art-option .deck-art-image { display: block; width: 100%; height: 100%; object-fit: cover; image-rendering: pixelated; transition: transform 180ms var(--ease-out, ease-out), filter 180ms ease; }
+.deck-art-option:hover:not(:disabled) .deck-art-image { transform: scale(1.04); filter: brightness(1.06); }
 /* 2026-11-07: the attribution belongs to the library, outside its scrolling pictures. */
 .deck-settings-picker-footer { display: flex; flex: 0 0 auto; align-items: center; flex-wrap: wrap; gap: 8px 16px; min-height: 39px; margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--line); }
 .deck-art-credit { display: inline-flex; align-items: center; flex: 0 1 auto; gap: 6px; margin: 0 0 0 auto; color: var(--muted); font-size: 12px; line-height: 16px; }

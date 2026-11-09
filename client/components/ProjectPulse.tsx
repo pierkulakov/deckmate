@@ -4,7 +4,7 @@ import type { CatalogMember } from '../../src/catalog-contracts.ts';
 import type { ProjectPulse } from '../../src/pulse-contracts.ts';
 import type { DataSource } from '../../src/workspace-contracts.ts';
 import { failureMessage } from '../failure-message.ts';
-import { defineText, locale, textNow, useLang, useText, type Lang } from '../i18n.ts';
+import { defineText, formatNumber, locale, textNow, useLang, useText, type Lang } from '../i18n.ts';
 import { formatPlanningDate } from '../planning-metrics.ts';
 import { CardOwnerAvatar } from './CardOwnerAvatar.tsx';
 import '../project-pulse.css';
@@ -218,13 +218,12 @@ export function ProjectPulseStrip({ source, refreshKey, members, disabled, onInP
     return <section className="project-pulse project-pulse-grid project-pulse-loading" aria-label={t.pulse} aria-busy="true">
       {Array.from({ length: 5 }, (_, index) => <div className="project-pulse-segment" key={index}>
         {index === 0 && <span className="visually-hidden" role="status">{t.loading}</span>}
-        <span className="project-pulse-skeleton is-label" aria-hidden="true" /><span className="project-pulse-skeleton is-value" aria-hidden="true" /><span className="project-pulse-skeleton is-detail" aria-hidden="true" />
+        <span className="project-pulse-skeleton is-label" aria-hidden="true" /><span className="project-pulse-skeleton is-value" aria-hidden="true" /><span className={'project-pulse-skeleton is-detail' + (index === 2 ? ' is-chart' : '')} aria-hidden="true" />
       </div>)}
     </section>;
   }
 
-  const numberFormat = new Intl.NumberFormat(locale(lang));
-  const amount = (value: number) => numberFormat.format(value);
+  const amount = (value: number) => formatNumber(value, 3, lang);
   const loading = current.status === 'loading';
   const owners = pulse.inProgress.ownerIds.map(id => ({ id, label: members.find(member => member.id === id)?.label ?? id }));
   let reviewAge = t.noReview;

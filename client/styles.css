@@ -389,11 +389,14 @@ kbd { display: inline-flex; align-items: center; justify-content: center; min-wi
 
 /* Resizable work panels and real Journey templates, 2026-11-03. */
 .catalog-resize-handle { position: relative; align-self: stretch; min-height: 100px; cursor: col-resize; touch-action: none; user-select: none; border-radius: 4px; }
-.catalog-resize-handle > span { position: absolute; top: 0; bottom: 0; left: 3px; width: 1px; background: var(--line); transition: background-color 160ms; }
-.catalog-resize-handle:hover > span, .catalog-resize-handle:focus-visible > span { background: var(--focus); }
+/* 2026-11-09: whatever a :hover or :focus-* rule styles below its anchor is named by a class. Chromium keeps one invalidation
+   set per pseudo-class, so `.catalog-resize-handle:hover > span` restyled every span under any element the pointer
+   entered or left — each move across the card grid restyled hundreds of elements. */
+.catalog-resize-line { position: absolute; top: 0; bottom: 0; left: 3px; width: 1px; background: var(--line); transition: background-color 160ms; }
+.catalog-resize-handle:is(:hover, :focus-visible) > .catalog-resize-line { background: var(--focus); }
 /* 2026-11-06: keyboard focus widens the handle line instead of framing the whole column with a second ring. */
 .catalog-resize-handle:focus-visible { outline: none; }
-.catalog-resize-handle:focus-visible > span { left: 2px; width: 3px; }
+.catalog-resize-handle:focus-visible > .catalog-resize-line { left: 2px; width: 3px; }
 .catalog-view-toggle, .catalog-panel-controls { display: flex; align-items: center; gap: 4px; }
 .catalog-view.is-deck-open { max-width: none; padding: 12px 16px 40px; }
 /* 2026-11-05: in an open deck the breathing room below the cards sits inside the columns, so the divider and the sidebar
@@ -507,7 +510,9 @@ kbd { display: inline-flex; align-items: center; justify-content: center; min-wi
    (desktop/launcher/launcher.css .recent-tile), 32×42 instead of 40×52 to fit the narrow menu panel. The dark
    window is the cover token; the rim, lift and card shadow are the client's own cover material. */
 .mission-control-recent-tile { position: relative; overflow: hidden; flex: 0 0 32px; width: 32px; height: 42px; border-radius: 4px; background: linear-gradient(165deg, color-mix(in srgb, var(--tile) 78%, #ffffff), var(--tile) 55%, color-mix(in srgb, var(--tile) 70%, #000000)); box-shadow: var(--cover-rim), var(--card-shadow); }
-.mission-control-recent-tile::before { content: ''; position: absolute; left: 3px; right: 3px; top: 3px; height: 19px; border-radius: 2px; background: color-mix(in srgb, var(--cover-window) 82%, var(--tile)); }
+/* The window carries the project's initials (data-initials, the launcher's attr() rule): white on the dark
+   window mix — over every palette tile color that mix stays near --cover-window, well past 4.5:1 in both themes. */
+.mission-control-recent-tile::before { content: attr(data-initials); position: absolute; left: 3px; right: 3px; top: 3px; height: 19px; border-radius: 2px; display: grid; place-items: center; background: color-mix(in srgb, var(--cover-window) 82%, var(--tile)); color: #fff; font-family: var(--font-sans); font-size: 10px; font-weight: 700; line-height: 1; }
 .mission-control-recent-tile::after { content: ''; position: absolute; left: 5px; bottom: 4px; width: 14px; height: 3px; border-radius: 1.5px; background: #ffffffb0; }
 /* A switch in flight spins over the tile in the covers' white ink, like the kind badges on deck covers. */
 .mission-control-recent-tile > .spin { position: absolute; inset: 0; margin: auto; color: #fff; }

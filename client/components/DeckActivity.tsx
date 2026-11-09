@@ -1,11 +1,11 @@
-import { useCallback, useEffect, useId, useRef, useState } from 'react';
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { Activity, ArrowRightLeft, Check, Image, Link2, LoaderCircle, Pencil, Plus, RefreshCw, Route, Unlock } from 'lucide-react';
 import type { DeckActivityEvent, DeckActivityPage } from '../../src/activity-contracts.ts';
 import { activityEventGroups, activityGroupChips, eventMatchesGroups, type ActivityEventGroup } from '../../src/activity-groups.ts';
 import type { DataSource } from '../../src/workspace-contracts.ts';
 import { Button } from './ui/button.tsx';
 import '../deck-activity.css';
-import { defineText, locale, textNow, useLang, useText } from '../i18n.ts';
+import { defineText, formatNumber, locale, textNow, useLang, useText } from '../i18n.ts';
 import { stateLabel } from '../locales/common.ts';
 import { emitSignal } from '../onboarding/signals.ts';
 
@@ -62,6 +62,23 @@ function emptyState(key: string): ActivityState {
   return { key, events: [], nextCursor: null, warnings: [], status: 'loading', error: null, requestCursor: null };
 }
 
+// 2026-11-09: the last loaded feed of each deck (source, deck, language). The summary remounts whenever an open card closes;
+// starting from "Loading…" grew the feed by its events a moment later and pushed the source files below it down (~170 px).
+// The remembered feed stays on screen until the fresh page replaces it, like a refresh.
+const loadedFeeds = new Map<string, ActivityState>();
+const loadedFeedLimit = 20;
+
+function rememberFeed(feed: string, state: ActivityState) {
+  loadedFeeds.delete(feed);
+  loadedFeeds.set(feed, state);
+  if (loadedFeeds.size > loadedFeedLimit) loadedFeeds.delete(loadedFeeds.keys().next().value!);
+}
+
+function initialState(feed: string, key: string): ActivityState {
+  const remembered = loadedFeeds.get(feed);
+  return remembered ? { ...remembered, key } : emptyState(key);
+}
+
 async function readActivityPage(response: Response): Promise<DeckActivityPage> {
   const t = textNow(text);
   const result = await response.json();
@@ -92,13 +109,16 @@ function emptyMessage(page: DeckActivityPage): string {
 export function DeckActivity({ deckId, source, refreshKey, disabled, onOpen }: DeckActivityProps) {
   const t = useText(text);
   const lang = useLang();
-  const dayFormat = new Intl.DateTimeFormat(locale(lang), { day: 'numeric', month: 'long', year: 'numeric' });
-  const timeFormat = new Intl.DateTimeFormat(locale(lang), { hour: '2-digit', minute: '2-digit' });
-  const fullTimeFormat = new Intl.DateTimeFormat(locale(lang), { dateStyle: 'full', timeStyle: 'long' });
-  const numberFormat = new Intl.NumberFormat(locale(lang));
+  // 2026-11-09: built once per language; four formatters per render took ~2 ms of each deck open and card close.
+  const { dayFormat, timeFormat, fullTimeFormat } = useMemo(() => ({
+    dayFormat: new Intl.DateTimeFormat(locale(lang), { day: 'numeric', month: 'long', year: 'numeric' }),
+    timeFormat: new Intl.DateTimeFormat(locale(lang), { hour: '2-digit', minute: '2-digit' }),
+    fullTimeFormat: new Intl.DateTimeFormat(locale(lang), { dateStyle: 'full', timeStyle: 'long' }),
+  }), [lang]);
   const headingId = useId();
   const key = JSON.stringify([source, deckId, refreshKey, lang]);
-  const [state, setState] = useState<ActivityState>(() => emptyState(key));
+  const feed = JSON.stringify([source, deckId, lang]);
+  const [state, setState] = useState<ActivityState>(() => initialState(feed, key));
   // Event filters allow multiple selections; an empty set shows all events.
   const [groupFilter, setGroupFilter] = useState<ReadonlySet<ActivityEventGroup>>(() => new Set());
   const requestNumber = useRef(0);
@@ -110,7 +130,7 @@ export function DeckActivity({ deckId, source, refreshKey, disabled, onOpen }: D
     requestController.current = controller;
     const request = ++requestNumber.current;
     // A refresh keeps the loaded list on screen until the new page replaces it, so nothing below jumps (2026-11-05).
-    setState(previous => previous.key !== key ? emptyState(key) : { ...previous, status: 'loading', error: null, requestCursor: cursor });
+    setState(previous => ({ ...(previous.key === key ? previous : initialState(feed, key)), status: 'loading', error: null, requestCursor: cursor }));
     const parameters = new URLSearchParams({ source, deckId, limit: '10' });
     if (cursor) parameters.set('cursor', cursor);
     try {
@@ -130,7 +150,7 @@ export function DeckActivity({ deckId, source, refreshKey, disabled, onOpen }: D
       const message = activityFailure(error);
       setState(previous => previous.key === key ? { ...previous, status: 'error', error: message, requestCursor: cursor } : previous);
     }
-  }, [key, source, deckId]);
+  }, [key, feed, source, deckId]);
 
   useEffect(() => {
     void load(null);
@@ -142,8 +162,10 @@ export function DeckActivity({ deckId, source, refreshKey, disabled, onOpen }: D
   // 2026-11-05: Deck mounts this feed only while its panel is open (Deck.tsx), so mounting is the person seeing it.
   useEffect(() => { emitSignal({ type: 'panel-opened', panel: 'activity' }); }, []);
 
+  useEffect(() => { if (state.key === key && state.status === 'ready') rememberFeed(feed, state); }, [state, key, feed]);
+
   // Suppress the previous deck immediately, before the new effect has run.
-  const current = state.key === key ? state : emptyState(key);
+  const current = state.key === key ? state : initialState(feed, key);
   const loading = current.status === 'loading';
   const refreshing = loading && current.requestCursor === null && current.events.length > 0;
   // Chip counts include all loaded events in each group, independent of the selected filters.
@@ -172,7 +194,7 @@ export function DeckActivity({ deckId, source, refreshKey, disabled, onOpen }: D
             if (next.has(chip.id)) next.delete(chip.id); else next.add(chip.id);
             return next;
           })}>
-          {chip.id === 'done' ? stateLabel('done', lang) : t[chip.id]}{loadedCounts.get(chip.id) !== undefined && <span>{numberFormat.format(loadedCounts.get(chip.id)!)}</span>}
+          {chip.id === 'done' ? stateLabel('done', lang) : t[chip.id]}{loadedCounts.get(chip.id) !== undefined && <span>{formatNumber(loadedCounts.get(chip.id)!, 3, lang)}</span>}
         </button>; })}
       {groupFilter.size > 0 && <button type="button" className="deck-activity-chip deck-activity-chip-clear" disabled={disabled} onClick={() => setGroupFilter(new Set())}>{t.reset}</button>}
     </div>
@@ -184,7 +206,7 @@ export function DeckActivity({ deckId, source, refreshKey, disabled, onOpen }: D
       {groupFilter.size > 0 && current.events.length > 0
         ? t.noMatches
         : emptyMessage(current)}</p>}
-    {current.warnings.length > 0 && <details className="deck-activity-warnings"><summary>{t.warnings} · {numberFormat.format(current.warnings.length)}</summary><ul>{current.warnings.map(warning => <li key={warning}>{warning}</li>)}</ul></details>}
+    {current.warnings.length > 0 && <details className="deck-activity-warnings"><summary>{t.warnings} · {formatNumber(current.warnings.length, 3, lang)}</summary><ul>{current.warnings.map(warning => <li key={warning}>{warning}</li>)}</ul></details>}
     {loading && !refreshing && <p className="deck-activity-loading" role="status"><LoaderCircle size={14} className="spin" />{current.requestCursor !== null ? t.loadingMore : t.loading}</p>}
     {current.error && <div className="deck-activity-error"><p role="alert">{current.error}</p><Button variant="outline" size="sm" disabled={disabled} onClick={() => void load(current.requestCursor)}>{t.retry}</Button></div>}
     {current.nextCursor && (current.status === 'ready' || refreshing) && <div className="deck-activity-more"><Button variant="outline" size="sm" disabled={disabled || loading} onClick={() => void load(current.nextCursor)}>{t.more}</Button></div>}

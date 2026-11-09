@@ -31,9 +31,12 @@ button.project-pulse-segment:focus-visible { position: relative; z-index: 1; out
 button.project-pulse-without-deck.is-warning:hover:not(:disabled) { background: color-mix(in srgb, var(--warning-bg) 82%, var(--hover)); }
 .project-pulse-loading { min-height: 108px; }
 .project-pulse-skeleton { display: block; border-radius: 3px; background: var(--pulse-track); }
-.project-pulse-skeleton.is-label { width: min(76%, 112px); height: 12px; }
-.project-pulse-skeleton.is-value { width: min(48%, 72px); height: 27px; margin: 2px 0; }
-.project-pulse-skeleton.is-detail { width: min(88%, 150px); height: 20px; margin-top: auto; }
+/* 2026-11-09: the bars sit in the loaded segment's line boxes — label 16px, value 26px × 1.1, a 24px foot and Accepted's
+   34px day chart — so the strip no longer grew ~5px, pushing the covers below it down, when the pulse arrived. */
+.project-pulse-skeleton.is-label { width: min(76%, 112px); height: 12px; margin-block: 2px; }
+.project-pulse-skeleton.is-value { width: min(48%, 72px); height: 27px; margin-block: calc((26px * 1.1 - 27px) / 2); }
+.project-pulse-skeleton.is-detail { width: min(88%, 150px); height: 20px; margin-top: auto; margin-bottom: 4px; }
+.project-pulse-skeleton.is-detail.is-chart { margin-bottom: 14px; }
 .project-pulse-error { min-height: 82px; padding: 12px 14px; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 16px; }
 .project-pulse-error > div { min-width: 0; }
 .project-pulse-error strong { font-size: 13px; font-weight: 600; }

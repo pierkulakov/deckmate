@@ -57,3 +57,20 @@ export function textNow<T>(text: Record<Lang, T>): T {
 export function locale(lang: Lang = current): string {
   return localeOf(lang);
 }
+
+const numberFormats = new Map<string, Intl.NumberFormat>();
+
+/**
+ * A number in the interface language, at most <maximumFractionDigits> decimals. 2026-11-09: one cached formatter per
+ * locale and precision; building an Intl.NumberFormat per call took about 10 ms of every deck view render.
+ */
+export function formatNumber(value: number, maximumFractionDigits = 2, lang: Lang = current): string {
+  const tag = localeOf(lang);
+  const key = tag + ':' + maximumFractionDigits;
+  let format = numberFormats.get(key);
+  if (!format) {
+    format = new Intl.NumberFormat(tag, { maximumFractionDigits });
+    numberFormats.set(key, format);
+  }
+  return format.format(value);
+}

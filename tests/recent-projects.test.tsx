@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { Children, isValidElement, type ReactElement, type ReactNode } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { setLang } from '../client/i18n.ts';
-import { tileColor, tilePalette } from '../client/project-tile.ts';
+import { tileColor, tileInitials, tilePalette } from '../client/project-tile.ts';
 import {
   OpenStartScreen, RecentProjects, RecentProjectsList, attemptSwitch, compactPath, otherProjects, switchFailureText, type RecentProjectsLabels,
 } from '../client/RecentProjects.tsx';
@@ -106,6 +106,14 @@ describe('recent projects list', () => {
     expect(html).not.toContain('mission-control-avatar');
     // The launcher's start screen picks the same hue for the same name; a letter square is gone.
     expect(tileColor('Проект альфа')).not.toBe(tileColor('tower-defence'));
+  });
+
+  it('writes the launcher tile initials into the tile window of every row', () => {
+    const html = renderList();
+    expect(html).toContain('data-initials="ПА"');
+    expect(html).toContain('data-initials="TD"');
+    expect(renderList({ projects: [projects[0]] })).toContain('data-initials="D"');
+    expect(renderList({ projects: [{ ...projects[1], name: '' }] })).toContain('data-initials=""');
   });
 
   it('middle-truncates long paths while short ones stay whole', () => {
@@ -218,5 +226,24 @@ describe('project tile palette mirror', () => {
     for (const name of ['deckmate', 'Проект альфа', 'tower-defence', 'Hollow Signal', '举动📈 mixed', '']) {
       expect(tileColor(name)).toBe(launcherColor(name));
     }
+  });
+});
+
+describe('project tile initials mirror', () => {
+  // 2026-11-09: tileInitials mirrors the tile.dataset.initials expression of desktop/launcher/launcher.js by hand,
+  // like tileColor above. The exact launcher rule stays pinned here as text, so changing it there fails this test
+  // until client/project-tile.ts is changed in the same commit; the expected values pin the client side.
+  it('derives the same initials as the launcher for the same names', () => {
+    const source = readFileSync(fileURLToPath(new URL('../desktop/launcher/launcher.js', import.meta.url)), 'utf8');
+    expect(source).toContain(".trim().split(/[^\\p{L}\\p{N}]+/u).filter(Boolean).slice(0, 2)"
+      + ".map(word => Array.from(word)[0]).join('').toLocaleUpperCase()");
+    expect(tileInitials('deckmate')).toBe('D');
+    expect(tileInitials('Проект альфа')).toBe('ПА');
+    expect(tileInitials('tower-defence')).toBe('TD');
+    expect(tileInitials('Hollow Signal')).toBe('HS');
+    expect(tileInitials('举动📈 mixed')).toBe('举M');
+    expect(tileInitials('Подготовка-первого-релиза')).toBe('ПП');
+    expect(tileInitials('  Wide  glyphs  ')).toBe('WG');
+    expect(tileInitials('')).toBe('');
   });
 });

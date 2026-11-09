@@ -78,7 +78,7 @@ export function useDeckTransition(page: RefObject<HTMLElement | null>, openDeckI
 }
 
 /** A static copy of a page as it looks now: no ids, no focus, no pointer. */
-function freeze(section: HTMLElement, hoveredDeckId?: string) {
+function freeze(section: HTMLElement, hoveredDeckId: string) {
   const copy = section.cloneNode(true) as HTMLElement;
   for (const element of copy.querySelectorAll('[id]')) element.removeAttribute('id');
   copy.removeAttribute('id');
@@ -86,7 +86,7 @@ function freeze(section: HTMLElement, hoveredDeckId?: string) {
   copy.inert = true;
   copy.classList.add('deck-transition-ghost');
   // The pointer leaves the cover as the page moves; the copy starts from the hover look and fades out of it like the real tile.
-  if (hoveredDeckId) for (const element of hovered(copy, hoveredDeckId)) element.classList.add('is-transition-hover');
+  for (const element of hovered(copy, hoveredDeckId)) element.classList.add('is-transition-hover');
   return copy;
 }
 
@@ -121,32 +121,31 @@ function arrive(section: HTMLElement, snapshot: Snapshot) {
 
   const edge = Math.max(port.top, rail.getBoundingClientRect().top);
   const page = section.getBoundingClientRect();
-  // Both pages travel as frozen copies in a fixed layer, cut at the shelf's top edge where the arriving covers are cut too.
-  // The old page is also cut below the clicked row, so the open deck shows under it like the rest of a scrolled page.
-  // The live deck stays put and hidden: moved by a transform, it stretched the scroll area for the length of the move and
-  // the scrollbar blinked (2026-11-05).
+  // The old page travels as a frozen copy in a fixed layer, cut at the shelf's top edge where the arriving covers are cut
+  // too, and below the clicked row, so the open deck shows under it like the rest of a scrolled page.
   const layer = document.createElement('div');
   layer.className = 'deck-transition-layer';
   layer.setAttribute('aria-hidden', 'true');
   Object.assign(layer.style, { left: port.left + 'px', top: edge + 'px', width: scrollport.clientWidth + 'px', height: Math.max(0, port.bottom - edge) + 'px' });
-  const arrival = freeze(section);
-  Object.assign(arrival.style, { left: page.left - port.left + 'px', top: page.top - edge + 'px', width: page.width + 'px' });
   Object.assign(ghost.style, { left: snapshot.page.left - port.left + 'px', top: snapshot.page.top - edge + 'px', width: snapshot.page.width + 'px', clipPath: `inset(0 0 ${Math.max(0, snapshot.page.bottom - snapshot.from.bottom)}px 0)` });
-  layer.append(arrival, ghost);
+  layer.append(ghost);
   scrollport.append(layer);
-  // Scroll offsets are not part of a copy.
-  const arrivalRail = arrival.querySelector<HTMLElement>('.deck-neighbor-rail');
-  if (arrivalRail) arrivalRail.scrollLeft = rail.scrollLeft;
 
   const duration = travelDuration(dy);
   const timing: KeyframeAnimationOptions = { duration, easing: scrollEasing };
+  // 2026-11-09: the arriving deck is the live page, its children moved by a transform. A second frozen copy of it (the
+  // whole open deck, ~1,200 elements) doubled the first frame's style and layout work. The page clips its children down
+  // to the scrollport's bottom edge, so the move no longer stretches the scroll area and blinks the scrollbar (the reason
+  // for that copy, 2026-11-05), and isolates them, so the sticky toolbar (z-index 30) stays under the leaving copy (25).
+  const reach = Math.max(0, Math.floor(port.bottom - page.bottom)) + 'px';
+  const held: Keyframe = { overflow: 'clip', overflowClipMargin: reach, isolation: 'isolate' };
   const motions = [
-    section.animate([{ opacity: 0 }, { opacity: 0 }], { duration }),
-    // When the shelf cannot scroll far enough to keep the column (a row further down a wide space), only the leaving copy
-    // drifts sideways onto the shelf; the arriving deck moves straight up.
-    arrival.animate([{ transform: `translateY(${dy}px)` }, { transform: 'none' }], { ...timing, fill: 'forwards' }),
+    section.animate([held, held], { duration }),
     ghost.animate([{ transform: 'none' }, { transform: `translate(${-dx}px, ${-dy}px)` }], { ...timing, fill: 'forwards' }),
   ];
+  // When the shelf cannot scroll far enough to keep the column (a row further down a wide space), only the leaving copy
+  // drifts sideways onto the shelf; the arriving deck moves straight up.
+  for (const part of section.children) motions.push(part.animate([{ transform: `translateY(${dy}px)` }, { transform: 'none' }], timing));
   // Neighbours dim as the shelf forms: the leaving copies fade out over the arriving shelf, whose covers are already dimmed.
   // Dimmed to 25% themselves, they stacked on the shelf's 25% covers and the row dropped to its final look only when the
   // layer went away (2026-11-07). The gallery's own tools are not part of the shelf and leave with the page.

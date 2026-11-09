@@ -1,6 +1,6 @@
 // 2026-11-05: the Level panel docks under the top bar on the right: level, the XP line, chapters with their quests.
 // It is not modal — the page keeps working — and closes with the cross, Escape (focus inside) or the badge itself.
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Check, ChevronDown, ChevronRight, Lock, X } from 'lucide-react';
 import { defineText, locale, useLang, useText, type Lang } from '../i18n.ts';
 import { chapterStatuses, earnedXp, levelOf, totalXp, type Chapter, type ChapterStatus, type Quest } from '../onboarding/model.ts';
@@ -150,6 +150,12 @@ export function LevelPanel({ projectKey, onClose, onNavigate }: LevelPanelProps)
   const locked = chapters.filter((chapter, index) => statuses[index] === 'locked');
 
   useEffect(() => { titleRef.current?.focus(); }, []);
+  // 2026-11-09: the page narrows by a root attribute instead of .global-shell:has(.level-panel). That :has() anchor sat
+  // above the whole board, so every DOM change under it restyled every element of the page (a card open: twice ~2000).
+  useLayoutEffect(() => {
+    document.documentElement.toggleAttribute('data-level-panel', true);
+    return () => document.documentElement.removeAttribute('data-level-panel');
+  }, []);
 
   function toggleHint(questId: string) {
     setOpenHints(current => {

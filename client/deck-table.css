@@ -49,8 +49,8 @@
    the filter margin keeps the 8px slot the label used to occupy as a zero-width flex item. */
 .deck-table .catalog-card-group-heading .catalog-group-select { position: absolute; left: -27px; top: -1px; padding: 5px; }
 .deck-table .catalog-card-group-heading .catalog-group-filter { margin-left: 8px; }
-.deck-table .catalog-card-group-heading input[type="checkbox"] { opacity: 0; transition: opacity var(--motion-feedback); }
-.deck-table .catalog-card-group-heading:hover input[type="checkbox"], .deck-table .catalog-card-group-heading input[type="checkbox"]:is(:focus-visible, :checked, :indeterminate) { opacity: 1; }
+.deck-table .catalog-card-group-heading .catalog-group-check { opacity: 0; transition: opacity var(--motion-feedback); }
+.deck-table .catalog-card-group-heading:hover .catalog-group-check, .deck-table .catalog-card-group-heading .catalog-group-check:is(:focus-visible, :checked, :indeterminate) { opacity: 1; }
 
 /* Card row. */
 .deck-table-row { position: relative; display: grid; grid-template-columns: subgrid; grid-column: 1 / -1; align-items: center; height: 34px; margin-bottom: 1px; padding: 0 8px; border-left: 4px solid var(--row-strip); background: var(--card-face); color: var(--row-ink); transition: box-shadow var(--motion-feedback) ease-out; }
@@ -74,8 +74,8 @@
 
 .deck-table-row > td { display: flex; align-items: center; min-width: 0; height: 100%; padding: 0 8px; }
 .deck-table-row > .deck-table-select { position: absolute; z-index: 3; top: 0; left: -26px; width: 16px; padding: 0; }
-.deck-table-select input { display: grid; opacity: 0; transition: opacity var(--motion-feedback); }
-.deck-table-row:hover .deck-table-select input, .deck-table-select input:is(:focus-visible, :checked) { opacity: 1; }
+.deck-table-check { display: grid; opacity: 0; transition: opacity var(--motion-feedback); }
+.deck-table-row:hover .deck-table-check, .deck-table-check:is(:focus-visible, :checked) { opacity: 1; }
 .deck-table-priority { color: var(--row-meta); }
 .deck-table-priority .journey-priority-icon { color: inherit; }
 .deck-table-effort { gap: 4px; overflow: visible; color: var(--row-meta); font-size: 12px; font-weight: 700; line-height: 14px; letter-spacing: .12px; font-variant-numeric: tabular-nums; white-space: nowrap; }

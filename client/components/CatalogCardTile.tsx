@@ -19,7 +19,7 @@ import { useCardTilt } from '../useCardTilt.ts';
 import { cardHeroEffort } from './CardPropertiesPanel.tsx';
 import { CardOwnerAvatar, type CardQuickSettingsTab } from './CardQuickSettings.tsx';
 import { TagColorIndicator, TagTitlePrefix } from './CardTags.tsx';
-import { defineText, locale, textNow, useLang, useText } from '../i18n.ts';
+import { defineText, formatNumber, textNow, useLang, useText } from '../i18n.ts';
 import { kindLabel, priorityLabel, stateLabel } from '../locales/common.ts';
 
 const text = defineText({
@@ -116,7 +116,7 @@ export function OpenQuestionsBadge({ card }: { card: CatalogCard }) {
   const count = card.kind === 'doc' ? card.openQuestions?.length ?? 0 : 0;
   if (!count) return null;
   const warnings = card.openQuestionWarnings ?? [];
-  const formattedCount = new Intl.NumberFormat(locale(lang)).format(count);
+  const formattedCount = formatNumber(count, 3, lang);
   const title = t.openQuestions(formattedCount) + (warnings.length ? '. ' + warnings.join(' ') : '');
   return <span className={'catalog-card-open-questions' + (warnings.length ? ' has-warning' : '')} title={title} aria-label={title}><CircleHelp size={12} strokeWidth={2.4} aria-hidden="true" />{formattedCount}</span>;
 }
@@ -175,15 +175,13 @@ function CardAttachmentBadge({ cardId, refreshKey, tile }: { cardId: string; ref
   // 2026-11-05: attachment revisions refresh badges without invalidating every card face.
   const revision = useContext(CardAttachmentRefreshContext);
   const count = useAttachmentCount(cardId, revision ?? refreshKey, tile);
-  const formattedCount = new Intl.NumberFormat(locale(lang)).format(count);
+  const formattedCount = formatNumber(count, 3, lang);
   return count > 0 ? <span className="card-hand-indicator card-attachment-indicator" title={t.attachments(formattedCount)} aria-label={t.attachments(formattedCount)}><Paperclip size={12} aria-hidden="true" /><strong>{formattedCount}</strong></span> : null;
 }
 
 export const CatalogCardTile = memo(function CatalogCardTile({ card, lookups, members, tagDefinitions, catalog, currentMemberId, selected, checked, selectionActive, disabled, onOpen, onToggle, onFamilyOpen, onStart, onQuickSettings, selectable = true }: CatalogCardTileProps) {
   const t = useText(text);
   const lang = useLang();
-  const numberFormat = new Intl.NumberFormat(locale(lang));
-  const effortFormat = new Intl.NumberFormat(locale(lang), { maximumFractionDigits: 20 });
   const [familyHovered, setFamilyHovered] = useState(false);
   const [hovered, setHovered] = useState(false);
   const tileElement = useRef<HTMLElement | null>(null);
@@ -209,12 +207,12 @@ export const CatalogCardTile = memo(function CatalogCardTile({ card, lookups, me
   let actionLabel = t.open;
   if (selectionActive) actionLabel = checked ? t.deselect : t.select;
   let identityValue = card.version ?? cardKinds[card.kind];
-  if (showEffortTotal) identityValue = effortFormat.format(heroEffort);
+  if (showEffortTotal) identityValue = formatNumber(heroEffort, 20, lang);
   // Mono is for numbers: the kind word of a card without a number is set in the interface font.
   let identityClassName = card.version ? undefined : 'catalog-card-kind';
   if (showEffortTotal) identityClassName = 'catalog-card-effort';
-  const identityTitle = showEffortTotal ? t.totalEffort(effortFormat.format(heroEffort)) : undefined;
-  const effortLabel = card.effort == null ? '—' : effortFormat.format(card.effort);
+  const identityTitle = showEffortTotal ? t.totalEffort(formatNumber(heroEffort, 20, lang)) : undefined;
+  const effortLabel = card.effort == null ? '—' : formatNumber(card.effort, 20, lang);
   const cardPriorityLabel = card.priority ? priorityLabel(card.priority, lang) : t.noPriority;
   const cardStateLabel = stateLabel(card.state ?? 'not-started', lang);
   const style = { '--tilt-x': '0deg', '--tilt-y': '0deg', '--glare-x': '50%', '--glare-opacity': 0 } as CSSProperties;
@@ -273,7 +271,7 @@ export const CatalogCardTile = memo(function CatalogCardTile({ card, lookups, me
         {card.kind === 'hero' && <div className="deck-card-identity">{showEffortTotal && <Gauge className="catalog-card-effort-icon" size={16} aria-hidden="true" data-shortcut-property="effort" onPointerEnter={event => markShortcutPropertyHover(event.currentTarget, true)} onPointerLeave={event => markShortcutPropertyHover(event.currentTarget, false)} />}<strong className={identityClassName} title={identityTitle}>{identityValue}</strong><Icon size={18} aria-hidden="true" /></div>}
         {/* 2026-11-09: one row on the Doc band after the author's reference — the type icon left, the word count right;
             open questions and attachments join the row only when the document has them. */}
-        {card.kind === 'doc' && <div className="deck-card-identity"><span className="deck-card-doc-kind" role="img" title={cardKinds.doc} aria-label={cardKinds.doc}><Icon size={18} aria-hidden="true" /></span>{openQuestionCount > 0 && <OpenQuestionsBadge card={card} />}{attachmentBadge}{wordCount > 0 && <strong className="deck-card-doc-words" title={t.wordCount(numberFormat.format(wordCount))} aria-label={t.wordCount(numberFormat.format(wordCount))}>{t.docWords(numberFormat.format(wordCount))}</strong>}</div>}
+        {card.kind === 'doc' && <div className="deck-card-identity"><span className="deck-card-doc-kind" role="img" title={cardKinds.doc} aria-label={cardKinds.doc}><Icon size={18} aria-hidden="true" /></span>{openQuestionCount > 0 && <OpenQuestionsBadge card={card} />}{attachmentBadge}{wordCount > 0 && <strong className="deck-card-doc-words" title={t.wordCount(formatNumber(wordCount, 3, lang))} aria-label={t.wordCount(formatNumber(wordCount, 3, lang))}>{t.docWords(formatNumber(wordCount, 3, lang))}</strong>}</div>}
         {progress && (children.length ? progress.children.length > 0 && <SubCardProgress cards={progress.children} cardsById={lookups.cardById} /> : <span className="catalog-card-progress">{t.noSubCards}</span>)}
       </div>
     </article>

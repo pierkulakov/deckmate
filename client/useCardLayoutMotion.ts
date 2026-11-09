@@ -199,6 +199,18 @@ function createLayoutMotion(container: HTMLElement): LayoutMotionController {
 
   function update(options: CardLayoutMotionOptions) {
     if (disposed) return;
+    const mayAnimate = initialized && previousKey !== options.layoutKey && previousReset === options.resetKey
+      && !options.dragging && !reducedMotion.matches && resetFrame === null;
+    previousKey = options.layoutKey;
+    previousReset = options.resetKey;
+    initialized = true;
+    // 2026-11-09: a commit that cannot animate (first layout, navigation, an open card, a drag) records its positions on
+    // the next frame instead of forcing a layout inside the commit: opening a card paid ~35 ms (4x CPU) for a measurement
+    // nothing used. A sort that lands before that frame is treated like one during a resize and does not animate.
+    if (!mayAnimate) {
+      scheduleRebase();
+      return;
+    }
     const previous = new Map(positions);
     // Read every running offset before canceling: rapid sorts start where the
     // cards currently appear, not at the previous animation's destination.
@@ -211,17 +223,10 @@ function createLayoutMotion(container: HTMLElement): LayoutMotionController {
       previous.set(id, { ...position, left: position.left + matrix.m41, top: position.top + matrix.m42 });
     }
     stopAll();
-    const wasResizing = resetFrame !== null;
-    if (resetFrame !== null) cancelAnimationFrame(resetFrame);
-    resetFrame = null;
     const next = measure();
-    const shouldAnimate = initialized && previousKey !== options.layoutKey && previousReset === options.resetKey
-      && !options.dragging && !reducedMotion.matches && !wasResizing && Math.abs(next.width - containerWidth) < 1;
+    const shouldAnimate = Math.abs(next.width - containerWidth) < 1;
     positions = next.positions;
     containerWidth = next.width;
-    previousKey = options.layoutKey;
-    previousReset = options.resetKey;
-    initialized = true;
     if (!shouldAnimate) return;
 
     // Reads above, animation writes below; never alternate layout reads and

@@ -370,7 +370,8 @@ export function CardContentEditor({ card, catalog, snapshot, writable, pending, 
       {!focusMode && <footer className="card-content-reading-footer">
         <CatalogReferenceLink kind="c" id={card.id} source={snapshot.source} />
         <div className="card-content-reading-actions">{footerActions}
-          {content && writable && <Button type="button" size="sm" className="card-content-edit-action" aria-label={t.editCard} disabled={loading || Boolean(loadFailure) || pending || saving || blocked} onClick={startEditing}><Pencil size={14} />{t.edit}</Button>}
+          {/* 2026-11-09: shown, disabled, while the file loads; appearing afterwards grew the footer by 12px on every card open. */}
+          {(content || loading) && writable && <Button type="button" size="sm" className="card-content-edit-action" aria-label={t.editCard} disabled={loading || Boolean(loadFailure) || pending || saving || blocked} onClick={startEditing}><Pencil size={14} />{t.edit}</Button>}
         </div>
       </footer>}
     </>}

@@ -3,7 +3,7 @@ import { useCallback, useEffect, useState, type CSSProperties, type ReactNode } 
 import { FolderOpen, LoaderCircle } from 'lucide-react';
 import { desktopBoard, type DesktopBoardBridge, type DesktopRecentProject } from './desktop-bridge.ts';
 import { defineText, useLang, useText, type Lang } from './i18n.ts';
-import { tileColor } from './project-tile.ts';
+import { tileColor, tileInitials } from './project-tile.ts';
 import { relativeTimeAgo } from './relative-time.ts';
 
 const text = defineText({
@@ -108,9 +108,10 @@ export function OpenStartScreen({ disabled, busy, onOpen }: { disabled: boolean;
 
 /** The miniature deck cover of the launcher's recent list (desktop/launcher/launcher.css .recent-tile): the same
  *  165deg cast over the project's stable tile color, scaled down for the narrow menu panel. The current project row
- *  in the menu reuses it when the Desktop bridge is there, so both rows read as one system. */
+ *  in the menu reuses it when the Desktop bridge is there, so both rows read as one system. The window carries the
+ *  project's initials (tileInitials — the launcher's tile.dataset.initials rule) as white-on-window text. */
 export function ProjectTile({ name, children }: { name: string; children?: ReactNode }) {
-  return <span className="mission-control-recent-tile" aria-hidden="true" style={{ '--tile': tileColor(name) } as CSSProperties}>{children}</span>;
+  return <span className="mission-control-recent-tile" aria-hidden="true" data-initials={tileInitials(name)} style={{ '--tile': tileColor(name) } as CSSProperties}>{children}</span>;
 }
 
 /** Loads the list on every menu opening — the shell reorders its recent list on each switch. */

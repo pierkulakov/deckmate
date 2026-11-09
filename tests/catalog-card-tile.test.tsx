@@ -1,12 +1,19 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
-import type { CatalogCard } from '../src/catalog-contracts.ts';
+import type { CatalogCard, CatalogView } from '../src/catalog-contracts.ts';
 import { CatalogCardTile } from '../client/components/CatalogCardTile.tsx';
+import { CardFamilyPanel } from '../client/components/CardFamily.tsx';
 import { buildCatalogLookups } from '../client/catalog-lookups.ts';
 import { setLang } from '../client/i18n.ts';
 
 vi.hoisted(() => {
   vi.stubGlobal('document', { documentElement: { lang: '' }, cookie: '' });
+});
+// The family panel portals its drag overlay into document.body; the server renderer cannot render portals,
+// so the mock renders the overlay in place. It is empty without an active drag, so markup stays the same.
+vi.mock('react-dom', async importOriginal => {
+  const actual = await importOriginal<typeof import('react-dom')>();
+  return { ...actual, createPortal: (children: unknown) => children } as typeof actual;
 });
 beforeEach(() => {
   vi.stubGlobal('document', { documentElement: { lang: '' }, cookie: '' });
@@ -87,4 +94,44 @@ it('marks a Hero whose Sub Cards are all accepted with a done medallion instead 
   expect(started).toContain('title="Owner: Alex"');
   setLang('ru');
   expect(render([child('done')])).toContain('title="Hero выполнена: все Sub Cards приняты"');
+});
+
+it('does not call a Hero with only live Doc Sub Cards empty or count Docs as Task progress', () => {
+  const hero: CatalogCard = { id: 'card:hero', kind: 'hero', title: 'Hero title', path: 'cards/hero.md', version: null, state: null, owner: null,
+    markdown: '', sourceHash: 'hash', range: null, deckId: 'deck', trackIds: [], parentId: null };
+  const doc = (id: string, overrides: Partial<CatalogCard> = {}): CatalogCard => ({ ...hero, id, kind: 'doc', title: id, path: `cards/${id}.md`, parentId: hero.id, ...overrides });
+  const noop = () => {};
+  const render = (children: CatalogCard[]) => renderToStaticMarkup(<CatalogCardTile card={hero} lookups={buildCatalogLookups([hero, ...children])} members={[]}
+    selected={false} checked={false} selectionActive={false} disabled={false} onOpen={noop} onToggle={noop} onFamilyOpen={noop} />);
+  const withDoc = render([doc('card:doc')]);
+  expect(withDoc).not.toContain('No Sub Cards');
+  expect(withDoc).not.toContain('sub-card-progress');
+  expect(render([doc('card:archived', { archived: true }), doc('card:deleted', { deleted: true })])).toContain('No Sub Cards');
+});
+
+// 2026-11-09: Sub Cards without a deck are an indication only; the panel counts them in its heading and marks each row.
+it('counts and marks Sub Cards without a deck in the Hero family panel', () => {
+  const base = { path: 'cards/family.md', version: null, owner: null, markdown: '', sourceHash: 'hash', range: null, trackIds: [] };
+  const hero: CatalogCard = { ...base, id: 'card:hero', kind: 'hero', title: 'Lantern', state: null, deckId: 'deck', parentId: null };
+  const child = (id: string, deckId: string | null, overrides: Partial<CatalogCard> = {}): CatalogCard =>
+    ({ ...base, id, kind: 'task', title: id, state: 'not-started', deckId, parentId: hero.id, ...overrides });
+  const noop = () => {};
+  const render = (children: CatalogCard[]) => {
+    const catalog: CatalogView = { rootIdentity: 'root', configured: true, formatLanguage: 'en', manifestHash: 'hash', indexedAt: '',
+      documents: [], spaces: [], decks: [], tracks: [], cards: [hero, ...children], warnings: [] };
+    return renderToStaticMarkup(<CardFamilyPanel hero={hero} card={hero} children={children} openedId={hero.id} catalog={catalog}
+      disabled={false} writable={false} onOpen={noop} onCreate={noop} onAttach={noop} />);
+  };
+  // Two active children without a deck; a third one with a deck and an archived fourth without one stay out of the count.
+  const html = render([child('card:a', null), child('card:b', null), child('card:c', 'deck'), child('card:d', null, { archived: true })]);
+  expect(html).toContain('card-family-no-deck-count">No deck: 2<');
+  expect(html.match(/card-family-row-no-deck/g)).toHaveLength(2);
+  setLang('ru');
+  const russian = render([child('card:a', null), child('card:b', null)]);
+  expect(russian).toContain('card-family-no-deck-count">Без колоды: 2<');
+  expect(russian.match(/card-family-row-no-deck/g)).toHaveLength(2);
+  setLang('en');
+  const allDecks = render([child('card:a', 'deck'), child('card:b', 'deck')]);
+  expect(allDecks).not.toContain('card-family-no-deck-count');
+  expect(allDecks).not.toContain('card-family-row-no-deck');
 });

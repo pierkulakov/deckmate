@@ -413,7 +413,11 @@ export async function createApp(config: ServerConfig) {
         return reply.code(400).send({ code: 'CONTENT', message: serverText(messages).contentStrings });
       }
     }, schema: { body: {
-    type: 'object', additionalProperties: false, required: ['action', 'manifestHash', 'source'], properties: {
+    type: 'object', additionalProperties: false, required: ['action', 'manifestHash', 'source'],
+    // Only promote-parent may send an empty `cards` list; every other action keeps the 1–1000 rule (400).
+    if: { properties: { action: { const: 'bulk-edit-cards' }, change: { type: 'object', properties: { kind: { const: 'promote-parent' } }, required: ['kind'] } }, required: ['action', 'change'] },
+    else: { properties: { cards: { type: 'array', minItems: 1 } } },
+    properties: {
       action: { type: 'string', enum: Object.keys(catalogRequirements) }, manifestHash: { type: 'string', maxLength: 64 },
       optionsHash: { type: 'string', pattern: '^(?:[0-9a-f]{64})?$' },
       tagsHash: { type: 'string', pattern: '^(?:[0-9a-f]{64})?$' },
@@ -428,7 +432,7 @@ export async function createApp(config: ServerConfig) {
         id: { type: 'string', pattern: '^[a-z0-9][a-z0-9-]{0,79}$' }, label: { type: 'string', minLength: 1, maxLength: 80 },
         kind: { type: 'string', enum: ['agent', 'human'] }, aliases: { type: 'array', maxItems: 30, uniqueItems: true, items: { type: 'string', minLength: 1, maxLength: 80 } },
       } } },
-      cards: { type: 'array', minItems: 1, maxItems: 1000, uniqueItems: true, items: { type: 'object', additionalProperties: false, required: ['cardId', 'sourceHash'], properties: {
+      cards: { type: 'array', minItems: 0, maxItems: 1000, uniqueItems: true, items: { type: 'object', additionalProperties: false, required: ['cardId', 'sourceHash'], properties: {
         cardId: { type: 'string', minLength: 1, maxLength: 1000 }, sourceHash: { type: 'string', pattern: '^[0-9a-f]{64}$' },
         expectedParentId: { type: ['string', 'null'], minLength: 1, maxLength: 1000 },
       } } },

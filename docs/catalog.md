@@ -314,7 +314,7 @@ Cards do not physically move: their files, `parentId`, deck, tracks, state, `dep
 
 ## Bulk actions — 2026-11-03
 
-`POST /api/catalog` with `action: "bulk-edit-cards"` accepts `cards: [{ cardId, sourceHash }]` (1–1000 unique cards), `manifestHash`, `optionsHash`, and `change`. Shared source=sandbox and token are required. UI actions open a compact form with explicit application; mixed values do not automatically clear fields. Read-only Copy refs and CSV are available without writing project data.
+`POST /api/catalog` with `action: "bulk-edit-cards"` accepts `cards: [{ cardId, sourceHash }]` (1–1000 unique cards; may be empty only for `promote-parent`), `manifestHash`, `optionsHash`, and `change`. Shared source=sandbox and token are required. UI actions open a compact form with explicit application; mixed values do not automatically clear fields. Read-only Copy refs and CSV are available without writing project data.
 
 | `change.kind` | Fields and behavior |
 |---|---|
@@ -322,7 +322,7 @@ Cards do not physically move: their files, `parentId`, deck, tracks, state, `dep
 | `state` | `state`; Task only. UI Done sets `done`; undo sets `not-started`. |
 | `parent` | `parentId`, `parentSourceHash`; an existing top-level Hero/Doc, or null to detach. |
 | `create-parent` | Client-generated `cardId`, `title`, `deckId`; creates a Hero and assigns the selected Task/Doc cards as its children. |
-| `promote-parent` | Future Hero's `cardId`, `sourceHash`, `expectedParentId`; explicit Asset/Mixed `deckId` or null. Promotes an existing card and attaches the selected Task/Doc cards. Each `cards` entry must also provide the child's `expectedParentId` for this branch. |
+| `promote-parent` | Future Hero's `cardId`, `sourceHash`, `expectedParentId`; explicit Asset/Mixed `deckId` or null. Promotes an existing card and attaches the selected Task/Doc cards. `cards: []` promotes without attaching any children. Each `cards` entry must also provide the child's `expectedParentId` for this branch. |
 | `hand` | `memberId`, `mode: add|remove`; an explicit hand from the registry, without changing Owner. |
 | `tags` | `tags`, `mode: add|remove`; unions or removes only the specified tags. |
 | `track` | `trackId`, `mode: add|remove`; individual links to an existing Track. |

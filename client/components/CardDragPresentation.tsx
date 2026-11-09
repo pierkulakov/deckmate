@@ -7,6 +7,7 @@ import * as Dialog from '@radix-ui/react-dialog';
 import type { CatalogDeck, CatalogView } from '../../src/catalog-contracts.ts';
 import { cardTransferTargetIssue, type CardTransferBaseline } from '../card-transfer.ts';
 import { defineText, useText } from '../i18n.ts';
+import { Button } from './ui/button.tsx';
 
 export const cardDragText = defineText({
   hand: 'Add to hand', decks: 'Change deck', timeline: 'Timeline', vision: 'Vision',
@@ -15,6 +16,9 @@ export const cardDragText = defineText({
   sameDeck: 'All dragged cards are already here', incompatible: 'This deck cannot accept all dragged card types',
   high: 'High', medium: 'Medium', low: 'Low', noPriority: 'No priority',
   handFor: (member: string) => `Add to ${member}’s hand`,
+  promoteHeroTitle: 'Make Hero?',
+  promoteHeroDescription: (deck: string) => `The card will become a Hero in “${deck}”. Its text, ID and links will be preserved; its Task state will be removed.`,
+  promoteHeroConfirm: 'Make Hero',
 }, {
   hand: 'Добавить в руку', decks: 'Сменить колоду', timeline: 'Календарь', vision: 'Полотно',
   drop: (value: string) => `Отпустите, чтобы задать: ${value}`, groups: 'Группа карточек',
@@ -22,6 +26,9 @@ export const cardDragText = defineText({
   sameDeck: 'Все переносимые карточки уже здесь', incompatible: 'Колода не принимает все переносимые типы карточек',
   high: 'Высокий', medium: 'Средний', low: 'Низкий', noPriority: 'Без приоритета',
   handFor: (member: string) => `Добавить в руку: ${member}`,
+  promoteHeroTitle: 'Сделать Hero?',
+  promoteHeroDescription: (deck: string) => `Карточка станет Hero в колоде «${deck}». Её текст, ID и ссылки сохранятся; состояние задачи будет убрано.`,
+  promoteHeroConfirm: 'Сделать Hero',
 });
 
 export interface CardDragPreview { html: string; width: number; height: number; table: boolean }
@@ -64,16 +71,20 @@ function DragTab({ operation, disabled = false, title, children, onNode }: {
     tabIndex={-1} title={title} className={'card-drag-tab' + (drop.isOver ? ' is-over' : '')}>{children}</button>;
 }
 
-function DeckDestination({ baseline, deck, onChoose }: {
-  baseline: CardTransferBaseline; deck: CatalogDeck | null; onChoose?: (deck: CatalogDeck | null) => void;
+function DeckDestination({ baseline, deck, catalogCards, onChoose }: {
+  baseline: CardTransferBaseline; deck: CatalogDeck | null; catalogCards: CatalogView['cards']; onChoose?: (deck: CatalogDeck | null) => void;
 }) {
   const text = useText(cardDragText);
-  const issue = cardTransferTargetIssue(baseline, deck);
+  const issue = cardTransferTargetIssue(baseline, deck, catalogCards);
+  const blocked = issue === 'same-deck' || issue === 'incompatible';
   const label = deck?.title ?? text.noDeck;
-  const drop = useDroppable({ id: 'card-menu-deck:' + (deck?.id ?? 'none'), disabled: Boolean(issue) || Boolean(onChoose),
+  const drop = useDroppable({ id: 'card-menu-deck:' + (deck?.id ?? 'none'), disabled: blocked || Boolean(onChoose),
     data: { operation: 'card-transfer', kind: 'deck', surface: 'card-deck-menu', deckId: deck?.id ?? null, label } });
-  const title = issue === 'same-deck' ? text.sameDeck : issue === 'incompatible' ? text.incompatible : label;
-  return <button type="button" ref={drop.setNodeRef} disabled={Boolean(issue)} title={title}
+  let title = label;
+  if (issue === 'same-deck') title = text.sameDeck;
+  else if (issue === 'incompatible') title = text.incompatible;
+  else if (issue === 'confirm-promotion') title = text.promoteHeroTitle;
+  return <button type="button" ref={drop.setNodeRef} disabled={blocked} title={title}
     className={'card-drag-destination' + (drop.isOver ? ' is-over' : '')} tabIndex={onChoose ? 0 : -1}
     onClick={() => onChoose?.(deck)}>{label}</button>;
 }
@@ -81,10 +92,10 @@ function DeckDestination({ baseline, deck, onChoose }: {
 function DeckDestinations({ baseline, catalog, onChoose }: {
   baseline: CardTransferBaseline; catalog: CatalogView; onChoose?: (deck: CatalogDeck | null) => void;
 }) {
-  return <><DeckDestination baseline={baseline} deck={null} onChoose={onChoose} />
+  return <><DeckDestination baseline={baseline} deck={null} catalogCards={catalog.cards} onChoose={onChoose} />
     {catalog.spaces.map(space => <div key={space.id} className="card-drag-space" role="group" aria-label={space.title}>
       <span>{space.title}</span>{catalog.decks.filter(deck => deck.spaceId === space.id).map(deck =>
-        <DeckDestination key={deck.id} baseline={baseline} deck={deck} onChoose={onChoose} />)}
+        <DeckDestination key={deck.id} baseline={baseline} deck={deck} catalogCards={catalog.cards} onChoose={onChoose} />)}
     </div>)}</>;
 }
 
@@ -130,6 +141,26 @@ export function CardDropDeckPicker({ baseline, catalog, onChoose, onClose }: {
       <Dialog.Title>{text.decks}</Dialog.Title><Dialog.Description>{text.chooseDeck}</Dialog.Description>
       <div className="card-drop-deck-list"><DeckDestinations baseline={baseline} catalog={catalog} onChoose={onChoose} /></div>
       <Dialog.Close className="ui-button button-ghost">{text.cancel}</Dialog.Close>
+    </Dialog.Content>
+  </Dialog.Portal></Dialog.Root>;
+}
+
+export function CardHeroPromotionConfirmationContent({ deckTitle, busy, onConfirm, onCancel }: {
+  deckTitle: string; busy: boolean; onConfirm: () => void; onCancel: () => void;
+}) {
+  const text = useText(cardDragText);
+  return <><Dialog.Title>{text.promoteHeroTitle}</Dialog.Title>
+    <Dialog.Description>{text.promoteHeroDescription(deckTitle)}</Dialog.Description>
+    <footer><Button type="button" variant="ghost" disabled={busy} onClick={onCancel}>{text.cancel}</Button>
+      <Button type="button" disabled={busy} onClick={onConfirm}>{text.promoteHeroConfirm}</Button></footer></>;
+}
+
+export function CardHeroPromotionConfirmation(props: Parameters<typeof CardHeroPromotionConfirmationContent>[0]) {
+  return <Dialog.Root open onOpenChange={open => { if (!open && !props.busy) props.onCancel(); }}><Dialog.Portal>
+    <Dialog.Overlay className="card-journey-overlay" />
+    <Dialog.Content className="card-removal-dialog card-hero-promotion-dialog" aria-busy={props.busy}
+      onEscapeKeyDown={event => { if (props.busy) event.preventDefault(); }} onPointerDownOutside={event => { if (props.busy) event.preventDefault(); }}>
+      <CardHeroPromotionConfirmationContent {...props} />
     </Dialog.Content>
   </Dialog.Portal></Dialog.Root>;
 }

@@ -113,6 +113,7 @@ const text = defineText({
   dragCancel: 'Move cancelled.',
   deckUnavailable: 'Deck unavailable',
   noDeck: 'No deck',
+  withoutDeckCount: (count: number) => `No deck: ${count}`,
   dependenciesTitle: 'Open card dependencies: waiting on / waiting on this card',
   dependenciesAction: 'Dependencies',
   historyTitle: 'Open card change history',
@@ -239,6 +240,7 @@ const text = defineText({
   dragCancel: 'Перенос отменён.',
   deckUnavailable: 'Колода недоступна',
   noDeck: 'Без колоды',
+  withoutDeckCount: (count: number) => `Без колоды: ${count}`,
   dependenciesTitle: 'Зависимости открытой карточки: ждёт / ждут её',
   dependenciesAction: 'Зависимости',
   historyTitle: 'История изменений открытой карточки',
@@ -700,6 +702,8 @@ export function CardFamilyPanel({ hero, card, children, openedId, catalog, disab
   const currentHasChildren = catalog.cards.some(candidate => candidate.parentId === card.id);
   const canChooseParent = card.kind !== 'hero' && !card.journey && !currentHasChildren && !card.archived && !card.deleted;
   const activeChildren = children.filter(child => !child.archived && !child.deleted);
+  // A Sub Card without a deck is an indication only: the heading count and row badges never block anything (2026-11-09).
+  const withoutDeck = activeChildren.filter(child => child.deckId === null);
   let parentReason = t.parentHero;
   if (card.journey) parentReason = t.journeyLink;
   else if (currentHasChildren) parentReason = t.nestedFamilies;
@@ -881,7 +885,7 @@ export function CardFamilyPanel({ hero, card, children, openedId, catalog, disab
     {parentPicker ? <div className="card-family-parent-slot">{parentPicker}</div> : <div className="card-family-subcards-slot">
     {/* Title and search stay left; add, attach, and filter controls stay right. */}
     <div className="card-family-heading">
-      <div className="card-family-heading-title"><h2>{t.subCardsHeading}</h2>
+      <div className="card-family-heading-title"><h2>{t.subCardsHeading}</h2>{withoutDeck.length > 0 && <span className="card-family-no-deck-count">{t.withoutDeckCount(withoutDeck.length)}</span>}
         <Button type="button" variant="ghost" size="icon" title={t.findSubCards} aria-label={t.findSubCards} aria-expanded={searchOpen} aria-controls={searchId} disabled={interacting} onClick={() => { setSearchOpen(!searchOpen); if (searchOpen) setSearch(''); }}><Search size={16} /></Button>
       </div>
       <div className="card-family-actions">
@@ -1012,6 +1016,7 @@ function SortableSubCard({ card, hero, current, deckName, disabled, writable, ca
               aria-label={t.assignOwner(card.title, card.owner ?? t.unassigned)} onClick={event => onOwner?.(card, event.currentTarget)}>
               <CardOwnerAvatar owner={card.owner} members={members} />{card.owner && <span>{card.owner}</span>}
             </button>
+            {card.deckId === null && <span className="card-family-row-no-deck">{t.noDeck}</span>}
             {(runName || milestoneLabel) && <span className="card-family-row-planning">
               {runName && <span title={runTitle}>{runName}</span>}
               {runName && milestoneLabel && <span className="card-family-row-planning-separator" aria-hidden="true">·</span>}

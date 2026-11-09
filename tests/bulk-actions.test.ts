@@ -228,6 +228,87 @@ it('leaves an existing legacy Hero and its children unchanged without redundant 
   expect(native.replaceProjectMarkdown).not.toHaveBeenCalled();
 });
 
+it.each([
+  [nativeA, 'heroes'],
+  [taskA, 'mixed'],
+  [copyA, 'heroes'],
+  ['doc:docs/guide.md', 'mixed'],
+])('promotes top-level %s without children into %s and preserves source bytes on retry', async (candidateId, deckId) => {
+  const root = await fixture();
+  if (candidateId === copyA) await createDoc(root, candidateId);
+  else await attach(root, candidateId, null);
+  const before = await readProjectCatalog(root);
+  const candidate = before.cards.find(card => card.id === candidateId)!;
+  expect(candidate.parentId).toBeNull();
+  expect(before.cards.filter(card => card.parentId === candidateId)).toEqual([]);
+  const sourceBefore = await readFile(path.join(root, candidate.path));
+  const result = await editCatalogBulk(root, await promotionRequest(root, [], candidateId, deckId));
+  expect(result.changedPaths.length).toBeGreaterThan(0);
+  expect(result.outcome).toEqual({ applied: [candidateId], unchanged: [], pending: [], created: [], warnings: [] });
+  const after = await readProjectCatalog(root);
+  expect(after.cards.find(card => card.id === candidateId)).toMatchObject({ kind: 'hero', state: null, parentId: null, deckId });
+  expect(after.cards.filter(card => card.parentId === candidateId)).toEqual([]);
+  expect(after.warnings).toEqual([]);
+  const sourceAfter = await readFile(path.join(root, candidate.path));
+  if (candidateId === nativeA) {
+    expect(sourceAfter.toString()).toBe(sourceBefore.toString().replace('kind: task', 'kind: "hero"').replace('state: в работе', 'state: null').replace('deckId: tasks', `deckId: "${deckId}"`));
+  } else if (!candidateId.startsWith('card:')) {
+    expect(sourceAfter).toEqual(sourceBefore);
+  } else {
+    expect((await native.readNativeCard(root, candidateId))!.markdown).toBe('Doc **body**.\r\n');
+  }
+  vi.mocked(native.replaceProjectMarkdown).mockClear();
+  const retry = await editCatalogBulk(root, await promotionRequest(root, [], candidateId, deckId));
+  expect(retry).toMatchObject({ changedPaths: [], outcome: { applied: [], unchanged: [candidateId], pending: [], warnings: [] } });
+  expect(native.replaceProjectMarkdown).not.toHaveBeenCalled();
+  expect(await readFile(path.join(root, candidate.path))).toEqual(sourceAfter);
+});
+
+it('rejects empty selections for every bulk change other than promote-parent', async () => {
+  const root = await fixture();
+  const before = await snapshots(root);
+  const changes: BulkChange[] = [
+    { kind: 'properties', effort: 9 },
+    { kind: 'state', state: 'started' },
+    { kind: 'parent', parentId: null, parentSourceHash: null },
+    { kind: 'create-parent', cardId: copyA, title: 'Empty Hero', deckId: 'heroes' },
+    { kind: 'options', patch: { bookmarked: true } },
+    { kind: 'hand', memberId: 'kimi', mode: 'add' },
+    { kind: 'tags', tags: ['sound'], mode: 'add' },
+    { kind: 'convert', cardKind: 'doc', deckId: 'docs' },
+    { kind: 'duplicate', deckId: 'mixed', properties: [], copies: [] },
+    { kind: 'track', trackId: 'sound', mode: 'add' },
+  ];
+  for (const change of changes) {
+    await expect(editCatalogBulk(root, await request(root, [], change))).rejects.toThrow('Select 1 to 1000 cards.');
+  }
+  expect(await snapshots(root)).toEqual(before);
+  expect(native.replaceProjectMarkdown).not.toHaveBeenCalled();
+});
+
+it('preflights empty promotion deck compatibility, hashes and parent baselines without writing', async () => {
+  const root = await fixture();
+  await attach(root, nativeA, null);
+  const before = await snapshots(root);
+  const valid = await promotionRequest(root, [], nativeA);
+  if (valid.change.kind !== 'promote-parent') throw new Error('Invalid fixture');
+  vi.mocked(native.replaceProjectMarkdown).mockClear();
+  await expect(editCatalogBulk(root, { ...valid, change: { ...valid.change, deckId: 'tasks' } })).rejects.toThrow('The target deck');
+  await expect(editCatalogBulk(root, { ...valid, change: { ...valid.change, sourceHash: '0'.repeat(64) } })).rejects.toThrow('CARD_CONFLICT');
+  await expect(editCatalogBulk(root, { ...valid, change: { ...valid.change, expectedParentId: hero } })).rejects.toThrow('PARENT_CONFLICT');
+  await expect(editCatalogBulk(root, { ...valid, change: null as unknown as BulkChange })).rejects.toThrow('A bulk action is required.');
+  expect(await snapshots(root)).toEqual(before);
+  expect(native.replaceProjectMarkdown).not.toHaveBeenCalled();
+});
+
+it('rejects promote-parent with a non-array cards list before reading the catalog', async () => {
+  const root = await fixture();
+  const before = await snapshots(root);
+  const valid = await promotionRequest(root, [], nativeA);
+  await expect(editCatalogBulk(root, { ...valid, cards: null as unknown as BulkEditRequest['cards'] })).rejects.toThrow('Select 1 to 1000 cards.');
+  expect(await snapshots(root)).toEqual(before);
+});
+
 it('promotes a native Sub Card in place, preserves body/custom metadata, and attaches cross-deck children idempotently', async () => {
   const root = await fixture();
   const before = await snapshots(root);
@@ -245,6 +326,22 @@ it('promotes a native Sub Card in place, preserves body/custom metadata, and att
   const saved = await snapshots(root);
   expect((await editCatalogBulk(root, await promotionRequest(root, [taskA, nativeB], nativeA))).outcome).toMatchObject({ unchanged: [taskA, nativeB], applied: [], pending: [] });
   expect(await snapshots(root)).toEqual(saved);
+});
+
+it('promotes a Sub Card without children, detaches it from the old Hero and leaves the old Hero family untouched', async () => {
+  const root = await fixture();
+  const before = await snapshots(root);
+  const result = await editCatalogBulk(root, await promotionRequest(root, [], nativeA));
+  expect(result.outcome).toEqual({ applied: [nativeA], unchanged: [], pending: [], created: [], warnings: [] });
+  expect(result.changedPaths).toEqual([`cards/${nativeA.slice(5)}.md`]);
+  expect(await readFile(path.join(root, 'features/match.md'))).toEqual(before[0]);
+  expect(await readFile(path.join(root, `cards/${nativeB.slice(5)}.md`))).toEqual(before[3]);
+  const catalog = await readProjectCatalog(root);
+  expect(catalog.cards.find(card => card.id === nativeA)).toMatchObject({ kind: 'hero', state: null, parentId: null, deckId: 'heroes' });
+  for (const id of [taskA, taskB, nativeB]) expect(catalog.cards.find(card => card.id === id)).toMatchObject({ parentId: hero });
+  const retry = await editCatalogBulk(root, await promotionRequest(root, [], nativeA));
+  expect(retry).toMatchObject({ changedPaths: [], outcome: { applied: [], unchanged: [nativeA], pending: [] } });
+  expect(await readFile(path.join(root, 'features/match.md'))).toEqual(before[0]);
 });
 
 it.each([taskA, 'doc:docs/guide.md'])('promotes legacy %s with the same ID and source bytes', async candidateId => {
@@ -387,6 +484,23 @@ it.each(['archived', 'deleted'] as const)('rejects %s promotion candidates witho
   expect(await snapshots(root)).toEqual(before);
 });
 
+it.each(['archived', 'deleted'] as const)('rejects an empty promotion of an %s candidate with the restoreHero message and no writes', async flag => {
+  const root = await fixture();
+  await editCatalogBulk(root, await request(root, [nativeA], { kind: 'options', patch: { [flag]: true } }));
+  const before = await snapshots(root);
+  await expect(editCatalogBulk(root, await promotionRequest(root, [], nativeA))).rejects.toThrow('Restore the future Hero from Archive or Trash first.');
+  expect(await snapshots(root)).toEqual(before);
+});
+
+it('rejects an empty promotion of a Journey card with the journeyHero message and no writes', async () => {
+  const root = await fixture();
+  const candidate = (await native.readNativeCard(root, nativeA))!;
+  await native.createManagedMarkdown(root, `cards/${copyA.slice(5)}.md`, { ...candidate.metadata, id: copyA.slice(5), journey: { journeyId: 'pipeline', version: 1, stepId: 'step', instanceId: 'instance' } }, 'Journey body.');
+  const before = await snapshots(root);
+  await expect(editCatalogBulk(root, await promotionRequest(root, [], copyA))).rejects.toThrow('A Journey card cannot be promoted to a separate Hero.');
+  expect(await snapshots(root)).toEqual(before);
+});
+
 it('rejects promotion or reparenting of Journey steps and does not overwrite concurrent candidate edits', async () => {
   const root = await fixture();
   const candidate = (await native.readNativeCard(root, nativeA))!;
@@ -468,4 +582,53 @@ it('API enforces sandbox and auth, returns outcome/options hash, and writes one 
   const promotionEventPath = (await native.listManagedMarkdown(root, 'tasks/deckmate-activity')).find(filename => !events.includes(filename))!;
   const promotionEvent = await native.readManagedMarkdown(root, promotionEventPath);
   expect(promotionEvent?.metadata.cards).toEqual(expect.arrayContaining([expect.objectContaining({ id: nativeA }), expect.objectContaining({ id: nativeB })]));
+});
+
+it('API promotes without children, journals the Hero despite an empty outcome and rejects other empty actions', async () => {
+  const root = await fixture();
+  await attach(root, nativeA, null);
+  await execute('git', ['init', '-b', 'deckmate/sandbox', root], { windowsHide: true });
+  const app = await createApp({ editMode: 'sandbox', dataRoot: root, writeRoot: root, projectName: 'Test', port: 44319, python: 'python' }); apps.push(app);
+  const headers = { host: '127.0.0.1:44319' };
+  const token = (await app.inject({ url: '/api/snapshot', headers })).json().token;
+  const authorized = { ...headers, 'x-deckmate-token': token };
+  const wrongDeck = await app.inject({ method: 'POST', url: '/api/catalog', headers: authorized,
+    payload: { ...await promotionRequest(root, [], nativeA, 'tasks'), source: 'sandbox' } });
+  expect(wrongDeck.statusCode, wrongDeck.body).toBe(422);
+  expect(wrongDeck.json().message).toContain('The target deck');
+  const emptyState = await app.inject({ method: 'POST', url: '/api/catalog', headers: authorized,
+    payload: { ...await request(root, [], { kind: 'state', state: 'started' }), source: 'sandbox' } });
+  expect(emptyState.statusCode, emptyState.body).toBe(400);
+  expect(await native.listManagedMarkdown(root, 'tasks/deckmate-activity')).toEqual([]);
+  const promoted = await app.inject({ method: 'POST', url: '/api/catalog', headers: authorized,
+    payload: { ...await promotionRequest(root, [], nativeA), source: 'sandbox' } });
+  expect(promoted.statusCode, promoted.body).toBe(200);
+  expect(promoted.json().bulkOutcome).toEqual({ applied: [nativeA], unchanged: [], pending: [], created: [], warnings: [] });
+  expect(promoted.json().cards).toEqual(expect.arrayContaining([expect.objectContaining({ id: nativeA, kind: 'hero', state: null, parentId: null, deckId: 'heroes' })]));
+  const events = await native.listManagedMarkdown(root, 'tasks/deckmate-activity');
+  expect(events).toHaveLength(1);
+  const event = await native.readManagedMarkdown(root, events[0]);
+  expect(event?.metadata.cards).toEqual([expect.objectContaining({ id: nativeA })]);
+  expect(event?.metadata.action).toBe('bulk-edit-cards');
+  const retry = await app.inject({ method: 'POST', url: '/api/catalog', headers: authorized,
+    payload: { ...await promotionRequest(root, [], nativeA), source: 'sandbox' } });
+  expect(retry.statusCode, retry.body).toBe(200);
+  expect(await native.listManagedMarkdown(root, 'tasks/deckmate-activity')).toEqual(events);
+});
+
+it('API rejects bulk-assign-deck and reorder-hand with an empty card list', async () => {
+  const root = await fixture();
+  await execute('git', ['init', '-b', 'deckmate/sandbox', root], { windowsHide: true });
+  const app = await createApp({ editMode: 'sandbox', dataRoot: root, writeRoot: root, projectName: 'Test', port: 44319, python: 'python' }); apps.push(app);
+  const headers = { host: '127.0.0.1:44319' };
+  const token = (await app.inject({ url: '/api/snapshot', headers })).json().token;
+  const authorized = { ...headers, 'x-deckmate-token': token };
+  const catalog = await readProjectCatalog(root);
+  const assign = await app.inject({ method: 'POST', url: '/api/catalog', headers: authorized,
+    payload: { action: 'bulk-assign-deck', manifestHash: catalog.manifestHash, deckId: 'mixed', cards: [], source: 'sandbox' } });
+  expect(assign.statusCode, assign.body).toBe(400);
+  const reorder = await app.inject({ method: 'POST', url: '/api/catalog', headers: authorized,
+    payload: { action: 'reorder-hand', manifestHash: catalog.manifestHash, memberId: 'kimi', cards: [], source: 'sandbox' } });
+  expect(reorder.statusCode, reorder.body).toBe(400);
+  expect(await native.listManagedMarkdown(root, 'tasks/deckmate-activity')).toEqual([]);
 });

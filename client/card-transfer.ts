@@ -31,12 +31,21 @@ export function captureCardTransfer(
   };
 }
 
+export type CardTransferTargetIssue = 'same-deck' | 'incompatible' | 'confirm-promotion' | null;
+
 export function cardTransferTargetIssue(
   baseline: CardTransferBaseline,
   deck: CatalogDeck | null,
-): 'same-deck' | 'incompatible' | null {
+  catalogCards: readonly CatalogCard[] = [],
+): CardTransferTargetIssue {
   const targetId = deck?.id ?? null;
   if (baseline.cards.every(card => card.deckId === targetId)) return 'same-deck';
+  // Only Asset refuses a Task, so only there is promotion offered; Mixed keeps a plain move (2026-11-09).
+  if (baseline.cards.length === 1 && baseline.cards[0].kind === 'task' && deck?.kind === 'asset') {
+    const card = catalogCards.find(candidate => candidate.id === baseline.cards[0].cardId);
+    if (card?.kind === 'task' && card.parentId === null && !card.archived && !card.deleted && !card.journey
+      && !catalogCards.some(candidate => candidate.parentId === card.id)) return 'confirm-promotion';
+  }
   if (deck && baseline.cards.some(card => !deckAcceptsCard(deck.kind, card.kind))) return 'incompatible';
   return null;
 }
@@ -44,8 +53,9 @@ export function cardTransferTargetIssue(
 export function cardTransferRequest(
   baseline: CardTransferBaseline,
   deck: CatalogDeck | null,
+  catalogCards: readonly CatalogCard[] = [],
 ): Extract<CatalogEdit, { action: 'bulk-assign-deck' }> | null {
-  if (cardTransferTargetIssue(baseline, deck)) return null;
+  if (cardTransferTargetIssue(baseline, deck, catalogCards)) return null;
   return {
     action: 'bulk-assign-deck',
     deckId: deck?.id ?? null,

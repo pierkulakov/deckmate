@@ -21,6 +21,12 @@ describe('CSV card export', () => {
     expect(result.split('\r\n')[1]?.startsWith('"\'')).toBe(true);
   });
 
+  // 2026-11-09: CSV import takes a state only for Tasks, so a Hero's done mark stays out of the export.
+  it('exports a Task state but leaves a Hero done mark empty', () => {
+    expect(exportCardsCsv([card({ state: 'done' }), card({ id: 'card:hero', kind: 'hero', state: 'done' })], ['kind', 'state']))
+      .toBe('\ufeff"Type";"State"\r\n"task";"done"\r\n"hero";""\r\n');
+  });
+
   it('does not change ordinary punctuation, quoted prose or numbers inside text', () => {
     expect(exportCardsCsv([card({ title: 'SFX — звук = атака + эхо', effort: 0 })], ['title', 'effort']))
       .toContain('"SFX — звук = атака + эхо";"0"\r\n');

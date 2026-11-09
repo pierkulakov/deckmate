@@ -124,7 +124,7 @@ The write path for the catalog; Runs and Milestones use `POST /api/planning` bel
 | `action` | Required fields |
 |---|---|
 | `bulk-edit-cards` | `cards`, `optionsHash`, `change` |
-| `set-card-state` | `cardId`, `sourceHash`, `state`; optional `returnReason` (one line, ≤500 characters, only leaving review without acceptance). In a deck with guardians, `done` needs a guardian as `x-deckmate-actor` (without the header, as `acceptedBy`) |
+| `set-card-state` | `cardId`, `sourceHash`, `state`; optional `returnReason` (one line, ≤500 characters, only leaving review without acceptance). In a deck with guardians, `done` needs a guardian as `x-deckmate-actor` (without the header, as `acceptedBy`). A native Hero takes only `done` (manual mark, refused while it has Task Sub Cards other than `wont-do`) and `not-started` (removes the mark) |
 | `set-card-properties` | `cardId`, `sourceHash`, `owner`, `effort`, `priority` |
 | `set-card-parent` | `cardId`, `sourceHash`, `expectedParentId`, `parentId`, `parentSourceHash` |
 | `reorder-subcards` | `cardId`, `sourceHash`, `cardIds` |

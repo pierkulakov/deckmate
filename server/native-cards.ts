@@ -35,7 +35,7 @@ const messages = defineText({
   invalidCardMetadata: "Invalid card metadata or UUID.",
   invalidCardHeader: "Invalid card YAML frontmatter or the ID does not match the filename.",
   heroCannotBeChild: "A Hero cannot be a Sub Card.",
-  nonTaskState: "Docs and Heroes do not have a task state.",
+  nonTaskState: "A Doc has no state; a Hero can only be marked done.",
   invalidCardIteration: "Invalid card iteration number.",
   invalidCardDependencies: "Invalid card dependency list.",
   invalidEffort: "Invalid card Effort.",
@@ -78,7 +78,7 @@ const messages = defineText({
   invalidCardMetadata: "Некорректные метаданные или UUID карточки.",
   invalidCardHeader: "Некорректная YAML-шапка карточки или ID не совпадает с именем файла.",
   heroCannotBeChild: "Hero не может быть подкарточкой.",
-  nonTaskState: "Документ и Hero не имеют состояния задачи.",
+  nonTaskState: "У документа нет состояния; Hero можно только отметить выполненной.",
   invalidCardIteration: "Некорректный номер итерации карточки.",
   invalidCardDependencies: "Некорректный список зависимостей карточки.",
   invalidEffort: "Некорректная цена карточки.",
@@ -410,7 +410,8 @@ export function validateNativeCardMetadata(value: unknown, id: string): NativeCa
     || !['state', 'owner', 'deckId', 'parentId'].every(key => value[key] === null || typeof value[key] === 'string')
     || !stringList(value.trackIds)) throw new Error(serverText(messages).invalidCardHeader);
   if (value.kind === 'hero' && value.parentId !== null) throw new Error(serverText(messages).heroCannotBeChild);
-  if (value.kind !== 'task' && value.state !== null) throw new Error(serverText(messages).nonTaskState);
+  // 2026-11-09: a Hero stores only its manual done mark; a Doc never has a state.
+  if (value.kind !== 'task' && value.state !== null && !(value.kind === 'hero' && readCardState(value.state as string) === 'done')) throw new Error(serverText(messages).nonTaskState);
   if (typeof value.state === 'string' && readCardState(value.state) === undefined) throw new Error(serverText(messages).invalidTaskState);
   if (value.iteration !== undefined && value.iteration !== null && (!Number.isInteger(value.iteration) || Number(value.iteration) < 0)) {
     throw new Error(serverText(messages).invalidCardIteration);
@@ -675,6 +676,12 @@ export async function editNativeCardParent(root: string, cardId: string, sourceH
 }
 
 /** Properties/state changes are scalar-only and publish once with the original file hash. */
+/** A Task takes any card state; a Hero only its done mark or null, which removes the mark (2026-11-09). */
+function validNativeStateChange(kind: NativeCardMetadata['kind'], state: unknown): boolean {
+  if (kind === 'hero') return state === null || (typeof state === 'string' && readCardState(state) === 'done');
+  return kind === 'task' && typeof state === 'string' && readCardState(state) !== undefined;
+}
+
 export async function editNativeCardProperties(root: string, cardId: string, sourceHash: string,
   changes: Partial<Pick<NativeCardMetadata, 'state' | 'owner' | 'effort' | 'priority'>>, beforePublish?: () => Promise<void>,
   formatLanguage: FormatLanguage = 'ru'): Promise<boolean> {
@@ -682,8 +689,7 @@ export async function editNativeCardProperties(root: string, cardId: string, sou
   if (!existing) throw new Error(serverText(messages).cardNotFound);
   if (existing.fileHash !== sourceHash) throw new Error('CARD_CONFLICT');
   if (Object.keys(changes).some(key => !['state', 'owner', 'effort', 'priority'].includes(key))) throw new Error(serverText(messages).invalidCardProperties);
-  if (Object.hasOwn(changes, 'state') && (existing.card.kind !== 'task'
-    || typeof changes.state !== 'string' || readCardState(changes.state) === undefined)) throw new Error(serverText(messages).invalidTaskState);
+  if (Object.hasOwn(changes, 'state') && !validNativeStateChange(existing.card.kind, changes.state)) throw new Error(serverText(messages).invalidTaskState);
   if (Object.hasOwn(changes, 'owner') && changes.owner !== null
     && (typeof changes.owner !== 'string' || !changes.owner.trim() || changes.owner.length > 120 || /[\r\n\u0000]/u.test(changes.owner))) throw new Error(serverText(messages).invalidOwner);
   if (Object.hasOwn(changes, 'effort') && changes.effort !== null

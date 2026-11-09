@@ -13,7 +13,7 @@ Markdown and other project files are the primary data; SQLite is a rebuildable i
 | Space | Groups decks by purpose. GDD / Tasks / Knowledge / QA / Custom presets set the initial deck type. |
 | Deck | A card has zero or one primary deck. A work area is not a Markdown file. |
 | Task | An imported `### X.Y` slice or a separate native card. Has its own state and owner. |
-| Hero | A top-level parent of Task/Doc cards; task progress is computed from its children. Has no task workflow; nested Heroes are prohibited. |
+| Hero | A top-level parent of Task/Doc cards; task progress is computed from its children. Has no task workflow; nested Heroes are prohibited. A Hero is done when all its Task Sub Cards except `wont-do` are `done`; a native Hero without such Sub Cards is done by its own manual mark (2026-11-09). While such Sub Cards exist, the catalog reads a stored mark as null and keeps it in the file. |
 | Doc | A document without a task workflow; can be a top-level parent of Task/Doc cards or a subcard without children. |
 | Track | A cross-deck topic: a card can belong to several tracks. |
 | Tags | Independent string labels on a card; do not replace Track, Run, or Milestone. |
@@ -21,7 +21,7 @@ Markdown and other project files are the primary data; SQLite is a rebuildable i
 | Journey / pipeline | A versioned step template with instructions and dependencies, applied to a specific Hero. |
 | Vision | An Excalidraw canvas with diagrams, external images, and card links. |
 
-Asset accepts Hero, Task accepts Task, Knowledge accepts Doc, and Mixed accepts all three kinds. Deckmate does not automatically promote ordinary cards to Hero. Hero/Doc `state` and `range` are null; Owner can be explicitly assigned to any card kind.
+Asset accepts Hero, Task accepts Task, Knowledge accepts Doc, and Mixed accepts all three kinds. Deckmate does not automatically promote ordinary cards to Hero. Doc `state` and Hero/Doc `range` are null; a Hero's `state` is null or `done`; Owner can be explicitly assigned to any card kind.
 
 An imported Hero comes from a numbered `##` heading; its tasks are the source slices. Without an explicit override, an imported Task's parent follows the file structure. Membership `parentId` can assign another Hero/Doc or explicitly detach the card with null. A native card stores `parentId` in its own file. Deck membership, parenthood, and a participant's hand are separate relationships. Track counts unique directly included tasks: including a Hero does not automatically include all its children.
 
@@ -209,7 +209,7 @@ priority: medium
 Instructions, expected result, and verification.
 ```
 
-The filename must match the UUID in the frontmatter. The canonical ID is `card:<uuid>`; one file produces one card and one document entry, with no second Doc card. UUIDv4 and deterministic UUIDv8 are supported. A Task's byte range covers only its body; `sourceHash` covers the entire file. For native Hero/Doc cards, range, state, and version are null.
+The filename must match the UUID in the frontmatter. The canonical ID is `card:<uuid>`; one file produces one card and one document entry, with no second Doc card. UUIDv4 and deterministic UUIDv8 are supported. A Task's byte range covers only its body; `sourceHash` covers the entire file. For native Hero/Doc cards, range and version are null; state is null, except `done` on a Hero marked done by hand.
 
 `effort` is an optional finite number ≥ 0; `priority` is optional `high` / `medium` / `low`. Omission means unset. These fields are read into the catalog and SQLite, never inferred from text length or state. API creation also accepts null and omits those values from YAML. `update-card-content` does not change effort, priority, or other properties.
 
@@ -262,7 +262,7 @@ Commands use the same `POST /api/catalog` with `source: "sandbox"`, token, and `
 | action | Additional fields | Change boundary |
 |---|---|---|
 | `set-card-parent` | `expectedParentId`, `parentId`, `parentSourceHash` | Task/Doc without children: attach to a top-level Hero/Doc, change parent, or detach with null. |
-| `set-card-state` | `state`, optional `returnReason` | Task only: `discussing`, `in-iteration`, `started`, `review`, `done`, `not-started`. |
+| `set-card-state` | `state`, optional `returnReason` | Task: `discussing`, `in-iteration`, `started`, `review`, `done`, `not-started`. Native Hero: `done` sets its manual mark and `not-started` removes it (`state: null`); `done` is refused while the Hero has Task Sub Cards other than `wont-do`, and a legacy Hero has no mark. |
 | `set-card-properties` | `owner`, `effort`, `priority` | Send all three fields explicitly; each accepts null to clear its value. |
 
 `expectedParentId` records the selected Task/Doc's original parent. Attaching requires `parentSourceHash`, which validates the target Hero/Doc's file; detaching uses null. Changing parent preserves the card's deck, tracks, and Markdown. Legacy membership receives an override; the original H2 and slice location are not rearranged. Families have one level: a Task/Doc child cannot have children, and a Hero/Doc parent cannot have parentId. Nesting checks include archived and deleted descendants so restoring them cannot create a nested family. Restore archived/deleted parents and children first. Once a Journey is applied, changing or removing the parent is prohibited to preserve the instance relationship. Repeating the current assignment is a valid no-op.

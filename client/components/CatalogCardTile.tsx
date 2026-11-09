@@ -12,7 +12,8 @@ import { attachmentSource, fetchCardAttachments } from '../attachments.ts';
 import { CardIndicators } from './CardIndicators.tsx';
 import { statusClass } from './StatusMenu.tsx';
 import { CardFamilyPopover, SubCardProgress } from './CardFamily.tsx';
-import { familyFinished, useJustFinished } from '../done-impact.ts';
+import { useJustFinished } from '../done-impact.ts';
+import { heroCountedTasks, heroFinished } from '../../src/hero-done.ts';
 import { useCardTilt } from '../useCardTilt.ts';
 import { cardHeroEffort } from './CardPropertiesPanel.tsx';
 import { CardOwnerAvatar, type CardQuickSettingsTab } from './CardQuickSettings.tsx';
@@ -41,6 +42,7 @@ const text = defineText({
   wordCount: (count: string) => 'Word count: ' + count,
   tags: (names: string) => 'tags: ' + names,
   familyDone: 'Hero done: all Sub Cards accepted',
+  heroDone: 'Hero done',
 }, {
   docCard: 'Doc Card',
   transferCard: (title: string) => 'Перенести в колоду: ' + title,
@@ -62,6 +64,7 @@ const text = defineText({
   wordCount: (count: string) => 'Число слов: ' + count,
   tags: (names: string) => 'теги: ' + names,
   familyDone: 'Hero выполнена: все Sub Cards приняты',
+  heroDone: 'Hero выполнена',
 });
 
 export const cardKinds: Record<CardKind, string> = {
@@ -187,7 +190,9 @@ export const CatalogCardTile = memo(function CatalogCardTile({ card, lookups, me
   // Own effort plus Sub Cards' effort matches the table row and properties panel.
   const heroEffort = progress ? cardHeroEffort(card, { cards: progress.children }) : null;
   // A Hero whose whole family is finished wears the done band too; finishing plays the done impact once (2026-11-06).
-  const familyDone = progress ? familyFinished(progress.children) : false;
+  const familyDone = progress ? heroFinished(card, progress.children) : false;
+  // 2026-11-09: a Hero without counted Task Sub Cards is done by its own mark, so the medallion says only that.
+  const doneLabel = progress && heroCountedTasks(progress.children).length ? t.familyDone : t.heroDone;
   const justDone = useJustFinished(card.state === 'done' || familyDone, card.id);
   const showEffortTotal = heroEffort != null;
   const openQuestionCount = card.kind === 'doc' ? (card.openQuestions?.length ?? 0) : 0;
@@ -225,7 +230,7 @@ export const CatalogCardTile = memo(function CatalogCardTile({ card, lookups, me
     return () => window.removeEventListener('keydown', listener, true);
   }, [hovered, canStart, onStart]);
   return <div ref={node => { transfer.setNodeRef(node); tileElement.current = node; }} className={'deck-card-space' + (hovered ? ' is-hovered' : '')} data-card-id={card.id} data-card-hovered={hovered || undefined} data-card-transfer-enabled={transfer.enabled || undefined} data-card-transfer-source={transfer.isDragging || undefined} onPointerEnter={event => { setHovered(true); tilt(event); }} onPointerDown={transfer.onPointerDown} onPointerMove={tilt} onPointerLeave={() => { setHovered(false); reset(); }} onKeyDown={event => { if (!hovered) startWithSpace(event.nativeEvent); }}>
-    <article ref={element} className={`deck-card catalog-card-${card.kind} deck-state-${statusClass(card.state ?? '')}${familyDone ? ' is-family-done' : ''}${justDone ? ' is-just-done' : ''}${selected ? ' is-selected' : ''}${checked ? ' is-multi-selected' : ''}`} style={style} data-deck-card={card.id}>
+    <article ref={element} className={`deck-card catalog-card-${card.kind} deck-state-${statusClass(card.kind === 'task' ? card.state ?? '' : '')}${familyDone ? ' is-family-done' : ''}${justDone ? ' is-just-done' : ''}${selected ? ' is-selected' : ''}${checked ? ' is-multi-selected' : ''}`} style={style} data-deck-card={card.id}>
       {transfer.handle}
       {selectable && <input className="catalog-card-checkbox" type="checkbox" checked={checked} disabled={disabled} aria-label={t.selectCard(card.title)} onChange={event => onToggle(card.id, Boolean((event.nativeEvent as MouseEvent).shiftKey))} />}
       {parent && <CardFamilyPopover projectTags={tagDefinitions} members={members} hero={parent} children={familyChildren(lookups, parent.id)} disabled={disabled} onOpen={onFamilyOpen} onOpenChange={setFamilyHovered} />}
@@ -251,7 +256,7 @@ export const CatalogCardTile = memo(function CatalogCardTile({ card, lookups, me
       </div>
       <div className="deck-card-band">{/* 2026-11-09: a finished Hero shows a done medallion in the owner's place (author); the owner stays in the open card. */}
         {familyDone
-          ? <span className="deck-card-owner-medallion deck-card-done-medallion" role="img" title={t.familyDone} aria-label={t.familyDone}><Check size={14} strokeWidth={3.25} aria-hidden="true" /></span>
+          ? <span className="deck-card-owner-medallion deck-card-done-medallion" role="img" title={doneLabel} aria-label={doneLabel}><Check size={14} strokeWidth={3.25} aria-hidden="true" /></span>
           : card.owner && <span className="deck-card-owner-medallion" title={t.owner(card.owner)} aria-label={t.owner(card.owner)}><CardOwnerAvatar owner={card.owner} members={members} /></span>}
         <span className="card-material-glare" aria-hidden="true" />
         {card.kind === 'task' && <div className="deck-card-task-metrics"><span data-shortcut-property="effort" onPointerEnter={event => markShortcutPropertyHover(event.currentTarget, true)} onPointerLeave={event => markShortcutPropertyHover(event.currentTarget, false)} title={t.effort(effortLabel)}><Gauge size={18} /><strong>{effortLabel}</strong></span><span data-shortcut-property="priority" onPointerEnter={event => markShortcutPropertyHover(event.currentTarget, true)} onPointerLeave={event => markShortcutPropertyHover(event.currentTarget, false)} title={t.priority(cardPriorityLabel)}><Layers size={17} /><span className="visually-hidden">{cardPriorityLabel}</span></span>{attachmentBadge}</div>}

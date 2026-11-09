@@ -24,7 +24,8 @@ import { DependencyStateWarning, dependencyConflicts, type DependencyConflict } 
 import { AttachmentsPanel } from './AttachmentsPanel.tsx';
 import { JourneyReturnPrompt, isJourneyReturn, journeyLessonAction, type JourneyReturnAnswer } from './JourneyReturnPrompt.tsx';
 import { buildCatalogLookups, familyChildren } from '../catalog-lookups.ts';
-import { familyFinished, useJustFinished } from '../done-impact.ts';
+import { useJustFinished } from '../done-impact.ts';
+import { heroFinished, heroTakesManualDone } from '../../src/hero-done.ts';
 import { useCardTilt } from '../useCardTilt.ts';
 import { OPEN_CARD_SHORTCUTS, claimOpenCardShortcuts, markShortcutPropertyHover, matchShortcut, resolveHoveredCardShortcut, shortcutTargetBlocked } from '../keyboard-shortcuts.ts';
 import { currentMember, onMemberChange } from '../current-member.ts';
@@ -75,6 +76,8 @@ const text = defineText({
   review: 'Send to review',
   accept: 'Accept card',
   plan: 'Return to planned',
+  heroDone: 'Mark Hero done',
+  heroUndone: 'Remove the done mark',
   applyJourney: 'Apply Journey to Hero Card',
   tagCardsLabel: (name: string) => `All cards with tag “${name}”`,
   tagLabel: 'Tag',
@@ -163,6 +166,8 @@ const text = defineText({
   review: 'Отправить на приёмку',
   accept: 'Принять карточку',
   plan: 'Вернуть в план',
+  heroDone: 'Отметить Hero выполненной',
+  heroUndone: 'Снять отметку «выполнена»',
   applyJourney: 'Применить Journey к Hero Card',
   tagCardsLabel: (name: string) => `Все карточки с тегом «${name}»`,
   tagLabel: 'Тег',
@@ -323,7 +328,9 @@ export function CardPreview({ card, catalog, snapshot, writable, pending, onClos
   const deck = catalog.decks.find(candidate => candidate.id === card.deckId);
   const supportsChildren = (card.kind === 'hero' || card.kind === 'doc') && !card.parentId;
   const children = supportsChildren ? familyChildren(indicatorLookups, card.id) : [];
-  const familyDone = card.kind === 'hero' && familyFinished(children);
+  const familyDone = card.kind === 'hero' && heroFinished(card, children);
+  // 2026-11-09: a native Hero without counted Task Sub Cards is marked done by hand; legacy Heroes keep no state.
+  const heroMarkable = card.kind === 'hero' && card.id.startsWith('card:') && heroTakesManualDone(children);
   const justDone = useJustFinished(card.state === 'done' || familyDone, card.id);
   const orderedChildren = children;
   const journeyChild = orderedChildren.find(child => child.journey);
@@ -536,7 +543,9 @@ export function CardPreview({ card, catalog, snapshot, writable, pending, onClos
   });
 
   async function changeState(state: SliceStatus, confirmed = false, returnAnswer?: JourneyReturnAnswer) {
-    if (actionDisabled || !currentCard || currentCard.archived || currentCard.kind !== 'task' || currentCard.state === state || stateInFlight.current) return;
+    if (actionDisabled || !currentCard || currentCard.archived || stateInFlight.current) return;
+    if (currentCard.kind !== 'task' && !(heroMarkable && (state === 'done' || state === 'not-started'))) return;
+    if ((currentCard.state ?? 'not-started') === state) return;
     const conflicts = confirmed ? [] : dependencyConflicts([currentCard], cardsById, state);
     setStateQuestion(conflicts.length ? { state, conflicts } : null);
     if (conflicts.length) return;
@@ -656,6 +665,11 @@ export function CardPreview({ card, catalog, snapshot, writable, pending, onClos
 
   const removalQuestions: Record<CardRemoval, (title: string) => string> = { archive: t.archiveQuestion, unarchive: t.unarchiveQuestion, delete: t.deleteQuestion };
   const removalTitles: Record<CardRemoval, string> = { archive: t.archiveCard, unarchive: t.unarchiveCard, delete: t.moveToTrash };
+  // 2026-11-09: the Hero done mark sits on the right, beside Focus and More (author).
+  const heroMarkActions = heroMarkable && <span className="card-preview-hero-mark" aria-label={t.cardState}>
+    <Button type="button" variant="ghost" size="icon" disabled={stateDisabled || card.state === 'done'} aria-pressed={card.state === 'done'} aria-label={t.heroDone} title={t.heroDone} onClick={() => void changeState('done')}><Check size={18} /></Button>
+    <Button type="button" variant="ghost" size="icon" disabled={stateDisabled || card.state !== 'done'} aria-label={t.heroUndone} title={t.heroUndone} onClick={() => void changeState('not-started')}><RotateCcw size={16} /></Button>
+  </span>;
   const focusAction = <Button type="button" variant="ghost" size="icon" className="card-preview-focus" disabled={focusDisabled} onClick={() => { closeJourney(); setFocusMode(true); }} aria-label={t.focusMode} title={t.focusMode}><Scan size={17} aria-hidden="true" /></Button>;
   const moreAction = <DropdownMenu.Root open={moreOpen} onOpenChange={open => {
     if (open) setMoreRevision(revision);
@@ -701,10 +715,10 @@ export function CardPreview({ card, catalog, snapshot, writable, pending, onClos
       <Crown size={18} /><span>{parent.title}</span><progress value={parentAccepted} max={Math.max(siblingTasks.length, 1)} aria-label={t.parentProgress(parentAccepted, siblingTasks.length)} />
       {onReturnToHero && <kbd>Esc</kbd>}
     </button>}
-    <div className={'card-preview-sheet' + (justDone ? ' is-just-done' : '')} data-state={card.state ?? undefined} data-family-done={familyDone || undefined}>
+    <div className={'card-preview-sheet' + (justDone ? ' is-just-done' : '')} data-state={card.kind === 'task' ? card.state ?? undefined : undefined} data-family-done={familyDone || undefined}>
       {supportsChildren && onShowFamily && <div className="card-preview-subcards-bar">
         <Button type="button" variant="ghost" size="sm" className="card-preview-subcards-toggle" disabled={navigationLocked} aria-pressed={familyVisible} onClick={toggleFamily}><Crown size={20} /><span>{t.subCardsCount(children.length)}</span></Button>
-        <div className="card-preview-subcards-actions">{focusAction}{moreAction}</div>
+        <div className="card-preview-subcards-actions">{heroMarkActions}{focusAction}{moreAction}</div>
       </div>}
       {/* 2026-11-05: the state row stays while text is edited or a checklist item saves; its buttons are disabled then, so the sheet never jumps. */}
       {card.kind === 'task' && <div className="card-preview-state-actions" aria-label={t.cardState}>
@@ -725,7 +739,7 @@ export function CardPreview({ card, catalog, snapshot, writable, pending, onClos
         blocked={saving || quickSaving || journeySaving || propertiesActive || openQuestionsActive} headingRef={heading} onEdit={onEdit} onEditingChange={setContentEditing} onOpenCard={selectCard}
         focusMode={focusMode} onFocusModeExit={() => setFocusMode(false)} hideJourneyStepLink={stepNoteShown}
         footerActions={<><CardIdChip cardId={card.id} />{card.kind === 'hero' && card.deckId && !(journeyReference && journeyChildren.length > 0) && <Button type="button" variant="outline" size="sm" className="card-preview-journey-action" disabled={journeyDisabled || propertiesActive} onClick={openJourney} title={t.applyJourney}><Route size={15} />{t.journeyAction}</Button>}</>}
-        titleActions={supportsChildren && onShowFamily ? undefined : <div className="card-preview-subcards-actions">{focusAction}{moreAction}</div>}
+        titleActions={supportsChildren && onShowFamily ? undefined : <div className="card-preview-subcards-actions">{heroMarkActions}{focusAction}{moreAction}</div>}
         bodyAfter={boundTags.length > 0 && <div className="card-tag-links">
         {boundTags.map(tag => <button key={tag.name} type="button" className="card-tag-link" disabled={!onShowTagCards || navigationLocked}
           title={t.tagCardsLabel(tag.name)} aria-label={t.tagCardsLabel(tag.name)}

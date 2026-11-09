@@ -26,6 +26,7 @@ import { milestonesPath, planningHistoryPath, runsPath } from '../src/planning-f
 import { canonicalDataPath } from '../src/brand-compat.ts';
 import { resolveDataPath } from './data-paths.ts';
 import { validateCardFamily } from './card-family.ts';
+import { heroCountedTasks } from '../src/hero-done.ts';
 import { deckTypeChangeIssue } from '../src/deck-type-policy.ts';
 import { catalogFileChanged, currentCatalogSnapshot, readCatalogSnapshot } from './catalog-snapshot.ts';
 import { defineText, serverText, serverLang } from './i18n.ts';
@@ -103,7 +104,10 @@ const catalogText = defineText({
   effort: "Card Effort must be a finite nonnegative number or null.",
   priority: "Card Priority must be high, medium, low or null.",
   cardSourceHash: "The edit needs the card's current version. Refresh the catalog and try again.",
-  stateTaskOnly: "Only Task cards can change state.",
+  stateTaskOnly: "Only Task cards can change state; a Hero can only be marked done.",
+  heroMarkStates: "A Hero can only be marked done or have that mark removed.",
+  heroLegacyMark: "Only a Hero with its own card file can be marked done; a Hero from a mechanics document cannot.",
+  heroHasTasks: (accepted: number, total: number) => `A Hero with Task Sub Cards is done when all of them are accepted: ${accepted} of ${total} so far.`,
   invalidState: `Invalid Task state. Use one of: ${cardStates.flatMap(cardStateWords).join(', ')}.`,
   returnReason: "The return reason must be one line of up to 500 characters.",
   returnFromReview: "A reason can only be recorded when returning a card from review.",
@@ -251,7 +255,10 @@ const catalogText = defineText({
   effort: "Цена карточки — конечное число не меньше нуля или null.",
   priority: "Приоритет карточки — high, medium, low или null.",
   cardSourceHash: "Нужна актуальная версия карточки. Обновите каталог и повторите действие.",
-  stateTaskOnly: "Состояние можно менять только у Task.",
+  stateTaskOnly: "Состояние можно менять только у Task; Hero можно только отметить выполненной.",
+  heroMarkStates: "Hero можно только отметить выполненной или снять эту отметку.",
+  heroLegacyMark: "Отметить выполненной можно только Hero с собственным файлом карточки, но не Hero из документа механики.",
+  heroHasTasks: (accepted: number, total: number) => `Hero с Task Sub Cards становится выполненной, когда приняты все они: пока принято ${accepted} из ${total}.`,
   invalidState: `Недопустимое состояние Task. Допустимо: ${cardStates.flatMap(cardStateWords).join(', ')}.`,
   returnReason: "Причина возврата — одна строка до 500 символов.",
   returnFromReview: "Причина пишется только при возврате карточки с приёмки.",
@@ -825,7 +832,8 @@ function assembleCatalog(inputs: CatalogInputs): CatalogView {
   for (const card of cards) {
     Object.assign(card, options.options[card.id] ?? {});
     if (!card.id.startsWith('card:') && card.kindOverride) card.kind = card.kindOverride;
-    if (card.kind !== 'task') card.state = null;
+    // 2026-11-09: a native Hero keeps its manual done mark; Docs and legacy Heroes have no state.
+    if (card.kind !== 'task' && !(card.kind === 'hero' && card.id.startsWith('card:') && card.state === 'done')) card.state = null;
     // 2026-11-03: a promoted legacy H3 retains its ID/body, but no longer inherits its structural Hero.
     if (card.kind === 'hero') { card.parentId = null; card.range = null; }
   }
@@ -860,6 +868,10 @@ function assembleCatalog(inputs: CatalogInputs): CatalogView {
     if (card.parentId && !['hero', 'doc'].includes(byId.get(card.parentId)?.kind ?? '')) warnings.push(serverText(catalogText).missingParent(card));
     for (const dependency of card.dependsOn ?? []) if (!byId.has(dependency)) warnings.push(serverText(catalogText).missingDependency(dependency, card));
   }
+  // 2026-11-09: a Hero's manual done mark counts only while it has no counted Task Sub Cards; once it has them, they decide,
+  // so the Hand pile, dependencies and the agent queue never see a mark the tile does not show.
+  const heroesWithTasks = new Set(heroCountedTasks(cards.filter(card => !card.archived && !card.deleted)).map(card => card.parentId));
+  for (const card of cards) if (card.kind === 'hero' && heroesWithTasks.has(card.id)) card.state = null;
   // 2026-11-04: the Doc's open-question entry is authoritative; question counts and warnings are derived.
   for (const card of cards) {
     if (card.kind !== 'doc') continue;
@@ -2005,9 +2017,21 @@ function requiredCardState(value: string): CardState {
   return state;
 }
 
+// 2026-11-09: a native Hero without counted Task Sub Cards takes a manual done mark; with them, its children decide.
+function validateHeroMark(catalog: CatalogView, hero: CatalogCard, state: CardState) {
+  if (!hero.id.startsWith('card:')) throw new Error(serverText(catalogText).heroLegacyMark);
+  if (state !== 'done' && state !== 'not-started') throw new Error(serverText(catalogText).heroMarkStates);
+  if (state !== 'done') return;
+  const tasks = heroCountedTasks(catalog.cards.filter(card => card.parentId === hero.id && !card.archived && !card.deleted));
+  if (tasks.length) throw new Error(serverText(catalogText).heroHasTasks(tasks.filter(task => task.state === 'done').length, tasks.length));
+}
+
 function validateCardState(catalog: CatalogView, card: CatalogCard, edit: CardStateEdit, actorMemberId: string | null): boolean {
-  if (card.kind !== 'task') throw new Error(serverText(catalogText).stateTaskOnly);
-  if (edit.state === 'done' && card.state !== 'done') {
+  if (card.kind === 'hero') validateHeroMark(catalog, card, edit.state);
+  else if (card.kind !== 'task') throw new Error(serverText(catalogText).stateTaskOnly);
+  // A Hero without its done mark stores null; for the request it reads as not started.
+  const current = card.state ?? 'not-started';
+  if (edit.state === 'done' && current !== 'done') {
     const refusal = guardianAcceptanceRefusal(catalog, card, actorMemberId, edit.acceptedBy);
     if (refusal) throw new Error(refusal);
   }
@@ -2015,8 +2039,8 @@ function validateCardState(catalog: CatalogView, card: CatalogCard, edit: CardSt
   if (returnReason !== null && (typeof returnReason !== 'string' || returnReason.length > 500 || /[\r\n]/u.test(returnReason))) {
     throw new Error(serverText(catalogText).returnReason);
   }
-  if (card.state === edit.state) return card.id.startsWith('task:') && edit.state === 'not-started';
-  if (returnReason?.trim() && (card.state !== 'review' || edit.state === 'done')) throw new Error(serverText(catalogText).returnFromReview);
+  if (current === edit.state) return card.id.startsWith('task:') && edit.state === 'not-started';
+  if (returnReason?.trim() && (current !== 'review' || edit.state === 'done')) throw new Error(serverText(catalogText).returnFromReview);
   return true;
 }
 
@@ -2064,7 +2088,7 @@ async function setCardAttributes(root: string, source: ManifestSource, edit: Ext
         title: serverText(catalogText).stateStage,
         run: async () => {
           const changed = card.id.startsWith('card:')
-            ? await editNativeCardProperties(root, card.id, edit.sourceHash, { state }, verify, formatLanguage)
+            ? await editNativeCardProperties(root, card.id, edit.sourceHash, { state: card.kind === 'hero' && state !== 'done' ? null : state }, verify, formatLanguage)
             : await updateLegacyCardState(root, card, state, verify, formatLanguage);
           return changed ? [card.path] : [];
         },

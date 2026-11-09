@@ -4,6 +4,16 @@ Notable changes are grouped by version using [Keep a Changelog](https://keepacha
 
 ## [Unreleased]
 
+### Changed
+
+- **Decks.** Hero Cards come first when a deck is grouped by priority or state.
+- **Accepted Hero.** The band keeps the working Hero's gold metal and ribbon; the holographic finish stays on the face and rim.
+
+### Fixed
+
+- The Hero strip on Sub Card tiles starts level with the card title.
+- Browser tests wait up to 45 s for headless Chrome on CI instead of about 10 s.
+
 ## [0.4.0] - 2026-11-09
 
 ### Added

@@ -279,8 +279,9 @@ async function main(): Promise<number> {
     if (origin !== boardOrigin) {
       throw new SmokeFailure(`location.href to example.com left the server origin (now ${origin})`);
     }
-    const external = existsSync(externalLog) ? readFileSync(externalLog, 'utf8') : '';
-    if (!external.includes('https://example.com/')) {
+    // One URL per line; an exact line match, not a substring, so another host cannot pass the check.
+    const external = existsSync(externalLog) ? readFileSync(externalLog, 'utf8').split(/\r?\n/u) : [];
+    if (!external.some(line => line.trim() === 'https://example.com/')) {
       throw new SmokeFailure('the blocked link was not handed to the system browser (no entry in the external-links log)');
     }
     pass('d', `location.href to https://example.com/ stayed on ${origin}; the link went to the external handler, not the user's browser`);

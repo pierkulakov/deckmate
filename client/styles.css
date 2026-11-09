@@ -259,7 +259,9 @@ kbd { display: inline-flex; align-items: center; justify-content: center; min-wi
 .deck-card-open:focus-visible { outline: none; }
 .deck-card > .card-family-trigger { --material-position: absolute; position: absolute; z-index: 5; top: 0; inset-inline: 0; width: 100%; max-width: none; height: 18px; min-height: 18px; padding: 2px 2px 2px 7px; border: 0; border-radius: 4px 4px 0 0; color: var(--hero-ink); font-size: 9.5px; font-weight: 600; line-height: 14px; letter-spacing: 0; }
 /* 2026-11-08: reserve the checkbox's 10px intrusion plus 4px in every state, so affiliation never jumps on hover. */
-.deck-card:has(> .catalog-card-checkbox) > .card-family-trigger { padding-left: 14px; }
+/* 2026-11-09: 14px pushed the Hero name 7px right of the card title (author). 9px ends the hover checkbox
+   (16px at -6px) right before the first glyph and keeps the name within 2px of the title below. */
+.deck-card:has(> .catalog-card-checkbox) > .card-family-trigger { padding-left: 9px; }
 .deck-card > .card-family-trigger:focus-visible { outline: 2px solid var(--hero-ink); outline-offset: -2px; }
 .deck-card:has(> .card-family-trigger) .deck-card-open { padding-top: 24px; }
 @media (max-width: 760px) { .deck-view { padding: 27px 20px 40px; } .deck-heading { align-items: start; flex-direction: column; gap: 18px; } }

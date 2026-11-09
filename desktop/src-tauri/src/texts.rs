@@ -4,18 +4,23 @@ pub fn text(language: &str, key: &str) -> &'static str {
         "openFolder" => ("Open folder…", "Открыть папку…"),
         "recentProjects" => ("Recent projects", "Недавние проекты"),
         "workspace" => ("Workspace", "Рабочее пространство"),
-        "noWorkspace" => ("No workspace projects", "В рабочем пространстве нет проектов"),
+        "noWorkspace" => ("No projects", "Нет проектов"),
         "addCurrentToWorkspace" => (
             "Add current project to workspace",
-            "Добавить текущий проект в рабочее пространство",
+            "Добавить текущий проект в пространство",
         ),
         "noRecent" => ("No recent projects", "Нет недавних проектов"),
-        "clearRecent" => ("Clear recent", "Очистить список"),
+        "clearRecent" => ("Clear list", "Очистить список"),
         "revealProject" => ("Reveal project folder", "Показать папку проекта"),
-        "switchProject" => ("Switch project", "Сменить проект"),
+        "switchProject" => ("Switch project…", "Сменить проект…"),
         "closeProject" => ("Close project", "Закрыть проект"),
         "reload" => ("Reload", "Перезагрузить"),
         "wait" => ("Wait", "Подождать"),
+        "startScreen" => ("Start screen", "Стартовый экран"),
+        "rendererCrashedRepeatedly" => (
+            "The Deckmate page crashed again. Reload it or return to the start screen?",
+            "Страница Deckmate снова закрылась с ошибкой. Перезагрузить её или вернуться на стартовый экран?",
+        ),
         "rendererUnresponsive" => (
             "The page is not responding. Reload it?",
             "Страница не отвечает. Перезагрузить её?",
@@ -24,15 +29,22 @@ pub fn text(language: &str, key: &str) -> &'static str {
             "You have unsaved changes. Leave anyway?",
             "Есть несохранённые изменения. Всё равно уйти?",
         ),
+        "shutdownUnsaved" => (
+            "You have unsaved changes. Cancel shutdown to save your work.",
+            "У вас есть несохранённые изменения. Отмените завершение работы, чтобы сохранить их.",
+        ),
         "leave" => ("Leave", "Уйти"),
         "stay" => ("Stay", "Остаться"),
-        "leaveCancelled" => ("Stayed to keep unsaved changes.", "Переход отменён: несохранённые изменения сохранены в редакторе."),
+        "leaveCancelled" => (
+            "Action cancelled to keep unsaved changes.",
+            "Действие отменено, чтобы не потерять несохранённые изменения.",
+        ),
         "saveFailedTitle" => ("Could not save settings", "Не удалось сохранить настройки"),
         "saveFailed" => ("Could not save settings: {error}", "Не удалось сохранить настройки: {error}"),
         "fatalTitle" => ("Deckmate could not continue", "Deckmate не может продолжить работу"),
         "fatalError" => (
             "Deckmate encountered an error and must close. Details were written to server.log.\n\n{error}",
-            "В Deckmate произошла ошибка, приложение будет закрыто. Подробности записаны в server.log.\n\n{error}",
+            "Deckmate закроется из-за ошибки. Подробности записаны в server.log.\n\n{error}",
         ),
         "webviewMissing" => (
             "Microsoft Edge WebView2 Runtime is missing. Install it, then open Deckmate again:\nhttps://developer.microsoft.com/microsoft-edge/webview2/",
@@ -61,14 +73,14 @@ pub fn text(language: &str, key: &str) -> &'static str {
         ),
         "updateReady" => (
             "Deckmate {version} is ready to install",
-            "Deckmate {version} готов к установке",
+            "Обновление Deckmate {version} можно установить",
         ),
         "installAndRestart" => ("Restart and update", "Перезапустить и обновить"),
         "later" => ("Later", "Позже"),
         "skipVersion" => ("Skip this version", "Пропустить эту версию"),
         "installPending" => (
-            "Restart and install {version}",
-            "Перезапустить и установить {version}",
+            "Restart and install {version}…",
+            "Перезапустить и установить {version}…",
         ),
         "upToDate" => ("You're up to date", "Установлена последняя версия"),
         "updateCheckFailed" => (
@@ -77,8 +89,8 @@ pub fn text(language: &str, key: &str) -> &'static str {
         ),
         "updateFailed" => ("Could not install the update", "Не удалось установить обновление"),
         "installUnavailable" => (
-            "Automatic installation is unavailable in this build. Download the installed version from the release page.",
-            "Автоматическая установка недоступна в этой сборке. Скачайте установочную версию со страницы выпусков.",
+            "Automatic installation is unavailable in this build. Download the installer from the release page.",
+            "Автоматическая установка недоступна в этой сборке. Скачайте установщик со страницы выпусков.",
         ),
         "updateNotApplied" => (
             "The update to {version} was not installed",
@@ -88,6 +100,10 @@ pub fn text(language: &str, key: &str) -> &'static str {
         "portableUpdates" => (
             "Deckmate {version} is available",
             "Вышла версия Deckmate {version}",
+        ),
+        "portableUpdatePending" => (
+            "Deckmate {version} is available…",
+            "Вышла версия Deckmate {version}…",
         ),
         "updateFixes" => ("Fixed: {count}", "Исправлено: {count}"),
         "updateMore" => ("More changes: {count}", "Другие изменения: {count}"),
@@ -99,7 +115,7 @@ pub fn text(language: &str, key: &str) -> &'static str {
         ),
         "whatsNewFailed" => (
             "Could not read the changelog: {error}",
-            "Не удалось прочитать журнал изменений: {error}",
+            "Не удалось прочитать список изменений: {error}",
         ),
         "about" => ("About Deckmate", "О программе Deckmate"),
         "ok" => ("OK", "ОК"),
@@ -122,8 +138,8 @@ pub fn text(language: &str, key: &str) -> &'static str {
             "Не удалось прочитать папку: {path}",
         ),
         "superseded" => (
-            "Another action replaced this launch.",
-            "Запуск заменён другим действием.",
+            "Launch cancelled because another action started.",
+            "Запуск отменён: началось другое действие.",
         ),
         "closed" => ("The window was closed.", "Окно было закрыто."),
         "language" => (
@@ -152,8 +168,8 @@ pub fn text(language: &str, key: &str) -> &'static str {
         ),
         "cancelled" => ("Folder selection was cancelled.", "Выбор папки отменён."),
         "workspacePath" => (
-            "Choose a folder through the dialog, the current project or recent projects. The workspace holds up to 30 projects.",
-            "Выберите папку через диалог, текущий проект или недавние проекты. Рабочее пространство вмещает до 30 проектов.",
+            "Choose a folder in the dialog, or select the current project or a recent project. The workspace holds up to 30 projects.",
+            "Выберите папку в диалоге, текущий проект или проект из недавних. В рабочем пространстве может быть до 30 проектов.",
         ),
         "serverExit" => (
             "Server exited with code {code}.",
@@ -176,8 +192,8 @@ pub fn text(language: &str, key: &str) -> &'static str {
             "Не удалось загрузить доску (ошибка WebView2 {code}).",
         ),
         "guardsFailed" => (
-            "Could not install WebView2 security guards; the board will not open: {error}",
-            "Не удалось установить защиту WebView2; доска не будет открыта: {error}",
+            "Could not enable WebView2 security checks. The board will not open: {error}",
+            "Не удалось включить защиту WebView2. Доска не откроется: {error}",
         ),
         "launcherTimeout" => (
             "The start screen did not finish loading. Reload the window to try again.",

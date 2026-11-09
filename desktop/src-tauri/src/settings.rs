@@ -9,13 +9,11 @@ use std::{
     fs,
     io::{self, Read},
     path::Path,
-    sync::atomic::{AtomicU64, Ordering},
 };
 
 const MAX_RECENT: usize = 10;
 const MAX_WORKSPACE: usize = 30;
 const MAX_SETTINGS_BYTES: u64 = 1024 * 1024;
-static TEMP_COUNTER: AtomicU64 = AtomicU64::new(0);
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
@@ -262,15 +260,31 @@ impl Settings {
     }
 
     pub fn load(directory: &Path, locale: &str, log: &Log) -> Self {
-        let value = read_settings(&directory.join("desktop.json"))
-            .inspect_err(|error| {
-                if error.kind() == io::ErrorKind::FileTooLarge {
-                    log.write("desktop.json exceeds 1 MiB; keeping the file and using defaults");
-                }
-            })
-            .ok()
-            .and_then(|text| serde_json::from_str(text.trim_start_matches('\u{feff}')).ok())
-            .unwrap_or(Value::Null);
+        let path = directory.join("desktop.json");
+        let value = match read_settings(&path) {
+            Ok(text) if text.trim_start_matches('\u{feff}').trim().is_empty() => Value::Null,
+            Ok(text) => {
+                serde_json::from_str(text.trim_start_matches('\u{feff}')).unwrap_or_else(|error| {
+                    keep_damaged(&path, log, &error.to_string());
+                    Value::Null
+                })
+            }
+            Err(error) if error.kind() == io::ErrorKind::FileTooLarge => {
+                log.write("desktop.json exceeds 1 MiB; keeping the file and using defaults");
+                Value::Null
+            }
+            Err(error) if error.kind() == io::ErrorKind::InvalidData => {
+                keep_damaged(&path, log, &error.to_string());
+                Value::Null
+            }
+            Err(error) if error.kind() == io::ErrorKind::NotFound => Value::Null,
+            Err(error) => {
+                log.write(format!(
+                    "desktop.json could not be read ({error}); using defaults"
+                ));
+                Value::Null
+            }
+        };
         Self::normalize(value, locale)
     }
 
@@ -280,11 +294,7 @@ impl Settings {
             return Err(io::ErrorKind::FileTooLarge.into());
         }
         fs::create_dir_all(directory)?;
-        let temporary = directory.join(format!(
-            "desktop.json.tmp-{}-{}",
-            std::process::id(),
-            TEMP_COUNTER.fetch_add(1, Ordering::Relaxed)
-        ));
+        let temporary = directory.join("desktop.json.tmp");
         let result = (|| {
             let text = serde_json::to_string_pretty(self)? + "\n";
             fs::write(&temporary, text)?;
@@ -377,6 +387,25 @@ impl Settings {
 
 fn oversized_settings(directory: &Path) -> bool {
     fs::metadata(directory.join("desktop.json")).is_ok_and(|stat| stat.len() > MAX_SETTINGS_BYTES)
+}
+
+/// 2026-11-09: a damaged desktop.json used to be replaced by defaults on the next save, losing the recent list and
+/// the workspace for good (environment audit before 0.6.0). A dated copy beside it keeps them recoverable, and
+/// server.log names the copy.
+fn keep_damaged(path: &Path, log: &Log, reason: &str) {
+    let copy = path.with_file_name(format!(
+        "desktop.json.damaged-{}",
+        Utc::now().format("%Y%m%d-%H%M%S")
+    ));
+    match fs::copy(path, &copy) {
+        Ok(_) => log.write(format!(
+            "desktop.json is damaged ({reason}); kept a copy as {} and using defaults",
+            copy.display()
+        )),
+        Err(error) => log.write(format!(
+            "desktop.json is damaged ({reason}); copying it failed ({error}); using defaults"
+        )),
+    }
 }
 
 fn read_settings(path: &Path) -> io::Result<String> {
@@ -528,7 +557,8 @@ mod tests {
         let settings = Settings::normalize(json!({"workspace":entries,"future":42}), "en");
         assert_eq!(settings.workspace.len(), 30);
         assert_eq!(settings.workspace[0].name, "Demo");
-        assert_eq!(settings.workspace[1].name, "C:/");
+        // 2026-11-09: a drive root is named after the drive, like its recent entry and window title.
+        assert_eq!(settings.workspace[1].name, "C:");
         assert_eq!(settings.workspace[29].path, "C:/project-27");
         let value = serde_json::to_value(&settings).unwrap();
         assert_eq!(value["workspace"][0]["future"], json!({"keep":true}));
@@ -598,6 +628,62 @@ mod tests {
         assert_eq!(reloaded.language, "ru");
         assert_eq!(reloaded.workspace, settings.workspace);
         assert_eq!(fs::read_dir(&directory).unwrap().count(), 2);
+        drop(log);
+        fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn failed_temporary_write_preserves_existing_settings() {
+        let directory = std::env::temp_dir().join(format!(
+            "deckmate-settings-atomic-test-{}",
+            std::process::id()
+        ));
+        fs::create_dir_all(&directory).unwrap();
+        let path = directory.join("desktop.json");
+        let original = "{\"language\":\"en\",\"future\":{\"keep\":true}}\n";
+        fs::write(&path, original).unwrap();
+        fs::create_dir(directory.join("desktop.json.tmp")).unwrap();
+        let mut settings = Settings::normalize(json!({"future":{"keep":true}}), "en");
+        settings.language = "ru".into();
+        assert!(settings.save(&directory).is_err());
+        assert_eq!(fs::read_to_string(&path).unwrap(), original);
+        fs::remove_dir(directory.join("desktop.json.tmp")).unwrap();
+        settings.save(&directory).unwrap();
+        let saved = Settings::load(&directory, "en", &Log::open(&directory));
+        assert_eq!(saved.language, "ru");
+        assert_eq!(saved.extra["future"], json!({"keep":true}));
+        fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn malformed_settings_use_defaults_and_keep_the_original() {
+        let directory = std::env::temp_dir().join(format!(
+            "deckmate-settings-malformed-test-{}",
+            std::process::id()
+        ));
+        fs::create_dir_all(&directory).unwrap();
+        let path = directory.join("desktop.json");
+        fs::write(&path, "{broken").unwrap();
+        let log = Log::open(&directory);
+        let settings = Settings::load(&directory, "ru-RU", &log);
+        assert_eq!(settings.language, "ru");
+        assert_eq!(settings.zoom_factor, 1.0);
+        assert!(settings.recent.is_empty());
+        assert!(settings.workspace.is_empty());
+        assert!(settings.extra.is_empty());
+        assert_eq!(fs::read_to_string(&path).unwrap(), "{broken");
+        let copies: Vec<_> = fs::read_dir(&directory)
+            .unwrap()
+            .filter_map(Result::ok)
+            .filter(|entry| {
+                entry
+                    .file_name()
+                    .to_string_lossy()
+                    .starts_with("desktop.json.damaged-")
+            })
+            .collect();
+        assert_eq!(copies.len(), 1);
+        assert_eq!(fs::read_to_string(copies[0].path()).unwrap(), "{broken");
         drop(log);
         fs::remove_dir_all(directory).unwrap();
     }

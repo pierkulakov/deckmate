@@ -153,9 +153,12 @@ pub fn start_on_port(
     language: String,
     port: u16,
 ) -> io::Result<(Server, oneshot::Receiver<Result<String, Failure>>)> {
+    // 2026-11-09: CreateProcessW rejects a working directory longer than MAX_PATH (os error 267) even with
+    // LongPathsEnabled, so a project at a deep path never started. The server reads its folder from
+    // DECKMATE_DATA, not the working directory; the short settings directory is the working directory instead.
     let mut child = command(programs)
         .arg(&programs.server)
-        .current_dir(folder)
+        .current_dir(directory)
         .env("DECKMATE_DATA", folder)
         .env("DECKMATE_PORT", port.to_string())
         .env("DECKMATE_HOST", "127.0.0.1")
@@ -393,8 +396,11 @@ pub async fn initialize(
         .arg("init")
         .arg(folder)
         .stdin(Stdio::null());
-    if let Some(parent) = Path::new(folder).ancestors().find(|path| path.is_dir()) {
-        command.current_dir(parent);
+    // 2026-11-09: CreateProcessW rejects a working directory longer than MAX_PATH (os error 267), so a project
+    // created under a deep parent folder failed. The folder is an absolute argument; the CLI's own short
+    // directory is the working directory, which also keeps any .env.local around the folder out of the CLI.
+    if let Some(bin) = programs.cli.parent() {
+        command.current_dir(bin);
     }
     let child = command
         .spawn()

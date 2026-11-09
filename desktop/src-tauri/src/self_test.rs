@@ -37,6 +37,18 @@ async fn get(url: &str) -> Result<(), String> {
     }
 }
 
+fn record_server_exit(ok: &mut bool, error: &mut Option<String>, exit: &server::Exit) {
+    if exit.forced {
+        *ok = false;
+        error.get_or_insert_with(|| "Server required kill fallback after stdin shutdown".into());
+    } else if exit.code != Some(0) {
+        *ok = false;
+        error.get_or_insert_with(|| {
+            format!("Server exited with code {}", server::exit_code(exit.code))
+        });
+    }
+}
+
 pub async fn run(folder: &str) -> i32 {
     let started = Instant::now();
     let mut url = None;
@@ -77,16 +89,7 @@ pub async fn run(folder: &str) -> i32 {
             let stopping = Instant::now();
             let exit = server.stop().await;
             stop_ms = stopping.elapsed().as_millis();
-            if exit.forced {
-                error.get_or_insert_with(|| {
-                    "Server required kill fallback after stdin shutdown".into()
-                });
-            } else if exit.code != Some(0) {
-                ok = false;
-                error.get_or_insert_with(|| {
-                    format!("Server exited with code {}", server::exit_code(exit.code))
-                });
-            }
+            record_server_exit(&mut ok, &mut error, &exit);
         }
         Err(failure) => error = Some(failure.to_string()),
     }
@@ -98,5 +101,48 @@ pub async fn run(folder: &str) -> i32 {
         0
     } else {
         1
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::record_server_exit;
+    use crate::server::Exit;
+
+    #[test]
+    fn forced_shutdown_marks_the_self_test_failed() {
+        let mut ok = true;
+        let mut error = None;
+        record_server_exit(
+            &mut ok,
+            &mut error,
+            &Exit {
+                code: None,
+                expected: true,
+                forced: true,
+            },
+        );
+        assert!(!ok);
+        assert_eq!(
+            error.as_deref(),
+            Some("Server required kill fallback after stdin shutdown")
+        );
+    }
+
+    #[test]
+    fn clean_shutdown_keeps_a_successful_self_test_successful() {
+        let mut ok = true;
+        let mut error = None;
+        record_server_exit(
+            &mut ok,
+            &mut error,
+            &Exit {
+                code: Some(0),
+                expected: true,
+                forced: false,
+            },
+        );
+        assert!(ok);
+        assert!(error.is_none());
     }
 }

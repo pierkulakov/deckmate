@@ -82,7 +82,7 @@ pub async fn open(app: &AppHandle, from: Option<String>) {
     }
     let navigation_app = app.clone();
     let popup_app = app.clone();
-    let result = WebviewWindowBuilder::new(app, LABEL, WebviewUrl::App(PAGE.into()))
+    let builder = WebviewWindowBuilder::new(app, LABEL, WebviewUrl::App(PAGE.into()))
         .title(title)
         .inner_size(760.0, 680.0)
         .resizable(true)
@@ -106,10 +106,29 @@ pub async fn open(app: &AppHandle, from: Option<String>) {
             if payload.event() == PageLoadEvent::Finished {
                 let _ = window.show();
             }
-        })
-        .build();
+        });
+    // 2026-11-09: WebView2 windows sharing a profile require identical browser arguments, including CDP.
+    let result = match window::debug_browser_args() {
+        Some(args) => builder.additional_browser_args(&args),
+        None => builder,
+    }
+    .build();
     match result {
-        Ok(_) => shell.log.write("what's new window opened"),
+        Ok(window) => {
+            // 2026-11-09: Restart Manager can target this HWND without notifying the main window.
+            let guarded = window.clone();
+            let log = shell.log.clone();
+            if let Err(error) = window.run_on_main_thread(move || {
+                if let Err(error) = crate::session_end::install(&guarded) {
+                    log.write(format!("what's new session guard failed: {error}"));
+                }
+            }) {
+                shell
+                    .log
+                    .write(format!("what's new session guard failed: {error}"));
+            }
+            shell.log.write("what's new window opened");
+        }
         Err(error) => shell
             .log
             .write(format!("what's new window failed: {error}")),

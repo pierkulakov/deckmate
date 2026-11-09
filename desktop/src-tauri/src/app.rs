@@ -108,16 +108,27 @@ impl Shell {
         Failure::new(code, texts::text(&self.language(), key))
     }
 
-    pub fn save(&self) -> Result<(), Failure> {
-        // 2026-11-09: the settings lock serializes snapshots and atomic renames, including the final close save.
-        let result = self.settings.lock().unwrap().save(&self.directory);
-        result.map_err(|error| {
+    pub fn update_settings<T>(
+        &self,
+        update: impl FnOnce(&mut Settings) -> Result<T, Failure>,
+    ) -> Result<T, Failure> {
+        // 2026-11-09: hold the lock across clone, validation and rename so writers cannot persist stale snapshots.
+        let mut settings = self.settings.lock().unwrap();
+        let mut next = settings.clone();
+        let output = update(&mut next)?;
+        next.save(&self.directory).map_err(|error| {
             self.log.write(format!("settings save failed: {error}"));
             Failure::new(
                 "save-failed",
-                texts::format(&self.language(), "saveFailed", "error", error),
+                texts::format(&next.language, "saveFailed", "error", error),
             )
-        })
+        })?;
+        *settings = next;
+        Ok(output)
+    }
+
+    pub fn save(&self) -> Result<(), Failure> {
+        self.update_settings(|_| Ok(()))
     }
 
     fn begin_quit(&self) -> bool {
@@ -203,6 +214,12 @@ pub fn result(result: Result<(), Failure>) -> Value {
 }
 
 async fn launcher_locked(app: &AppHandle, shell: &Shell, status: Option<Value>) {
+    if let Some(status) = status.as_ref().filter(|status| status["phase"] == "error") {
+        shell.log.write(format!(
+            "project launch failed: {}: {}",
+            status["code"], status["message"]
+        ));
+    }
     unsaved::leave(app);
     shell.stop().await;
     *shell.pending_status.lock().unwrap() = status;
@@ -282,8 +299,10 @@ async fn start_project(
     let port = server::choose_port(saved_port)
         .map_err(|error| Failure::new("start-failed", error.to_string()))?;
     if saved_port != Some(port) {
-        shell.settings.lock().unwrap().server_port = Some(port);
-        shell.save()?;
+        shell.update_settings(|settings| {
+            settings.server_port = Some(port);
+            Ok(())
+        })?;
     }
     let (process, ready) = server::start_on_port(
         &shell.programs,
@@ -317,9 +336,11 @@ async fn start_project(
     if let Some(current) = shell.current.lock().unwrap().as_mut() {
         current.url = Some(url.clone());
     }
-    shell.settings.lock().unwrap().remember(folder);
+    shell.update_settings(|settings| {
+        settings.remember(folder);
+        Ok(())
+    })?;
     menu::rebuild(app);
-    shell.save()?;
     let _ = window.set_title(&format!("Deckmate — {}", paths::project_name(folder)));
     // 2026-11-09: finish registering the script before cancellation can hand this webview to another launch.
     crate::webview::board_script(&window, Some(url.clone()))
@@ -421,8 +442,10 @@ pub async fn startup(app: AppHandle) {
             return;
         }
         if !Path::new(&last).is_dir() {
-            shell.settings.lock().unwrap().last_project = None;
-            let _ = shell.save();
+            let _ = shell.update_settings(|settings| {
+                settings.last_project = None;
+                Ok(())
+            });
             let failure = Failure::new(
                 "missing",
                 texts::format(&shell.language(), "missing", "path", &last),
@@ -447,11 +470,7 @@ pub fn request_quit(app: &AppHandle) {
         if unsaved::confirm(&app).await.is_err() || !shell.begin_quit() {
             return;
         }
-        if let Some(window) = app.get_webview_window("main") {
-            window::capture_bounds(&window);
-        }
-        shell.bounds_generation.fetch_add(1, Ordering::SeqCst);
-        let _ = shell.save();
+        window::save_on_exit(&app);
         shell.next_launch();
         let _guard = shell.lifecycle.lock().await;
         shell.stop().await;
@@ -508,17 +527,17 @@ pub async fn install_update(
     ));
     shell.stop().await;
     shell.log.write("updater project stopped");
-    let saved = {
-        let mut settings = shell.settings.lock().unwrap();
-        settings.updates.pending = Some(PendingUpdate {
-            version: ready.update.version.clone(),
-            from: app.package_info().version.to_string(),
-            extra: Default::default(),
-        });
-        settings
-            .save(&shell.directory)
-            .map_err(|error| error.to_string())
-    };
+    let dry_run = updater::dry_run();
+    let saved = shell
+        .update_settings(|settings| {
+            settings.updates.pending = Some(PendingUpdate {
+                version: ready.update.version.clone(),
+                from: app.package_info().version.to_string(),
+                extra: Default::default(),
+            });
+            Ok(())
+        })
+        .map_err(|error| error.message);
     let result = match saved {
         Ok(()) => {
             shell.log.write(format!(
@@ -526,23 +545,40 @@ pub async fn install_update(
                 ready.update.version
             ));
             // 2026-11-09: Windows exits inside install, bypassing request_quit and Rust destructors.
-            tauri::async_runtime::spawn_blocking(move || ready.update.install(&ready.bytes))
-                .await
-                .map_err(|error| error.to_string())
-                .and_then(|result| result.map_err(|error| error.to_string()))
+            let log = shell.log.clone();
+            tauri::async_runtime::spawn_blocking(move || {
+                if dry_run {
+                    ready.update.verify(&ready.bytes)?;
+                    log.write(format!(
+                        "updater dry run verified {} {}",
+                        ready.update.version,
+                        ready.bytes.len()
+                    ));
+                    Ok(())
+                } else {
+                    ready.update.install(&ready.bytes)
+                }
+            })
+            .await
+            .map_err(|error| error.to_string())
+            .and_then(|result| result.map_err(|error| error.to_string()))
         }
         Err(error) => Err(error),
     };
-    if result.is_ok() {
+    if result.is_ok() && !dry_run {
         shell.quit_ready.store(true, Ordering::SeqCst);
         app.exit(0);
         return result;
     }
-    shell.settings.lock().unwrap().updates.pending = None;
-    let _ = shell.save();
-    shell
-        .log
-        .write("updater install returned an error; pending cleared, restoring project");
+    let _ = shell.update_settings(|settings| {
+        settings.updates.pending = None;
+        Ok(())
+    });
+    shell.log.write(if dry_run && result.is_ok() {
+        "updater dry run finished; pending cleared, restoring project"
+    } else {
+        "updater install returned an error; pending cleared, restoring project"
+    });
     if let Some(last) = restore.filter(|_| !shell.quit_requested.load(Ordering::SeqCst)) {
         if let Err(error) = start_project(app, &shell, &last, launch).await {
             shell.log.write(format!(
@@ -570,10 +606,10 @@ pub(crate) mod tests {
     use super::*;
     use tauri::Url;
 
-    struct Sandbox(std::path::PathBuf);
+    pub(crate) struct Sandbox(pub(crate) std::path::PathBuf);
 
     impl Sandbox {
-        fn new() -> Self {
+        pub(crate) fn new() -> Self {
             static NEXT: AtomicU64 = AtomicU64::new(0);
             let path = std::env::temp_dir().join(format!(
                 "deckmate-app-test-{}-{}",
@@ -634,21 +670,40 @@ pub(crate) mod tests {
     }
 
     #[test]
-    fn settings_save_failures_are_negative_command_results_and_can_be_retried() {
+    fn failed_settings_update_keeps_memory_and_can_be_retried() {
         let sandbox = Sandbox::new();
         let shell = shell(&sandbox.0, None);
+        shell
+            .settings
+            .lock()
+            .unwrap()
+            .extra
+            .insert("future".into(), json!({"electron":{"preserve":true}}));
         let path = sandbox.0.join("desktop.json");
         std::fs::create_dir(&path).unwrap();
-        let response = result(shell.save());
+        let response = result(shell.update_settings(|settings| {
+            settings.language = "ru".into();
+            Ok(())
+        }));
         assert_eq!(response["ok"], false);
         assert_eq!(response["code"], "save-failed");
         assert!(response["message"]
             .as_str()
             .unwrap()
-            .contains("Could not save settings"));
+            .contains("Не удалось сохранить настройки"));
+        assert_eq!(shell.language(), "en");
         std::fs::remove_dir(&path).unwrap();
-        assert_eq!(result(shell.save()), ok());
-        assert!(path.is_file());
+        assert_eq!(
+            result(shell.update_settings(|settings| {
+                settings.language = "ru".into();
+                Ok(())
+            })),
+            ok()
+        );
+        assert_eq!(shell.language(), "ru");
+        let saved = Settings::load(&sandbox.0, "en", &shell.log);
+        assert_eq!(saved.language, "ru");
+        assert_eq!(saved.extra["future"], json!({"electron":{"preserve":true}}));
     }
 
     #[test]

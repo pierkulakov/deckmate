@@ -7,6 +7,7 @@ mod menu;
 mod paths;
 mod self_test;
 mod server;
+mod session_end;
 mod settings;
 mod texts;
 mod unsaved;

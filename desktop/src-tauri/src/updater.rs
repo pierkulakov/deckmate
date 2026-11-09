@@ -55,7 +55,24 @@ impl State {
 }
 
 pub fn enabled() -> bool {
-    !cfg!(debug_assertions) && !std::env::args_os().any(|arg| arg == "--self-test")
+    (!cfg!(debug_assertions) || debug_override("DECKMATE_DESKTOP_UPDATER_ENDPOINT").is_some())
+        && !std::env::args_os().any(|arg| arg == "--self-test")
+}
+
+// 2026-11-09: updater e2e opts into the real debug updater with isolated fixtures;
+// release builds never read any of these environment overrides.
+#[cfg(debug_assertions)]
+fn debug_override(name: &str) -> Option<String> {
+    std::env::var(name).ok().filter(|value| !value.is_empty())
+}
+
+#[cfg(not(debug_assertions))]
+fn debug_override(_: &str) -> Option<String> {
+    None
+}
+
+pub fn dry_run() -> bool {
+    debug_override("DECKMATE_DESKTOP_UPDATER_DRY_RUN").as_deref() == Some("1")
 }
 
 fn should_offer(newer: bool, release: &RemoteRelease, skipped: Option<&str>) -> bool {
@@ -81,7 +98,15 @@ fn builder(app: &AppHandle) -> tauri_plugin_updater::Result<Updater> {
         .skipped_version
         .clone();
     let log = shell.log.clone();
-    app.updater_builder()
+    let mut builder = app.updater_builder();
+    if let Some(endpoint) = debug_override("DECKMATE_DESKTOP_UPDATER_ENDPOINT") {
+        // 2026-11-09: the plugin allows HTTP in debug; local fixtures must bypass system proxies.
+        builder = builder.endpoints(vec![endpoint.parse()?])?.no_proxy();
+    }
+    if let Some(pubkey) = debug_override("DECKMATE_DESKTOP_UPDATER_PUBKEY") {
+        builder = builder.pubkey(pubkey);
+    }
+    builder
         .timeout(Duration::from_secs(30))
         .version_comparator(move |current, release| {
             should_offer(
@@ -119,15 +144,14 @@ fn scheduled_delay(
 
 pub fn toggle_auto_check(app: &AppHandle) {
     let shell = app::state(app);
-    let enabled = {
-        let mut settings = shell.settings.lock().unwrap();
+    let saved = shell.update_settings(|settings| {
         settings.updates.auto_check = !settings.updates.auto_check;
-        settings.updates.auto_check
-    };
+        Ok(settings.updates.auto_check)
+    });
+    let enabled = saved.unwrap_or_else(|_| shell.settings.lock().unwrap().updates.auto_check);
     shell
         .log
         .write(format!("updater automatic checks: {enabled}"));
-    let _ = shell.save();
     shell.updates.wake.notify_one();
     menu::rebuild(app);
 }
@@ -235,9 +259,11 @@ pub async fn check(app: &AppHandle, manual: bool) {
     }
     let result = check_inner(app, manual).await;
     if result.is_ok() {
-        shell.settings.lock().unwrap().updates.last_check = Some(Utc::now().to_rfc3339());
+        let _ = shell.update_settings(|settings| {
+            settings.updates.last_check = Some(Utc::now().to_rfc3339());
+            Ok(())
+        });
         *shell.updates.retry_after.lock().unwrap() = None;
-        let _ = shell.save();
     } else {
         *shell.updates.retry_after.lock().unwrap() = Some(Utc::now() + RETRY_INTERVAL);
     }
@@ -515,12 +541,16 @@ async fn offer(app: &AppHandle, update: &Update, portable: bool) {
     ));
     let result = menu::dialog(app, &title, &summary, buttons, MessageDialogKind::Info).await;
     if chosen(&result, &language, "skipVersion") {
-        shell.settings.lock().unwrap().updates.skipped_version = Some(update.version.clone());
-        clear_ready(&shell);
-        let _ = shell.save();
-        shell
-            .log
-            .write(format!("updater skipped {}", update.version));
+        let saved = shell.update_settings(|settings| {
+            settings.updates.skipped_version = Some(update.version.clone());
+            Ok(())
+        });
+        if saved.is_ok() {
+            clear_ready(&shell);
+            shell
+                .log
+                .write(format!("updater skipped {}", update.version));
+        }
     } else if portable && chosen(&result, &language, "openDownloads") {
         open_downloads(app);
     } else if !portable && chosen(&result, &language, "installAndRestart") {
@@ -643,12 +673,15 @@ fn pending_after_start(
 async fn after_start(app: &AppHandle) {
     let shell = app::state(app);
     let running = app.package_info().version.to_string();
-    let pending = shell.settings.lock().unwrap().updates.pending.take();
+    let pending = shell.settings.lock().unwrap().updates.pending.clone();
     let decision = pending_after_start(pending.as_ref(), app.package_info());
     if decision == PendingAfterStart::None {
         return;
     }
-    let _ = shell.save();
+    let _ = shell.update_settings(|settings| {
+        settings.updates.pending = None;
+        Ok(())
+    });
     match decision {
         PendingAfterStart::Applied { from } => {
             shell.log.write(format!(

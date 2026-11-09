@@ -4,8 +4,32 @@ use tauri::{AppHandle, Manager};
 
 #[derive(Default)]
 pub struct State {
-    pub dirty: AtomicBool,
+    pub dirty: Dirty,
     confirmation: tokio::sync::Mutex<()>,
+}
+
+#[derive(Default)]
+pub struct Dirty {
+    value: AtomicBool,
+    cleaned: tokio::sync::Notify,
+}
+
+impl Dirty {
+    pub fn load(&self, ordering: Ordering) -> bool {
+        self.value.load(ordering)
+    }
+
+    pub fn store(&self, dirty: bool, ordering: Ordering) {
+        self.value.store(dirty, ordering);
+        // 2026-11-09: every existing dirty-state writer must also release Windows' shutdown reason.
+        if !dirty {
+            self.cleaned.notify_one();
+        }
+    }
+
+    pub async fn wait_until_cleaned(&self) {
+        self.cleaned.notified().await;
+    }
 }
 
 #[derive(Debug, PartialEq)]
@@ -66,6 +90,22 @@ pub fn leave(app: &AppHandle) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn clearing_dirty_notifies_the_shutdown_guard_even_before_it_waits() {
+        let dirty = Dirty::default();
+        dirty.store(true, Ordering::SeqCst);
+        assert!(dirty.load(Ordering::SeqCst));
+        assert!(tokio::time::timeout(
+            std::time::Duration::from_millis(10),
+            dirty.wait_until_cleaned()
+        )
+        .await
+        .is_err());
+        dirty.store(false, Ordering::SeqCst);
+        dirty.wait_until_cleaned().await;
+        assert!(!dirty.load(Ordering::SeqCst));
+    }
 
     #[test]
     fn clean_work_leaves_dirty_work_asks_and_smoke_refuses_only_dirty_work() {

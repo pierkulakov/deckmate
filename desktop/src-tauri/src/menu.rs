@@ -146,7 +146,7 @@ fn build(app: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
                 texts::format(
                     lang,
                     if updater::portable().unwrap_or(true) {
-                        "portableUpdates"
+                        "portableUpdatePending"
                     } else {
                         "installPending"
                     },
@@ -212,8 +212,38 @@ fn accepted(result: MessageDialogResult, label: &str) -> bool {
     matches!(result, MessageDialogResult::Custom(value) if value == label)
 }
 
+#[cfg(debug_assertions)]
+fn debug_answer(question: &str, yes: &str, no: &str) -> Option<bool> {
+    // 2026-11-09: smoke can answer one named question without enabling answers to unrelated dialogs.
+    let policy = std::env::var("DECKMATE_DESKTOP_ASK_POLICY").ok()?;
+    let (key, answer) = policy.split_once('=')?;
+    if key != question {
+        return None;
+    }
+    if answer == yes {
+        Some(true)
+    } else if answer == no {
+        Some(false)
+    } else {
+        None
+    }
+}
+
+#[cfg(not(debug_assertions))]
+fn debug_answer(_: &str, _: &str, _: &str) -> Option<bool> {
+    None
+}
+
 pub async fn ask(app: &AppHandle, question: &str, yes: &str, no: &str) -> bool {
-    let language = app::state(app).language();
+    let shell = app::state(app);
+    shell.log.write(format!("native question: {question}"));
+    if let Some(answer) = debug_answer(question, yes, no) {
+        shell
+            .log
+            .write(format!("native question debug answer: {question}={answer}"));
+        return answer;
+    }
+    let language = shell.language();
     let yes = text(&language, yes);
     let result = dialog(
         app,
@@ -314,13 +344,13 @@ pub fn handle(app: &AppHandle, event: MenuEvent) {
                 .unwrap()
                 .as_ref()
                 .map(|current| current.folder.clone());
-            {
-                let mut settings = shell.settings.lock().unwrap();
+            let saved = shell.update_settings(|settings| {
                 settings.recent.clear();
                 settings.last_project = project;
-            }
+                Ok(())
+            });
             rebuild(app);
-            if let Err(error) = shell.save() {
+            if let Err(error) = saved {
                 message(
                     app,
                     "saveFailedTitle",

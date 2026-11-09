@@ -2,7 +2,7 @@
   'use strict';
   const texts = {
     en: { heading: version => `What's new in Deckmate ${version}`, since: version => `Since ${version}`, all: 'All changes on GitHub', empty: 'No changes found for this version range.', error: 'Could not load the changelog.' },
-    ru: { heading: version => `Что нового в Deckmate ${version}`, since: version => `Начиная с версии ${version}`, all: 'Все изменения на GitHub', empty: 'Для этого диапазона версий изменений не найдено.', error: 'Не удалось загрузить список изменений.' },
+    ru: { heading: version => `Что нового в Deckmate ${version}`, since: version => `После версии ${version}`, all: 'Все изменения на GitHub', empty: 'Для этого диапазона версий изменений не найдено.', error: 'Не удалось загрузить список изменений.' },
   };
 
   function parseChangelog(markdown) {
@@ -93,7 +93,7 @@
   const mock = () => {
     let language = 'en';
     try { if (localStorage.getItem('deckmate-language') === 'ru') language = 'ru'; } catch {}
-    const changelog = language === 'ru' ? `## [0.5.0] - 2026-11-09\n### Добавлено\n- **Пространства.** Меняйте порядок пространств в заголовке или настройках.\n- **Hero вручную.** Отмечайте Hero без задач как завершённого.\n### Изменено\n- **Doc Cards.** Карточка документа выглядит как страница.\n## [0.4.0] - 2026-11-09\n### Добавлено\n- **Шаблоны на русском.** Шаблоны Journey и проектов теперь переведены.` : `## [0.5.0] - 2026-11-09\n### Added\n- **Spaces.** Reorder spaces in the header or space settings.\n- **Hero done by hand.** Mark a Hero without tasks as done.\n### Changed\n- **Doc Cards.** A Doc tile reads as a page.\n## [0.4.0] - 2026-11-09\n### Added\n- **Templates in Russian.** Journey and project templates now have Russian titles.`;
+    const changelog = language === 'ru' ? `## [0.5.0] - 2026-11-09\n### Добавлено\n- **Пространства.** Меняйте порядок пространств в заголовке или настройках.\n- **Выполнение Hero.** Отмечайте Hero без задач выполненной.\n### Изменено\n- **Doc Cards.** Плитка Doc Card выглядит как страница.\n## [0.4.0] - 2026-11-09\n### Добавлено\n- **Шаблоны на русском.** У шаблонов Journey и проектов теперь русские названия.` : `## [0.5.0] - 2026-11-09\n### Added\n- **Spaces.** Reorder spaces in the header or space settings.\n- **Hero completion.** Mark a Hero without tasks as done.\n### Changed\n- **Doc Cards.** A Doc Card tile looks like a page.\n## [0.4.0] - 2026-11-09\n### Added\n- **Templates in Russian.** Journey and project templates now have Russian titles.`;
     return { language, from: '0.3.0', to: '0.5.0', changelog, releasesUrl: 'https://github.com/pierkulakov/deckmate/releases' };
   };
   (async () => {

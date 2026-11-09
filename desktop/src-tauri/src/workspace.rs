@@ -1,4 +1,4 @@
-use crate::{app, paths, settings::Settings};
+use crate::{app, paths, server::Failure, settings::Settings, texts};
 use serde_json::{json, Value};
 use std::path::Path;
 use tauri::AppHandle;
@@ -63,12 +63,38 @@ pub fn snapshot(app: &AppHandle, board: bool) -> Value {
     projects(&settings, current.as_deref(), board)
 }
 
-pub fn changed(app: &AppHandle, result: Result<(), &'static str>, board: bool) -> Value {
-    if let Err(code) = result {
-        return failure(app, code);
+fn failure_key(code: &str) -> &'static str {
+    match code {
+        "not-in-workspace" => "notInWorkspace",
+        "not-recent" => "notRecent",
+        "cancelled" => "cancelled",
+        _ => "workspacePath",
     }
+}
+
+fn update(
+    shell: &app::Shell,
+    change: impl FnOnce(&mut Settings) -> Result<(), &'static str>,
+) -> Result<(), Failure> {
+    let language = shell.language();
+    shell.update_settings(|settings| {
+        change(settings)
+            .map_err(|code| Failure::new(code, texts::text(&language, failure_key(code))))
+    })
+}
+
+pub fn changed(
+    app: &AppHandle,
+    change: impl FnOnce(&mut Settings) -> Result<(), &'static str>,
+    board: bool,
+) -> Value {
     let shell = app::state(app);
-    let saved = shell.save();
+    let saved = update(&shell, change);
+    if let Err(error) = &saved {
+        if error.code != "save-failed" {
+            return json!(error);
+        }
+    }
     crate::menu::rebuild(app);
     if let Err(error) = saved {
         return json!(error);
@@ -81,16 +107,6 @@ pub fn changed(app: &AppHandle, result: Result<(), &'static str>, board: bool) -
     }
 }
 
-pub fn failure(app: &AppHandle, code: &str) -> Value {
-    let key = match code {
-        "not-in-workspace" => "notInWorkspace",
-        "not-recent" => "notRecent",
-        "cancelled" => "cancelled",
-        _ => "workspacePath",
-    };
-    json!(app::state(app).failure(code, key))
-}
-
 pub fn add_current(app: &AppHandle) -> Value {
     let shell = app::state(app);
     let current = shell
@@ -100,22 +116,46 @@ pub fn add_current(app: &AppHandle) -> Value {
         .as_ref()
         .filter(|current| current.url.is_some())
         .map(|current| current.folder.clone());
-    let result = {
-        let mut settings = shell.settings.lock().unwrap();
-        board_addition(
-            &settings,
-            &json!({"kind":"current"}),
-            current.as_deref(),
-            None,
-        )
-        .and_then(|folder| settings.add_to_workspace(&folder))
-    };
-    changed(app, result, true)
+    changed(
+        app,
+        |settings| {
+            board_addition(
+                settings,
+                &json!({"kind":"current"}),
+                current.as_deref(),
+                None,
+            )
+            .and_then(|folder| settings.add_to_workspace(&folder))
+        },
+        true,
+    )
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn failed_workspace_removal_keeps_memory_and_disk_and_can_be_retried() {
+        let sandbox = app::tests::Sandbox::new();
+        let shell = app::tests::shell(&sandbox.0, None);
+        update(&shell, |settings| settings.add_to_workspace("C:/Demo")).unwrap();
+        let path = sandbox.0.join("desktop.json");
+        let original = std::fs::read_to_string(&path).unwrap();
+        let temporary = sandbox.0.join("desktop.json.tmp");
+        std::fs::create_dir(&temporary).unwrap();
+        let failure =
+            update(&shell, |settings| settings.remove_from_workspace("C:/Demo")).unwrap_err();
+        assert_eq!(failure.code, "save-failed");
+        assert_eq!(shell.settings.lock().unwrap().workspace.len(), 1);
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), original);
+        std::fs::remove_dir(&temporary).unwrap();
+        update(&shell, |settings| settings.remove_from_workspace("C:/Demo")).unwrap();
+        assert!(shell.settings.lock().unwrap().workspace.is_empty());
+        let repeated =
+            update(&shell, |settings| settings.remove_from_workspace("C:/Demo")).unwrap_err();
+        assert_eq!(repeated.code, "not-in-workspace");
+    }
 
     #[test]
     fn launcher_trusts_only_last_dialog_or_recent_and_returns_stored_paths() {

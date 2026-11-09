@@ -154,8 +154,9 @@ pub fn same_path(a: &str, b: &str) -> bool {
 
 pub fn project_name(path: &str) -> String {
     let path = path.trim_end_matches(['/', '\\']);
+    // 2026-11-09: a drive root has no folder name; the drive ("Z:") keeps the title and recent entry readable.
     if path.len() == 2 && path.ends_with(':') {
-        return String::new();
+        return path.to_uppercase();
     }
     path.rsplit(['/', '\\']).next().unwrap_or(path).into()
 }
@@ -163,6 +164,13 @@ pub fn project_name(path: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn drive_roots_are_named_after_the_drive() {
+        assert_eq!(project_name("Z:\\"), "Z:");
+        assert_eq!(project_name("c:"), "C:");
+        assert_eq!(project_name("C:\\Games\\Моя игра\\"), "Моя игра");
+    }
 
     #[test]
     fn network_and_device_paths_require_dialog_trust() {

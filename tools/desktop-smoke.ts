@@ -11,7 +11,7 @@
 // before a release"); it covers the items that need a real window (launcher, board, bridges, navigation
 // guard, server lifetime). The native menu, dialogs and the installer stay human-checked.
 import { execFileSync, spawn, spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
 import { createServer, type AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -111,6 +111,62 @@ function quitFromMenu(pid: number): void {
   `], { encoding: 'utf8', timeout: 15000, windowsHide: true });
 }
 
+function openWhatsNew(pid: number): void {
+  // 2026-11-09: the debug Help menu has no pending-update item; What's new is its third command.
+  execFileSync('powershell', ['-NoProfile', '-NonInteractive', '-Command', `
+    Add-Type -TypeDefinition 'using System; using System.Runtime.InteropServices; public class DeckmateHelp {
+      [DllImport("user32.dll")] public static extern IntPtr GetMenu(IntPtr hwnd);
+      [DllImport("user32.dll")] public static extern IntPtr GetSubMenu(IntPtr menu, int index);
+      [DllImport("user32.dll")] public static extern uint GetMenuItemID(IntPtr menu, int index);
+      [DllImport("user32.dll")] public static extern bool PostMessageW(IntPtr hwnd, uint message, UIntPtr wparam, IntPtr lparam);
+    }';
+    $window = (Get-Process -Id ${pid}).MainWindowHandle;
+    $menu = [DeckmateHelp]::GetSubMenu([DeckmateHelp]::GetMenu($window), 3);
+    $id = [DeckmateHelp]::GetMenuItemID($menu, 2);
+    if ($window -eq 0 -or $menu -eq 0 -or $id -eq [uint32]::MaxValue) { throw 'Help menu not found'; }
+    if (-not [DeckmateHelp]::PostMessageW($window, 0x111, [UIntPtr]::new($id), [IntPtr]::Zero)) { throw 'PostMessage failed'; }
+  `], { encoding: 'utf8', timeout: 15000, windowsHide: true });
+}
+
+function sessionWindow(pid: number, action: 'query' | 'cancel' | 'end' | 'reason', flags = 0, title = '', className = ''): { result: number; reason: string | null } {
+  const message = action === 'query' ? 0x11 : 0x16;
+  const output = execFileSync('powershell', ['-NoProfile', '-NonInteractive', '-Command', `
+    [Console]::OutputEncoding=[System.Text.Encoding]::UTF8;
+    Add-Type -TypeDefinition 'using System; using System.Text; using System.Runtime.InteropServices; public class DeckmateSession {
+      public delegate bool Visitor(IntPtr hwnd, IntPtr data);
+      [DllImport("user32.dll")] public static extern bool EnumWindows(Visitor callback, IntPtr data);
+      [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr hwnd, out uint pid);
+      [DllImport("user32.dll", CharSet=CharSet.Unicode)] public static extern int GetWindowTextW(IntPtr hwnd, StringBuilder text, int count);
+      [DllImport("user32.dll", CharSet=CharSet.Unicode)] public static extern int GetClassNameW(IntPtr hwnd, StringBuilder text, int count);
+      [DllImport("user32.dll")] public static extern IntPtr SendMessageW(IntPtr hwnd, uint message, UIntPtr wparam, IntPtr lparam);
+      [DllImport("user32.dll", CharSet=CharSet.Unicode)] public static extern bool ShutdownBlockReasonQuery(IntPtr hwnd, StringBuilder reason, ref uint count);
+      public static IntPtr Find(uint pid, string title, string className) {
+        IntPtr found = IntPtr.Zero;
+        EnumWindows((hwnd, data) => {
+          uint owner; GetWindowThreadProcessId(hwnd, out owner);
+          var text = new StringBuilder(512); GetWindowTextW(hwnd, text, text.Capacity);
+          var kind = new StringBuilder(128); GetClassNameW(hwnd, kind, kind.Capacity);
+          bool matches = className.Length > 0 ? kind.ToString() == className : (title.Length == 0 ? text.ToString().StartsWith("Deckmate") : text.ToString() == title);
+          if (owner == pid && matches) {
+            found = hwnd; return false;
+          }
+          return true;
+        }, IntPtr.Zero);
+        return found;
+      }
+    }';
+    $window = [DeckmateSession]::Find(${pid}, '${title.replace(/'/g, "''")}', '${className.replace(/'/g, "''")}');
+    if ($window -eq [IntPtr]::Zero) { throw 'Session window not found'; }
+    $result = [IntPtr]::Zero;
+    ${action === 'reason' ? '' : `$result = [DeckmateSession]::SendMessageW($window, ${message}, [UIntPtr]::new(${action === 'end' ? 1 : 0}), [IntPtr]::new(${flags}));`}
+    $reason = New-Object System.Text.StringBuilder 512;
+    [uint32]$count = $reason.Capacity;
+    $exists = [DeckmateSession]::ShutdownBlockReasonQuery($window, $reason, [ref]$count);
+    @{ result = $result.ToInt64(); reason = $(if ($exists) { $reason.ToString() } else { $null }) } | ConvertTo-Json -Compress;
+  `], { encoding: 'utf8', timeout: 15000, windowsHide: true, stdio: 'pipe' }).trim();
+  return JSON.parse(output) as { result: number; reason: string | null };
+}
+
 async function shortcut(key: string, code: string, virtualKey: number, modifiers = 2): Promise<void> {
   for (const type of ['rawKeyDown', 'keyUp']) {
     await page!.send('Input.dispatchKeyEvent', { type, key, code, windowsVirtualKeyCode: virtualKey, modifiers });
@@ -150,13 +206,14 @@ async function main(): Promise<number> {
   const externalLog = path.join(temp, 'external-links.log');
   const needles = [serverEntry, demo, created].map(norm);
   const cdpPort = await freePort();
-  const launchShell = () => spawn(exe, [], {
+  const launchShell = (askPolicy = 'rendererCrashedRepeatedly=startScreen', server = serverEntry) => spawn(exe, [], {
     env: {
       ...process.env,
       DECKMATE_DESKTOP_CDP_PORT: String(cdpPort),
       DECKMATE_DESKTOP_SETTINGS_DIR: settings,
-      DECKMATE_DESKTOP_SERVER: serverEntry,
+      DECKMATE_DESKTOP_SERVER: server,
       DECKMATE_DESKTOP_DIRTY_POLICY: 'refuse',
+      DECKMATE_DESKTOP_ASK_POLICY: askPolicy,
       // 2026-11-09: external links are recorded here instead of opening the user's browser on every run.
       DECKMATE_DESKTOP_EXTERNAL_LOG: externalLog,
     },
@@ -358,6 +415,40 @@ async function main(): Promise<number> {
     }
     await page!.callFunction(`() => window.deckmateBoard.setDirty(false)`);
     pass('c-dirty', 'dirty bridge/start-screen switch and native Quit menu refused; window and server remain alive');
+
+    currentStep = 'session-query';
+    const cancelledBeforeSession = readFileSync(path.join(settings, 'server.log'), 'utf8').split('unsaved work: action cancelled').length;
+    for (const flags of [0, 1]) { // ENDSESSION_CLOSEAPP (Restart Manager) must not bypass unsaved work.
+      await page!.callFunction(`() => window.deckmateBoard.setDirty(true)`);
+      const blocked = sessionWindow(shell.pid!, 'query', flags);
+      if (blocked.result !== 0 || !blocked.reason?.includes(state.language === 'ru' ? 'несохранённые изменения' : 'unsaved changes')) {
+        throw new SmokeFailure(`dirty WM_QUERYENDSESSION (${flags}) did not register a localized reason: ${JSON.stringify(blocked)}`);
+      }
+      const cancelled = sessionWindow(shell.pid!, 'cancel');
+      if (cancelled.reason !== null) throw new SmokeFailure('WM_ENDSESSION(FALSE) left the shutdown reason registered');
+      if (sessionWindow(shell.pid!, 'query', flags).result !== 0) throw new SmokeFailure('dirty query after cancellation was not blocked');
+      await page!.callFunction(`() => window.deckmateBoard.setDirty(false)`);
+      await poll(async () => sessionWindow(shell.pid!, 'reason').reason === null,
+        'saving work to release the shutdown reason without ending the session', 10000);
+      const clean = sessionWindow(shell.pid!, 'query', flags);
+      if (clean.result === 0 || clean.reason !== null) throw new SmokeFailure(`clean WM_QUERYENDSESSION (${flags}) was blocked: ${JSON.stringify(clean)}`);
+      sessionWindow(shell.pid!, 'cancel');
+    }
+    await page!.callFunction(`() => window.deckmateBoard.setDirty(true)`);
+    if (sessionWindow(shell.pid!, 'query', 1, '', 'Tao Thread Event Target').result !== 0
+      || !sessionWindow(shell.pid!, 'reason').reason) throw new SmokeFailure("hidden tao query did not register a visible shutdown reason");
+    sessionWindow(shell.pid!, 'cancel', 0, '', 'Tao Thread Event Target');
+    if (sessionWindow(shell.pid!, 'reason').reason !== null) throw new SmokeFailure('hidden tao cancellation left a visible shutdown reason');
+    await page!.callFunction(`() => window.deckmateBoard.setDirty(false)`);
+    if (sessionWindow(shell.pid!, 'query', 1, '', 'Tao Thread Event Target').result === 0) throw new SmokeFailure('hidden tao query blocked clean work');
+    sessionWindow(shell.pid!, 'cancel', 0, '', 'Tao Thread Event Target');
+    if (readFileSync(path.join(settings, 'server.log'), 'utf8').split('unsaved work: action cancelled').length !== cancelledBeforeSession) {
+      throw new SmokeFailure('session queries opened the ordinary unsaved-work confirmation path');
+    }
+    if ((await page!.evaluate('location.origin')) !== boardOrigin || !(await fetch(boardOrigin)).ok) {
+      throw new SmokeFailure('session query/cancellation stopped the board or its server');
+    }
+    pass('session-query', 'main + hidden tao normal/Restart Manager queries block only dirty work; visible Windows reason cleared on cancellation and setDirty(false); no native leave dialog');
 
     // d. The navigation guard keeps the window on the server origin; external links open in the system browser.
     currentStep = 'd';
@@ -578,6 +669,176 @@ async function main(): Promise<number> {
       'the crashed renderer to reload the board', 20000);
     if (!readFileSync(path.join(settings, 'server.log'), 'utf8').includes('recovery=Reload')) throw new SmokeFailure('renderer crash was not logged');
     pass('renderer-crash', 'WebView2 renderer crash logged; the current board automatically reloaded');
+
+    currentStep = 'renderer-crash-budget';
+    await page!.evaluate('window.__smokeBeforeCrash = true');
+    void page!.send('Page.crash').catch(() => {});
+    await poll(async () => (await page!.evaluate(`!window.__smokeBeforeCrash && !!document.querySelector('${boardSelector}')`)) === true,
+      'the second crashed renderer to reload the board', 20000);
+    void page!.send('Page.crash').catch(() => {});
+    await poll(launcherLoaded, 'the third crash question to select the start screen', 20000);
+    const crashLog = readFileSync(path.join(settings, 'server.log'), 'utf8').split(/\r?\n/u);
+    const autoReloads = crashLog.filter(line => line.includes('WebView2 automatic renderer reload'));
+    if (autoReloads.length !== 2 || crashLog.filter(line => line.includes('native question: rendererCrashedRepeatedly')).length !== 1) {
+      throw new SmokeFailure(`renderer budget did not stop after two reloads: ${autoReloads.length} automatic reloads (${await diagnose(settings)})`);
+    }
+    for (const reload of autoReloads) {
+      const index = crashLog.indexOf(reload);
+      const failure = crashLog.slice(0, index).findLast(line => line.includes('WebView2 process failed:') && line.includes('recovery=Reload'));
+      if (!failure || Date.parse(reload.split(' ')[0]) - Date.parse(failure.split(' ')[0]) < 450) {
+        throw new SmokeFailure('automatic renderer reload did not wait about 500 ms');
+      }
+    }
+    await poll(async () => serverProcesses(needles).length === 0, 'crash recovery to stop the board server', 15000);
+    pass('renderer-crash-budget', 'three rapid crashes: exactly two delayed automatic reloads, then Reload/Start screen question; Start screen stopped the server');
+
+    currentStep = 'session-secondary';
+    await page!.callFunction(`folder => { void window.deckmateDesktop.openProject(folder); }`, demo);
+    await poll(async () => (await page!.evaluate(`typeof window.deckmateBoard === 'object' && !!document.querySelector('${boardSelector}')`)) === true,
+      'session-end test to reopen the board', 30000);
+    openWhatsNew(shell.pid!);
+    const whatsNewTitle = "What's new in Deckmate";
+    try {
+      await poll(async () => sessionWindow(shell.pid!, 'reason', 0, whatsNewTitle).reason === null,
+        "the What's new window to open", 10000);
+    } catch (error) {
+      throw new SmokeFailure(`${(error as Error).message} (${await diagnose(settings)})`);
+    }
+    await page!.callFunction(`() => window.deckmateBoard.setDirty(true)`);
+    const secondaryBlocked = sessionWindow(shell.pid!, 'query', 1, whatsNewTitle);
+    if (secondaryBlocked.result !== 0 || !secondaryBlocked.reason?.includes('unsaved changes')) {
+      throw new SmokeFailure(`What's new bypassed unsaved session protection: ${JSON.stringify(secondaryBlocked)}`);
+    }
+    if (sessionWindow(shell.pid!, 'cancel', 0, whatsNewTitle).reason !== null) throw new SmokeFailure("What's new kept a cancelled shutdown reason");
+    sessionWindow(shell.pid!, 'query', 0, whatsNewTitle);
+    await page!.callFunction(`() => window.deckmateBoard.setDirty(false)`);
+    await poll(async () => sessionWindow(shell.pid!, 'reason', 0, whatsNewTitle).reason === null,
+      "saving work to clear the What's new shutdown reason", 10000);
+    if (sessionWindow(shell.pid!, 'query', 1, whatsNewTitle).result === 0) throw new SmokeFailure("What's new blocked a clean shutdown");
+    sessionWindow(shell.pid!, 'cancel', 0, whatsNewTitle);
+    pass('session-secondary', "What's new uses the same dirty/clean shutdown policy and releases its reasons on cancellation and saving");
+
+    currentStep = 'session-end';
+    await page!.callFunction(`() => window.deckmateBoard.setDirty(true)`);
+    const beforeEndSave = statSync(path.join(settings, 'desktop.json')).mtimeMs;
+    sessionWindow(shell.pid!, 'end', 1, whatsNewTitle);
+    await poll(async () => shell.exitCode !== null || shell.signalCode !== null, 'WM_ENDSESSION(TRUE) to exit the shell', 10000);
+    await poll(async () => serverProcesses(needles).length === 0, 'session end to reap the server', 10000);
+    const sessionLog = readFileSync(path.join(settings, 'server.log'), 'utf8');
+    if (!sessionLog.includes('Windows session ending') || !sessionLog.includes('Windows session ending: server stopped; code=0, forced=false')) {
+      throw new SmokeFailure(`session end did not log a graceful server stop: ${sessionLog.split('\n').slice(-8).join(' | ')}`);
+    }
+    const finalSettings = JSON.parse(readFileSync(path.join(settings, 'desktop.json'), 'utf8'));
+    if (!finalSettings.windowBounds || norm(finalSettings.lastProject) !== norm(demo)
+      || statSync(path.join(settings, 'desktop.json')).mtimeMs <= beforeEndSave) throw new SmokeFailure('session end did not save window/project settings');
+    pass('session-end', 'forced ENDSESSION(TRUE) via secondary window exited without a leave dialog; server stopped gracefully; window/project settings preserved');
+
+    currentStep = 'renderer-crash-manual';
+    await page!.close();
+    shell = launchShell('rendererCrashedRepeatedly=reload');
+    page = await connectToHeadlessBrowser(cdpPort);
+    await poll(async () => (await page!.evaluate(`typeof window.deckmateBoard === 'object' && !!document.querySelector('${boardSelector}')`)) === true,
+      'the manual crash-recovery test to auto-open the board', 30000);
+    for (let crash = 0; crash < 4; crash++) {
+      await page!.evaluate('window.__smokeBeforeCrash = true');
+      void page!.send('Page.crash').catch(() => {});
+      await poll(async () => (await page!.evaluate(`!window.__smokeBeforeCrash && !!document.querySelector('${boardSelector}')`)) === true,
+        `renderer crash ${crash + 1} to reload automatically or by explicit answer`, 20000);
+    }
+    const manualLog = readFileSync(path.join(settings, 'server.log'), 'utf8');
+    if (manualLog.split('WebView2 automatic renderer reload').length - sessionLog.split('WebView2 automatic renderer reload').length !== 2
+      || manualLog.split('native question: rendererCrashedRepeatedly').length - sessionLog.split('native question: rendererCrashedRepeatedly').length !== 2) {
+      throw new SmokeFailure('manual Reload reset the automatic budget or did not ask again on the fourth crash');
+    }
+    pass('renderer-crash-manual', 'Reload answer restored the board; the fourth crash asked again without resetting the two-reload budget');
+
+    currentStep = 'session-hidden-end';
+    await page!.callFunction(`() => window.deckmateBoard.setDirty(true)`);
+    sessionWindow(shell.pid!, 'end', 0, '', 'Tao Thread Event Target');
+    await poll(async () => shell.exitCode !== null || shell.signalCode !== null, "the hidden tao HWND's ENDSESSION(TRUE) to exit", 10000);
+    await poll(async () => serverProcesses(needles).length === 0, 'hidden-window session end to stop the server', 10000);
+    const hiddenLog = readFileSync(path.join(settings, 'server.log'), 'utf8').slice(manualLog.length);
+    if (!hiddenLog.includes('Windows session ending: server stopped; code=0, forced=false')) {
+      throw new SmokeFailure(`hidden tao HWND bypassed graceful shutdown: ${hiddenLog}`);
+    }
+    pass('session-hidden-end', "ENDSESSION(TRUE) sent first to tao's hidden HWND also logged and stopped the server gracefully before tao exited");
+
+    currentStep = 'session-end-timeout';
+    const stalledServer = path.join(temp, 'stalled-server.cjs');
+    // 2026-11-09: a ready HTTP server which ignores stdin exercises the real two-second deadline,
+    // rather than the normal three-second server stop or a second timeout after a lifecycle wait.
+    writeFileSync(stalledServer, `
+      const http = require('node:http');
+      const server = http.createServer((_request, reply) => {
+        reply.writeHead(200, { 'Content-Type': 'text/html' });
+        reply.end('<!doctype html><html><body><div class="app-shell">shutdown deadline fixture</div></body></html>');
+      });
+      server.listen(Number(process.env.DECKMATE_PORT), '127.0.0.1', () => {
+        console.log('Deckmate: http://127.0.0.1:' + process.env.DECKMATE_PORT);
+      });
+      process.stdin.resume();
+      process.stdin.on('data', () => {});
+    `);
+    needles.push(norm(stalledServer));
+    const beforeTimeoutLog = readFileSync(path.join(settings, 'server.log'), 'utf8');
+    await page!.close();
+    shell = launchShell(undefined, stalledServer);
+    page = await connectToHeadlessBrowser(cdpPort);
+    await poll(async () => (await page!.evaluate(`typeof window.deckmateBoard === 'object' && !!document.querySelector('${boardSelector}')`)) === true,
+      'the shutdown deadline fixture to load in the real window', 30000);
+    if (serverProcesses([norm(stalledServer)]).length !== 1) throw new SmokeFailure('stalled server fixture did not start');
+    await page!.callFunction(`() => window.deckmateBoard.setDirty(true)`);
+    sessionWindow(shell.pid!, 'end');
+    await poll(async () => shell.exitCode !== null || shell.signalCode !== null, 'the main window session end to exit despite a stalled server', 10000);
+    await poll(async () => serverProcesses(needles).length === 0, 'the Job Object to reap the stalled server at the shutdown deadline', 10000);
+    const timeoutLog = readFileSync(path.join(settings, 'server.log'), 'utf8').slice(beforeTimeoutLog.length).split(/\r?\n/u);
+    const ending = timeoutLog.find(line => line.endsWith('Windows session ending'));
+    const deadline = timeoutLog.find(line => line.includes('Windows session ending: server cleanup deadline reached'));
+    const elapsed = ending && deadline ? Date.parse(deadline.split(' ')[0]) - Date.parse(ending.split(' ')[0]) : NaN;
+    if (!Number.isFinite(elapsed) || elapsed < 1800 || elapsed > 2000) {
+      throw new SmokeFailure(`stalled server did not respect one two-second cleanup deadline: ${elapsed} ms; ${timeoutLog.slice(-5).join(' | ')}`);
+    }
+    pass('session-end-timeout', `main HWND exited with a stalled server; one cleanup deadline (${elapsed} ms); Job Object reaped the child`);
+
+    currentStep = 'startup-failure';
+    const rejectedProject = path.join(temp, 'rejected-project');
+    const outsideTools = path.join(temp, 'outside-tools');
+    mkdirSync(rejectedProject);
+    mkdirSync(outsideTools);
+    writeFileSync(path.join(outsideTools, 'board.py'), '');
+    // 2026-11-09: a junction needs no symlink privilege; the real server rejects the escaped board
+    // path before starting Python. lastProject still passes the shell's existing-directory check.
+    symlinkSync(outsideTools, path.join(rejectedProject, 'Tools'), 'junction');
+    needles.push(norm(rejectedProject));
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      await page!.close();
+      const beforeFailureLog = readFileSync(path.join(settings, 'server.log'), 'utf8');
+      const restartSettings = JSON.parse(readFileSync(settingsFile, 'utf8'));
+      writeFileSync(settingsFile, JSON.stringify({ ...restartSettings, lastProject: rejectedProject, language: 'en' }));
+      shell = launchShell();
+      page = await connectToHeadlessBrowser(cdpPort);
+      try {
+        await poll(async () => await launcherLoaded()
+          && (await page!.evaluate(`document.visibilityState === 'visible' && document.getElementById('status').dataset.phase === 'error'`)) === true,
+        `failed auto-open ${attempt} to return to a loaded launcher with an error`, 30000);
+        // Let late NavigationCompleted events arrive before checking that the cause stayed intact.
+        await sleep(1000);
+        const message = String(await page!.evaluate(`document.getElementById('status-text').textContent`));
+        const failureLog = readFileSync(path.join(settings, 'server.log'), 'utf8').slice(beforeFailureLog.length);
+        if (!message.includes('The path is outside the project.') || message.includes('WebView2')
+          || !failureLog.includes('project launch failed:') || !failureLog.includes('The path is outside the project.')) {
+          throw new SmokeFailure(`failed auto-open ${attempt} lost the server refusal: ${message}`);
+        }
+      } catch (error) {
+        throw new SmokeFailure(`${(error as Error).message} (${await diagnose(settings)})`);
+      }
+      quitFromMenu(shell.pid!);
+      await poll(async () => shell.exitCode !== null || shell.signalCode !== null,
+        `failed auto-open ${attempt} shell to exit`, 10000);
+      await poll(async () => serverProcesses(needles).length === 0,
+        `failed auto-open ${attempt} to leave no server`, 10000);
+    }
+    pass('startup-failure', 'three consecutive lastProject launches kept the real server refusal on the loaded launcher and in server.log, not a WebView2 error');
 
     pass('smoke', 'all steps passed');
     return 0;

@@ -124,9 +124,12 @@ pub fn desktop_remove_recent(
     if paths::is_network_path(&folder) && !listed {
         return json!(shell.failure("invalid-path", "networkPath"));
     }
-    shell.settings.lock().unwrap().remove_recent(&folder);
+    let saved = shell.update_settings(|settings| {
+        settings.remove_recent(&folder);
+        Ok(())
+    });
     crate::menu::rebuild(&app);
-    app::result(shell.save())
+    app::result(saved)
 }
 
 #[tauri::command]
@@ -139,9 +142,12 @@ pub fn desktop_set_language(app: AppHandle, window: WebviewWindow, lang: Option<
     else {
         return json!(shell.failure("invalid-language", "language"));
     };
-    shell.settings.lock().unwrap().language = lang;
+    let saved = shell.update_settings(|settings| {
+        settings.language = lang;
+        Ok(())
+    });
     crate::menu::rebuild(&app);
-    app::result(shell.save())
+    app::result(saved)
 }
 
 #[tauri::command]
@@ -172,12 +178,15 @@ pub fn desktop_add_to_workspace(
         return json!(error);
     }
     let dialog = shell.dialog_folder.lock().unwrap().clone();
-    let result = {
-        let mut settings = shell.settings.lock().unwrap();
-        workspace::launcher_addition(&settings, &folder.unwrap_or(Value::Null), dialog.as_deref())
-            .and_then(|folder| settings.add_to_workspace(&folder))
-    };
-    workspace::changed(&app, result, false)
+    let folder = folder.unwrap_or(Value::Null);
+    workspace::changed(
+        &app,
+        |settings| {
+            workspace::launcher_addition(settings, &folder, dialog.as_deref())
+                .and_then(|folder| settings.add_to_workspace(&folder))
+        },
+        false,
+    )
 }
 
 #[tauri::command]
@@ -236,12 +245,14 @@ pub async fn board_add_to_workspace(
     if let Err(error) = authorize(&shell, &window, true) {
         return json!(error);
     }
-    let result = {
-        let mut settings = shell.settings.lock().unwrap();
-        workspace::board_addition(&settings, &source, None, dialog.as_deref())
-            .and_then(|folder| settings.add_to_workspace(&folder))
-    };
-    workspace::changed(&app, result, true)
+    workspace::changed(
+        &app,
+        |settings| {
+            workspace::board_addition(settings, &source, None, dialog.as_deref())
+                .and_then(|folder| settings.add_to_workspace(&folder))
+        },
+        true,
+    )
 }
 
 #[tauri::command]
@@ -280,18 +291,22 @@ fn change_workspace(
     if let Err(error) = authorize(&shell, window, board) {
         return json!(error);
     }
-    let result = {
-        let mut settings = shell.settings.lock().unwrap();
-        let folder = folder.as_ref().and_then(Value::as_str).unwrap_or("");
-        match index {
+    let folder = folder
+        .as_ref()
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .to_owned();
+    workspace::changed(
+        app,
+        |settings| match index {
             Some(index) => index
                 .as_i64()
                 .ok_or("invalid-path")
-                .and_then(|index| settings.move_in_workspace(folder, index)),
-            None => settings.remove_from_workspace(folder),
-        }
-    };
-    workspace::changed(app, result, board)
+                .and_then(|index| settings.move_in_workspace(&folder, index)),
+            None => settings.remove_from_workspace(&folder),
+        },
+        board,
+    )
 }
 
 #[tauri::command]

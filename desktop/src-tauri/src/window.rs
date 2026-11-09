@@ -167,16 +167,31 @@ pub fn finish_startup(app: &AppHandle) {
     }
 }
 
+fn launcher_error_status(pending: Option<serde_json::Value>, message: &str) -> serde_json::Value {
+    // 2026-11-09: a launcher fallback must not replace the project failure that caused the return.
+    pending
+        .filter(|status| status["phase"] == "error")
+        .unwrap_or_else(
+            || serde_json::json!({"phase":"error", "code":"load-failed", "message":message}),
+        )
+}
+
 pub fn launcher_error(window: &WebviewWindow, message: &str) {
     let app = window.app_handle();
-    app::state(app).status(
-        app,
-        serde_json::json!({"phase":"error", "code":"load-failed", "message":message}),
-    );
+    let shell = app::state(app);
+    shell.log.write(format!("launcher load failed: {message}"));
+    let message = {
+        let mut pending = shell.pending_status.lock().unwrap();
+        let status = launcher_error_status(pending.take(), message);
+        let message = status["message"].as_str().unwrap_or(message).to_owned();
+        *pending = Some(status);
+        message
+    };
+    shell.replay_status(app);
     // 2026-11-09: failed launcher assets must leave a visible error, not an invisible process.
     let _ = window.eval(format!(
         "if (!document.getElementById('launcher') && document.body) document.body.textContent = {};",
-        serde_json::to_string(message).unwrap()
+        serde_json::to_string(&message).unwrap()
     ));
 }
 
@@ -198,7 +213,7 @@ pub fn title(app: &AppHandle) -> String {
 /// those switches and appends the port. Debug-only by compilation: release builds replace this
 /// body with None, so a release binary never reads the variable.
 #[cfg(debug_assertions)]
-fn debug_browser_args() -> Option<String> {
+pub fn debug_browser_args() -> Option<String> {
     let port: u16 = env::var("DECKMATE_DESKTOP_CDP_PORT").ok()?.parse().ok()?;
     if port == 0 {
         return None;
@@ -209,7 +224,7 @@ fn debug_browser_args() -> Option<String> {
 }
 
 #[cfg(not(debug_assertions))]
-fn debug_browser_args() -> Option<String> {
+pub fn debug_browser_args() -> Option<String> {
     None
 }
 
@@ -255,6 +270,13 @@ pub fn create(app: &AppHandle) -> tauri::Result<()> {
         None => builder,
     }
     .build()?;
+    // 2026-11-09: the session-end guard is a safety net; a tao or Windows change that breaks it must not
+    // keep Deckmate from opening, so a failure is logged and the window works without it.
+    if let Err(error) = crate::session_end::install(&window) {
+        app::state(app)
+            .log
+            .write(format!("Windows session guard failed: {error}"));
+    }
     // 2026-11-09: hiding the HWND alone does not update WebView2's document.visibilityState.
     window.as_ref().hide()?;
     restore_bounds(&window)?;
@@ -379,6 +401,15 @@ pub fn capture_bounds(window: &WebviewWindow) {
     }
 }
 
+pub fn save_on_exit(app: &AppHandle) {
+    if let Some(window) = app.get_webview_window("main") {
+        capture_bounds(&window);
+    }
+    let shell = app::state(app);
+    shell.bounds_generation.fetch_add(1, Ordering::SeqCst);
+    let _ = shell.save();
+}
+
 fn schedule_bounds_save(window: &WebviewWindow) {
     capture_bounds(window);
     let shell = app::state(window.app_handle());
@@ -479,6 +510,26 @@ pub async fn navigate_board(window: &WebviewWindow, url: &str) -> Result<(), Str
 mod tests {
     use super::*;
     #[test]
+    fn launcher_failure_preserves_the_original_project_error() {
+        let original = serde_json::json!({
+            "phase": "error", "code": "start-failed", "path": "C:\\demo",
+            "message": "CreateProcess failed (os error 267)"
+        });
+        assert_eq!(
+            launcher_error_status(Some(original.clone()), "WebView2 9"),
+            original
+        );
+    }
+    #[test]
+    fn launcher_failure_replaces_only_non_error_statuses() {
+        let expected = serde_json::json!({
+            "phase": "error", "code": "load-failed", "message": "WebView2 7"
+        });
+        for pending in [None, Some(serde_json::json!({"phase": "starting"}))] {
+            assert_eq!(launcher_error_status(pending, "WebView2 7"), expected);
+        }
+    }
+    #[test]
     fn first_show_waits_for_bounds_and_load_or_timeout_and_runs_once() {
         let show = FirstShow::default();
         assert!(!show.claim(false));
@@ -508,6 +559,7 @@ mod tests {
         slow.bounds_ready.store(true, Ordering::SeqCst);
         assert!(slow.claim(true));
     }
+    #[cfg(debug_assertions)]
     #[test]
     fn debug_cdp_port_keeps_wry_defaults_and_rejects_bad_ports() {
         // 2026-11-09: only this test reads DECKMATE_DESKTOP_CDP_PORT, so mutating the process

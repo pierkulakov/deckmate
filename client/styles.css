@@ -483,20 +483,24 @@ kbd { display: inline-flex; align-items: center; justify-content: center; min-wi
 .mission-control-trigger { width: 34px; height: 34px; padding: 0; }
 .mission-control-trigger .deckmate-mark { width: 24px; height: 24px; }
 .mission-control-overlay { position: fixed; inset: 0; z-index: 90; background: transparent; }
-.mission-control { position: fixed; inset: 0 auto 0 0; z-index: 91; display: flex; flex-direction: column; width: min(336px, 100vw); color: var(--ink); background: var(--sidebar); box-shadow: 0 0 1px #0000003d, 0 2.5px 15px #0000003d; --sheet-from: -100% 0; animation: sheet-slide var(--motion-spring-firm) var(--ease-spring-firm); }
+.mission-control { position: fixed; inset: 0 auto 0 0; z-index: 91; display: flex; flex-direction: column; width: min(336px, 100vw); overflow-y: auto; overscroll-behavior: contain; color: var(--ink); background: var(--sidebar); box-shadow: var(--deck-settings-shadow); --sheet-from: -100% 0; animation: sheet-slide var(--motion-spring-firm) var(--ease-spring-firm); }
 .mission-control:focus { outline: none; }
 @media (max-width: 480px) { .mission-control { width: 100vw; } }
 /* 2026-11-06: the head repeats the 52px top bar so the mark stays exactly over the trigger's mark (13,14) and the bottom line continues the bar's line;
    the 1px top padding balances the bottom border. */
-.mission-control-head { display: flex; align-items: center; gap: 10px; height: 52px; padding: 1px 10px 0 13px; border-bottom: 1px solid var(--line); }
+.mission-control-head { display: flex; flex: 0 0 52px; align-items: center; gap: 10px; height: 52px; padding: 1px 10px 0 13px; border-bottom: 1px solid var(--line); }
 .mission-control-head .deckmate-mark { width: 24px; height: 24px; flex: 0 0 auto; }
-.mission-control-head h2 { flex: 1; margin: 0; font-size: 16px; font-weight: 600; }
-.mission-control-project { padding: 16px; }
+.mission-control-head h2 { margin: 0; font-size: 16px; font-weight: 600; }
+.mission-control-version { color: var(--muted); font-family: 'Geist Mono', monospace; font-size: 11px; font-variant-numeric: tabular-nums; }
+.mission-control-head > button { margin-left: auto; flex-shrink: 0; }
+.mission-control-project { flex-shrink: 0; padding: 16px; }
 .mission-control-project > h2 { margin: 0 0 12px; color: var(--muted); font-size: 12px; font-weight: 700; line-height: 14px; letter-spacing: .24px; text-transform: uppercase; }
-.mission-control-project-row { display: flex; align-items: center; gap: 10px; padding: 8px; border-radius: 6px; background: var(--ground); }
+.mission-control-project-row { display: flex; align-items: center; gap: 10px; min-width: 0; padding: 8px; border-radius: 6px; background: var(--ground); }
 .mission-control-project-row div { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
 .mission-control-project-row strong { overflow: hidden; font-size: 14px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
 .mission-control-project-row span { color: var(--muted); font-size: 12px; }
+.mission-control-project > .mission-control-project-row strong { white-space: normal; overflow-wrap: anywhere; line-height: 1.25; }
+.mission-control-project > .mission-control-project-row span { line-height: 1.4; }
 /* 2026-11-08: the avatar remains only on the current project row in a browser (no bridge); with the bridge both rows wear a tile. */
 .mission-control-avatar { display: grid; place-items: center; flex: 0 0 32px; width: 32px; height: 32px; border: 1px solid var(--line); border-radius: 5px; background: var(--surface); font-weight: 600; }
 /* 2026-11-08: a miniature deck cover per project — the same cast 165deg tile as the launcher's recent list
@@ -529,19 +533,66 @@ kbd { display: inline-flex; align-items: center; justify-content: center; min-wi
    No font: shorthand — the minifier reorders declarations, and the shorthand would reset font-variant-numeric after it. */
 .mission-control-recent-time { flex: 0 0 auto; color: var(--muted); font-family: 'Geist Mono', monospace; font-size: 12px; font-weight: 500; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .mission-control-recent-failure { margin: 0; color: var(--danger); font-size: 12px; line-height: 1.45; overflow-wrap: anywhere; }
-.mission-control-recent-open { display: inline-flex; align-items: center; gap: 6px; align-self: flex-start; margin: 0 0 0 8px; border: 0; padding: 2px 0; color: var(--muted); background: transparent; font-size: 12px; text-decoration: underline; text-decoration-color: color-mix(in srgb, currentColor 35%, transparent); text-underline-offset: 3px; cursor: pointer; }
+.mission-control-recent-open { display: inline-flex; align-items: center; gap: 6px; align-self: flex-start; min-height: 28px; margin: 0 0 0 8px; border: 0; padding: 2px 0; color: var(--muted); background: transparent; font-size: 12px; text-align: left; text-decoration: underline; text-decoration-color: color-mix(in srgb, currentColor 35%, transparent); text-underline-offset: 3px; cursor: pointer; }
+.mission-control-recent-open svg { flex-shrink: 0; }
 .mission-control-recent-open:hover:not(:disabled) { color: var(--ink); }
 .mission-control-recent-open:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 .mission-control-recent-open:disabled { cursor: default; }
-.mission-control-menu { display: flex; flex-direction: column; margin-top: auto; padding: 8px 0; border-top: 1px solid var(--line); }
-.mission-control-menu button { display: flex; align-items: center; gap: 12px; min-height: 45px; padding: 0 16px; border: 0; color: var(--ink); background: transparent; font-size: 15px; text-align: left; cursor: pointer; transition: background-color var(--motion-feedback) var(--ease-out); }
+.mission-control-menu { display: flex; flex: 0 0 auto; flex-direction: column; margin-top: auto; padding: 8px 0; border-top: 1px solid var(--line); }
+.mission-control-menu button { display: flex; align-items: center; gap: 12px; min-height: 45px; padding: 6px 24px; border: 0; color: var(--ink); background: transparent; font-size: 14px; line-height: 1.3; text-align: left; cursor: pointer; transition: background-color var(--motion-feedback) var(--ease-out); }
 .mission-control-menu button > svg { flex: 0 0 auto; color: var(--muted); }
-.mission-control-menu button > span { flex: 1; }
-.mission-control-menu button > small { color: var(--muted); font-size: 12px; }
+.mission-control-menu button > span { display: flex; flex: 1; flex-direction: column; gap: 2px; min-width: 0; overflow-wrap: anywhere; }
+.mission-control-menu button small { color: var(--muted); font-size: 12px; font-weight: 400; }
 .mission-control-menu button:hover:not(:disabled) { background: var(--hover); }
 .mission-control-menu button:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
 /* The menu row sets cursor: pointer at the same weight as the global button:disabled, so only the cursor needs restoring. */
 .mission-control-menu button:disabled { cursor: default; }
 .mission-control-menu button.is-destructive, .mission-control-menu button.is-destructive > svg { color: light-dark(#9c3358, var(--danger)); }
-.mission-control-foot { display: flex; align-items: center; gap: 7px; padding: 12px 16px 14px; border-top: 1px solid var(--line); color: var(--muted); font-size: 11px; }
+.mission-control-foot { display: flex; flex: 0 0 auto; align-items: center; gap: 7px; padding: 12px 24px 14px; border-top: 1px solid var(--line); color: var(--muted); font-size: 11px; }
+.mission-control-workspace { display: flex; flex-direction: column; gap: 8px; margin-top: 20px; }
+.mission-control-workspace h3 { margin: 0 0 2px; color: var(--muted); font-size: 12px; font-weight: 700; line-height: 1.4; }
+.mission-control-workspace-empty { margin: 0 0 4px; color: var(--muted); font-size: 13px; line-height: 1.5; text-wrap: pretty; }
+.mission-control-workspace-message { display: flex; align-items: center; gap: 8px; margin: 8px 0; color: var(--muted); font-size: 12px; }
+/* The reserved scrollbar sits in the section's padding, keeping tiles aligned with the current project. */
+.mission-control-workspace-list { display: flex; flex-direction: column; gap: 4px; width: calc(100% + 6px); max-height: clamp(120px, calc(100dvh - 630px), 306px); margin: 0; padding: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-gutter: stable; list-style: none; }
+.mission-control-workspace-row { position: relative; flex: 0 0 auto; min-width: 0; border-radius: 6px; background: var(--ground); }
+.mission-control-workspace-row.is-current { background: var(--accent-soft); box-shadow: inset 0 0 0 1px var(--line); }
+.mission-control-workspace-open { position: relative; width: 100%; min-height: 58px; padding-right: 36px; border: 0; color: var(--ink); background: transparent; text-align: left; touch-action: pan-y; cursor: pointer; transition: background-color var(--motion-feedback) var(--ease-out); }
+.mission-control-workspace-open[aria-disabled="true"] { cursor: default; }
+.mission-control-workspace-open:hover:not([aria-disabled="true"]) { background: var(--hover); }
+.mission-control-workspace-open:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
+.mission-control-workspace-copy { flex: 1; }
+.mission-control-workspace-copy strong { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; white-space: normal; overflow-wrap: anywhere; line-height: 1.25; }
+.mission-control-workspace-path { overflow-wrap: anywhere; line-height: 1.3; }
+.mission-control-workspace-current { position: absolute; right: 12px; top: calc(50% - 7px); color: var(--focus); }
+.mission-control-workspace-row.is-missing .mission-control-recent-tile { opacity: .45; filter: saturate(.4); }
+.mission-control-workspace-row.is-missing strong { color: var(--muted); }
+.mission-control-workspace-copy .mission-control-workspace-missing { color: var(--muted); font-size: 11px; }
+.mission-control-workspace-row:not(.is-current):not(.is-missing) .mission-control-workspace-open[aria-disabled="true"] { opacity: .6; }
+.mission-control-workspace-remove { position: absolute; right: 4px; top: calc(50% - 14px); display: grid; place-items: center; width: 28px; height: 28px; padding: 0; border: 0; border-radius: 4px; opacity: 0; color: var(--muted); background: transparent; cursor: pointer; }
+.mission-control-workspace-row:hover .mission-control-workspace-remove, .mission-control-workspace-row:focus-within .mission-control-workspace-remove, .mission-control-workspace-row.is-missing .mission-control-workspace-remove { opacity: 1; }
+.mission-control-workspace-row:hover .mission-control-workspace-current, .mission-control-workspace-row:focus-within .mission-control-workspace-current { visibility: hidden; }
+.mission-control-workspace-remove:hover:not(:disabled) { color: var(--danger); background: var(--hover); }
+.mission-control-workspace-remove:focus-visible, .mission-control-workspace-add:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
+.mission-control-workspace-remove:disabled { cursor: default; }
+.mission-control-workspace-row.is-dragging { z-index: 1; background: var(--hover); box-shadow: var(--card-hover-shadow), inset 0 0 0 2px var(--focus); }
+.mission-control-workspace-row.is-dragging .mission-control-workspace-open { cursor: grabbing; }
+.mission-control-workspace-list[data-dragging] .mission-control-workspace-remove { visibility: hidden; }
+.mission-control-workspace-actions { display: flex; align-items: center; gap: 10px; color: var(--muted); }
+.mission-control-workspace-add { display: inline-flex; align-items: center; gap: 7px; min-height: 32px; max-width: 100%; padding: 5px 8px; border: 1px solid var(--line); border-radius: 5px; background: transparent; color: var(--ink); font-size: 13px; text-align: left; cursor: pointer; }
+.mission-control-workspace-add svg { flex-shrink: 0; }
+.mission-control-workspace-add:hover:not(:disabled), .mission-control-workspace-add[data-state="open"] { background: var(--hover); }
+.mission-control-workspace-add:disabled { cursor: default; }
+.mission-control-workspace-note { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.4; }
+.mission-control-retry { border: 0; padding: 4px 0; background: transparent; color: inherit; font: inherit; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
+.mission-control-workspace-menu { z-index: 95; width: min(288px, calc(100vw - 32px)); min-width: 0; max-height: min(360px, var(--radix-dropdown-menu-content-available-height)); overflow-y: auto; overscroll-behavior: contain; }
+.mission-control-workspace-menu .dropdown-item { min-height: 36px; font-size: 13px; line-height: 1.3; overflow-wrap: anywhere; }
+.mission-control-workspace-menu .dropdown-item > svg { flex-shrink: 0; }
+.mission-control-workspace-menu .dropdown-label { font-size: 12px; font-weight: 600; }
+.mission-control-workspace-menu .mission-control-workspace-note, .mission-control-workspace-menu .mission-control-recent-failure { padding: 4px 8px 8px; }
+.mission-control-workspace-separator { height: 1px; margin: 5px 3px; background: var(--line); }
+.mission-control-workspace-recent > span:last-child { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.mission-control-workspace-recent strong { overflow-wrap: anywhere; font-weight: 600; }
+.mission-control-workspace-recent small { color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
+@media (hover: none) { .mission-control-workspace-remove { opacity: 1; } .mission-control-workspace-current { display: none; } }
 @media (prefers-reduced-motion: reduce) { .mission-control { animation: none; } .mission-control-menu button { transition: none; } }

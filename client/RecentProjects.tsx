@@ -1,13 +1,30 @@
-// 2026-11-08: in Deckmate Desktop the shell exposes the board bridge (client/desktop-bridge.ts), and the project
-// menu lists the other recent projects under the current one, one click switching the window to that folder.
-// In a browser (CLI, Docker) there is no bridge: this renders nothing and the section keeps its single row.
-// The labels live in App.tsx's shared text object, so both languages stay keyed together.
+// 2026-11-09: older Desktop shells retain their recent list; workspace rows share its tiles and navigation feedback.
 import { useCallback, useEffect, useState, type CSSProperties, type ReactNode } from 'react';
 import { FolderOpen, LoaderCircle } from 'lucide-react';
 import { desktopBoard, type DesktopBoardBridge, type DesktopRecentProject } from './desktop-bridge.ts';
-import { useLang, type Lang } from './i18n.ts';
+import { defineText, useLang, useText, type Lang } from './i18n.ts';
 import { tileColor } from './project-tile.ts';
 import { relativeTimeAgo } from './relative-time.ts';
+
+const text = defineText({
+  openAnotherFolder: 'Open start screen',
+  recentFailed: 'Could not load recent projects.',
+  switchNotRecent: 'This folder is no longer in the recent list.',
+  switchMissing: 'That folder was not found on this computer.',
+  switchTimeout: 'The switch took too long; try again.',
+  switchStartFailed: 'Deckmate could not start in that folder.',
+  switchFailed: 'Could not switch the project.',
+  startFailed: 'Could not open the start screen. Try again.',
+}, {
+  openAnotherFolder: 'Открыть стартовый экран',
+  recentFailed: 'Не удалось загрузить недавние проекты.',
+  switchNotRecent: 'Этой папки больше нет в списке недавних.',
+  switchMissing: 'Папка не найдена на этом компьютере.',
+  switchTimeout: 'Переключение заняло слишком много времени; попробуйте ещё раз.',
+  switchStartFailed: 'Deckmate не удалось запустить проект в этой папке.',
+  switchFailed: 'Не удалось переключить проект.',
+  startFailed: 'Не удалось открыть стартовый экран. Попробуйте ещё раз.',
+});
 
 export type RecentProjectsLabels = {
   openAnotherFolder: string;
@@ -54,7 +71,40 @@ export async function attemptSwitch(board: DesktopBoardBridge, path: string): Pr
   }
 }
 
-type RecentFailure = { kind: 'load' } | { kind: 'switch'; code: string | undefined };
+/** A successful navigation replaces the page, so its spinner stays until the shell finishes. */
+export function useProjectNavigation(board: DesktopBoardBridge | undefined) {
+  const t = useText(text);
+  const [switching, setSwitching] = useState<string | null>(null);
+  const [openingStart, setOpeningStart] = useState(false);
+  const [failure, setFailure] = useState<{ kind: 'switch'; code: string | undefined } | { kind: 'start' } | null>(null);
+  const clearFailure = useCallback(() => setFailure(null), []);
+  const switchTo = async (path: string) => {
+    if (!board || switching || openingStart) return;
+    setSwitching(path);
+    setFailure(null);
+    const code = await attemptSwitch(board, path);
+    if (code !== null) { setSwitching(null); setFailure({ kind: 'switch', code }); }
+  };
+  const openStart = async () => {
+    if (!board || switching || openingStart) return;
+    setOpeningStart(true);
+    setFailure(null);
+    try { if ((await board.showStartScreen()).ok) return; } catch { /* Same recovery as a refused shell command. */ }
+    setOpeningStart(false);
+    setFailure({ kind: 'start' });
+  };
+  let failureText: string | null = null;
+  if (failure?.kind === 'start') failureText = t.startFailed;
+  if (failure?.kind === 'switch') failureText = switchFailureText(t, failure.code);
+  return { switching, openingStart, busy: switching !== null || openingStart, failureText, clearFailure, switchTo, openStart };
+}
+
+export function OpenStartScreen({ disabled, busy, onOpen }: { disabled: boolean; busy: boolean; onOpen: () => void }) {
+  const t = useText(text);
+  return <button type="button" className="mission-control-recent-open" disabled={disabled} aria-busy={busy} onClick={onOpen}>
+    {busy ? <LoaderCircle className="spin" size={14} aria-hidden="true" /> : <FolderOpen size={14} aria-hidden="true" />}{t.openAnotherFolder}
+  </button>;
+}
 
 /** The miniature deck cover of the launcher's recent list (desktop/launcher/launcher.css .recent-tile): the same
  *  165deg cast over the project's stable tile color, scaled down for the narrow menu panel. The current project row
@@ -66,42 +116,29 @@ export function ProjectTile({ name, children }: { name: string; children?: React
 /** Loads the list on every menu opening — the shell reorders its recent list on each switch. */
 export function useRecentProjects(board: DesktopBoardBridge | undefined, open: boolean) {
   const [others, setOthers] = useState<DesktopRecentProject[]>([]);
-  const [switching, setSwitching] = useState<string | null>(null);
-  const [failure, setFailure] = useState<RecentFailure | null>(null);
+  const [loadFailed, setLoadFailed] = useState(false);
 
   useEffect(() => {
     if (!open || !board) return;
     let current = true;
-    board.recentProjects().then(
-      projects => { if (current) { setOthers(otherProjects(projects)); setSwitching(null); setFailure(null); } },
-      () => { if (current) { setOthers([]); setSwitching(null); setFailure({ kind: 'load' }); } },
+    Promise.resolve().then(() => board.recentProjects()).then(
+      projects => { if (current) { setOthers(otherProjects(projects)); setLoadFailed(false); } },
+      () => { if (current) { setOthers([]); setLoadFailed(true); } },
     );
     return () => { current = false; };
   }, [board, open]);
 
-  const switchTo = useCallback(async (path: string) => {
-    if (!board) return;
-    setSwitching(path);
-    setFailure(null);
-    const code = await attemptSwitch(board, path);
-    // ok:true replaces the page from the shell, so the row keeps its loading state until then.
-    if (code !== null) {
-      setSwitching(null);
-      setFailure({ kind: 'switch', code });
-    }
-  }, [board]);
-
-  return { others, switching, failure, switchTo };
+  return { others, loadFailed };
 }
 
 /** The list, the failure line and the start-screen link. Takes everything as props: no hooks, so it renders
  *  to static markup in tests with the same props the wrapper passes in the menu. */
-export function RecentProjectsList({ projects, switching, failureText, disabled, labels, lang, onSwitch, onOpenStart }: {
+export function RecentProjectsList({ projects, switching, openingStart = false, failureText, disabled, lang, onSwitch, onOpenStart }: {
   projects: DesktopRecentProject[];
   switching: string | null;
+  openingStart?: boolean;
   failureText: string | null;
   disabled: boolean;
-  labels: RecentProjectsLabels;
   lang: Lang;
   onSwitch: (path: string) => void;
   onOpenStart: () => void;
@@ -127,27 +164,26 @@ export function RecentProjectsList({ projects, switching, failureText, disabled,
       })}
     </ul></div>
     {failureText && <p className="mission-control-recent-failure" role="alert">{failureText}</p>}
-    <button type="button" className="mission-control-recent-open" disabled={disabled || busy} onClick={onOpenStart}>
-      <FolderOpen size={14} aria-hidden="true" />{labels.openAnotherFolder}
-    </button>
+    <OpenStartScreen disabled={disabled || busy || openingStart} busy={openingStart} onOpen={onOpenStart} />
   </>;
 }
 
-export function RecentProjects({ open, disabled, labels }: {
+export function RecentProjects({ open, disabled }: {
   open: boolean;
   disabled: boolean;
-  labels: RecentProjectsLabels;
 }) {
   const board = desktopBoard();
   const lang = useLang();
-  const { others, switching, failure, switchTo } = useRecentProjects(board, open);
+  const t = useText(text);
+  const { others, loadFailed } = useRecentProjects(board, open);
+  const navigation = useProjectNavigation(board);
   // No bridge — a browser served by the CLI or Docker: the section keeps exactly its old markup.
   if (!board) return null;
-  // Nothing else to switch to: no empty headings, the section looks like today's.
-  if (others.length === 0 && !failure) return null;
-  const failureText = failure ? (failure.kind === 'load' ? labels.recentFailed : switchFailureText(labels, failure.code)) : null;
+  // Without another project, older shells keep the single current-project row.
+  if (others.length === 0 && !loadFailed) return null;
+  const failureText = loadFailed ? t.recentFailed : navigation.failureText;
   return <div className="mission-control-recent">
-    <RecentProjectsList projects={others} switching={switching} failureText={failureText} disabled={disabled}
-      labels={labels} lang={lang} onSwitch={path => void switchTo(path)} onOpenStart={() => void board.showStartScreen()} />
+    <RecentProjectsList projects={others} switching={navigation.switching} openingStart={navigation.openingStart} failureText={failureText} disabled={disabled || navigation.busy}
+      lang={lang} onSwitch={path => void navigation.switchTo(path)} onOpenStart={() => void navigation.openStart()} />
   </div>;
 }

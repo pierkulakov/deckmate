@@ -2,6 +2,7 @@ import { defineConfig, type ProxyOptions } from 'vite';
 import tailwindcss from '@tailwindcss/vite';
 import { rewriteProxyOrigin } from './tools/dev-proxy.ts';
 import { thirdPartyNoticesPlugin } from './tools/third-party-notices.ts';
+import packageInfo from './package.json' with { type: 'json' };
 
 const serverOrigin = `http://127.0.0.1:${process.env.DECKMATE_PORT ?? '4317'}`;
 const devPort = 4318;
@@ -22,6 +23,7 @@ function proxyToDeckmate(webSocket = false): ProxyOptions {
 
 export default defineConfig({
   root: 'client',
+  define: { __DECKMATE_VERSION__: JSON.stringify(packageInfo.version) },
   plugins: [tailwindcss(), thirdPartyNoticesPlugin()],
   build: {
     outDir: '../dist/client', emptyOutDir: true,

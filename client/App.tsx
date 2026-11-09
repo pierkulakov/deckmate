@@ -20,7 +20,8 @@ import { MembersEditor } from './components/MembersEditor.tsx';
 import { CsvImport } from './components/CsvImport.tsx';
 import { ProjectTemplates } from './components/ProjectTemplates.tsx';
 import { DocumentPreviewProvider } from './components/DocumentPreview.tsx';
-import { RecentProjects, ProjectTile } from './RecentProjects.tsx';
+import { ProjectTile } from './RecentProjects.tsx';
+import { WorkspaceProjects } from './WorkspaceProjects.tsx';
 import { desktopBoard } from './desktop-bridge.ts';
 import './workspace.css';
 import { DeckmateMark } from './components/DeckmateMark.tsx';
@@ -66,13 +67,8 @@ const text = defineText({
   stop: 'Stop Deckmate',
   projectSections: 'Project sections',
   refresh: 'Refresh',
-  openAnotherFolder: 'Open another folder…',
-  recentFailed: 'Could not load recent projects.',
-  switchNotRecent: 'This folder is no longer in the recent list.',
-  switchMissing: 'That folder was not found on this computer.',
-  switchTimeout: 'The switch took too long; try again.',
-  switchStartFailed: 'Deckmate could not start in that folder.',
-  switchFailed: 'Could not switch the project.',
+  otherLanguage: 'Русский',
+  interfaceLanguage: 'Interface language',
 }, {
   hand: 'Hand', deck: 'Decks', timeline: 'Timeline', vision: 'Vision',
   sectionFailedTitle: 'Не удалось открыть раздел',
@@ -101,13 +97,8 @@ const text = defineText({
   stop: 'Остановить Deckmate',
   projectSections: 'Разделы проекта',
   refresh: 'Обновить',
-  openAnotherFolder: 'Открыть другую папку…',
-  recentFailed: 'Не удалось загрузить недавние проекты.',
-  switchNotRecent: 'Этой папки больше нет в списке недавних.',
-  switchMissing: 'Папка не найдена на этом компьютере.',
-  switchTimeout: 'Переключение заняло слишком много времени; попробуйте ещё раз.',
-  switchStartFailed: 'Deckmate не удалось запустить проект в этой папке.',
-  switchFailed: 'Не удалось переключить проект.',
+  otherLanguage: 'English',
+  interfaceLanguage: 'Язык интерфейса',
 });
 
 class WorkspaceBoundary extends Component<{ children: ReactNode }, { failed: boolean }> {
@@ -147,7 +138,7 @@ export default function App() {
   const [dark, setDark] = useState(() => { const enabled = readStoredValue(localStorage, 'deckmate-theme') !== 'light'; document.documentElement.classList.toggle('dark', enabled); return enabled; });
   const onEditing = useCallback((value: boolean) => setEditing(value), []);
   const snapshot = workspace.snapshot;
-  // 2026-11-08: with the Desktop bridge the current project row wears the same tile as the recent list below it;
+  // 2026-11-09: with the Desktop bridge the current project row wears the same tile as the project list below it;
   // in a browser there is no bridge and the row keeps its plain avatar.
   const board = desktopBoard();
   // The browser tab names the project first, so several open projects tell apart (2026-11-05).
@@ -211,8 +202,10 @@ export default function App() {
   return <DocumentPreviewProvider><div className="app-shell global-shell" data-event-latency={workspace.eventLatency} data-updated-at={workspace.updatedAt} data-rendered-at={renderedAt}>
     <Dialog.Root open={sidebarOpen} onOpenChange={setSidebarOpen}>
       <Dialog.Portal><Dialog.Overlay className="mission-control-overlay" />
-        <Dialog.Content className="mission-control" aria-describedby={undefined}>
-          <header className="mission-control-head"><DeckmateMark /><Dialog.Title>Deckmate</Dialog.Title>
+        <Dialog.Content className="mission-control" aria-describedby={undefined} onEscapeKeyDown={event => {
+          if (document.querySelector('.mission-control [role="menu"][data-state="open"]')) event.preventDefault();
+        }}>
+          <header className="mission-control-head"><DeckmateMark /><Dialog.Title>Deckmate</Dialog.Title><span className="mission-control-version">v{__DECKMATE_VERSION__}</span>
             <Dialog.Close asChild><Button variant="ghost" size="icon" aria-label={t.closeMenu}><X size={17} /></Button></Dialog.Close></header>
           <section className="mission-control-project" aria-label={t.project}><h2>{t.project}</h2>
             <div className="mission-control-project-row">{board
@@ -221,13 +214,13 @@ export default function App() {
               <div><strong title={snapshot?.projectName ?? t.project}>{snapshot?.projectName ?? t.project}</strong><span>{!snapshot ? '' : snapshot.editMode === 'direct' ? t.modeDirect
                 : snapshot.editMode === 'sandbox' ? (workspace.source === 'sandbox' ? sourceLabels.testCopy : sourceLabels.original) + ' · ' + (snapshot.writable ? sourceLabels.editable : sourceLabels.readOnly)
                 : t.modeReadOnly}</span></div></div>
-            <RecentProjects open={sidebarOpen} disabled={editing} labels={t} />
+            <WorkspaceProjects open={sidebarOpen} disabled={editing} />
           </section>
           <nav className="mission-control-menu" aria-label={t.appMenu}>
             <button type="button" disabled={editing || !snapshot} onClick={() => { setSidebarOpen(false); setTemplatesOpen(true); }}><Layers size={18} aria-hidden="true" /><span>{t.projectTemplates}</span></button>
-            <button type="button" disabled={editing} onClick={() => { setSidebarOpen(false); setMembersOpen(true); }}><UserRound size={18} aria-hidden="true" /><span>{t.members}</span><small>{t.membersCaption}</small></button>
-            <button type="button" disabled={editing} onClick={() => { setSidebarOpen(false); setImportDeckId(null); setImportOpen(true); }}><FileUp size={18} aria-hidden="true" /><span>{t.importCsv}</span><small>{t.importCaption}</small></button>
-            <button type="button" onClick={() => { setLang(lang === 'en' ? 'ru' : 'en'); emitSignal({ type: 'preference', name: 'language' }); }}><Languages size={18} aria-hidden="true" /><span>{lang === 'en' ? 'Русский' : 'English'}</span><small>{lang === 'en' ? 'Interface language' : 'Язык интерфейса'}</small></button>
+            <button type="button" disabled={editing} onClick={() => { setSidebarOpen(false); setMembersOpen(true); }}><UserRound size={18} aria-hidden="true" /><span>{t.members}<small>{t.membersCaption}</small></span></button>
+            <button type="button" disabled={editing} onClick={() => { setSidebarOpen(false); setImportDeckId(null); setImportOpen(true); }}><FileUp size={18} aria-hidden="true" /><span>{t.importCsv}<small>{t.importCaption}</small></span></button>
+            <button type="button" onClick={() => { setLang(lang === 'en' ? 'ru' : 'en'); emitSignal({ type: 'preference', name: 'language' }); }}><Languages size={18} aria-hidden="true" /><span>{t.otherLanguage}<small>{t.interfaceLanguage}</small></span></button>
             <button type="button" onClick={() => { setSidebarOpen(false); void workspace.refresh(); }}><RefreshCw size={18} aria-hidden="true" /><span>{t.refreshPage}</span></button>
             <button type="button" className="is-destructive" disabled={editing} onClick={() => { setSidebarOpen(false); void workspace.shutdown().then(closed => { if (closed) setStopped(true); }); }}><Power size={18} aria-hidden="true" /><span>{t.stop}</span></button>
           </nav>

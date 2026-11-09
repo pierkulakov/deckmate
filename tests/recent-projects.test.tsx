@@ -6,9 +6,10 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { setLang } from '../client/i18n.ts';
 import { tileColor, tilePalette } from '../client/project-tile.ts';
 import {
-  RecentProjects, RecentProjectsList, attemptSwitch, compactPath, otherProjects, switchFailureText, type RecentProjectsLabels,
+  OpenStartScreen, RecentProjects, RecentProjectsList, attemptSwitch, compactPath, otherProjects, switchFailureText, type RecentProjectsLabels,
 } from '../client/RecentProjects.tsx';
-import type { DesktopBoardBridge, DesktopRecentProject, DesktopResult } from '../client/desktop-bridge.ts';
+import { hasWorkspace, type DesktopBoardBridge, type DesktopRecentProject, type DesktopResult } from '../client/desktop-bridge.ts';
+import { WorkspaceProjects } from '../client/WorkspaceProjects.tsx';
 
 // 2026-11-08: the project menu lists the shell's recent projects when the Desktop bridge is present
 // (a fake window.deckmateBoard), keeps the current one out of the list, switches by path and shows
@@ -28,7 +29,7 @@ beforeEach(() => {
 afterEach(() => vi.unstubAllGlobals());
 
 const labels: RecentProjectsLabels = {
-  openAnotherFolder: 'Open another folder…',
+  openAnotherFolder: 'Open start screen',
   recentFailed: 'Could not load recent projects.',
   switchNotRecent: 'This folder is no longer in the recent list.',
   switchMissing: 'That folder was not found on this computer.',
@@ -56,7 +57,7 @@ function fakeBoard(result: DesktopResult | Error): { board: DesktopBoardBridge; 
 function renderList(overrides: Partial<Parameters<typeof RecentProjectsList>[0]> = {}): string {
   const props: Parameters<typeof RecentProjectsList>[0] = {
     projects: otherProjects(projects), switching: null, failureText: null, disabled: false,
-    labels, lang: 'en', onSwitch: () => {}, onOpenStart: () => {}, ...overrides,
+    lang: 'en', onSwitch: () => {}, onOpenStart: () => {}, ...overrides,
   };
   return renderToStaticMarkup(<RecentProjectsList {...props} />);
 }
@@ -146,15 +147,15 @@ describe('recent projects list', () => {
     const { board, calls } = fakeBoard({ ok: true });
     const opened: string[] = [];
     const tree = RecentProjectsList({
-      projects: otherProjects(projects), switching: null, failureText: null, disabled: false, labels, lang: 'en',
+      projects: otherProjects(projects), switching: null, failureText: null, disabled: false, lang: 'en',
       onSwitch: path => void attemptSwitch(board, path), onOpenStart: () => opened.push('start'),
     });
     const row = buttonsOf(tree).find(button => (button.props as { title?: string }).title === longPath);
     (row?.props as { onClick: () => void }).onClick();
     await Promise.resolve();
     expect(calls).toEqual([longPath]);
-    const openLink = buttonsOf(tree).find(button => String((button.props as { className?: string }).className).includes('mission-control-recent-open'));
-    (openLink?.props as { onClick: () => void }).onClick();
+    const open = (tree.props.children as ReactElement[]).find(child => isValidElement(child) && child.type === OpenStartScreen);
+    (open?.props as { onOpen: () => void }).onOpen();
     expect(opened).toEqual(['start']);
   });
 });
@@ -183,7 +184,19 @@ describe('recent projects switching', () => {
 
 describe('recent projects without the bridge', () => {
   it('renders nothing, so the project section keeps its single current-project row', () => {
-    expect(renderToStaticMarkup(<RecentProjects open disabled={false} labels={labels} />)).toBe('');
+    expect(renderToStaticMarkup(<RecentProjects open disabled={false} />)).toBe('');
+    expect(renderToStaticMarkup(<WorkspaceProjects open disabled={false} />)).toBe('');
+  });
+
+  it('requires the complete workspace capability and keeps older or partial bridges usable', () => {
+    const { board } = fakeBoard({ ok: true });
+    expect(hasWorkspace(board)).toBe(false);
+    board.workspaceProjects = async () => [];
+    expect(hasWorkspace(board)).toBe(false);
+    board.addToWorkspace = async () => ({ ok: true, projects: [] });
+    board.removeFromWorkspace = async () => ({ ok: true, projects: [] });
+    board.moveInWorkspace = async () => ({ ok: true, projects: [] });
+    expect(hasWorkspace(board)).toBe(true);
   });
 });
 

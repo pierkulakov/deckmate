@@ -5,7 +5,7 @@ import { BulkActions } from '../../client/components/BulkActions.tsx';
 import { setLang, type Lang } from '../../client/i18n.ts';
 import type { CatalogCard, CatalogView } from '../../src/catalog-contracts.ts';
 import type { NotificationStack, NotificationsView } from '../../src/notification-contracts.ts';
-import type { DesktopRecentProject } from '../../client/desktop-bridge.ts';
+import type { DesktopRecentProject, DesktopWorkspaceProject, DesktopWorkspaceResult } from '../../client/desktop-bridge.ts';
 import '../../client/styles.css';
 import '../../client/motion.css';
 import '../../client/card-material.css';
@@ -24,7 +24,62 @@ const recent: DesktopRecentProject[] = [
   { path: 'D:\\Work\\Shared\\Игровая-команда\\Подготовка-первого-релиза', name: 'Подготовка-первого-релиза', lastOpened: new Date(Date.now() - 7200000).toISOString(), current: false },
   { path: 'D:\\WWWWWWWWWWWWWWWWWWWW\\WWWWWWWWWWWWWWWWWWWWWWWWWWWWWW', name: 'Wide glyphs', lastOpened: new Date(Date.now() - 86400000).toISOString(), current: false },
 ];
-window.deckmateBoard = { recentProjects: async () => recent, switchProject: async () => ({ ok: true }), showStartScreen: async () => ({ ok: true }) };
+const current: DesktopWorkspaceProject = { path: 'C:\\Work\\Shell test', name: 'Shell test', current: true, missing: false };
+const initialWorkspace: DesktopWorkspaceProject[] = [current,
+  { ...recent[0], name: 'Подготовка первого большого релиза и локализации', missing: false },
+  { ...recent[1], missing: false },
+  { path: 'E:\\Archive\\Lost project', name: 'Lost project', current: false, missing: true },
+];
+let workspaceProjects: DesktopWorkspaceProject[] = [];
+let workspaceCalls: { method: string; args: unknown[] }[] = [];
+let workspaceResult: DesktopWorkspaceResult | 'throw' | null = null;
+let navigationFailure: string | null = null;
+let workspaceLoadFails = false;
+let recentFails = false;
+function workspaceReply(next: DesktopWorkspaceProject[]): DesktopWorkspaceResult {
+  if (workspaceResult === 'throw') throw new Error('Bridge unavailable');
+  const reply = workspaceResult ?? { ok: true, projects: next };
+  if (reply.ok) workspaceProjects = reply.projects;
+  return reply;
+}
+function configureBridge(workspace?: boolean | DesktopWorkspaceProject[], partial = false) {
+  workspaceProjects = Array.isArray(workspace) ? workspace : initialWorkspace.map(project => ({ ...project }));
+  workspaceCalls = []; workspaceResult = null; navigationFailure = null; workspaceLoadFails = false; recentFails = false;
+  window.deckmateBoard = {
+    recentProjects: async () => {
+      if (recentFails) throw new Error('Recent unavailable');
+      return [ ...recent, { path: 'C:\\Work\\Field Notes', name: 'Field Notes', current: false, lastOpened: '' } ];
+    },
+    switchProject: async path => { workspaceCalls.push({ method: 'switch', args: [path] }); return navigationFailure ? { ok: false, code: navigationFailure } : { ok: true }; },
+    showStartScreen: async () => { workspaceCalls.push({ method: 'start', args: [] }); return navigationFailure ? { ok: false, code: navigationFailure } : { ok: true }; },
+  };
+  // Preserve the legacy fixture's two recent rows for the existing shell-layout checks.
+  if (!workspace && !partial) window.deckmateBoard.recentProjects = async () => recent;
+  if (!workspace && !partial) return;
+  window.deckmateBoard.workspaceProjects = async () => {
+    if (workspaceLoadFails) throw new Error('Workspace unavailable');
+    return workspaceProjects;
+  };
+  if (partial) return;
+  window.deckmateBoard.addToWorkspace = async source => {
+    workspaceCalls.push({ method: 'add', args: [source] });
+    let project = current;
+    if (source.kind === 'dialog') project = { path: 'C:\\Chosen', name: 'Chosen project', current: false, missing: false };
+    if (source.kind === 'recent') project = { ...(await window.deckmateBoard!.recentProjects()).find(entry => entry.path === source.path)!, missing: false };
+    return workspaceReply([...workspaceProjects, project]);
+  };
+  window.deckmateBoard.removeFromWorkspace = async path => {
+    workspaceCalls.push({ method: 'remove', args: [path] });
+    return workspaceReply(workspaceProjects.filter(project => project.path !== path));
+  };
+  window.deckmateBoard.moveInWorkspace = async (path, index) => {
+    workspaceCalls.push({ method: 'move', args: [path, index] });
+    const next = [...workspaceProjects];
+    const [project] = next.splice(next.findIndex(entry => entry.path === path), 1);
+    next.splice(index, 0, project);
+    return workspaceReply(next);
+  };
+}
 
 // 2026-11-08: exercise the real useWorkspace shutdown/reconnect race without stopping a shared server.
 const sockets = new Set<FakeSocket>();
@@ -82,13 +137,14 @@ window.fetch = async (input, init) => {
   return Response.json({ entries: [], warnings: [] });
 };
 
-function render(scene: 'app' | 'bulk' = 'app', options: { lang?: Lang; theme?: string; view?: string; deck?: boolean; failShutdown?: boolean; notifications?: boolean } = {}) {
+function render(scene: 'app' | 'bulk' = 'app', options: { lang?: Lang; theme?: string; view?: string; deck?: boolean; failShutdown?: boolean; notifications?: boolean; workspace?: boolean | DesktopWorkspaceProject[]; partialBridge?: boolean } = {}) {
   flushSync(() => root.render(null));
   snapshotFails = false;
   shutdownFails = options.failShutdown ?? false;
   shutdownCalls = 0;
   notificationCalls = 0;
   notifications = options.notifications ?? false;
+  configureBridge(options.workspace, options.partialBridge);
   setLang(options.lang ?? 'en');
   localStorage.setItem('deckmate-theme', options.theme ?? 'dark');
   document.documentElement.classList.toggle('dark', options.theme !== 'light');
@@ -102,5 +158,10 @@ Object.assign(window, { shellTest: {
   disconnect: () => { snapshotFails = true; sockets.forEach(socket => socket.disconnect()); },
   get shutdownCalls() { return shutdownCalls; },
   get notificationCalls() { return notificationCalls; },
+  get workspaceCalls() { return workspaceCalls; },
+  setWorkspaceResult: (result: DesktopWorkspaceResult | 'throw' | null) => { workspaceResult = result; },
+  setNavigationFailure: (code: string | null) => { navigationFailure = code; },
+  setWorkspaceLoadFails: (value: boolean) => { workspaceLoadFails = value; },
+  setRecentFails: (value: boolean) => { recentFails = value; },
 } });
 render();

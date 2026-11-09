@@ -8,6 +8,7 @@ import { createServer, type ViteDevServer } from 'vite';
 import tailwindcss from '@tailwindcss/vite';
 import { freePort } from './free-port.ts';
 import { waitForPageTarget } from './browser-target.ts';
+import { version } from '../package.json';
 
 const browserPath = [process.env.DECKMATE_BROWSER, process.env.BROWSER,
   'C:/Program Files/Google/Chrome/Application/chrome.exe', 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe',
@@ -54,11 +55,31 @@ describe.skipIf(!browserPath)('application shell (browser)', () => {
     await until(scene === 'bulk' ? `Boolean(document.querySelector('.bulk-actions'))` : `Boolean(document.querySelector('.global-search-field input') && document.querySelector('.catalog-view, .planning-view'))`);
     await evaluate('document.fonts.ready');
   }
+  async function workspace(options: object = {}, width = 1280) {
+    await render('app', { workspace: true, ...options }, width);
+    await click('.mission-control-trigger');
+    await until(`Boolean(document.querySelector('.mission-control-workspace-add:not(:disabled)'))`);
+    await evaluate(`Promise.all(document.querySelector('.mission-control').getAnimations().map(animation => animation.finished))`);
+  }
+  async function addMenu() {
+    await evaluate(`document.querySelector('.mission-control-workspace-add').focus()`);
+    await key('Enter');
+    await until(`Boolean(document.querySelector('.mission-control-workspace-menu'))`);
+    await until(`Boolean(document.activeElement.closest('.mission-control-workspace-menu'))`);
+  }
+  async function menuItem(label: string) {
+    await evaluate(`[...document.querySelectorAll('.mission-control-workspace-menu [role="menuitem"]')].find(e => e.textContent.trim() === ${JSON.stringify(label)}).click()`);
+    await delay(100);
+  }
+  async function altMove(direction: 'ArrowUp' | 'ArrowDown') {
+    for (const type of ['keyDown', 'keyUp']) await send('Input.dispatchKeyEvent', { type, key: direction, code: direction, modifiers: 1, windowsVirtualKeyCode: direction === 'ArrowUp' ? 38 : 40 });
+    await delay(100);
+  }
 
   beforeAll(async () => {
     const base = tmpdir();
     temporary = await mkdtemp(path.join(base, 'deckmate-shell-test-'));
-    server = await createServer({ configFile: false, root: process.cwd(), cacheDir: path.join(temporary, 'vite'), plugins: [tailwindcss(), {
+    server = await createServer({ configFile: false, root: process.cwd(), define: { __DECKMATE_VERSION__: JSON.stringify(version) }, cacheDir: path.join(temporary, 'vite'), plugins: [tailwindcss(), {
       name: 'shell-ui-fixture', configureServer(vite) {
         vite.middlewares.use((request, response, next) => {
           if (!request.url?.startsWith('/?') && request.url !== '/') return next();
@@ -143,6 +164,198 @@ describe.skipIf(!browserPath)('application shell (browser)', () => {
       list.append(list.firstElementChild.cloneNode(true));
       return fits && list.scrollHeight > list.clientHeight && list.querySelector('button').getBoundingClientRect().width === width;
     })()`)).toBe(true);
+  });
+
+  it.each([375, 1280])('workspace: localized rows, version and actions fit %s px in both themes', async width => {
+    for (const theme of ['light', 'dark']) for (const lang of ['ru', 'en']) {
+      await workspace({ theme, lang }, width);
+      expect(await evaluate(`document.querySelector('.mission-control-version').textContent`)).toBe(`v${version}`);
+      expect(await evaluate(`document.querySelector('.mission-control-workspace h3').textContent`)).toBe(lang === 'ru' ? 'Рабочее пространство' : 'Workspace');
+      expect(await evaluate(`document.querySelectorAll('.mission-control-workspace-row').length`)).toBe(4);
+      expect(await evaluate(`(() => {
+        const panel = document.querySelector('.mission-control');
+        const current = document.querySelector('.mission-control-project > .mission-control-project-row');
+        const tile = current.querySelector('.mission-control-recent-tile').getBoundingClientRect();
+        return panel.scrollWidth <= panel.clientWidth && [...document.querySelectorAll('.mission-control-workspace-row')].every(row => {
+          const r = row.getBoundingClientRect(), t = row.querySelector('.mission-control-recent-tile').getBoundingClientRect();
+          return Math.abs(r.width - current.getBoundingClientRect().width) < 1 && t.left === tile.left && row.scrollWidth <= row.clientWidth;
+        });
+      })()`)).toBe(true);
+      await evaluate(`document.querySelector('.mission-control-workspace-open').focus()`);
+      await delay(180);
+      expect(await evaluate(`getComputedStyle(document.querySelector('.mission-control-workspace-remove')).opacity`)).toBe('1');
+      await click('.mission-control-workspace-open[aria-current="true"]');
+      expect(await evaluate('window.shellTest.workspaceCalls')).toEqual([]);
+    }
+  });
+
+  it('workspace: empty state adds current, dialog and recent projects only on request', async () => {
+    await workspace({ workspace: [] });
+    expect(await evaluate(`document.querySelector('.mission-control-workspace-empty').textContent`)).toBe('Pin the projects you work on and switch between them in one click.');
+    expect(await evaluate('window.shellTest.workspaceCalls')).toEqual([]);
+    await addMenu();
+    await menuItem('Add current project');
+    await until(`document.querySelectorAll('.mission-control-workspace-row').length === 1`);
+    await addMenu();
+    expect(await evaluate(`document.querySelector('.mission-control-workspace-menu').textContent.includes('Add current project')`)).toBe(false);
+    await menuItem('Choose folder…');
+    await until(`document.querySelectorAll('.mission-control-workspace-row').length === 2`);
+    await addMenu();
+    await until(`Boolean(document.querySelector('.mission-control-workspace-recent'))`);
+    await evaluate(`[...document.querySelectorAll('.mission-control-workspace-recent')].find(e => e.textContent.includes('Field Notes')).click()`);
+    await until(`document.querySelectorAll('.mission-control-workspace-row').length === 3`);
+    expect(await evaluate('window.shellTest.workspaceCalls')).toEqual([
+      { method: 'add', args: [{ kind: 'current' }] }, { method: 'add', args: [{ kind: 'dialog' }] },
+      { method: 'add', args: [{ kind: 'recent', path: 'C:\\Work\\Field Notes' }] },
+    ]);
+    expect(await evaluate(`document.querySelector('.mission-control-workspace-empty') === null`)).toBe(true);
+    expect(await evaluate(`document.querySelector('.mission-control-workspace-menu') === null`)).toBe(true);
+  });
+
+  it('workspace: mutations render the authoritative shell list, including its order and flags', async () => {
+    await workspace({ workspace: [] });
+    const authoritative = [{ path: 'C:\\Returned', name: 'Returned by shell', current: false, missing: true }];
+    await evaluate(`window.shellTest.setWorkspaceResult({ ok: true, projects: ${JSON.stringify(authoritative)} })`);
+    await addMenu();
+    await menuItem('Add current project');
+    await until(`document.querySelector('.mission-control-workspace-open')?.textContent.includes('Returned by shell')`);
+    expect(await evaluate(`document.querySelectorAll('.mission-control-workspace-row').length`)).toBe(1);
+    expect(await evaluate(`document.querySelector('.mission-control-workspace-missing').textContent`)).toBe('Folder not found');
+    expect(await evaluate(`document.querySelector('.mission-control-workspace-open').getAttribute('aria-current')`)).toBeNull();
+  });
+
+  it('workspace: a pending native dialog disables actions and restores focus after cancellation', async () => {
+    await workspace({ workspace: [] });
+    await evaluate(`window.deckmateBoard.addToWorkspace = () => new Promise(resolve => { window.finishWorkspace = resolve; })`);
+    await addMenu(); await menuItem('Choose folder…');
+    expect(await evaluate(`document.querySelector('.mission-control-workspace-add').disabled && document.querySelector('.mission-control-recent-open').disabled`)).toBe(true);
+    expect(await evaluate(`Boolean(document.querySelector('.mission-control-workspace-actions .spin'))`)).toBe(true);
+    expect(await evaluate(`document.querySelector('.mission-control-workspace-menu') === null`)).toBe(true);
+    await evaluate(`window.finishWorkspace({ ok: false, code: 'cancelled' })`);
+    await until(`!document.querySelector('.mission-control-workspace-add').disabled`);
+    expect(await evaluate(`document.activeElement === document.querySelector('.mission-control-workspace-add')`)).toBe(true);
+    await addMenu();
+    await key('Escape');
+  });
+
+  it('workspace: a full list stays bounded, honors reduced motion and frees a slot on removal', async () => {
+    const projects = Array.from({ length: 30 }, (_, index) => ({ path: `C:\\Work\\Project ${index}`, name: `Project ${index}`, current: false, missing: false }));
+    await send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: 'reduce' }] });
+    try {
+      await render('app', { workspace: projects }, 1280);
+      await click('.mission-control-trigger');
+      await until(`document.querySelectorAll('.mission-control-workspace-row').length === 30`);
+      expect(await evaluate(`document.querySelector('.mission-control-workspace-add').disabled`)).toBe(true);
+      expect(await evaluate(`getComputedStyle(document.querySelector('.mission-control')).animationName`)).toBe('none');
+      expect(await evaluate(`(() => { const list = document.querySelector('.mission-control-workspace-list'); return list.scrollHeight > list.clientHeight && list.clientHeight <= 306; })()`)).toBe(true);
+      await click('.mission-control-workspace-row:last-child .mission-control-workspace-remove');
+      await until(`!document.querySelector('.mission-control-workspace-add').disabled`);
+      expect(await evaluate(`document.querySelectorAll('.mission-control-workspace-row').length`)).toBe(29);
+    } finally { await send('Emulation.setEmulatedMedia', { features: [] }); }
+  });
+
+  it('workspace: missing folders cannot switch but can be removed, with focus on the next row', async () => {
+    await workspace();
+    await click('.mission-control-workspace-row.is-missing .mission-control-workspace-open');
+    expect(await evaluate('window.shellTest.workspaceCalls')).toEqual([]);
+    await click('.mission-control-workspace-row.is-missing .mission-control-workspace-remove');
+    await until(`document.querySelectorAll('.mission-control-workspace-row').length === 3`);
+    expect(await evaluate('window.shellTest.workspaceCalls')).toEqual([{ method: 'remove', args: ['E:\\Archive\\Lost project'] }]);
+    expect(await evaluate(`document.activeElement === document.querySelectorAll('.mission-control-workspace-open')[2]`)).toBe(true);
+  });
+
+  it('workspace: Alt+arrows reorder the focused current row and keep focus, without switching', async () => {
+    await workspace();
+    await evaluate(`document.querySelector('.mission-control-workspace-open').focus()`);
+    await altMove('ArrowUp');
+    expect(await evaluate('window.shellTest.workspaceCalls')).toEqual([]);
+    await altMove('ArrowDown');
+    expect(await evaluate(`document.querySelectorAll('.mission-control-workspace-open')[1].getAttribute('aria-current')`)).toBe('true');
+    expect(await evaluate(`document.activeElement === document.querySelectorAll('.mission-control-workspace-open')[1]`)).toBe(true);
+    await altMove('ArrowUp');
+    expect(await evaluate('window.shellTest.workspaceCalls')).toEqual([
+      { method: 'move', args: ['C:\\Work\\Shell test', 1] }, { method: 'move', args: ['C:\\Work\\Shell test', 0] },
+    ]);
+    expect(await evaluate(`[...document.querySelectorAll('.mission-control-workspace [role="status"]')].some(e => e.textContent.includes('position 1 of 4'))`)).toBe(true);
+  });
+
+  it('workspace: pointer dragging reorders without opening a project', async () => {
+    await workspace();
+    const points = await evaluate(`[...document.querySelectorAll('.mission-control-workspace-open')].slice(0, 2).map(e => { const r = e.getBoundingClientRect(); return { x: r.left + 20, y: r.top + r.height / 2 }; })`);
+    await send('Input.dispatchMouseEvent', { type: 'mouseMoved', ...points[0] });
+    await send('Input.dispatchMouseEvent', { type: 'mousePressed', ...points[0], button: 'left', buttons: 1, clickCount: 1 });
+    await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: points[0].x, y: points[0].y + 10, buttons: 1 });
+    await until(`Boolean(document.querySelector('.mission-control-workspace-row.is-dragging'))`);
+    await send('Input.dispatchMouseEvent', { type: 'mouseMoved', ...points[1], buttons: 1 });
+    await delay(200);
+    await send('Input.dispatchMouseEvent', { type: 'mouseReleased', ...points[1], button: 'left', buttons: 0, clickCount: 1 });
+    await until(`window.shellTest.workspaceCalls.length === 1`);
+    expect(await evaluate('window.shellTest.workspaceCalls')).toEqual([{ method: 'move', args: ['C:\\Work\\Shell test', 1] }]);
+  });
+
+  it('workspace: cancel is silent, rejected edits keep the list, and retry recovers', async () => {
+    await workspace({ workspace: [] });
+    await evaluate(`window.shellTest.setWorkspaceResult({ ok: false, code: 'cancelled' })`);
+    await addMenu(); await menuItem('Choose folder…');
+    expect(await evaluate(`document.querySelector('.mission-control-workspace [role="alert"]') === null`)).toBe(true);
+    await evaluate(`window.shellTest.setWorkspaceResult('throw')`);
+    await addMenu(); await menuItem('Choose folder…');
+    await until(`Boolean(document.querySelector('.mission-control-workspace [role="alert"]'))`);
+    expect(await evaluate(`document.querySelector('.mission-control-workspace [role="alert"]').textContent`)).toContain('Could not update');
+    expect(await evaluate(`Boolean(document.querySelector('.mission-control-workspace-empty'))`)).toBe(true);
+    await evaluate(`window.shellTest.setWorkspaceResult(null)`);
+    await addMenu(); await menuItem('Choose folder…');
+    await until(`document.querySelectorAll('.mission-control-workspace-row').length === 1`);
+    expect(await evaluate(`document.querySelector('.mission-control-workspace [role="alert"]') === null`)).toBe(true);
+  });
+
+  it('workspace: a failed load can retry; failed recents do not block choosing a folder', async () => {
+    await render('app', { workspace: true }, 1280);
+    await evaluate('window.shellTest.setWorkspaceLoadFails(true)');
+    await click('.mission-control-trigger');
+    await until(`Boolean(document.querySelector('.mission-control-workspace [role="alert"]'))`);
+    expect(await evaluate(`document.querySelector('.mission-control-workspace-empty') === null`)).toBe(true);
+    await evaluate('window.shellTest.setWorkspaceLoadFails(false)');
+    await click('.mission-control-retry');
+    await until(`document.querySelectorAll('.mission-control-workspace-row').length === 4`);
+    await evaluate('window.shellTest.setRecentFails(true)');
+    await addMenu();
+    await until(`Boolean(document.querySelector('.mission-control-workspace-menu [role="alert"]'))`);
+    await menuItem('Choose folder…');
+    await until(`document.querySelectorAll('.mission-control-workspace-row').length === 5`);
+  });
+
+  it('workspace: recent choices deduplicate Windows paths case-insensitively and Escape restores focus', async () => {
+    await workspace({ workspace: [{ path: 'c:\\work\\FIELD NOTES', name: 'Pinned notes', current: false, missing: false }] });
+    await addMenu();
+    await until(`Boolean(document.querySelector('.mission-control-workspace-recent'))`);
+    expect(await evaluate(`document.querySelector('.mission-control-workspace-menu').textContent.includes('Field Notes')`)).toBe(false);
+    await key('Escape');
+    expect(await evaluate(`Boolean(document.querySelector('.mission-control')) && !document.querySelector('.mission-control-workspace-menu')`)).toBe(true);
+    expect(await evaluate(`document.activeElement === document.querySelector('.mission-control-workspace-add')`)).toBe(true);
+  });
+
+  it('workspace: switching and start-screen errors recover, successful switching keeps its spinner', async () => {
+    await workspace();
+    await evaluate(`window.shellTest.setNavigationFailure('missing')`);
+    await click('.mission-control-workspace-row:nth-child(2) .mission-control-workspace-open');
+    await until(`Boolean(document.querySelector('.mission-control-workspace [role="alert"]'))`);
+    expect(await evaluate(`document.querySelector('.mission-control-workspace [role="alert"]').textContent`)).toContain('not found');
+    await click('.mission-control-recent-open');
+    expect(await evaluate(`document.querySelector('.mission-control-workspace [role="alert"]').textContent`)).toContain('Could not open the start screen');
+    await evaluate(`window.shellTest.setNavigationFailure(null)`);
+    await click('.mission-control-workspace-row:nth-child(2) .mission-control-workspace-open');
+    await until(`Boolean(document.querySelector('.mission-control-workspace-open[aria-busy="true"] .spin'))`);
+    expect(await evaluate(`document.querySelector('.mission-control-workspace-add').disabled && document.querySelector('.mission-control-recent-open').disabled`)).toBe(true);
+  });
+
+  it('workspace: a partial bridge falls back to recent projects', async () => {
+    await render('app', { partialBridge: true }, 1280);
+    await click('.mission-control-trigger');
+    await until(`document.querySelectorAll('.mission-control-recent-row').length === 3`);
+    expect(await evaluate(`document.querySelector('.mission-control-workspace') === null`)).toBe(true);
+    await click('.mission-control-recent-open');
+    expect(await evaluate('window.shellTest.workspaceCalls')).toEqual([{ method: 'start', args: [] }]);
   });
 
   it.each(['en', 'ru'])('D14: %s intentional Stop hides late reconnect failures', async lang => {

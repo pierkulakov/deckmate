@@ -4,6 +4,8 @@ Notable changes are grouped by version using [Keep a Changelog](https://keepacha
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-11-09
+
 ### Added
 
 - **Templates in Russian.** Bundled Journey and project templates carry Russian titles and descriptions (`locales.ru` in the template header); the pickers show them in the Russian interface, and importing into a Russian-format project names the Journey in Russian.
@@ -13,12 +15,15 @@ Notable changes are grouped by version using [Keep a Changelog](https://keepacha
 ### Changed
 
 - **Decks home.** The document and card counts moved from a footer under the decks to a quiet line under the project name; source warnings open from that line.
-- **Cards.** Tiles tilt up to 8°.
+- **Cards.** Tiles tilt up to 8°. A Hero tile's Sub Card progress is a quiet line whose steps are sized by each Sub Card's effort.
 
 ### Fixed
 
 - The open Hero card's band again uses the Hero gold for its owner medallion and labels, and an accepted Hero band its accepted metal (regressed in 0.3.0).
 - An image in card text whose file is gone shows a "file not found" chip instead of a broken image; pasted images use the same link format as the insert menu.
+- Native select lists are readable in the dark theme, and the Sub Card composer's deck picker shows one focus frame.
+- `npm run dev` proxies only `/api/` and `/r/` to the server, so the dev board loads again.
+- Notification state keeps a member whose id is `constructor` in the file instead of on `Object.prototype`; Journey templates are read only inside the project folder.
 - Steadier browser tests on CI (reduced motion on Windows runners, toast animation timing) and test helpers that pass data as arguments instead of building code strings.
 
 ## [0.3.0] - 2026-11-09

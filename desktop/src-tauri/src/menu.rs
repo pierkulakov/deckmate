@@ -208,6 +208,24 @@ pub async fn dialog(
     receiver.await.unwrap_or_default()
 }
 
+fn accepted(result: MessageDialogResult, label: &str) -> bool {
+    matches!(result, MessageDialogResult::Custom(value) if value == label)
+}
+
+pub async fn ask(app: &AppHandle, question: &str, yes: &str, no: &str) -> bool {
+    let language = app::state(app).language();
+    let yes = text(&language, yes);
+    let result = dialog(
+        app,
+        "Deckmate",
+        text(&language, question),
+        MessageDialogButtons::OkCancelCustom(yes.into(), text(&language, no).into()),
+        MessageDialogKind::Warning,
+    )
+    .await;
+    accepted(result, yes)
+}
+
 async fn open(app: &AppHandle, folder: String) {
     if let Err(error) = app::open_project(app, folder).await {
         if matches!(error.code.as_str(), "missing" | "invalid-path") {
@@ -302,7 +320,14 @@ pub fn handle(app: &AppHandle, event: MenuEvent) {
                 settings.last_project = project;
             }
             rebuild(app);
-            shell.save();
+            if let Err(error) = shell.save() {
+                message(
+                    app,
+                    "saveFailedTitle",
+                    &error.message,
+                    MessageDialogKind::Error,
+                );
+            }
             if let Some(window) =
                 window.filter(|window| window.url().is_ok_and(|url| window::is_launcher_url(&url)))
             {
@@ -322,7 +347,9 @@ pub fn handle(app: &AppHandle, event: MenuEvent) {
                             open(&app, folder).await;
                         }
                     }
-                    "switchProject" | "closeProject" => app::show_launcher(&app, None).await,
+                    "switchProject" | "closeProject" => {
+                        let _ = app::show_launcher(&app, None).await;
+                    }
                     _ => {
                         let folder = {
                             let settings = shell.settings.lock().unwrap();
@@ -348,6 +375,26 @@ pub fn handle(app: &AppHandle, event: MenuEvent) {
                     }
                 }
             });
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn only_explicit_leave_accepts_the_unsaved_dialog() {
+        for language in ["en", "ru"] {
+            let leave = text(language, "leave");
+            assert!(accepted(MessageDialogResult::Custom(leave.into()), leave));
+            for result in [
+                MessageDialogResult::Cancel,
+                MessageDialogResult::No,
+                MessageDialogResult::Custom(text(language, "stay").into()),
+            ] {
+                assert!(!accepted(result, leave));
+            }
         }
     }
 }

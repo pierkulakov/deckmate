@@ -22,7 +22,7 @@ import { ProjectTemplates } from './components/ProjectTemplates.tsx';
 import { DocumentPreviewProvider } from './components/DocumentPreview.tsx';
 import { ProjectTile } from './RecentProjects.tsx';
 import { WorkspaceProjects } from './WorkspaceProjects.tsx';
-import { desktopBoard } from './desktop-bridge.ts';
+import { desktopBoard, useDesktopDirty } from './desktop-bridge.ts';
 import './workspace.css';
 import { DeckmateMark } from './components/DeckmateMark.tsx';
 import { matchShortcut, shortcutTargetBlocked } from './keyboard-shortcuts.ts';
@@ -155,6 +155,7 @@ export default function App() {
     const frame = requestAnimationFrame(() => setRenderedAt(Date.now()));
     return () => cancelAnimationFrame(frame);
   }, [snapshot]);
+  useDesktopDirty(editing);
   useEffect(() => {
     if (!editing) return;
     const protectDraft = (event: BeforeUnloadEvent) => { event.preventDefault(); };

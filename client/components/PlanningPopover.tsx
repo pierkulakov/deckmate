@@ -3,6 +3,7 @@ import * as Dialog from '@radix-ui/react-dialog';
 import { X } from 'lucide-react';
 import type { CatalogView, MilestoneRecord } from '../../src/catalog-contracts.ts';
 import { defineText, useText } from '../i18n.ts';
+import { useDesktopDirty } from '../desktop-bridge.ts';
 import { Switch } from './CardOrdering.tsx';
 import { PlanningColorField, planningColors } from './PlanningColors.tsx';
 import { ConfirmStrip } from './ConfirmStrip.tsx';
@@ -112,6 +113,7 @@ export function MilestoneForm({ date, milestone, catalog, pending, onSave, onDir
   const [validation, setValidation] = useState(false);
   const dirty = JSON.stringify(value) !== JSON.stringify(initial.current);
   useEffect(() => { onDirtyChange(dirty); }, [dirty, onDirtyChange]);
+  useDesktopDirty(dirty);
   useEffect(() => {
     if (!dirty) return;
     const protect = (event: BeforeUnloadEvent) => { event.preventDefault(); event.returnValue = ''; };

@@ -140,6 +140,7 @@ impl Updates {
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Settings {
+    pub server_port: Option<u16>,
     pub last_project: Option<String>,
     pub recent: Vec<Recent>,
     pub workspace: Vec<WorkspaceProject>,
@@ -224,6 +225,7 @@ impl Settings {
     pub fn normalize(value: Value, locale: &str) -> Self {
         let mut extra = value.as_object().cloned().unwrap_or_default();
         for key in [
+            "serverPort",
             "lastProject",
             "recent",
             "workspace",
@@ -236,6 +238,10 @@ impl Settings {
             extra.remove(key);
         }
         Self {
+            server_port: value["serverPort"]
+                .as_u64()
+                .and_then(|port| u16::try_from(port).ok())
+                .filter(|port| *port != 0),
             last_project: value["lastProject"]
                 .as_str()
                 .filter(|path| is_absolute(path))
@@ -271,7 +277,7 @@ impl Settings {
     pub fn save(&self, directory: &Path) -> io::Result<()> {
         // 2026-11-09: automatic bounds saves must not overwrite a rejected settings file.
         if oversized_settings(directory) {
-            return Ok(());
+            return Err(io::ErrorKind::FileTooLarge.into());
         }
         fs::create_dir_all(directory)?;
         let temporary = directory.join(format!(
@@ -288,14 +294,6 @@ impl Settings {
             let _ = fs::remove_file(&temporary);
         }
         result
-    }
-
-    pub fn save_for_install(&self, directory: &Path) -> io::Result<()> {
-        // 2026-11-09: an installer must not launch without a durable pending marker.
-        if oversized_settings(directory) {
-            return Err(io::ErrorKind::FileTooLarge.into());
-        }
-        self.save(directory)
     }
 
     pub fn remember(&mut self, folder: &str) {
@@ -412,6 +410,28 @@ pub fn system_locale() -> String {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn server_port_accepts_only_nonzero_tcp_ports() {
+        for port in [
+            Value::Null,
+            json!(0),
+            json!(-1),
+            json!(65536),
+            json!(1.5),
+            json!("4318"),
+        ] {
+            assert_eq!(
+                Settings::normalize(json!({"serverPort": port}), "en").server_port,
+                None
+            );
+        }
+        for port in [1, 4318, 65535] {
+            let settings = Settings::normalize(json!({"serverPort": port}), "en");
+            assert_eq!(settings.server_port, Some(port));
+            assert_eq!(serde_json::to_value(settings).unwrap()["serverPort"], port);
+        }
+    }
 
     #[test]
     fn normalization_and_unknown_fields_round_trip() {
@@ -596,7 +616,10 @@ mod tests {
         let log = Log::open(&directory);
         let settings = Settings::load(&directory, "en", &log);
         assert_eq!(settings.language, "en");
-        settings.save(&directory).unwrap();
+        assert_eq!(
+            settings.save(&directory).unwrap_err().kind(),
+            io::ErrorKind::FileTooLarge
+        );
         assert_eq!(fs::read_to_string(&path).unwrap(), original);
         let output = fs::read_to_string(directory.join("server.log")).unwrap();
         assert_eq!(output.lines().count(), 1);

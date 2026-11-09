@@ -336,14 +336,24 @@ async function chooseAndAdd() {
 async function removeRecent(folder, { refocus = false } = {}) {
   if (busy) return;
   const index = visibleRecent().findIndex(candidate => samePath(candidate.path, folder));
-  await bridge.removeRecent(folder);
-  state.recent = state.recent.filter(candidate => candidate.path !== folder);
-  renderWorkspace();
-  renderRecent();
-  if (!refocus) return;
-  const rows = page.list.querySelectorAll('.recent-open');
-  const next = rows[Math.min(Math.max(index, 0), rows.length - 1)];
-  (next ?? page.openFolder).focus();
+  setBusy(true);
+  try {
+    const result = await bridge.removeRecent(folder);
+    if (!result?.ok) { setStatus('error', describeError(result)); return; }
+    state.recent = state.recent.filter(candidate => candidate.path !== folder);
+    renderWorkspace();
+    renderRecent();
+    setStatus(null);
+    setBusy(false);
+    if (!refocus) return;
+    const rows = page.list.querySelectorAll('.recent-open');
+    const next = rows[Math.min(Math.max(index, 0), rows.length - 1)];
+    (next ?? page.openFolder).focus();
+  } catch (error) {
+    setStatus('error', describeError({ message: error?.message }));
+  } finally {
+    setBusy(false);
+  }
 }
 
 function setStatus(phase, message, retry = null) {
@@ -365,6 +375,7 @@ function setBusy(value) {
 const errorTexts = { 'not-empty': 'errorNotEmpty', missing: 'errorMissing', 'invalid-path': 'errorInvalidPath', 'not-in-workspace': 'errorNotInWorkspace', 'not-recent': 'errorNotRecent', forbidden: 'errorForbidden', 'start-failed': 'errorStart', 'load-failed': 'errorStart', timeout: 'errorStart' };
 
 function describeError(result) {
+  if (result?.code === 'save-failed' && result.message) return result.message;
   const key = errorTexts[result?.code];
   if (key && !result?.message) return text(key);
   if (key) return `${text(key)} ${result.message}`;
@@ -428,12 +439,18 @@ page.workspaceAdd.addEventListener('click', chooseAndAdd);
 page.retry.addEventListener('click', () => { if (lastAction) lastAction(); });
 page.themeToggle.addEventListener('click', () => setTheme(document.documentElement.classList.contains('dark') ? 'light' : 'dark'));
 for (const button of document.querySelectorAll('[data-lang]')) {
-  button.addEventListener('click', () => {
-    lang = button.dataset.lang;
-    writeSetting('deckmate-language', lang);
-    // The shell keeps its own menus in step with the page; older bridges lack the method.
-    Promise.resolve(bridge.setLanguage?.(lang)).catch(() => {});
-    applyTexts();
+  button.addEventListener('click', async () => {
+    try {
+      const next = button.dataset.lang;
+      const result = await bridge.setLanguage?.(next);
+      if (result?.ok === false) { setStatus('error', describeError(result)); return; }
+      lang = next;
+      writeSetting('deckmate-language', lang);
+      applyTexts();
+      setStatus(null);
+    } catch (error) {
+      setStatus('error', describeError({ message: error?.message }));
+    }
   });
 }
 // Ctrl+O belongs to the application menu in main; a page-level handler would open a second dialog.

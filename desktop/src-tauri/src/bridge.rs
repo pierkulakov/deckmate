@@ -126,8 +126,7 @@ pub fn desktop_remove_recent(
     }
     shell.settings.lock().unwrap().remove_recent(&folder);
     crate::menu::rebuild(&app);
-    shell.save();
-    app::ok()
+    app::result(shell.save())
 }
 
 #[tauri::command]
@@ -142,8 +141,7 @@ pub fn desktop_set_language(app: AppHandle, window: WebviewWindow, lang: Option<
     };
     shell.settings.lock().unwrap().language = lang;
     crate::menu::rebuild(&app);
-    shell.save();
-    app::ok()
+    app::result(shell.save())
 }
 
 #[tauri::command]
@@ -330,6 +328,18 @@ pub async fn board_show_start_screen(app: AppHandle, window: WebviewWindow) -> V
     if let Err(error) = authorize(&app::state(&app), &window, true) {
         return json!(error);
     }
-    app::show_launcher(&app, None).await;
+    app::result(app::show_launcher(&app, None).await)
+}
+
+#[tauri::command]
+pub fn board_set_dirty(app: AppHandle, window: WebviewWindow, dirty: bool) -> Value {
+    let shell = app::state(&app);
+    if let Err(error) = authorize(&shell, &window, true) {
+        return json!(error);
+    }
+    shell
+        .unsaved
+        .dirty
+        .store(dirty, std::sync::atomic::Ordering::SeqCst);
     app::ok()
 }

@@ -3,6 +3,7 @@ import { stateLabel } from '../locales/common.ts';
 import { readStoredValue } from '../storage.ts';
 import { navigateTabs } from '../tab-navigation.ts';
 import { useEscapeToClose } from '../useEscapeToClose.ts';
+import { useDesktopDirty } from '../desktop-bridge.ts';
 import { Fragment, useCallback, useDeferredValue, useEffect, useEffectEvent, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { ComponentProps, CSSProperties, FormEvent, PointerEvent, ReactElement, ReactNode, RefObject } from 'react';
 import * as Dialog from '@radix-ui/react-dialog';
@@ -1824,6 +1825,7 @@ export function Deck({ snapshot, refreshKey, onEditing, onImportCsv, onStartFrom
     return () => window.removeEventListener('keydown', listener, true);
   }, []);
   useEffect(() => () => onEditing?.(false), [onEditing]);
+  useDesktopDirty(navigationLocked);
   useEffect(() => {
     if (!navigationLocked) return;
     const protectDraft = (event: BeforeUnloadEvent) => event.preventDefault();

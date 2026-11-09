@@ -68,8 +68,11 @@ pub fn changed(app: &AppHandle, result: Result<(), &'static str>, board: bool) -
         return failure(app, code);
     }
     let shell = app::state(app);
-    shell.save();
+    let saved = shell.save();
     crate::menu::rebuild(app);
+    if let Err(error) = saved {
+        return json!(error);
+    }
     let projects = snapshot(app, board);
     if board {
         json!({"ok":true,"projects":projects})

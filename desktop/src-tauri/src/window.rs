@@ -93,7 +93,7 @@ pub fn allow_navigation(app: &AppHandle, url: &Url) -> bool {
     if returning_to_launcher {
         let app = app.clone();
         tauri::async_runtime::spawn(async move {
-            app::show_launcher(&app, None).await;
+            let _ = app::show_launcher(&app, None).await;
         });
         return false;
     }
@@ -388,7 +388,7 @@ fn schedule_bounds_save(window: &WebviewWindow) {
         if shell.bounds_generation.load(Ordering::SeqCst) == generation
             && !shell.closing.load(Ordering::SeqCst)
         {
-            shell.save();
+            let _ = shell.save();
         }
     });
 }
@@ -415,7 +415,7 @@ pub fn set_zoom(app: &AppHandle, factor: f64) {
         apply_zoom(&window);
     }
     if changed {
-        shell.save();
+        let _ = shell.save();
     }
 }
 

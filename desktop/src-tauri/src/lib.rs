@@ -1,5 +1,6 @@
 mod app;
 mod bridge;
+mod fatal;
 mod job;
 mod log;
 mod menu;
@@ -8,6 +9,7 @@ mod self_test;
 mod server;
 mod settings;
 mod texts;
+mod unsaved;
 mod updater;
 mod webview;
 mod whats_new;
@@ -18,6 +20,7 @@ use std::sync::{atomic::Ordering, Arc};
 use tauri::Manager;
 
 pub fn run() {
+    fatal::install_hook();
     let args: Vec<String> = std::env::args().collect();
     if args.get(1).is_some_and(|arg| arg == "--self-test") {
         #[cfg(windows)]
@@ -33,7 +36,7 @@ pub fn run() {
         ));
         std::process::exit(code);
     }
-    let app = tauri::Builder::default()
+    let built = tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|app, _, _| {
             if let Some(window) = app.get_webview_window("main") {
                 let _ = window.unminimize();
@@ -65,6 +68,7 @@ pub fn run() {
             bridge::board_move_in_workspace,
             bridge::board_switch_project,
             bridge::board_show_start_screen,
+            bridge::board_set_dirty,
             whats_new::whats_new_get
         ])
         .setup(|app| {
@@ -76,8 +80,11 @@ pub fn run() {
             Ok(())
         })
         .on_menu_event(menu::handle)
-        .build(tauri::generate_context!())
-        .expect("Deckmate desktop startup");
+        .build(tauri::generate_context!());
+    let app = match built {
+        Ok(app) => app,
+        Err(error) => fatal::startup(&error),
+    };
     app.run(|handle, event| {
         if let tauri::RunEvent::ExitRequested { api, .. } = event {
             if !app::state(handle).quit_ready.load(Ordering::SeqCst) {

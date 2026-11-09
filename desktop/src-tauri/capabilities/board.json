@@ -12,6 +12,7 @@
     "allow-board-remove-from-workspace",
     "allow-board-move-in-workspace",
     "allow-board-switch-project",
-    "allow-board-show-start-screen"
+    "allow-board-show-start-screen",
+    "allow-board-set-dirty"
   ]
 }

@@ -1,3 +1,5 @@
+import { useEffect } from 'react';
+
 /**
  * 2026-11-09: Deckmate Desktop exposes this narrow bridge on the board page so the project menu can switch between
  * workspace projects. It is absent in a browser (CLI, Docker), and the menu then shows only the current project.
@@ -39,6 +41,8 @@ export type DesktopBoardBridge = {
   switchProject(path: string): Promise<DesktopResult>;
   /** Shows the start screen, where another folder can be opened or created. */
   showStartScreen(): Promise<DesktopResult>;
+  /** 2026-11-09: optional for boards served by older shells. */
+  setDirty?(dirty: boolean): Promise<DesktopResult>;
 };
 
 export type DesktopWorkspaceBridge = DesktopBoardBridge & Required<Pick<DesktopBoardBridge,
@@ -55,4 +59,19 @@ declare global {
 
 export function desktopBoard(): DesktopBoardBridge | undefined {
   return typeof window === 'undefined' ? undefined : window.deckmateBoard;
+}
+
+const dirtyEditors = new Set<symbol>();
+
+export function useDesktopDirty(dirty: boolean): void {
+  useEffect(() => {
+    const board = desktopBoard();
+    if (!dirty || !board?.setDirty) return;
+    // 2026-11-09: nested editors must not clear each other's unsaved-work guard on save or unmount.
+    const editor = Symbol();
+    dirtyEditors.add(editor);
+    const report = () => { void board.setDirty!(dirtyEditors.size > 0).catch(error => console.error(error)); };
+    report();
+    return () => { dirtyEditors.delete(editor); report(); };
+  }, [dirty]);
 }

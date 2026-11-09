@@ -11,7 +11,7 @@
 // before a release"); it covers the items that need a real window (launcher, board, bridges, navigation
 // guard, server lifetime). The native menu, dialogs and the installer stay human-checked.
 import { execFileSync, spawn, spawnSync } from 'node:child_process';
-import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync } from 'node:fs';
 import { createServer, type AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -93,6 +93,30 @@ function windowTitle(pid: number): string {
   }
 }
 
+function quitFromMenu(pid: number): void {
+  // 2026-11-09: WM_COMMAND enters the same native Quit menu handler without adding a page capability.
+  execFileSync('powershell', ['-NoProfile', '-NonInteractive', '-Command', `
+    Add-Type -TypeDefinition 'using System; using System.Runtime.InteropServices; public class DeckmateMenu {
+      [DllImport("user32.dll")] public static extern IntPtr GetMenu(IntPtr hwnd);
+      [DllImport("user32.dll")] public static extern IntPtr GetSubMenu(IntPtr menu, int index);
+      [DllImport("user32.dll")] public static extern int GetMenuItemCount(IntPtr menu);
+      [DllImport("user32.dll")] public static extern uint GetMenuItemID(IntPtr menu, int index);
+      [DllImport("user32.dll")] public static extern bool PostMessageW(IntPtr hwnd, uint message, UIntPtr wparam, IntPtr lparam);
+    }';
+    $window = (Get-Process -Id ${pid}).MainWindowHandle;
+    $menu = [DeckmateMenu]::GetSubMenu([DeckmateMenu]::GetMenu($window), 0);
+    $id = [DeckmateMenu]::GetMenuItemID($menu, [DeckmateMenu]::GetMenuItemCount($menu) - 1);
+    if ($window -eq 0 -or $menu -eq 0 -or $id -eq [uint32]::MaxValue) { throw 'Quit menu not found'; }
+    if (-not [DeckmateMenu]::PostMessageW($window, 0x111, [UIntPtr]::new($id), [IntPtr]::Zero)) { throw 'PostMessage failed'; }
+  `], { encoding: 'utf8', timeout: 15000, windowsHide: true });
+}
+
+async function shortcut(key: string, code: string, virtualKey: number, modifiers = 2): Promise<void> {
+  for (const type of ['rawKeyDown', 'keyUp']) {
+    await page!.send('Input.dispatchKeyEvent', { type, key, code, windowsVirtualKeyCode: virtualKey, modifiers });
+  }
+}
+
 // A failed launch leaves an error status on the launcher and shell events in server.log; both
 // end up in the failure line so a red smoke run points at the cause without rerunning manually.
 async function diagnose(settings: string): Promise<string> {
@@ -132,6 +156,7 @@ async function main(): Promise<number> {
       DECKMATE_DESKTOP_CDP_PORT: String(cdpPort),
       DECKMATE_DESKTOP_SETTINGS_DIR: settings,
       DECKMATE_DESKTOP_SERVER: serverEntry,
+      DECKMATE_DESKTOP_DIRTY_POLICY: 'refuse',
       // 2026-11-09: external links are recorded here instead of opening the user's browser on every run.
       DECKMATE_DESKTOP_EXTERNAL_LOG: externalLog,
     },
@@ -189,6 +214,11 @@ async function main(): Promise<number> {
       throw new SmokeFailure(`getState() has an unexpected shape: ${JSON.stringify(state)}`);
     }
     pass('a', 'launcher loaded; deckmateDesktop has the 10 preload methods; getState has workspace/recent/lastProject/version/deckmateVersion/locale/language');
+    const dirtyFromLauncher = await page!.callFunction(`async () => {
+      try { return await window.__TAURI_INTERNALS__.invoke('board_set_dirty', { dirty: true }); }
+      catch { return { ok: false }; }
+    }`);
+    if (dirtyFromLauncher.ok !== false) throw new SmokeFailure('launcher could set board dirty state');
     const untrustedAddition = await page!.callFunction(`() => window.deckmateDesktop.addToWorkspace('C:\\\\not-trusted')`);
     if (untrustedAddition.ok !== false || untrustedAddition.code !== 'invalid-path') {
       throw new SmokeFailure(`launcher accepted an untrusted workspace path: ${JSON.stringify(untrustedAddition)}`);
@@ -242,6 +272,32 @@ async function main(): Promise<number> {
       throw new SmokeFailure(`clipboard write/read policy failed: ${JSON.stringify(clipboard)}`);
     }
     pass('b-clipboard', 'clipboard.writeText resolved; clipboard.readText was denied');
+    currentStep = 'b-keys';
+    await page!.evaluate(`(() => {
+      window.__smokePrints = 0;
+      addEventListener('beforeprint', () => window.__smokePrints++);
+      const input = document.createElement('textarea');
+      input.id = 'smoke-edit'; document.body.append(input); input.focus(); input.value = 'editing';
+      window.__smokeDocument = true;
+    })()`);
+    await shortcut('p', 'KeyP', 80);
+    await shortcut('F5', 'F5', 116, 0);
+    await sleep(500);
+    if ((await page!.evaluate('window.__smokePrints === 0 && window.__smokeDocument === true')) !== true) {
+      throw new SmokeFailure('Ctrl+P printed or F5 reloaded the page');
+    }
+    await shortcut('a', 'KeyA', 65);
+    await shortcut('c', 'KeyC', 67);
+    await shortcut('x', 'KeyX', 88);
+    if ((await page!.evaluate(`document.getElementById('smoke-edit').value`)) !== '') throw new SmokeFailure('Ctrl+A/C/X editing failed');
+    await shortcut('v', 'KeyV', 86);
+    if ((await page!.evaluate(`document.getElementById('smoke-edit').value`)) !== 'editing') throw new SmokeFailure('Ctrl+V editing failed');
+    await shortcut('z', 'KeyZ', 90);
+    if ((await page!.evaluate(`document.getElementById('smoke-edit').value`)) !== '') throw new SmokeFailure('Ctrl+Z editing failed');
+    await shortcut('y', 'KeyY', 89);
+    if ((await page!.evaluate(`document.getElementById('smoke-edit').value`)) !== 'editing') throw new SmokeFailure('Ctrl+Y editing failed');
+    await page!.evaluate(`document.getElementById('smoke-edit').remove()`);
+    pass('b-keys', 'CDP Ctrl+P/F5 did not print/reload; Ctrl+A/C/X/V/Z/Y still edit text');
     currentStep = 'b';
     // CDP exposes only the document title (Target.getTargetInfo), not the window title, so read
     // the title Win32-side through PowerShell; headless sessions without a window skip with a note.
@@ -284,6 +340,25 @@ async function main(): Promise<number> {
     }
     pass('c', `recent lists the demo as current; switchProject refused (${guard.refused?.code}); desktop_open_project from the board refused (${guard.launcherCommand?.code ?? 'rejected'})`);
 
+    currentStep = 'c-dirty';
+    const dirty = await page!.callFunction(`async () => {
+      const marked = await window.deckmateBoard.setDirty(true);
+      const refused = await window.deckmateBoard.showStartScreen();
+      return { marked, refused };
+    }`);
+    if (!dirty.marked.ok || dirty.refused.ok !== false || dirty.refused.code !== 'cancelled') {
+      throw new SmokeFailure(`dirty start-screen switch was not refused: ${JSON.stringify(dirty)}`);
+    }
+    const cancelledBeforeQuit = readFileSync(path.join(settings, 'server.log'), 'utf8').split('unsaved work: action cancelled').length;
+    quitFromMenu(shell.pid!);
+    await poll(async () => readFileSync(path.join(settings, 'server.log'), 'utf8').split('unsaved work: action cancelled').length > cancelledBeforeQuit,
+      'the dirty Quit menu action to be cancelled', 10000);
+    if (shell.exitCode !== null || (await page!.evaluate('location.origin')) !== boardOrigin || !(await fetch(boardOrigin)).ok) {
+      throw new SmokeFailure('dirty Quit stopped the window or its server');
+    }
+    await page!.callFunction(`() => window.deckmateBoard.setDirty(false)`);
+    pass('c-dirty', 'dirty bridge/start-screen switch and native Quit menu refused; window and server remain alive');
+
     // d. The navigation guard keeps the window on the server origin; external links open in the system browser.
     currentStep = 'd';
     await page!.evaluate(`location.href = 'https://example.com/'`);
@@ -325,6 +400,35 @@ async function main(): Promise<number> {
       throw new SmokeFailure(`launcher workspace contract failed: ${JSON.stringify(launcherWorkspace)}`);
     }
     pass('e-workspace', 'launcher added a recent folder, moved it, returned workspace state and removed it');
+
+    currentStep = 'e-save-failed';
+    const settingsFile = path.join(settings, 'desktop.json');
+    const settingsBackup = path.join(settings, 'desktop.json.smoke');
+    renameSync(settingsFile, settingsBackup);
+    mkdirSync(settingsFile);
+    try {
+      const failed = await page!.callFunction(`async folder => ({
+        language: await window.deckmateDesktop.setLanguage('ru'),
+        recent: await window.deckmateDesktop.removeRecent('C:\\\\missing-smoke-project'),
+        workspace: await window.deckmateDesktop.addToWorkspace(folder),
+      })`, demo);
+      if (Object.values(failed).some(result => (result as { ok: boolean; code: string }).ok !== false || (result as { code: string }).code !== 'save-failed')) {
+        throw new SmokeFailure(`settings commands hid a failed save: ${JSON.stringify(failed)}`);
+      }
+      await page!.callFunction(`() => removeRecent('C:\\\\missing-smoke-project')`);
+      if ((await page!.evaluate(`document.getElementById('status').dataset.phase`)) !== 'error') throw new SmokeFailure('removeRecent UI hid a failed save');
+      await page!.evaluate(`document.querySelector('[data-lang="en"]').click()`);
+      await poll(async () => (await page!.evaluate(`document.getElementById('status').dataset.phase === 'error' && document.getElementById('status-text').textContent.includes('Could not save settings')`)) === true,
+        'language save error to reach the status line', 5000);
+    } finally {
+      rmSync(settingsFile, { recursive: true, force: true });
+      renameSync(settingsBackup, settingsFile);
+    }
+    await page!.callFunction(`async folder => {
+      await window.deckmateDesktop.setLanguage('en');
+      await window.deckmateDesktop.removeFromWorkspace(folder);
+    }`, demo);
+    pass('e-save-failed', 'language/recent/workspace returned save-failed; launcher language and recent actions showed status errors');
 
     // f. createProject initializes and opens a project; killing the shell must reap its server
     // through the Job Object, and the isolated settings must list both projects.
@@ -377,22 +481,33 @@ async function main(): Promise<number> {
     await page!.callFunction(`folder => { void window.deckmateDesktop.openProject(folder); }`, created);
     await poll(async () => (await page!.evaluate(`typeof window.deckmateBoard === 'object' && !!document.querySelector('${boardSelector}')`)) === true,
       'workspace test to reopen the board', 30000);
-    const switchOrigin = String(await page!.evaluate('location.origin'));
+    currentStep = 'f-dirty-switch';
+    const refusedSwitch = await page!.callFunction(`async folder => {
+      await window.deckmateBoard.setDirty(true);
+      return window.deckmateBoard.switchProject(folder);
+    }`, demo);
+    if (refusedSwitch?.ok !== false || refusedSwitch?.code !== 'cancelled') {
+      throw new SmokeFailure(`dirty workspace switch was not refused: ${JSON.stringify(refusedSwitch)} (${await diagnose(settings)})`);
+    }
+    await page!.callFunction(`() => window.deckmateBoard.setDirty(false)`);
+    await page!.evaluate(`window.__smokeOldProject = true; localStorage.setItem('deckmate-smoke-origin', 'kept')`);
     await page!.callFunction(`folder => { void window.deckmateBoard.switchProject(folder); }`, demo);
     await poll(async () => {
-      if (String(await page!.evaluate('location.origin')) === switchOrigin) return false;
+      if ((await page!.evaluate('window.__smokeOldProject')) === true) return false;
       return (await page!.callFunction(`async folder => {
         if (!window.deckmateBoard || !document.querySelector('${boardSelector}')) return false;
         const projects = await window.deckmateBoard.workspaceProjects();
         return projects.some(project => project.path.replace(/\\\\/g, '/').toLowerCase() === folder && project.current);
       }`, norm(demo))) === true;
     }, 'switchProject to the workspace-only project', 30000);
-    pass('f-workspace-switch', 'switchProject opened a workspace entry absent from recent');
+    if ((await page!.evaluate('location.origin')) !== boardOrigin) throw new SmokeFailure('project switch changed the saved board origin');
+    pass('f-workspace-switch', 'dirty switch refused; clean switch opened a workspace entry absent from recent on the same origin');
     shell.kill();
     await poll(async () => serverProcesses(needles).length === 0,
       'the Job Object to reap the server after killing the shell', 15000);
     const saved = JSON.parse(readFileSync(path.join(settings, 'desktop.json'), 'utf8')) as {
       recent?: { path: string }[];
+      serverPort?: number;
       workspace?: { path: string; name: string }[];
       updates?: { autoCheck: boolean; lastCheck: string | null; skippedVersion: string | null; pending: unknown };
     };
@@ -449,6 +564,20 @@ async function main(): Promise<number> {
       throw new SmokeFailure(`auto-open exposed a launcher before the board: ${JSON.stringify(firstShows)}`);
     }
     pass('restart-visibility', 'same settings auto-opened last project; board load was hidden; first visible frame was the loaded board');
+    if (saved.serverPort !== Number(new URL(boardOrigin).port)
+      || (await page!.evaluate('location.origin')) !== boardOrigin
+      || (await page!.evaluate(`localStorage.getItem('deckmate-smoke-origin')`)) !== 'kept') {
+      throw new SmokeFailure('serverPort/origin/localStorage did not survive restart');
+    }
+    pass('restart-origin', 'serverPort, board origin and localStorage survived project switching and shell restart');
+
+    currentStep = 'renderer-crash';
+    await page!.evaluate('window.__smokeBeforeCrash = true');
+    void page!.send('Page.crash');
+    await poll(async () => (await page!.evaluate(`!window.__smokeBeforeCrash && !!document.querySelector('${boardSelector}')`)) === true,
+      'the crashed renderer to reload the board', 20000);
+    if (!readFileSync(path.join(settings, 'server.log'), 'utf8').includes('recovery=Reload')) throw new SmokeFailure('renderer crash was not logged');
+    pass('renderer-crash', 'WebView2 renderer crash logged; the current board automatically reloaded');
 
     pass('smoke', 'all steps passed');
     return 0;

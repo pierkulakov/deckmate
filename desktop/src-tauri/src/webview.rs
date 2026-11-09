@@ -1,14 +1,19 @@
-use crate::{app, settings::Bounds, texts, window};
+use crate::{app, menu, settings::Bounds, texts, window};
+use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    Arc,
+};
 use tauri::{Manager, WebviewWindow};
 use webview2_com::{
     AcceleratorKeyPressedEventHandler, AddScriptToExecuteOnDocumentCreatedCompletedHandler,
-    CallDevToolsProtocolMethodCompletedHandler, DevToolsProtocolEventReceivedEventHandler,
-    Microsoft::Web::WebView2::Win32::*, NavigationCompletedEventHandler,
-    NavigationStartingEventHandler, NewWindowRequestedEventHandler,
-    PermissionRequestedEventHandler, ZoomFactorChangedEventHandler,
+    CallDevToolsProtocolMethodCompletedHandler, ContextMenuRequestedEventHandler,
+    DevToolsProtocolEventReceivedEventHandler, Microsoft::Web::WebView2::Win32::*,
+    NavigationCompletedEventHandler, NavigationStartingEventHandler,
+    NewWindowRequestedEventHandler, PermissionRequestedEventHandler, ProcessFailedEventHandler,
+    ZoomFactorChangedEventHandler,
 };
 use windows::{
-    core::{BOOL, HSTRING, PWSTR},
+    core::{Interface, BOOL, HSTRING, PWSTR},
     Win32::UI::{
         Input::KeyboardAndMouse::*,
         WindowsAndMessaging::{GetWindowPlacement, WINDOWPLACEMENT},
@@ -78,11 +83,135 @@ unsafe fn install_handlers(
     controller: ICoreWebView2Controller,
 ) -> windows::core::Result<()> {
     let core = controller.CoreWebView2()?;
+    core.Settings()?
+        .cast::<ICoreWebView2Settings3>()?
+        .SetAreBrowserAcceleratorKeysEnabled(false)?;
     install_navigation(window, &core)?;
     install_popup_and_permissions(window, &core)?;
+    install_process_failures(window, &core)?;
+    install_context_menu(&core)?;
     install_zoom_keys(window, &controller)?;
     install_zoom(window, &controller)?;
     install_console(window, &core)
+}
+
+#[derive(Debug, PartialEq)]
+enum Recovery {
+    Reload,
+    Ask,
+    Restart,
+    None,
+}
+
+fn recovery(kind: COREWEBVIEW2_PROCESS_FAILED_KIND) -> Recovery {
+    match kind {
+        COREWEBVIEW2_PROCESS_FAILED_KIND_RENDER_PROCESS_EXITED => Recovery::Reload,
+        COREWEBVIEW2_PROCESS_FAILED_KIND_RENDER_PROCESS_UNRESPONSIVE => Recovery::Ask,
+        COREWEBVIEW2_PROCESS_FAILED_KIND_BROWSER_PROCESS_EXITED => Recovery::Restart,
+        _ => Recovery::None,
+    }
+}
+
+unsafe fn install_process_failures(
+    window: &WebviewWindow,
+    core: &ICoreWebView2,
+) -> windows::core::Result<()> {
+    let window = window.clone();
+    let asking = Arc::new(AtomicBool::new(false));
+    let mut token = 0;
+    core.add_ProcessFailed(
+        &ProcessFailedEventHandler::create(Box::new(move |_, args| {
+            let Some(args) = args else {
+                return Ok(());
+            };
+            let mut kind = COREWEBVIEW2_PROCESS_FAILED_KIND::default();
+            args.ProcessFailedKind(&mut kind)?;
+            let app = window.app_handle();
+            let shell = app::state(app);
+            let action = recovery(kind);
+            shell.log.write(format!(
+                "WebView2 process failed: kind={}, recovery={action:?}",
+                kind.0
+            ));
+            if shell.closing.load(Ordering::SeqCst) {
+                return Ok(());
+            }
+            match action {
+                Recovery::Reload => {
+                    if let Err(error) = window.reload() {
+                        shell.log.write(format!("WebView2 reload failed: {error}"));
+                    }
+                }
+                Recovery::Ask if !asking.swap(true, Ordering::SeqCst) => {
+                    let window = window.clone();
+                    let asking = asking.clone();
+                    tauri::async_runtime::spawn(async move {
+                        if menu::ask(
+                            window.app_handle(),
+                            "rendererUnresponsive",
+                            "reload",
+                            "wait",
+                        )
+                        .await
+                            && !shell.closing.load(Ordering::SeqCst)
+                        {
+                            let _ = window.reload();
+                        }
+                        asking.store(false, Ordering::SeqCst);
+                    });
+                }
+                Recovery::Restart => app::restart_after_browser_failure(app),
+                _ => (),
+            }
+            Ok(())
+        })),
+        &mut token,
+    )
+}
+
+fn editing_menu_item(name: &str) -> bool {
+    matches!(name, "cut" | "copy" | "paste" | "selectAll" | "spellCheck")
+}
+
+unsafe fn filter_context_menu(
+    items: &ICoreWebView2ContextMenuItemCollection,
+) -> windows::core::Result<()> {
+    let mut count = 0;
+    items.Count(&mut count)?;
+    for index in (0..count).rev() {
+        let item = items.GetValueAtIndex(index)?;
+        let mut name = PWSTR::null();
+        item.Name(&mut name)?;
+        if !editing_menu_item(&webview2_com::take_pwstr(name)) {
+            items.RemoveValueAtIndex(index)?;
+            continue;
+        }
+        let mut kind = COREWEBVIEW2_CONTEXT_MENU_ITEM_KIND::default();
+        item.Kind(&mut kind)?;
+        if kind == COREWEBVIEW2_CONTEXT_MENU_ITEM_KIND_SUBMENU {
+            filter_context_menu(&item.Children()?)?;
+        }
+    }
+    Ok(())
+}
+
+unsafe fn install_context_menu(core: &ICoreWebView2) -> windows::core::Result<()> {
+    let mut token = 0;
+    core.cast::<ICoreWebView2_11>()?.add_ContextMenuRequested(
+        &ContextMenuRequestedEventHandler::create(Box::new(|_, args| {
+            let Some(args) = args else {
+                return Ok(());
+            };
+            // 2026-11-09: keep WebView2's editing commands and spelling replacements, without browser navigation/tools.
+            args.SetHandled(true)?;
+            let items = args.MenuItems()?;
+            filter_context_menu(&items)?;
+            let mut count = 0;
+            items.Count(&mut count)?;
+            args.SetHandled(count == 0)
+        })),
+        &mut token,
+    )
 }
 
 unsafe fn install_navigation(
@@ -376,6 +505,10 @@ pub async fn board_script(window: &WebviewWindow, origin: Option<String>) -> Res
                 r#"(() => {{
           if (window.top !== window || location.origin !== {}) return;
           const invoke = window.__TAURI_INTERNALS__.invoke;
+          let leaveApproved = false;
+          addEventListener('deckmate:leave-approved', () => {{ leaveApproved = true; }});
+          addEventListener('beforeunload', event => {{ if (leaveApproved) event.stopImmediatePropagation(); }}, true);
+          void invoke('board_set_dirty', {{ dirty: false }}).catch(console.error);
           Object.defineProperty(window, 'deckmateBoard', {{ value: Object.freeze({{
             recentProjects: () => invoke('board_recent_projects'),
             workspaceProjects: () => invoke('board_workspace_projects'),
@@ -383,7 +516,8 @@ pub async fn board_script(window: &WebviewWindow, origin: Option<String>) -> Res
             removeFromWorkspace: folder => invoke('board_remove_from_workspace', {{ folder }}),
             moveInWorkspace: (folder, index) => invoke('board_move_in_workspace', {{ folder, index }}),
             switchProject: folder => invoke('board_switch_project', {{ folder }}),
-            showStartScreen: () => invoke('board_show_start_screen')
+            showStartScreen: () => invoke('board_show_start_screen'),
+            setDirty: dirty => invoke('board_set_dirty', {{ dirty }})
           }}) }});
         }})();"#,
                 serde_json::to_string(&origin).unwrap()
@@ -412,4 +546,48 @@ pub async fn board_script(window: &WebviewWindow, origin: Option<String>) -> Res
         })
         .map_err(|error| error.to_string())?;
     receiver.await.map_err(|error| error.to_string())?
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn process_recovery_distinguishes_crash_hang_and_browser_exit() {
+        assert_eq!(
+            recovery(COREWEBVIEW2_PROCESS_FAILED_KIND_RENDER_PROCESS_EXITED),
+            Recovery::Reload
+        );
+        assert_eq!(
+            recovery(COREWEBVIEW2_PROCESS_FAILED_KIND_RENDER_PROCESS_UNRESPONSIVE),
+            Recovery::Ask
+        );
+        assert_eq!(
+            recovery(COREWEBVIEW2_PROCESS_FAILED_KIND_BROWSER_PROCESS_EXITED),
+            Recovery::Restart
+        );
+        assert_eq!(
+            recovery(COREWEBVIEW2_PROCESS_FAILED_KIND_GPU_PROCESS_EXITED),
+            Recovery::None
+        );
+    }
+
+    #[test]
+    fn context_menu_allows_only_editing_and_spelling() {
+        for name in ["cut", "copy", "paste", "selectAll", "spellCheck"] {
+            assert!(editing_menu_item(name));
+        }
+        for name in [
+            "reload",
+            "print",
+            "saveAs",
+            "inspectElement",
+            "back",
+            "openLinkInNewWindow",
+            "custom",
+            "",
+        ] {
+            assert!(!editing_menu_item(name));
+        }
+    }
 }

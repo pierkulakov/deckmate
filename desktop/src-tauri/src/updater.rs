@@ -127,7 +127,7 @@ pub fn toggle_auto_check(app: &AppHandle) {
     shell
         .log
         .write(format!("updater automatic checks: {enabled}"));
-    shell.save();
+    let _ = shell.save();
     shell.updates.wake.notify_one();
     menu::rebuild(app);
 }
@@ -237,7 +237,7 @@ pub async fn check(app: &AppHandle, manual: bool) {
     if result.is_ok() {
         shell.settings.lock().unwrap().updates.last_check = Some(Utc::now().to_rfc3339());
         *shell.updates.retry_after.lock().unwrap() = None;
-        shell.save();
+        let _ = shell.save();
     } else {
         *shell.updates.retry_after.lock().unwrap() = Some(Utc::now() + RETRY_INTERVAL);
     }
@@ -517,7 +517,7 @@ async fn offer(app: &AppHandle, update: &Update, portable: bool) {
     if chosen(&result, &language, "skipVersion") {
         shell.settings.lock().unwrap().updates.skipped_version = Some(update.version.clone());
         clear_ready(&shell);
-        shell.save();
+        let _ = shell.save();
         shell
             .log
             .write(format!("updater skipped {}", update.version));
@@ -648,7 +648,7 @@ async fn after_start(app: &AppHandle) {
     if decision == PendingAfterStart::None {
         return;
     }
-    shell.save();
+    let _ = shell.save();
     match decision {
         PendingAfterStart::Applied { from } => {
             shell.log.write(format!(

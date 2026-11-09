@@ -16,6 +16,7 @@ import { CatalogReferenceLink } from './JourneyPanel.tsx';
 import { Button } from './ui/button.tsx';
 import { defineText, locale, useText, type Lang } from '../i18n.ts';
 import { failureMessage } from '../failure-message.ts';
+import { useDesktopDirty } from '../desktop-bridge.ts';
 import '../journey-editor.css';
 
 // The new zone title is saved to the project file, so it follows the project's format language, not the interface language.
@@ -230,6 +231,7 @@ export function JourneyEditor({ catalog, deck, source, initialJourneyId, writabl
     if (catalog.manifestHash !== base.manifestHash) replaceBase({ ...base, manifestHash: catalog.manifestHash });
   }, [catalog, busy, dirty, conflict, unconfirmedCreate, inspectedId]);
 
+  useDesktopDirty(dirty || !!unconfirmedCreate);
   useEffect(() => {
     if (!dirty && !unconfirmedCreate) return;
     const warn = (event: BeforeUnloadEvent) => { event.preventDefault(); event.returnValue = ''; };

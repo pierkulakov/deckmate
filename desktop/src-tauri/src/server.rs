@@ -123,6 +123,17 @@ fn free_port() -> io::Result<u16> {
     Ok(TcpListener::bind(("127.0.0.1", 0))?.local_addr()?.port())
 }
 
+pub fn choose_port(saved: Option<u16>) -> io::Result<u16> {
+    if let Some(port) = saved.filter(|port| *port != 0) {
+        match TcpListener::bind(("127.0.0.1", port)) {
+            Ok(_) => return Ok(port),
+            Err(error) if error.kind() == io::ErrorKind::AddrInUse => (),
+            Err(error) => return Err(error),
+        }
+    }
+    free_port()
+}
+
 pub fn start(
     programs: &Programs,
     directory: &Path,
@@ -130,7 +141,18 @@ pub fn start(
     log: Log,
     language: String,
 ) -> io::Result<(Server, oneshot::Receiver<Result<String, Failure>>)> {
-    let port = free_port()?;
+    // 2026-11-09: self-test stays isolated from the user's persisted board origin.
+    start_on_port(programs, directory, folder, log, language, free_port()?)
+}
+
+pub fn start_on_port(
+    programs: &Programs,
+    directory: &Path,
+    folder: &str,
+    log: Log,
+    language: String,
+    port: u16,
+) -> io::Result<(Server, oneshot::Receiver<Result<String, Failure>>)> {
     let mut child = command(programs)
         .arg(&programs.server)
         .current_dir(folder)
@@ -414,6 +436,17 @@ mod tests {
     use super::*;
 
     #[test]
+    fn keeps_available_saved_port_and_falls_back_when_taken() {
+        let occupied = TcpListener::bind(("127.0.0.1", 0)).unwrap();
+        let port = occupied.local_addr().unwrap().port();
+        assert_ne!(choose_port(Some(port)).unwrap(), port);
+        drop(occupied);
+        assert_eq!(choose_port(Some(port)).unwrap(), port);
+        assert_ne!(choose_port(None).unwrap(), 0);
+        assert_ne!(choose_port(Some(0)).unwrap(), 0);
+    }
+
+    #[test]
     fn removes_legacy_and_current_environment_case_insensitively() {
         let entries = [
             "DECKMATE_DATA",
@@ -424,6 +457,7 @@ mod tests {
             "DECKMATES",
             "NODE_OPTIONS",
             "node_path",
+            "NODE_COMPILE_CACHE",
             "OPENSSL_CONF",
         ]
         .map(|key| (key.into(), "value".into()));

@@ -4,7 +4,7 @@ use crate::{
     paths::{self, Programs},
     server::{self, Failure, Server},
     settings::{PendingUpdate, Settings},
-    texts, updater, whats_new, window,
+    texts, unsaved, updater, whats_new, window,
 };
 use serde_json::{json, Value};
 use std::{
@@ -46,6 +46,7 @@ pub struct Shell {
     pub closing: AtomicBool,
     pub quit_requested: AtomicBool,
     pub quit_ready: AtomicBool,
+    pub unsaved: unsaved::State,
     pub bounds_generation: AtomicU64,
     pub board_script: Mutex<Option<String>>,
     pub loading: Mutex<Option<Loading>>,
@@ -87,6 +88,7 @@ impl Shell {
             closing: AtomicBool::new(false),
             quit_requested: AtomicBool::new(false),
             quit_ready: AtomicBool::new(false),
+            unsaved: unsaved::State::default(),
             bounds_generation: AtomicU64::new(0),
             board_script: Mutex::new(None),
             loading: Mutex::new(None),
@@ -106,11 +108,16 @@ impl Shell {
         Failure::new(code, texts::text(&self.language(), key))
     }
 
-    pub fn save(&self) {
+    pub fn save(&self) -> Result<(), Failure> {
         // 2026-11-09: the settings lock serializes snapshots and atomic renames, including the final close save.
-        if let Err(error) = self.settings.lock().unwrap().save(&self.directory) {
+        let result = self.settings.lock().unwrap().save(&self.directory);
+        result.map_err(|error| {
             self.log.write(format!("settings save failed: {error}"));
-        }
+            Failure::new(
+                "save-failed",
+                texts::format(&self.language(), "saveFailed", "error", error),
+            )
+        })
     }
 
     fn begin_quit(&self) -> bool {
@@ -196,6 +203,7 @@ pub fn result(result: Result<(), Failure>) -> Value {
 }
 
 async fn launcher_locked(app: &AppHandle, shell: &Shell, status: Option<Value>) {
+    unsaved::leave(app);
     shell.stop().await;
     *shell.pending_status.lock().unwrap() = status;
     menu::rebuild(app);
@@ -207,17 +215,18 @@ async fn launcher_locked(app: &AppHandle, shell: &Shell, status: Option<Value>) 
     }
 }
 
-pub async fn show_launcher(app: &AppHandle, status: Option<Value>) {
+pub async fn show_launcher(app: &AppHandle, status: Option<Value>) -> Result<(), Failure> {
     let shell = state(app);
     if shell.closing.load(Ordering::SeqCst) {
-        return;
+        return Err(shell.failure("closed", "closed"));
     }
+    unsaved::confirm(app).await?;
+    unsaved::leave(app);
     let launch = shell.next_launch();
     let _guard = shell.lifecycle.lock().await;
-    if shell.replaced(launch) || shell.closing.load(Ordering::SeqCst) {
-        return;
-    }
+    shell.require_launch(launch)?;
     launcher_locked(app, &shell, status).await;
+    Ok(())
 }
 
 fn error_status(folder: &str, failure: &Failure) -> Value {
@@ -237,6 +246,8 @@ pub async fn open_project(app: &AppHandle, folder: String) -> Result<(), Failure
             texts::format(&shell.language(), "missing", "path", &folder),
         ));
     }
+    unsaved::confirm(app).await?;
+    unsaved::leave(app);
     let launch = shell.next_launch();
     let _guard = shell.lifecycle.lock().await;
     shell.require_launch(launch)?;
@@ -267,12 +278,20 @@ async fn start_project(
     crate::webview::install(&window)
         .await
         .map_err(|error| Failure::new("load-failed", error))?;
-    let (process, ready) = server::start(
+    let saved_port = shell.settings.lock().unwrap().server_port;
+    let port = server::choose_port(saved_port)
+        .map_err(|error| Failure::new("start-failed", error.to_string()))?;
+    if saved_port != Some(port) {
+        shell.settings.lock().unwrap().server_port = Some(port);
+        shell.save()?;
+    }
+    let (process, ready) = server::start_on_port(
         &shell.programs,
         &shell.directory,
         folder,
         shell.log.clone(),
         shell.language(),
+        port,
     )
     .map_err(|error| Failure::new("start-failed", error.to_string()))?;
     *shell.current.lock().unwrap() = Some(Session {
@@ -300,7 +319,7 @@ async fn start_project(
     }
     shell.settings.lock().unwrap().remember(folder);
     menu::rebuild(app);
-    shell.save();
+    shell.save()?;
     let _ = window.set_title(&format!("Deckmate — {}", paths::project_name(folder)));
     // 2026-11-09: finish registering the script before cancellation can hand this webview to another launch.
     crate::webview::board_script(&window, Some(url.clone()))
@@ -403,7 +422,7 @@ pub async fn startup(app: AppHandle) {
         }
         if !Path::new(&last).is_dir() {
             shell.settings.lock().unwrap().last_project = None;
-            shell.save();
+            let _ = shell.save();
             let failure = Failure::new(
                 "missing",
                 texts::format(&shell.language(), "missing", "path", &last),
@@ -419,21 +438,41 @@ pub async fn startup(app: AppHandle) {
 
 pub fn request_quit(app: &AppHandle) {
     let shell = state(app);
-    if !shell.begin_quit() {
+    if shell.closing.load(Ordering::SeqCst) {
+        shell.quit_requested.store(true, Ordering::SeqCst);
         return;
     }
-    if let Some(window) = app.get_webview_window("main") {
-        window::capture_bounds(&window);
-    }
-    shell.bounds_generation.fetch_add(1, Ordering::SeqCst);
-    shell.save();
-    shell.next_launch();
     let app = app.clone();
     tauri::async_runtime::spawn(async move {
+        if unsaved::confirm(&app).await.is_err() || !shell.begin_quit() {
+            return;
+        }
+        if let Some(window) = app.get_webview_window("main") {
+            window::capture_bounds(&window);
+        }
+        shell.bounds_generation.fetch_add(1, Ordering::SeqCst);
+        let _ = shell.save();
+        shell.next_launch();
         let _guard = shell.lifecycle.lock().await;
         shell.stop().await;
         shell.quit_ready.store(true, Ordering::SeqCst);
         app.exit(0);
+    });
+}
+
+pub fn restart_after_browser_failure(app: &AppHandle) {
+    let shell = state(app);
+    if shell.closing.swap(true, Ordering::SeqCst) {
+        return;
+    }
+    let app = app.clone();
+    tauri::async_runtime::spawn(async move {
+        let _ = shell.save();
+        shell.next_launch();
+        let _guard = shell.lifecycle.lock().await;
+        shell.stop().await;
+        shell.quit_ready.store(true, Ordering::SeqCst);
+        app.restart();
     });
 }
 
@@ -445,6 +484,9 @@ pub async fn install_update(
     if !updater::enabled() || updater::portable().map_err(|error| error.to_string())? {
         return Err(texts::text(&shell.language(), "installUnavailable").into());
     }
+    if unsaved::confirm(app).await.is_err() {
+        return Ok(());
+    }
     if shell.closing.swap(true, Ordering::SeqCst) {
         return Ok(());
     }
@@ -452,7 +494,11 @@ pub async fn install_update(
         window::capture_bounds(&window);
     }
     shell.bounds_generation.fetch_add(1, Ordering::SeqCst);
-    shell.save();
+    if let Err(error) = shell.save() {
+        shell.closing.store(false, Ordering::SeqCst);
+        return Err(error.message);
+    }
+    unsaved::leave(app);
     let launch = shell.next_launch();
     let _guard = shell.lifecycle.lock().await;
     let restore = recovery_folder(shell.current.lock().unwrap().as_ref());
@@ -470,7 +516,7 @@ pub async fn install_update(
             extra: Default::default(),
         });
         settings
-            .save_for_install(&shell.directory)
+            .save(&shell.directory)
             .map_err(|error| error.to_string())
     };
     let result = match saved {
@@ -493,7 +539,7 @@ pub async fn install_update(
         return result;
     }
     shell.settings.lock().unwrap().updates.pending = None;
-    shell.save();
+    let _ = shell.save();
     shell
         .log
         .write("updater install returned an error; pending cleared, restoring project");
@@ -566,6 +612,7 @@ pub(crate) mod tests {
             closing: AtomicBool::new(false),
             quit_requested: AtomicBool::new(false),
             quit_ready: AtomicBool::new(false),
+            unsaved: unsaved::State::default(),
             bounds_generation: AtomicU64::new(0),
             board_script: Mutex::new(None),
             loading: Mutex::new(None),
@@ -584,6 +631,24 @@ pub(crate) mod tests {
             url: url.map(String::from),
             process: Server::idle(),
         }
+    }
+
+    #[test]
+    fn settings_save_failures_are_negative_command_results_and_can_be_retried() {
+        let sandbox = Sandbox::new();
+        let shell = shell(&sandbox.0, None);
+        let path = sandbox.0.join("desktop.json");
+        std::fs::create_dir(&path).unwrap();
+        let response = result(shell.save());
+        assert_eq!(response["ok"], false);
+        assert_eq!(response["code"], "save-failed");
+        assert!(response["message"]
+            .as_str()
+            .unwrap()
+            .contains("Could not save settings"));
+        std::fs::remove_dir(&path).unwrap();
+        assert_eq!(result(shell.save()), ok());
+        assert!(path.is_file());
     }
 
     #[test]

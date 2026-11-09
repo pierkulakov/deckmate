@@ -28,6 +28,7 @@ fn main() {
             "board_move_in_workspace",
             "board_switch_project",
             "board_show_start_screen",
+            "board_set_dirty",
             "whats_new_get",
         ]),
     ))

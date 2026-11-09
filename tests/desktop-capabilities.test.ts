@@ -12,7 +12,7 @@ describe('desktop capabilities', () => {
     expect(files.length).toBeGreaterThan(0);
   });
 
-  it('grants the remote board exactly its seven narrow commands', () => {
+  it('grants the remote board exactly its eight narrow commands', () => {
     const board = JSON.parse(readFileSync(new URL('board.json', capabilitiesDir), 'utf8'));
     expect(board.local).toBe(false);
     expect(board.remote.urls).toEqual(['http://127.0.0.1:*']);
@@ -21,6 +21,7 @@ describe('desktop capabilities', () => {
       'allow-board-recent-projects', 'allow-board-workspace-projects',
       'allow-board-add-to-workspace', 'allow-board-remove-from-workspace',
       'allow-board-move-in-workspace', 'allow-board-switch-project', 'allow-board-show-start-screen',
+      'allow-board-set-dirty',
     ].sort());
   });
 

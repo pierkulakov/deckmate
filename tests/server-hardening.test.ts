@@ -47,12 +47,23 @@ async function project(options: { readOnly: boolean; port: number }): Promise<{ 
   return { root, outside: directory, app, headers: { host: `127.0.0.1:${options.port}` } };
 }
 
+/**
+ * 2026-11-09: Node creates a Windows junction as an empty directory and then opens it without sharing to set the
+ * reparse point. The running app's file watcher could open that directory first, and Windows CI failed with EBUSY.
+ * The link is built in an unwatched folder and moved into place finished.
+ */
+async function linkWhileWatched(target: string, link: string, staging: string): Promise<void> {
+  const prepared = path.join(staging, `staged-${path.basename(link)}`);
+  await symlink(target, prepared, process.platform === 'win32' ? 'junction' : 'dir');
+  await rename(prepared, link);
+}
+
 const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+ipBwAAAAASUVORK5CYII=', 'base64');
 const cardId = 'card:ca1d0000-0000-4000-8000-000000000001';
 
 it('serves project files only through clean relative paths', async () => {
   const { root, outside, app, headers } = await project({ readOnly: true, port: 44342 });
-  await symlink(outside, path.join(root, 'features/link'), process.platform === 'win32' ? 'junction' : 'dir');
+  await linkWhileWatched(outside, path.join(root, 'features/link'), outside);
   await writeFile(path.join(root, 'tasks/art.svg'), '<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>');
   const honest = await app.inject({ url: '/api/file?path=features/match.md', headers });
   expect(honest.statusCode).toBe(200);
@@ -104,7 +115,7 @@ it.each([false, true])('excludes linked scan roots from the catalog and index (r
   await writeFile(path.join(linked, 'secret.md'), '# ExternalSecret\nOutsideContentMustNotLeak\n');
   await rename(path.join(root, 'features'), path.join(root, 'original-features'));
   for (const name of ['docs', 'features']) {
-    await symlink(linked, path.join(root, name), process.platform === 'win32' ? 'junction' : 'dir');
+    await linkWhileWatched(linked, path.join(root, name), outside);
   }
   await writeFile(path.join(root, 'tasks/inside.md'), '# InternalContent\nInside the project.\n');
   const catalog = await app.inject({ url: '/api/catalog', headers });

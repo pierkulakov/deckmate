@@ -168,20 +168,112 @@ jobs:
           if (-not (Test-Path -LiteralPath desktop/package.json)) { throw 'desktop/package.json is missing.' }
           $desktopVersion = (Get-Content desktop/package.json -Raw | ConvertFrom-Json).version
           if ($desktopVersion -ne $version) { throw "desktop/package.json has version $desktopVersion; it must match $version." }
+          # The Tauri config may carry its own version; if it does, it must not drift (2026-11-09).
+          if (Test-Path -LiteralPath desktop/src-tauri/tauri.conf.json) {
+            $tauriVersion = (Get-Content desktop/src-tauri/tauri.conf.json -Raw | ConvertFrom-Json).version
+            if ($null -ne $tauriVersion -and $tauriVersion -ne $version) { throw "desktop/src-tauri/tauri.conf.json has version $tauriVersion; it must match $version." }
+          }
           Add-Content -Path $env:GITHUB_OUTPUT -Value "version=$version"
       - run: npm ci
-      - run: npm run build
-      # prepare-deckmate.mjs packs the repository root into desktop/ and runs npm install there itself.
+      - name: Show Rust toolchain
+        # The runner image ships a stable Rust toolchain; showing it fails here,
+        # not deep inside the Tauri build, if that ever changes (2026-11-09).
+        run: |
+          rustup show
+          cargo --version
+          rustc --version
+      - name: Cache Rust dependencies
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          # Only the dependency caches: target/ is multi-GB and the release and CI
+          # jobs would evict more from the 10 GB repo cache than they save (2026-11-09).
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: cargo-${{ runner.os }}-${{ hashFiles('desktop/src-tauri/Cargo.lock') }}
+          restore-keys: cargo-${{ runner.os }}-
+      # prepare-sidecar.mjs runs npm pack in the root, which builds dist/, and stages
+      # the bundled Node runtime and the deckmate package for the Tauri build (2026-11-09).
+      - name: Stage the bundled Node runtime and deckmate package
+        run: node desktop/scripts/prepare-sidecar.mjs
       - name: Install desktop dependencies
         working-directory: desktop
-        run: node scripts/prepare-deckmate.mjs
-      - name: Build Windows installer and portable folder
+        run: npm ci
+      - name: Build Windows installer
         working-directory: desktop
-        run: npx electron-builder --win --publish never
-      - name: Pack portable folder
+        run: npm run dist
+      - name: Self-test the unpacked release build
+        run: |
+          $release = 'desktop/src-tauri/target/release'
+          $demo = Join-Path $env:RUNNER_TEMP 'deckmate-selftest'
+          foreach ($file in @("$release/Deckmate.exe", "$release/node.exe", "$release/deckmate/bin/deckmate.mjs")) {
+            if (-not (Test-Path -LiteralPath $file)) { throw "Missing build output: $file" }
+          }
+          & "$release/node.exe" "$release/deckmate/bin/deckmate.mjs" init $demo
+          if ($LASTEXITCODE -ne 0) { throw "deckmate init exited with code $LASTEXITCODE." }
+          # A windowed release binary never blocks PowerShell's call operator,
+          # so wait for the process and read its exit code (2026-11-09).
+          # The JSON line goes to a file: a GUI-subsystem exe has no console to print to (2026-11-09).
+          $report = Join-Path $env:RUNNER_TEMP 'self-test-release.json'
+          $shell = Start-Process -FilePath "$release/Deckmate.exe" -ArgumentList "--self-test $demo" -NoNewWindow -Wait -PassThru -RedirectStandardOutput $report
+          Get-Content -LiteralPath $report
+          if ($shell.ExitCode -ne 0) { throw "Deckmate.exe --self-test exited with code $($shell.ExitCode)." }
+      - name: Self-test the installer and the uninstaller
         env:
           VERSION: ${{ steps.desktop.outputs.version }}
-        run: Compress-Archive -Path desktop/release/win-unpacked/* -DestinationPath "desktop/release/Deckmate-$env:VERSION-win-x64.zip"
+        run: |
+          $release = 'desktop/src-tauri/target/release'
+          # Tauri names the installer <productName>_<version>_<arch>-setup.exe; finding it by pattern keeps
+          # this step independent of that scheme (2026-11-09).
+          $installers = @(Get-ChildItem -LiteralPath "$release/bundle/nsis" -Filter '*-setup.exe')
+          if ($installers.Count -ne 1) { throw "Expected one NSIS installer in $release/bundle/nsis, found $($installers.Count)." }
+          $installer = $installers[0].FullName
+          # Tauri's NSIS template installs silently with /S, and NSIS itself takes /D=
+          # as the unquoted, trailing override of the install dir; runner temp paths
+          # never contain spaces, which NSIS requires there (2026-11-09).
+          $installDir = Join-Path $env:RUNNER_TEMP 'deckmate-install'
+          $setup = Start-Process -FilePath $installer -ArgumentList "/S /D=$installDir" -Wait -PassThru
+          if ($setup.ExitCode -ne 0) { throw "The installer exited with code $($setup.ExitCode)." }
+          $installed = "$installDir/Deckmate.exe"
+          if (-not (Test-Path -LiteralPath $installed)) { throw "The installer did not create $installed." }
+          $demo = Join-Path $env:RUNNER_TEMP 'deckmate-selftest'
+          $report = Join-Path $env:RUNNER_TEMP 'self-test-installed.json'
+          $shell = Start-Process -FilePath $installed -ArgumentList "--self-test $demo" -NoNewWindow -Wait -PassThru -RedirectStandardOutput $report
+          Get-Content -LiteralPath $report
+          if ($shell.ExitCode -ne 0) { throw "The installed Deckmate.exe --self-test exited with code $($shell.ExitCode)." }
+          # _?= runs the uninstaller in place, which is the only way -Wait means
+          # anything; NSIS then cannot delete uninstall.exe itself, so only the app
+          # binary is asserted gone (2026-11-09).
+          $uninstall = Start-Process -FilePath "$installDir/uninstall.exe" -ArgumentList "/S _?=$installDir" -Wait -PassThru
+          if ($uninstall.ExitCode -ne 0) { throw "The uninstaller exited with code $($uninstall.ExitCode)." }
+          if (Test-Path -LiteralPath $installed) { throw "The uninstaller left $installed behind." }
+      - name: Pack release assets and record sizes
+        env:
+          VERSION: ${{ steps.desktop.outputs.version }}
+        run: |
+          $release = 'desktop/src-tauri/target/release'
+          New-Item -ItemType Directory -Force -Path desktop/release | Out-Null
+          # Keep the asset names the Electron releases already used (2026-11-09).
+          $installers = @(Get-ChildItem -LiteralPath "$release/bundle/nsis" -Filter '*-setup.exe')
+          if ($installers.Count -ne 1) { throw "Expected one NSIS installer in $release/bundle/nsis, found $($installers.Count)." }
+          Move-Item -LiteralPath $installers[0].FullName -Destination "desktop/release/Deckmate Setup $env:VERSION.exe"
+          # The portable zip carries exactly the three release outputs, not the Cargo build junk.
+          $inputs = @("$release/Deckmate.exe", "$release/node.exe", "$release/deckmate")
+          foreach ($file in $inputs) {
+            if (-not (Test-Path -LiteralPath $file)) { throw "Missing release output: $file" }
+          }
+          Compress-Archive -Path $inputs -DestinationPath "desktop/release/Deckmate-$env:VERSION-win-x64.zip"
+          $installerMb = [math]::Round((Get-Item -LiteralPath "desktop/release/Deckmate Setup $env:VERSION.exe").Length / 1MB, 1)
+          $unpackedMb = [math]::Round((Get-ChildItem -LiteralPath $inputs -Recurse -File | Measure-Object -Property Length -Sum).Sum / 1MB, 1)
+          # Next to the Electron figures, to watch the trend while the Tauri build settles (2026-11-09).
+          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value @(
+            '### Windows desktop sizes',
+            '',
+            '| Artifact | Tauri | Electron (2026-11-08) |',
+            '|---|---|---|',
+            "| Installer | $installerMb MB | 121 MB |",
+            "| Unpacked | $unpackedMb MB | 380 MB |"
+          )
       - name: Upload desktop build to GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -189,7 +281,7 @@ jobs:
           VERSION: ${{ steps.desktop.outputs.version }}
         run: |
           $installer = "desktop/release/Deckmate Setup $env:VERSION.exe"
-          $files = @($installer, "$installer.blockmap", "desktop/release/Deckmate-$env:VERSION-win-x64.zip")
+          $files = @($installer, "desktop/release/Deckmate-$env:VERSION-win-x64.zip")
           foreach ($file in $files) {
             if (-not (Test-Path -LiteralPath $file)) { throw "Missing build output: $file" }
           }

@@ -45,3 +45,71 @@ jobs:
         with:
           persist-credentials: false
       - run: docker build --pull -t deckmate:ci .
+
+  # The desktop shell is Rust since the Tauri move, so CI compiles it, runs its
+  # unit tests and smoke-tests a debug build (2026-11-09). It runs on every push
+  # and pull request: GitHub Actions has path filters only per workflow, not per
+  # job, and a workflow-level filter would also skip the checks and docker jobs
+  # above, which today run unconditionally.
+  desktop-shell:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: package.json
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - run: npm ci
+      # A debug shell serves dist/server/main.js from this checkout, so the client
+      # and server must be built before the self-test (2026-11-09).
+      - run: npm run build
+      - name: Show Rust toolchain
+        # The runner image ships a stable Rust toolchain; showing it fails here,
+        # not deep inside cargo, if that ever changes (2026-11-09).
+        run: |
+          rustup show
+          cargo --version
+          rustc --version
+      - name: Cache Rust dependencies
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: cargo-${{ runner.os }}-${{ hashFiles('desktop/src-tauri/Cargo.lock') }}
+          restore-keys: cargo-${{ runner.os }}-
+      # Both components are on the runner image; the explicit add keeps the job
+      # working if the image ever trims them (2026-11-09).
+      - run: rustup component add rustfmt clippy
+      - run: cargo fmt --check --manifest-path desktop/src-tauri/Cargo.toml
+      - run: cargo clippy --manifest-path desktop/src-tauri/Cargo.toml -- -D warnings
+      - run: cargo test --manifest-path desktop/src-tauri/Cargo.toml
+      - run: cargo build --manifest-path desktop/src-tauri/Cargo.toml
+      - name: Self-test the debug shell
+        run: |
+          $demo = Join-Path $env:RUNNER_TEMP 'deckmate-shell-demo'
+          node bin/deckmate.mjs init $demo
+          if ($LASTEXITCODE -ne 0) { throw "deckmate init exited with code $LASTEXITCODE." }
+          $exe = 'desktop/src-tauri/target/debug/Deckmate.exe'
+          if (-not (Test-Path -LiteralPath $exe)) { throw "Missing build output: $exe" }
+          # A windowed binary never blocks PowerShell's call operator, so wait for
+          # the process and read its exit code (2026-11-09).
+          $report = Join-Path $env:RUNNER_TEMP 'self-test-debug.json'
+          $shell = Start-Process -FilePath $exe -ArgumentList "--self-test $demo" -NoNewWindow -Wait -PassThru -RedirectStandardOutput $report
+          Get-Content -LiteralPath $report
+          if ($shell.ExitCode -ne 0) { throw "Deckmate.exe --self-test exited with code $($shell.ExitCode)." }
+      - name: Smoke-test the real window over CDP
+        # Drives the debug shell end to end (launcher, board, bridges, server lifetime) through
+        # the page bridges over CDP (2026-11-09). Kept optional: it needs a working WebView2 in
+        # the runner's desktop session, and a red smoke must not mask the required checks above.
+        continue-on-error: true
+        run: npm run desktop:smoke

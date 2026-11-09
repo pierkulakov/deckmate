@@ -24,7 +24,8 @@ const texts = {
     justNow: 'just now',
     themeToLight: 'Switch to the light theme',
     themeToDark: 'Switch to the dark theme',
-    version: (desktop, server) => `Deckmate ${server} · Desktop ${desktop}`,
+    // 2026-11-09: the shell and the server ship as one release with one version; two numbers show only when they drift.
+    version: (desktop, server) => (desktop === server ? `Deckmate ${server}` : `Deckmate ${server} · Desktop ${desktop}`),
   },
   ru: {
     tagline: 'Доска проекта над Markdown-файлами вашего репозитория.',
@@ -48,7 +49,7 @@ const texts = {
     justNow: 'только что',
     themeToLight: 'Включить светлую тему',
     themeToDark: 'Включить тёмную тему',
-    version: (desktop, server) => `Deckmate ${server} · Desktop ${desktop}`,
+    version: (desktop, server) => (desktop === server ? `Deckmate ${server}` : `Deckmate ${server} · Desktop ${desktop}`),
   },
 };
 

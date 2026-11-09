@@ -50,6 +50,8 @@
 }
 
 * { box-sizing: border-box; }
+/* 2026-11-09: class display rules (.status .link is inline-flex) beat the UA [hidden] rule, so the retry link showed while idle. */
+[hidden] { display: none !important; }
 html, body { height: 100%; margin: 0; }
 body {
   font-family: var(--font-sans); font-synthesis: none; font-size: 14px; line-height: 1.45;

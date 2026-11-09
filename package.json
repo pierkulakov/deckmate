@@ -37,6 +37,8 @@
     "start": "node bin/deckmate.mjs",
     "dev": "node tools/dev.ts",
     "capture": "node tools/layout-capture.ts",
+    "capture:launcher": "node tools/launcher-capture.ts",
+    "desktop:smoke": "node tools/desktop-smoke.ts",
     "shots": "node tools/readme-shots.ts",
     "build:client": "vite build --config app.vite.config.ts",
     "build:server": "tsc -p tsconfig.server.json",

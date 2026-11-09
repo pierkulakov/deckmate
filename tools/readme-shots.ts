@@ -13,11 +13,14 @@ import { loadConfig } from '../server/config.ts';
 import { initializeDemo } from '../server/demo.ts';
 import { editNativeCardProperties } from '../server/native-cards.ts';
 import { packagePath } from '../server/package-path.ts';
+import { captureLauncherReadme } from './launcher-capture.ts';
 
 const executeFile = promisify(execFile);
 const workspace = packagePath();
+// 2026-11-09: the banner reuses the committed card crop, so it can render without a client build or demo server.
+const socialOnly = process.argv.includes('--social');
 const clientEntry = packagePath('dist', 'client', 'index.html');
-const clientBuildHash = createHash('sha256').update(await readFile(clientEntry)).digest('hex');
+const clientBuildHash = socialOnly ? null : createHash('sha256').update(await readFile(clientEntry)).digest('hex');
 const temporary = await mkdtemp(path.join(tmpdir(), 'deckmate-readme-shots-'));
 const output = packagePath('docs', 'screenshots');
 // Capture records stay in the ignored runtime folder; the PNGs are the deliverable.
@@ -121,7 +124,12 @@ async function capture(name: string, url: string, selector: string, steps: strin
   console.log(`${name}: ${savedWidth}x${savedHeight}, ${png.length} bytes, console errors: 0`);
 }
 
-try {
+async function captureSocial(): Promise<void> {
+  await mkdir(evidence, { recursive: true });
+  await capture('social', pathToFileURL(packagePath('docs', 'social-preview.html')).href, '.stage', [], { width: 1280, height: 640, dpr: 1 }, true);
+}
+
+async function captureDemo(): Promise<void> {
   const project = path.join(temporary, 'project');
   await initializeDemo(project);
   interruption.signal.throwIfAborted();
@@ -144,6 +152,9 @@ try {
   if (!board) throw new Error('Demo Vision board missing.');
   await mkdir(output, { recursive: true });
   await mkdir(evidence, { recursive: true });
+  const launcher = await captureLauncherReadme(path.join(output, 'desktop-start.png'));
+  captures.push({ file: 'docs/screenshots/desktop-start.png', width: launcher.width, height: launcher.height,
+    bytes: launcher.bytes, sha256: launcher.sha256, consoleErrors: 0 });
   const url = (values: Record<string, string>) => address + '/?' + new URLSearchParams({ catalogSource: 'sandbox', ...values });
   const deckUrl = url({ view: 'deck', deck: hero.deckId, order: 'manual' });
   // 1280 CSS pixels at DPR 1.25 keep text legible when GitHub scales the 1600 px PNG down.
@@ -171,7 +182,7 @@ try {
   })()`;
   await capture('social-cards', deckUrl, '.catalog-card-hero', [],
     { width: 1280, height: 912, dpr: 2, after: [scrollToTop, markCards], clip: '[data-shot="cards"]', file: packagePath('docs', 'social-cards.png') });
-  await capture('social', pathToFileURL(packagePath('docs', 'social-preview.html')).href, '.cards', [], { width: 1280, height: 640, dpr: 1 }, true);
+  await captureSocial();
   // 2026-11-09: finish a real demo family after the overview captures to show the accepted Hero's foil.
   const current = await readProjectCatalog(project);
   const children = current.cards.filter(card => card.parentId === hero.id && card.kind === 'task');
@@ -188,6 +199,11 @@ try {
   await writeFile(path.join(evidence, 'shots.json'), JSON.stringify({ capturedAt: new Date().toISOString(), clientBuildHash, port,
     editMode: snapshot.editMode, writable: snapshot.writable, language: 'en', theme: 'dark',
     cards: catalog.cards.length, decks: catalog.decks.length, captures }, null, 2) + '\n');
+}
+
+try {
+  if (socialOnly) await captureSocial();
+  else await captureDemo();
 } finally {
   try {
     if (address) {
@@ -208,6 +224,6 @@ try {
       throw new Error('Unsafe screenshot cleanup target.');
     }
     await rm(temporary, { recursive: true, force: true, maxRetries: 10, retryDelay: 300 });
-    console.log('Temporary server stopped; demo and index removed.');
+    console.log('Temporary capture files removed.');
   }
 }

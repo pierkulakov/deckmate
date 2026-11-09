@@ -152,6 +152,14 @@ function parseState(bytes: Buffer): StateFile {
   return { text, yamlStart, yamlEnd: yamlStart + match[2].length, yaml: match[2], members, warnings };
 }
 
+/**
+ * 2026-11-09: nests a value under own keys of fresh literals. Walking with `target[key] ??= {}` resolved a member ID
+ * that memberIdPattern allows, "constructor", to the global Object and wrote the mark there instead of the file.
+ */
+function nestedValue(keys: string[], value: unknown): unknown {
+  return keys.reduceRight((inner, key) => ({ [key]: inner }), value);
+}
+
 /** 2026-11-05: patch only the selected YAML value; other members, comments, BOM and body keep their bytes. */
 function patchStateValue(state: StateFile, path: string[], value: unknown): Buffer {
   const document = parseDocument(state.yaml);
@@ -162,8 +170,7 @@ function patchStateValue(state: StateFile, path: string[], value: unknown): Buff
     if (!isMap(target) || !target.range) throw new Error(serverText(messages).explicitMap);
     const node = target.get(key, true);
     if (index < path.length - 1 && node !== undefined) { target = node; continue; }
-    let replacement = value;
-    for (const nested of path.slice(index + 1).reverse()) replacement = { [nested]: replacement };
+    const replacement = nestedValue(path.slice(index + 1), value);
     if (node === undefined) {
       const position = target.range[0] + (target.flow ? 1 : 0);
       const column = position - (yaml.lastIndexOf('\n', position - 1) + 1);
@@ -459,10 +466,7 @@ export class NotificationService {
     for (let attempt = 0; attempt < 2; attempt += 1) {
       const bytes = await readStateBytes(root);
       if (!bytes) {
-        const metadata: Record<string, unknown> = { schema: 1, members: {} };
-        let target = metadata;
-        for (const key of path.slice(0, -1)) target = (target[key] ??= {}) as Record<string, unknown>;
-        target[path[path.length - 1]] = at;
+        const metadata = { schema: 1, ...nestedValue(path, at) as Record<string, unknown> };
         if (await createManagedMarkdown(root, notificationStatePath, metadata, registryBriefs[await projectLanguage(root)])) return;
         continue;
       }

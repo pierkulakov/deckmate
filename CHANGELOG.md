@@ -11,10 +11,12 @@ Notable changes are grouped by version using [Keep a Changelog](https://keepacha
 - **Templates in Russian.** Bundled Journey and project templates carry Russian titles and descriptions (`locales.ru` in the template header); the pickers show them in the Russian interface, and importing into a Russian-format project names the Journey in Russian.
 - **Accepted Hero foil.** An accepted Hero tile carries a holographic foil and an iridescent rim that follow the pointer; with reduced motion or touch it stays still.
 - **Attachments.** Deleting an attachment that is inserted in the card text offers to remove its links as well.
+- **Task to Hero.** Dropping a top-level Task without Sub Cards into an Asset deck asks whether to make it a Hero; the server's `promote-parent` accepts an empty Sub Card list for this.
 
 ### Changed
 
 - **Decks home.** The document and card counts moved from a footer under the decks to a quiet line under the project name; source warnings open from that line.
+- **Hero family.** Doc Sub Cards show in the Hero's family; progress and the finished family count Task Sub Cards only. The Sub Cards panel counts and marks Sub Cards without a deck.
 - **Cards.** Tiles tilt up to 8°. A Hero tile's Sub Card progress is a quiet line whose steps are sized by each Sub Card's effort.
 
 ### Fixed

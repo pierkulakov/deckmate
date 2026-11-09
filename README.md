@@ -108,7 +108,7 @@ Open a deck to work with its cards, description, progress and activity:
 
 ![An open Deck with Hero Sub Card progress strips, task states, owners and effort](docs/screenshots/deck.png)
 
-A Hero tile shows Sub Card progress as a quiet line, with each step sized by its effort. When all its task Sub Cards are accepted, the Hero gains holographic foil, an iridescent rim and a done medallion. The foil follows the pointer; with reduced motion or touch it stays still.
+A Hero tile shows Sub Card progress as a quiet line, with each step sized by its effort. When all its task Sub Cards are accepted, the Hero gains holographic foil, an iridescent rim and a done medallion. The foil follows the pointer; with reduced motion or touch it stays still. Doc Sub Cards appear in the Hero's family too, but only Task Sub Cards count towards its progress; the Sub Cards panel flags those without a deck. Drop a Task that has no Sub Cards into an Asset deck and Deckmate offers to make it a Hero.
 
 ![Moonwake Lantern with holographic foil and a done medallion after its Sub Cards are accepted](docs/screenshots/deck-accepted.png)
 

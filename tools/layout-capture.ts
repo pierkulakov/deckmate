@@ -98,10 +98,13 @@ try {
   socket = new WebSocket(await target());
   await new Promise(resolve => socket!.addEventListener('open', resolve, { once: true }));
   let sequence = 0;
+  let executionContextId: number | undefined;
   const pending = new Map<number, (value: any) => void>();
   const consoleErrors: string[] = [];
   socket.addEventListener('message', event => {
     const message = JSON.parse(String(event.data));
+    if (message.method === 'Runtime.executionContextCreated' && message.params.context.auxData?.isDefault)
+      executionContextId = message.params.context.id;
     if (message.id && pending.has(message.id)) { pending.get(message.id)!(message); pending.delete(message.id); return; }
     if (message.method === 'Runtime.exceptionThrown') consoleErrors.push(String(message.params?.exceptionDetails?.exception?.description ?? message.params?.exceptionDetails?.text ?? 'exception').split('\n')[0]);
     if (message.method === 'Runtime.consoleAPICalled' && message.params?.type === 'error') consoleErrors.push((message.params.args ?? []).map((arg: { value?: unknown; description?: string }) => String(arg.value ?? arg.description ?? '')).join(' ').slice(0, 200));
@@ -109,6 +112,14 @@ try {
   const send = (method: string, params: object = {}) => new Promise<any>(resolve => { const id = ++sequence; pending.set(id, resolve); socket!.send(JSON.stringify({ id, method, params })); });
   const evaluate = async (expression: string) => {
     const response = await send('Runtime.evaluate', { expression, returnByValue: true, awaitPromise: true });
+    if (response.result?.exceptionDetails) throw new Error(response.result.exceptionDetails.exception?.description ?? response.result.exceptionDetails.text);
+    return response.result?.result?.value;
+  };
+  // 2026-11-09: values cross into the page as callFunctionOn arguments, not as text baked into the evaluated code
+  // (CodeQL js/bad-code-sanitization flags JSON.stringify interpolation).
+  const callFunction = async (functionDeclaration: string, ...args: unknown[]) => {
+    const response = await send('Runtime.callFunctionOn', { functionDeclaration, executionContextId,
+      arguments: args.map(value => ({ value })), returnByValue: true, awaitPromise: true });
     if (response.result?.exceptionDetails) throw new Error(response.result.exceptionDetails.exception?.description ?? response.result.exceptionDetails.text);
     return response.result?.result?.value;
   };
@@ -151,7 +162,9 @@ try {
     else if (step.startsWith('hover:')) {
       const [selector, at = '.5,.5'] = step.slice(6).split('@');
       const [fx, fy] = at.split(',').map(Number);
-      const point = await evaluate(`(() => { const el = document.querySelector(${JSON.stringify(selector)}); if (!el) return null; ${mouseHeld ? '' : "el.scrollIntoView({ block: 'center', behavior: 'instant' });"} const r = el.getBoundingClientRect(); return { x: r.x + r.width * ${fx}, y: r.y + r.height * ${fy} }; })()`);
+      const point = await callFunction(`(selector, scroll, fx, fy) => { const el = document.querySelector(selector); if (!el) return null;
+        if (scroll) el.scrollIntoView({ block: 'center', behavior: 'instant' });
+        const r = el.getBoundingClientRect(); return { x: r.x + r.width * fx, y: r.y + r.height * fy }; }`, selector, !mouseHeld, fx, fy);
       if (!point) console.log('not found: ' + selector);
       // Several moves on the way in: pointermove handlers that ease toward the pointer see a real path, not one jump.
       else for (let index = 1; index <= 6; index += 1) { mousePoint = { x: point.x - (6 - index) * 4, y: point.y - (6 - index) * 3 }; await send('Input.dispatchMouseEvent', { type: 'mouseMoved', ...mousePoint, buttons: mouseHeld ? 1 : 0 }); await sleep(30); }
@@ -162,7 +175,8 @@ try {
   mkdirSync(path.dirname(path.resolve(out)), { recursive: true });
   writeFileSync(out + '.json', tree);
   const clipSelector = option('clip');
-  const clip = clipSelector ? await evaluate(`(() => { const el = document.querySelector(${JSON.stringify(clipSelector)}); if (!el) return null; const r = el.getBoundingClientRect(); return { x: Math.max(0, r.x), y: Math.max(0, r.y), width: Math.min(r.width, innerWidth), height: Math.min(r.height, innerHeight), scale: 1 }; })()`) : null;
+  const clip = clipSelector ? await callFunction(`selector => { const el = document.querySelector(selector); if (!el) return null;
+    const r = el.getBoundingClientRect(); return { x: Math.max(0, r.x), y: Math.max(0, r.y), width: Math.min(r.width, innerWidth), height: Math.min(r.height, innerHeight), scale: 1 }; }`, clipSelector) : null;
   if (clipSelector && !clip) console.log('clip not found: ' + clipSelector + ' — saving the whole viewport');
   const shot = await send('Page.captureScreenshot', clip ? { format: 'png', clip } : { format: 'png' });
   writeFileSync(out + '.png', Buffer.from(shot.result.data, 'base64'));

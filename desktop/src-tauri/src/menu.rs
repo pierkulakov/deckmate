@@ -7,7 +7,9 @@ use tauri::{
     menu::{CheckMenuItem, Menu, MenuEvent, MenuItem, PredefinedMenuItem, Submenu},
     AppHandle, Manager,
 };
-use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
+use tauri_plugin_dialog::{
+    DialogExt, MessageDialogButtons, MessageDialogKind, MessageDialogResult,
+};
 use tauri_plugin_opener::OpenerExt;
 
 fn build(app: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
@@ -141,7 +143,16 @@ fn build(app: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
             &MenuItem::with_id(
                 app,
                 "installPending",
-                texts::format(lang, "installPending", "version", version),
+                texts::format(
+                    lang,
+                    if updater::portable().unwrap_or(true) {
+                        "portableUpdates"
+                    } else {
+                        "installPending"
+                    },
+                    "version",
+                    version,
+                ),
                 !shell.updates.busy(),
                 None::<&str>,
             )?,
@@ -159,16 +170,42 @@ pub fn rebuild(app: &AppHandle) {
 
 fn message(app: &AppHandle, key: &str, detail: &str, kind: MessageDialogKind) {
     let lang = app::state(app).language();
+    let app = app.clone();
+    let title = text(&lang, key).to_owned();
+    let detail = detail.to_owned();
+    tauri::async_runtime::spawn(async move {
+        dialog(
+            &app,
+            &title,
+            &detail,
+            MessageDialogButtons::OkCustom(text(&lang, "ok").into()),
+            kind,
+        )
+        .await;
+    });
+}
+
+pub async fn dialog(
+    app: &AppHandle,
+    title: &str,
+    detail: &str,
+    buttons: MessageDialogButtons,
+    kind: MessageDialogKind,
+) -> MessageDialogResult {
+    let (sender, receiver) = tokio::sync::oneshot::channel();
     let mut dialog = app
         .dialog()
-        .message(detail)
-        .title(text(&lang, key))
+        .message(if detail.is_empty() { title } else { detail })
+        .title(title)
         .kind(kind)
-        .buttons(MessageDialogButtons::OkCustom(text(&lang, "ok").into()));
+        .buttons(buttons);
     if let Some(window) = app.get_webview_window("main") {
         dialog = dialog.parent(&window);
     }
-    dialog.show(|_| {});
+    dialog.show_with_result(move |result| {
+        let _ = sender.send(result);
+    });
+    receiver.await.unwrap_or_default()
 }
 
 async fn open(app: &AppHandle, folder: String) {

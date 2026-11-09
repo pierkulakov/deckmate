@@ -7,10 +7,7 @@ use crate::{
 #[cfg(debug_assertions)]
 use std::env;
 use std::{
-    sync::{
-        atomic::{AtomicBool, Ordering},
-        Arc,
-    },
+    sync::atomic::{AtomicBool, Ordering},
     time::Duration,
 };
 use tauri::{
@@ -108,24 +105,65 @@ pub fn allow_navigation(app: &AppHandle, url: &Url) -> bool {
 }
 
 #[derive(Default)]
-struct FirstShow {
+pub struct FirstShow {
     bounds_ready: AtomicBool,
     loaded: AtomicBool,
     shown: AtomicBool,
+    visible: AtomicBool,
+    wait_for_board: AtomicBool,
+    notified: tokio::sync::Notify,
 }
 
 impl FirstShow {
+    pub fn new(wait_for_board: bool) -> Self {
+        Self {
+            wait_for_board: AtomicBool::new(wait_for_board),
+            ..Self::default()
+        }
+    }
+
     fn claim(&self, fallback: bool) -> bool {
         self.bounds_ready.load(Ordering::SeqCst)
             && (fallback || self.loaded.load(Ordering::SeqCst))
+            && (fallback || !self.wait_for_board.load(Ordering::SeqCst))
             && !self.shown.swap(true, Ordering::SeqCst)
     }
 
     fn show(&self, window: &WebviewWindow, fallback: bool) {
         if self.claim(fallback) {
+            #[cfg(debug_assertions)]
+            if let Ok(url) = window.url() {
+                app::state(window.app_handle())
+                    .log
+                    .write(format!("main first show: {url}"));
+            }
             let _ = window.as_ref().show();
             let _ = window.show();
+            self.visible.store(true, Ordering::SeqCst);
+            self.notified.notify_waiters();
         }
+    }
+}
+
+pub async fn wait_until_shown(app: &AppHandle) {
+    let shell = app::state(app);
+    loop {
+        let notified = shell.first_show.notified.notified();
+        if shell.first_show.visible.load(Ordering::SeqCst) {
+            return;
+        }
+        notified.await;
+    }
+}
+
+pub fn finish_startup(app: &AppHandle) {
+    let shell = app::state(app);
+    shell
+        .first_show
+        .wait_for_board
+        .store(false, Ordering::SeqCst);
+    if let Some(window) = app.get_webview_window("main") {
+        shell.first_show.show(&window, false);
     }
 }
 
@@ -176,8 +214,11 @@ fn debug_browser_args() -> Option<String> {
 }
 
 pub fn create(app: &AppHandle) -> tauri::Result<()> {
-    let first_show = Arc::new(FirstShow::default());
-    let loaded_show = first_show.clone();
+    let shell = app::state(app);
+    // 2026-11-09: decide before build: the launcher's first load can beat app::startup.
+    if let Some(folder) = &shell.startup_project {
+        shell.status(app, serde_json::json!({"phase":"ready", "path":folder}));
+    }
     let builder = WebviewWindowBuilder::new(app, "main", WebviewUrl::App("index.html".into()))
         .title("Deckmate")
         .inner_size(1280.0, 820.0)
@@ -195,8 +236,11 @@ pub fn create(app: &AppHandle) -> tauri::Result<()> {
             let app = window.app_handle();
             apply_zoom(&window);
             let _ = window.set_title(&title(app));
-            loaded_show.loaded.store(true, Ordering::SeqCst);
-            loaded_show.show(&window, false);
+            let shell = app::state(app);
+            shell.first_show.loaded.store(true, Ordering::SeqCst);
+            if !is_server_url(&shell, payload.url()) {
+                shell.first_show.show(&window, false);
+            }
         });
     // 2026-11-09: a first-document sample lets smoke verify hidden-until-load without a CDP attach race.
     #[cfg(debug_assertions)]
@@ -214,8 +258,8 @@ pub fn create(app: &AppHandle) -> tauri::Result<()> {
     // 2026-11-09: hiding the HWND alone does not update WebView2's document.visibilityState.
     window.as_ref().hide()?;
     restore_bounds(&window)?;
-    first_show.bounds_ready.store(true, Ordering::SeqCst);
-    first_show.show(&window, false);
+    shell.first_show.bounds_ready.store(true, Ordering::SeqCst);
+    shell.first_show.show(&window, false);
     let guarded_window = window.clone();
     tauri::async_runtime::spawn(async move {
         if let Err(error) = webview::install(&guarded_window).await {
@@ -238,8 +282,24 @@ pub fn create(app: &AppHandle) -> tauri::Result<()> {
     apply_zoom(&window);
     let fallback_window = window.clone();
     tauri::async_runtime::spawn(async move {
-        tokio::time::sleep(Duration::from_secs(5)).await;
-        if !first_show.loaded.load(Ordering::SeqCst) {
+        tokio::time::sleep(Duration::from_secs(2)).await;
+        let first_show = &shell.first_show;
+        if first_show.wait_for_board.load(Ordering::SeqCst)
+            && first_show.loaded.load(Ordering::SeqCst)
+            && fallback_window.url().is_ok_and(|url| is_launcher_url(&url))
+        {
+            let status = shell.pending_status.lock().unwrap().clone();
+            if let Some(mut status) = status.filter(|status| status["phase"] == "starting") {
+                status["phase"] = "ready".into();
+                shell.status(fallback_window.app_handle(), status);
+            }
+            shell.replay_status(fallback_window.app_handle());
+            first_show.show(&fallback_window, true);
+        }
+        tokio::time::sleep(Duration::from_secs(3)).await;
+        if !first_show.loaded.load(Ordering::SeqCst)
+            && fallback_window.url().is_ok_and(|url| is_launcher_url(&url))
+        {
             let app = fallback_window.app_handle();
             let shell = app::state(app);
             let message = crate::texts::text(&shell.language(), "launcherTimeout");
@@ -372,6 +432,15 @@ pub fn finish_load(window: &WebviewWindow, navigation: u64, result: Result<(), S
         .is_some_and(|load| load.navigation == Some(navigation))
     {
         if let Some(load) = loading.take() {
+            // 2026-11-09: Wry's Finished also fires for failed navigations; only success may reveal the board.
+            if result.is_ok() {
+                shell
+                    .first_show
+                    .wait_for_board
+                    .store(false, Ordering::SeqCst);
+                shell.first_show.loaded.store(true, Ordering::SeqCst);
+                shell.first_show.show(window, false);
+            }
             let _ = load.sender.send(result);
         }
     }
@@ -379,6 +448,10 @@ pub fn finish_load(window: &WebviewWindow, navigation: u64, result: Result<(), S
 
 pub async fn navigate_launcher(window: &WebviewWindow) -> Result<(), String> {
     webview::board_script(window, None).await?;
+    let shell = app::state(window.app_handle());
+    if !shell.first_show.shown.load(Ordering::SeqCst) {
+        shell.first_show.loaded.store(false, Ordering::SeqCst);
+    }
     window
         .navigate(launcher_url())
         .map_err(|error| error.to_string())
@@ -422,6 +495,18 @@ mod tests {
         assert!(fallback.claim(true));
         fallback.loaded.store(true, Ordering::SeqCst);
         assert!(!fallback.claim(false));
+    }
+    #[test]
+    fn auto_open_ignores_launcher_load_until_board_or_fallback() {
+        let show = FirstShow::new(true);
+        show.bounds_ready.store(true, Ordering::SeqCst);
+        show.loaded.store(true, Ordering::SeqCst);
+        assert!(!show.claim(false));
+        show.wait_for_board.store(false, Ordering::SeqCst);
+        assert!(show.claim(false));
+        let slow = FirstShow::new(true);
+        slow.bounds_ready.store(true, Ordering::SeqCst);
+        assert!(slow.claim(true));
     }
     #[test]
     fn debug_cdp_port_keeps_wry_defaults_and_rejects_bad_ports() {

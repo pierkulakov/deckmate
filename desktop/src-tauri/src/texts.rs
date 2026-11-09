@@ -53,6 +53,10 @@ pub fn text(language: &str, key: &str) -> &'static str {
             "Не удалось проверить обновления",
         ),
         "updateFailed" => ("Could not install the update", "Не удалось установить обновление"),
+        "installUnavailable" => (
+            "Automatic installation is unavailable in this build. Download the installed version from the release page.",
+            "Автоматическая установка недоступна в этой сборке. Скачайте установочную версию со страницы выпусков.",
+        ),
         "updateNotApplied" => (
             "The update to {version} was not installed",
             "Обновление до {version} не установилось",

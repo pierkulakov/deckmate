@@ -11,13 +11,11 @@ use tauri::{
     window::{ProgressBarState, ProgressBarStatus},
     AppHandle, Manager,
 };
-use tauri_plugin_dialog::{
-    DialogExt, MessageDialogButtons, MessageDialogKind, MessageDialogResult,
-};
+use tauri_plugin_dialog::{MessageDialogButtons, MessageDialogKind, MessageDialogResult};
 use tauri_plugin_updater::{RemoteRelease, Update, Updater, UpdaterExt};
 
-const DOWNLOADS_URL: &str = "https://github.com/pierkulakov/deckmate/releases/latest";
 const CHECK_INTERVAL: Duration = Duration::from_secs(24 * 60 * 60);
+const RETRY_INTERVAL: Duration = Duration::from_secs(60 * 60);
 const CACHE: &str = "update-cache";
 
 pub struct ReadyUpdate {
@@ -29,6 +27,8 @@ pub struct ReadyUpdate {
 pub struct State {
     operation: tokio::sync::Mutex<()>,
     ready: Mutex<Option<Arc<ReadyUpdate>>>,
+    portable_offer: Mutex<Option<Update>>,
+    retry_after: Mutex<Option<DateTime<Utc>>>,
     notified_version: Mutex<Option<String>>,
     wake: tokio::sync::Notify,
 }
@@ -44,6 +44,13 @@ impl State {
             .unwrap()
             .as_ref()
             .map(|ready| ready.update.version.clone())
+            .or_else(|| {
+                self.portable_offer
+                    .lock()
+                    .unwrap()
+                    .as_ref()
+                    .map(|update| update.version.clone())
+            })
     }
 }
 
@@ -51,13 +58,9 @@ pub fn enabled() -> bool {
     !cfg!(debug_assertions) && !std::env::args_os().any(|arg| arg == "--self-test")
 }
 
-fn should_offer(current: &str, release: &RemoteRelease, skipped: Option<&str>) -> bool {
-    let Ok(current) = current.parse() else {
-        return false;
-    };
+fn should_offer(newer: bool, release: &RemoteRelease, skipped: Option<&str>) -> bool {
     let skipped = skipped.and_then(|version| version.trim_start_matches('v').parse().ok());
-    release.version.cmp_precedence(&current).is_gt()
-        && !skipped.is_some_and(|version| release.version.cmp_precedence(&version).is_eq())
+    newer && !skipped.is_some_and(|version| release.version.cmp_precedence(&version).is_eq())
 }
 
 fn is_portable(executable: &Path) -> bool {
@@ -81,7 +84,11 @@ fn builder(app: &AppHandle) -> tauri_plugin_updater::Result<Updater> {
     app.updater_builder()
         .timeout(Duration::from_secs(30))
         .version_comparator(move |current, release| {
-            should_offer(&current.to_string(), &release, skipped.as_deref())
+            should_offer(
+                release.version.cmp_precedence(&current).is_gt(),
+                &release,
+                skipped.as_deref(),
+            )
         })
         // 2026-11-09: the default hook destroys Tauri resources before ShellExecuteW can fail.
         // app::install_update has saved and stopped the server; keep the UI usable for recovery.
@@ -97,6 +104,17 @@ fn until_next_check(last: Option<&str>, now: DateTime<Utc>) -> Duration {
         .to_std()
         .unwrap_or_default();
     CHECK_INTERVAL.saturating_sub(elapsed)
+}
+
+fn scheduled_delay(
+    last: Option<&str>,
+    retry: Option<DateTime<Utc>>,
+    now: DateTime<Utc>,
+) -> Duration {
+    retry
+        .map(|retry| (retry - now).to_std().unwrap_or_default())
+        .unwrap_or_else(|| until_next_check(last, now))
+        .min(RETRY_INTERVAL)
 }
 
 pub fn toggle_auto_check(app: &AppHandle) {
@@ -135,24 +153,37 @@ pub fn start(app: AppHandle) {
         }
         drop(guard);
         menu::rebuild(&app);
+        // 2026-11-09: cached reminders belong to startup, not the delayed/background download path.
+        if shell.updates.ready_version().is_some() {
+            window::wait_until_shown(&app).await;
+            remind_cached(&app).await;
+        }
         tokio::time::sleep_until(first_check).await;
         // 2026-11-09: each start gets a check even if lastCheck is recent, so Later reminds on restart.
         let automatic = shell.settings.lock().unwrap().updates.auto_check;
         if automatic {
             check(&app, false).await;
         }
-        remind_cached(&app).await;
         loop {
             let delay = {
                 let settings = shell.settings.lock().unwrap();
-                settings
-                    .updates
-                    .auto_check
-                    .then(|| until_next_check(settings.updates.last_check.as_deref(), Utc::now()))
+                settings.updates.auto_check.then(|| {
+                    scheduled_delay(
+                        settings.updates.last_check.as_deref(),
+                        *shell.updates.retry_after.lock().unwrap(),
+                        Utc::now(),
+                    )
+                })
             };
             match delay {
                 Some(delay) => tokio::select! {
-                    _ = tokio::time::sleep(delay) => check(&app, false).await,
+                    _ = tokio::time::sleep(delay) => {
+                        let due = {
+                            let settings = shell.settings.lock().unwrap();
+                            scheduled_delay(settings.updates.last_check.as_deref(), *shell.updates.retry_after.lock().unwrap(), Utc::now()).is_zero()
+                        };
+                        if due { check(&app, false).await; }
+                    },
                     _ = shell.updates.wake.notified() => (),
                 },
                 None => shell.updates.wake.notified().await,
@@ -199,13 +230,18 @@ pub async fn check(app: &AppHandle, manual: bool) {
     shell
         .log
         .write(format!("updater checking (manual: {manual})"));
-    shell.settings.lock().unwrap().updates.last_check = Some(Utc::now().to_rfc3339());
-    shell.save();
-    shell.updates.wake.notify_one();
     if manual {
         progress(app, ProgressBarStatus::Indeterminate, None);
     }
     let result = check_inner(app, manual).await;
+    if result.is_ok() {
+        shell.settings.lock().unwrap().updates.last_check = Some(Utc::now().to_rfc3339());
+        *shell.updates.retry_after.lock().unwrap() = None;
+        shell.save();
+    } else {
+        *shell.updates.retry_after.lock().unwrap() = Some(Utc::now() + RETRY_INTERVAL);
+    }
+    shell.updates.wake.notify_one();
     if manual {
         progress(app, ProgressBarStatus::None, None);
     }
@@ -223,21 +259,27 @@ pub async fn check(app: &AppHandle, manual: bool) {
 
 async fn check_inner(app: &AppHandle, manual: bool) -> Result<(), String> {
     let shell = app::state(app);
-    let found = builder(app)
+    let found = match builder(app)
         .map_err(|error| error.to_string())?
         .check()
         .await
-        .map_err(|error| error.to_string())?;
+    {
+        Ok(found) => found,
+        Err(error) if missing_manifest(&error) => None,
+        Err(error) => return Err(error.to_string()),
+    };
     if shell.closing.load(Ordering::SeqCst) {
         return Ok(());
     }
     let Some(mut update) = found else {
+        clear_ready(&shell);
+        menu::rebuild(app);
         shell.log.write("updater no newer non-skipped version");
         if manual {
             progress(app, ProgressBarStatus::None, None);
             let lang = shell.language();
             let title = texts::text(&lang, "upToDate");
-            dialog(
+            menu::dialog(
                 app,
                 title,
                 title,
@@ -257,7 +299,8 @@ async fn check_inner(app: &AppHandle, manual: bool) -> Result<(), String> {
         if manual {
             progress(app, ProgressBarStatus::None, None);
         }
-        offer(app, &update, true).await;
+        *shell.updates.portable_offer.lock().unwrap() = Some(update.clone());
+        notify_or_offer(app, &update, true, manual).await;
         return Ok(());
     }
     let cached = shell.updates.ready.lock().unwrap().clone();
@@ -306,9 +349,33 @@ async fn check_inner(app: &AppHandle, manual: bool) -> Result<(), String> {
         progress(app, ProgressBarStatus::None, None);
     }
     if !shell.closing.load(Ordering::SeqCst) {
-        offer(app, &ready.update, false).await;
+        notify_or_offer(app, &ready.update, false, manual).await;
     }
     Ok(())
+}
+
+fn missing_manifest(error: &tauri_plugin_updater::Error) -> bool {
+    matches!(error, tauri_plugin_updater::Error::ReleaseNotFound)
+        || matches!(error, tauri_plugin_updater::Error::Reqwest(error) if error.status().is_some_and(|status| status.as_u16() == 404))
+}
+
+async fn notify_or_offer(app: &AppHandle, update: &Update, portable: bool, manual: bool) {
+    let focused = app
+        .get_webview_window("main")
+        .is_none_or(|window| window.is_focused().unwrap_or(true));
+    if !may_prompt(manual, focused) {
+        *app::state(app).updates.notified_version.lock().unwrap() = Some(update.version.clone());
+        if let Some(window) = app.get_webview_window("main") {
+            let _ = window.request_user_attention(Some(tauri::UserAttentionType::Informational));
+        }
+        menu::rebuild(app);
+    } else {
+        offer(app, update, portable).await;
+    }
+}
+
+fn may_prompt(manual: bool, focused: bool) -> bool {
+    manual || !focused
 }
 
 async fn remind_cached(app: &AppHandle) {
@@ -440,28 +507,16 @@ async fn offer(app: &AppHandle, update: &Update, portable: bool) {
         notes(&update.raw_json, update.body.as_deref(), &language),
         &language,
     );
-    let buttons = if portable {
-        MessageDialogButtons::OkCancelCustom(
-            texts::text(&language, "openDownloads").into(),
-            texts::text(&language, "skipVersion").into(),
-        )
-    } else {
-        MessageDialogButtons::YesNoCancelCustom(
-            texts::text(&language, "installAndRestart").into(),
-            texts::text(&language, "later").into(),
-            texts::text(&language, "skipVersion").into(),
-        )
-    };
+    let buttons = offer_buttons(&language, portable);
     *shell.updates.notified_version.lock().unwrap() = Some(update.version.clone());
     shell.log.write(format!(
         "updater offering {} (portable: {portable})",
         update.version
     ));
-    let result = dialog(app, &title, &summary, buttons, MessageDialogKind::Info).await;
+    let result = menu::dialog(app, &title, &summary, buttons, MessageDialogKind::Info).await;
     if chosen(&result, &language, "skipVersion") {
         shell.settings.lock().unwrap().updates.skipped_version = Some(update.version.clone());
-        *shell.updates.ready.lock().unwrap() = None;
-        clear_cache(&shell);
+        clear_ready(&shell);
         shell.save();
         shell
             .log
@@ -479,6 +534,22 @@ async fn offer(app: &AppHandle, update: &Update, portable: bool) {
     }
 }
 
+fn offer_buttons(language: &str, portable: bool) -> MessageDialogButtons {
+    MessageDialogButtons::YesNoCancelCustom(
+        texts::text(
+            language,
+            if portable {
+                "openDownloads"
+            } else {
+                "installAndRestart"
+            },
+        )
+        .into(),
+        texts::text(language, "skipVersion").into(),
+        texts::text(language, "later").into(),
+    )
+}
+
 pub async fn install_ready(app: &AppHandle) {
     if !enabled() {
         return;
@@ -488,7 +559,13 @@ pub async fn install_ready(app: &AppHandle) {
         return;
     };
     menu::rebuild(app);
-    install_locked(app).await;
+    let ready = shell.updates.ready.lock().unwrap().clone();
+    let portable = shell.updates.portable_offer.lock().unwrap().clone();
+    if let Some(ready) = ready {
+        offer(app, &ready.update, false).await;
+    } else if let Some(update) = portable {
+        offer(app, &update, true).await;
+    }
     drop(guard);
     menu::rebuild(app);
 }
@@ -499,42 +576,26 @@ async fn install_locked(app: &AppHandle) {
     if let Some(ready) = ready {
         if let Err(error) = app::install_update(app, ready).await {
             shell.log.write(format!("updater install failed: {error}"));
-            show_error(app, "updateFailed", &error).await;
+            if !shell.closing.load(Ordering::SeqCst) {
+                show_error(app, "updateFailed", &error).await;
+            }
         }
     }
 }
 
-async fn dialog(
-    app: &AppHandle,
-    title: &str,
-    detail: &str,
-    buttons: MessageDialogButtons,
-    kind: MessageDialogKind,
-) -> MessageDialogResult {
-    let (sender, receiver) = tokio::sync::oneshot::channel();
-    let mut dialog = app
-        .dialog()
-        .message(if detail.is_empty() { title } else { detail })
-        .title(title)
-        .kind(kind)
-        .buttons(buttons);
-    if let Some(window) = app.get_webview_window("main") {
-        dialog = dialog.parent(&window);
-    }
-    dialog.show_with_result(move |result| {
-        let _ = sender.send(result);
-    });
-    receiver.await.unwrap_or_default()
-}
-
 fn open_downloads(app: &AppHandle) {
     app::state(app).log.write("updater opening download page");
-    window::open_external(app, &DOWNLOADS_URL.parse().unwrap());
+    window::open_external(
+        app,
+        &format!("{}/latest", whats_new::RELEASES_URL)
+            .parse()
+            .unwrap(),
+    );
 }
 
 pub async fn show_error(app: &AppHandle, key: &str, detail: &str) {
     let language = app::state(app).language();
-    let result = dialog(
+    let result = menu::dialog(
         app,
         texts::text(&language, key),
         detail,
@@ -557,12 +618,22 @@ enum PendingAfterStart {
     NotApplied { version: String },
 }
 
-fn pending_after_start(pending: Option<&PendingUpdate>, running: &str) -> PendingAfterStart {
+fn pending_after_start(
+    pending: Option<&PendingUpdate>,
+    running: &tauri::utils::PackageInfo,
+) -> PendingAfterStart {
     match pending {
         None => PendingAfterStart::None,
-        Some(pending) if pending.version == running => PendingAfterStart::Applied {
-            from: pending.from.clone(),
-        },
+        Some(pending)
+            if pending
+                .version
+                .parse()
+                .is_ok_and(|version| running.version.cmp_precedence(&version).is_ge()) =>
+        {
+            PendingAfterStart::Applied {
+                from: pending.from.clone(),
+            }
+        }
         Some(pending) => PendingAfterStart::NotApplied {
             version: pending.version.clone(),
         },
@@ -573,7 +644,7 @@ async fn after_start(app: &AppHandle) {
     let shell = app::state(app);
     let running = app.package_info().version.to_string();
     let pending = shell.settings.lock().unwrap().updates.pending.take();
-    let decision = pending_after_start(pending.as_ref(), &running);
+    let decision = pending_after_start(pending.as_ref(), app.package_info());
     if decision == PendingAfterStart::None {
         return;
     }
@@ -584,7 +655,10 @@ async fn after_start(app: &AppHandle) {
                 "updater applied: {from} -> {running}; pending cleared"
             ));
             clear_cache(&shell);
-            whats_new::open(app, Some(from)).await;
+            window::wait_until_shown(app).await;
+            if !shell.closing.load(Ordering::SeqCst) {
+                whats_new::open(app, Some(from)).await;
+            }
         }
         PendingAfterStart::NotApplied { version } => {
             shell.log.write(format!(
@@ -674,6 +748,13 @@ fn clear_cache(shell: &app::Shell) {
     }
 }
 
+fn clear_ready(shell: &app::Shell) {
+    shell.updates.ready.lock().unwrap().take();
+    shell.updates.portable_offer.lock().unwrap().take();
+    shell.updates.notified_version.lock().unwrap().take();
+    clear_cache(shell);
+}
+
 fn updater_temporary_name(name: &str) -> bool {
     name.strip_prefix("Deckmate-")
         .and_then(|name| name.split_once("-updater-"))
@@ -716,8 +797,30 @@ mod tests {
     use serde_json::json;
 
     fn release(version: &str) -> RemoteRelease {
-        serde_json::from_value(json!({"version":version, "url":DOWNLOADS_URL, "signature":"test"}))
-            .unwrap()
+        serde_json::from_value(
+            json!({"version":version, "url":whats_new::RELEASES_URL, "signature":"test"}),
+        )
+        .unwrap()
+    }
+
+    fn should_offer(current: &str, remote: &RemoteRelease, skipped: Option<&str>) -> bool {
+        current.parse().is_ok_and(|current| {
+            super::should_offer(
+                remote.version.cmp_precedence(&current).is_gt(),
+                remote,
+                skipped,
+            )
+        })
+    }
+
+    fn running(version: &str) -> tauri::utils::PackageInfo {
+        tauri::utils::PackageInfo {
+            name: "Deckmate".into(),
+            version: version.parse().unwrap(),
+            authors: "",
+            description: "",
+            crate_name: "deckmate-desktop",
+        }
     }
 
     #[test]
@@ -764,19 +867,42 @@ mod tests {
             from: "0.5.0".into(),
             extra: Default::default(),
         };
-        assert_eq!(pending_after_start(None, "0.7.0"), PendingAfterStart::None);
         assert_eq!(
-            pending_after_start(Some(&pending), "0.7.0"),
+            pending_after_start(None, &running("0.7.0")),
+            PendingAfterStart::None
+        );
+        assert_eq!(
+            pending_after_start(Some(&pending), &running("0.7.0")),
             PendingAfterStart::Applied {
                 from: "0.5.0".into()
             }
         );
         assert_eq!(
-            pending_after_start(Some(&pending), "0.5.0"),
+            pending_after_start(Some(&pending), &running("0.5.0")),
             PendingAfterStart::NotApplied {
                 version: "0.7.0".into()
             }
         );
+        for version in ["0.7.0+build.1", "0.8.0", "1.0.0-rc.1"] {
+            assert_eq!(
+                pending_after_start(Some(&pending), &running(version)),
+                PendingAfterStart::Applied {
+                    from: "0.5.0".into()
+                }
+            );
+        }
+        let prerelease = PendingUpdate {
+            version: "1.0.0-rc.2".into(),
+            ..pending
+        };
+        assert!(matches!(
+            pending_after_start(Some(&prerelease), &running("1.0.0-rc.1")),
+            PendingAfterStart::NotApplied { .. }
+        ));
+        assert!(matches!(
+            pending_after_start(Some(&prerelease), &running("1.0.0")),
+            PendingAfterStart::Applied { .. }
+        ));
     }
 
     #[test]
@@ -856,11 +982,79 @@ mod tests {
 
     #[test]
     fn closing_a_dialog_does_not_skip_a_version() {
-        assert!(!chosen(&MessageDialogResult::Cancel, "en", "skipVersion"));
-        assert!(chosen(
-            &MessageDialogResult::Custom("Skip this version".into()),
-            "en",
-            "skipVersion"
+        for language in ["en", "ru"] {
+            for portable in [false, true] {
+                let MessageDialogButtons::YesNoCancelCustom(_, skip, cancel) =
+                    offer_buttons(language, portable)
+                else {
+                    panic!("expected three buttons")
+                };
+                // 2026-11-09: tauri-plugin-dialog maps rfd Cancel to the third custom label.
+                let closed = MessageDialogResult::Custom(cancel);
+                assert!(chosen(&closed, language, "later"));
+                assert!(!chosen(&closed, language, "skipVersion"));
+                assert!(chosen(
+                    &MessageDialogResult::Custom(skip),
+                    language,
+                    "skipVersion"
+                ));
+            }
+        }
+    }
+
+    #[test]
+    fn schedule_retries_failed_checks_hourly_without_advancing_last_success() {
+        let now = DateTime::parse_from_rfc3339("2026-11-09T12:00:00Z")
+            .unwrap()
+            .with_timezone(&Utc);
+        let last_success = Some("2026-11-08T12:00:00Z");
+        let retry = Some(now + RETRY_INTERVAL);
+        assert_eq!(scheduled_delay(last_success, retry, now), RETRY_INTERVAL);
+        assert_eq!(
+            scheduled_delay(last_success, retry, now + RETRY_INTERVAL),
+            Duration::ZERO
+        );
+        assert_eq!(
+            scheduled_delay(last_success, retry, now + CHECK_INTERVAL),
+            Duration::ZERO
+        );
+        assert_eq!(
+            scheduled_delay(Some("2026-11-09T12:00:00Z"), None, now),
+            RETRY_INTERVAL
+        );
+    }
+
+    #[test]
+    fn withdrawn_release_clears_offers_and_persistent_cache() {
+        let directory =
+            std::env::temp_dir().join(format!("deckmate-withdrawn-test-{}", std::process::id()));
+        fs::create_dir_all(directory.join(CACHE)).unwrap();
+        fs::write(directory.join(CACHE).join("manifest.json"), b"withdrawn").unwrap();
+        let shell = app::tests::shell(&directory, None);
+        *shell.updates.notified_version.lock().unwrap() = Some("1.0.0".into());
+        clear_ready(&shell);
+        assert_eq!(shell.updates.ready_version(), None);
+        assert!(shell.updates.notified_version.lock().unwrap().is_none());
+        assert!(!directory.join(CACHE).exists());
+        drop(shell);
+        fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn unpublished_manifest_is_not_a_manual_check_error() {
+        assert!(missing_manifest(
+            &tauri_plugin_updater::Error::ReleaseNotFound
         ));
+        assert!(!missing_manifest(&tauri_plugin_updater::Error::Network(
+            "offline".into()
+        )));
+    }
+
+    #[test]
+    fn background_offer_never_interrupts_a_focused_window() {
+        assert!(!may_prompt(false, true));
+        assert!(may_prompt(false, false));
+        assert!(may_prompt(true, true));
+        assert!(may_prompt(true, false));
     }
 }

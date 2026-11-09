@@ -20,11 +20,24 @@
   }
 
   function versionParts(version) {
-    const match = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:\+[0-9A-Za-z.-]+)?$/.exec(version);
-    return match ? match.slice(1, 4).map(BigInt) : null;
+    const match = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/.exec(version);
+    if (!match) return null;
+    const pre = match[4] ? match[4].split('.') : [];
+    if (pre.some(part => /^0\d+$/.test(part))) return null;
+    return { core: match.slice(1, 4).map(BigInt), pre };
   }
   function compare(a, b) {
-    for (let i = 0; i < 3; i++) if (a[i] !== b[i]) return a[i] > b[i] ? 1 : -1;
+    for (let i = 0; i < 3; i++) if (a.core[i] !== b.core[i]) return a.core[i] > b.core[i] ? 1 : -1;
+    if (!a.pre.length || !b.pre.length) return Number(!a.pre.length) - Number(!b.pre.length);
+    for (let i = 0; i < Math.max(a.pre.length, b.pre.length); i++) {
+      const left = a.pre[i], right = b.pre[i];
+      if (left === undefined || right === undefined) return a.pre.length - b.pre.length;
+      if (left === right) continue;
+      const leftNumeric = /^\d+$/.test(left), rightNumeric = /^\d+$/.test(right);
+      if (leftNumeric && rightNumeric) return BigInt(left) > BigInt(right) ? 1 : -1;
+      if (leftNumeric !== rightNumeric) return leftNumeric ? -1 : 1;
+      return left > right ? 1 : -1;
+    }
     return 0;
   }
   function pickSections(sections, from, to) {
@@ -32,7 +45,7 @@
     const lower = from === null ? null : versionParts(from);
     if (!upper || (from !== null && !lower)) return [];
     return sections.map(section => ({ section, version: versionParts(section.version) }))
-      .filter(item => item.version && compare(item.version, upper) <= 0 && (lower ? compare(item.version, lower) > 0 : compare(item.version, upper) === 0))
+      .filter(item => item.version && !item.version.pre.length && compare(item.version, upper) <= 0 && (lower ? compare(item.version, lower) > 0 : compare(item.version, upper) === 0))
       .sort((a, b) => compare(b.version, a.version)).map(item => item.section);
   }
 
@@ -83,11 +96,11 @@
     const changelog = language === 'ru' ? `## [0.5.0] - 2026-11-09\n### Добавлено\n- **Пространства.** Меняйте порядок пространств в заголовке или настройках.\n- **Hero вручную.** Отмечайте Hero без задач как завершённого.\n### Изменено\n- **Doc Cards.** Карточка документа выглядит как страница.\n## [0.4.0] - 2026-11-09\n### Добавлено\n- **Шаблоны на русском.** Шаблоны Journey и проектов теперь переведены.` : `## [0.5.0] - 2026-11-09\n### Added\n- **Spaces.** Reorder spaces in the header or space settings.\n- **Hero done by hand.** Mark a Hero without tasks as done.\n### Changed\n- **Doc Cards.** A Doc tile reads as a page.\n## [0.4.0] - 2026-11-09\n### Added\n- **Templates in Russian.** Journey and project templates now have Russian titles.`;
     return { language, from: '0.3.0', to: '0.5.0', changelog, releasesUrl: 'https://github.com/pierkulakov/deckmate/releases' };
   };
-  document.addEventListener('keydown', event => { if (event.key === 'Escape') window.close(); });
   (async () => {
     const root = document.getElementById('whats-new');
     try {
       const data = window.__TAURI_INTERNALS__ ? await window.__TAURI_INTERNALS__.invoke('whats_new_get') : mock();
+      if (data.ok === false) throw new Error(data.message);
       const language = data.language === 'ru' ? 'ru' : 'en';
       const t = texts[language];
       document.documentElement.lang = language;
@@ -102,8 +115,8 @@
       const sections = pickSections(parseChangelog(data.changelog), data.from, data.to);
       if (sections.length) content.replaceChildren(...sections.map(section => renderSection(section)));
       else { const empty = document.createElement('p'); empty.textContent = t.empty; content.append(empty); }
-    } catch {
-      document.getElementById('heading').textContent = texts.en.error;
+    } catch (error) {
+      document.getElementById('heading').textContent = error.message || texts.en.error;
     } finally { root.removeAttribute('aria-busy'); }
   })();
 })();

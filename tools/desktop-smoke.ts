@@ -50,6 +50,11 @@ async function poll(condition: () => Promise<boolean>, what: string, timeoutMs: 
   throw new SmokeFailure(`${what} did not happen within ${Math.round(timeoutMs / 1000)} s`);
 }
 
+async function launcherLoaded(): Promise<boolean> {
+  // 2026-11-09: WebView2 changes the URL before the new document's bridge is ready.
+  return (await page!.evaluate(`document.readyState === 'complete' && !!document.getElementById('launcher') && typeof window.deckmateDesktop === 'object'`)) === true;
+}
+
 function freePort(): Promise<number> {
   return new Promise((resolve, reject) => {
     const probe = createServer();
@@ -121,7 +126,7 @@ async function main(): Promise<number> {
   const externalLog = path.join(temp, 'external-links.log');
   const needles = [serverEntry, demo, created].map(norm);
   const cdpPort = await freePort();
-  const shell = spawn(exe, [], {
+  const launchShell = () => spawn(exe, [], {
     env: {
       ...process.env,
       DECKMATE_DESKTOP_CDP_PORT: String(cdpPort),
@@ -133,8 +138,9 @@ async function main(): Promise<number> {
     stdio: 'ignore',
     windowsHide: true,
   });
+  let shell = launchShell();
   const killShell = (tree: boolean) => {
-    if (shell.exitCode !== null) return;
+    if (shell.exitCode !== null || shell.signalCode !== null) return;
     const args = ['/F'];
     if (tree) args.push('/T');
     if (process.platform === 'win32' && shell.pid) {
@@ -163,8 +169,7 @@ async function main(): Promise<number> {
 
     // a. The launcher document is the bundled start screen with the full desktop bridge.
     currentStep = 'a';
-    await poll(async () =>
-      (await page!.evaluate(`document.readyState === 'complete' && !!document.getElementById('launcher')`)) === true,
+    await poll(launcherLoaded,
       'the launcher page to load', 20000);
     const launcher = await page!.callFunction(`async () => {
       const bridge = window.deckmateDesktop;
@@ -222,6 +227,9 @@ async function main(): Promise<number> {
     if (bridgeCheck.board !== 'object') throw new SmokeFailure('window.deckmateBoard is missing on the board page');
     if (bridgeCheck.desktop !== 'undefined') throw new SmokeFailure('window.deckmateDesktop leaked onto the board page');
     currentStep = 'b-clipboard';
+    // 2026-11-09: writeText needs a focused document; when another window owns the desktop focus the
+    // check failed with "Document is not focused", so the page is told it has focus for this step.
+    await page!.send('Emulation.setFocusEmulationEnabled', { enabled: true });
     const clipboard = await page!.callFunction(`async () => {
       try {
         await navigator.clipboard.writeText('deckmate-smoke');
@@ -294,8 +302,7 @@ async function main(): Promise<number> {
     // e. showStartScreen returns to the launcher and stops the server process.
     currentStep = 'e';
     await page!.callFunction(`() => { void window.deckmateBoard.showStartScreen(); }`);
-    await poll(async () =>
-      (String(await page!.evaluate('location.href')).includes('tauri.localhost')) === true,
+    await poll(launcherLoaded,
       'showStartScreen to return to the launcher', 20000);
     await poll(async () => serverProcesses(needles).length === 0,
       'the demo server process to exit', 15000);
@@ -363,7 +370,7 @@ async function main(): Promise<number> {
 
     // Remove demo from recent so the following board switch can succeed only through workspace trust.
     await page!.callFunction(`() => { void window.deckmateBoard.showStartScreen(); }`);
-    await poll(async () => String(await page!.evaluate('location.href')).includes('tauri.localhost'),
+    await poll(launcherLoaded,
       'workspace test to return to the launcher', 20000);
     const removedRecent = await page!.callFunction(`folder => window.deckmateDesktop.removeRecent(folder)`, demo);
     if (removedRecent.ok !== true) throw new SmokeFailure('could not remove the workspace target from recent');
@@ -414,6 +421,34 @@ async function main(): Promise<number> {
       throw new SmokeFailure('debug shell did not keep update checks disabled');
     }
     pass('updates', 'update defaults persisted; debug updater stayed disabled');
+
+    // 2026-11-09: repeat with lastProject: the launcher's load must not expose a frame before the board.
+    currentStep = 'restart-visibility';
+    await poll(async () => shell.exitCode !== null || shell.signalCode !== null, 'the first shell to exit', 10000);
+    await page.close();
+    shell = launchShell();
+    page = await connectToHeadlessBrowser(cdpPort);
+    let visibleLauncher = false;
+    await poll(async () => {
+      const sample = await page!.evaluate(`({ url: location.href, visible: document.visibilityState, ready: document.readyState, board: !!document.querySelector('${boardSelector}') })`);
+      if (sample.visible === 'visible' && sample.url.includes('tauri.localhost')) {
+        visibleLauncher = true;
+      }
+      return sample.url.startsWith('http://127.0.0.1:') && sample.ready === 'complete' && sample.board;
+    }, 'the last project to auto-open', 30000);
+    if (visibleLauncher) throw new SmokeFailure('a visible launcher frame appeared during auto-open');
+    const restartVisibility = await page.evaluate('window.__deckmateFirstLoadVisibility');
+    if (restartVisibility?.atLoad !== 'hidden') {
+      throw new SmokeFailure(`auto-open window was visible before board load: ${JSON.stringify(restartVisibility)}`);
+    }
+    await poll(async () => (await page!.evaluate('document.visibilityState')) === 'visible',
+      'the loaded auto-open board to become visible', 10000);
+    const firstShows = readFileSync(path.join(settings, 'server.log'), 'utf8').split(/\r?\n/u)
+      .filter(line => line.includes('main first show:'));
+    if (firstShows.length !== 2 || !firstShows[1].includes('http://127.0.0.1:')) {
+      throw new SmokeFailure(`auto-open exposed a launcher before the board: ${JSON.stringify(firstShows)}`);
+    }
+    pass('restart-visibility', 'same settings auto-opened last project; board load was hidden; first visible frame was the loaded board');
 
     pass('smoke', 'all steps passed');
     return 0;

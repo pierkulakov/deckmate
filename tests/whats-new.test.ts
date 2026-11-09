@@ -47,4 +47,21 @@ describe('What’s new changelog', () => {
     expect(nodes.filter(n => n.tag === 'a').map(n => n.href)).toEqual(['https://example.com']);
     expect(nodes.some(n => n.tag === 'strong' && n.textContent === 'Hello')).toBe(true);
   });
+  it('includes the stable release after a prerelease lower bound', () => {
+    const range = parseChangelog('## [1.0.0]\n- stable\n## [0.9.0]\n- old');
+    expect(versions(pickSections(range, '1.0.0-rc.1', '1.0.0'))).toEqual(['1.0.0']);
+    expect(versions(pickSections(range, '1.0.0-rc.10+build.2', '1.0.0+build.3'))).toEqual(['1.0.0']);
+  });
+  it('renders a failed command as an error, never an undefined version', async () => {
+    const heading = new Node('h1');
+    const root = { removeAttribute: () => {} };
+    const failure = { ok: false, message: 'Не удалось прочитать журнал изменений' };
+    runInNewContext(readFileSync('desktop/launcher/whats-new.js', 'utf8'), {
+      URL,
+      window: { __TAURI_INTERNALS__: { invoke: async () => failure } },
+      document: { getElementById: (id: string) => id === 'heading' ? heading : root },
+    });
+    await expect.poll(() => heading.textContent).toBe(failure.message);
+    expect(heading.textContent).not.toContain('undefined');
+  });
 });

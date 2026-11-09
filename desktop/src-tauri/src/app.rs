@@ -44,6 +44,7 @@ pub struct Shell {
     pub launch: watch::Sender<u64>,
     pub lifecycle: tokio::sync::Mutex<()>,
     pub closing: AtomicBool,
+    pub quit_requested: AtomicBool,
     pub quit_ready: AtomicBool,
     pub bounds_generation: AtomicU64,
     pub board_script: Mutex<Option<String>>,
@@ -51,6 +52,8 @@ pub struct Shell {
     pub webview_handlers: tokio::sync::OnceCell<Result<(), String>>,
     pub updates: updater::State,
     pub whats_new: whats_new::State,
+    pub startup_project: Option<String>,
+    pub first_show: window::FirstShow,
 }
 
 pub fn state(app: &AppHandle) -> Arc<Shell> {
@@ -64,6 +67,11 @@ impl Shell {
         let locale = crate::settings::system_locale();
         let log = Log::open(&directory);
         let settings = Settings::load(&directory, &locale, &log);
+        let startup_project = settings
+            .last_project
+            .clone()
+            .filter(|folder| !paths::is_network_path(folder) && Path::new(folder).is_dir());
+        let first_show = window::FirstShow::new(startup_project.is_some());
         Ok(Self {
             deckmate_version: programs.deckmate_version(),
             directory,
@@ -77,6 +85,7 @@ impl Shell {
             launch: watch::channel(0).0,
             lifecycle: tokio::sync::Mutex::new(()),
             closing: AtomicBool::new(false),
+            quit_requested: AtomicBool::new(false),
             quit_ready: AtomicBool::new(false),
             bounds_generation: AtomicU64::new(0),
             board_script: Mutex::new(None),
@@ -84,6 +93,8 @@ impl Shell {
             webview_handlers: tokio::sync::OnceCell::new(),
             updates: updater::State::default(),
             whats_new: whats_new::State::default(),
+            startup_project,
+            first_show,
         })
     }
 
@@ -100,6 +111,12 @@ impl Shell {
         if let Err(error) = self.settings.lock().unwrap().save(&self.directory) {
             self.log.write(format!("settings save failed: {error}"));
         }
+    }
+
+    fn begin_quit(&self) -> bool {
+        // 2026-11-09: closing also covers install/recovery, so retain the user's quit separately.
+        self.quit_requested.store(true, Ordering::SeqCst);
+        !self.closing.swap(true, Ordering::SeqCst)
     }
 
     pub fn next_launch(&self) -> u64 {
@@ -341,6 +358,10 @@ pub async fn create_project(app: &AppHandle, options: Value) -> Result<(), Failu
     if shell.closing.load(Ordering::SeqCst) {
         return Err(shell.failure("closed", "closed"));
     }
+    let launch = *shell.launch.borrow();
+    // 2026-11-09: init owns a Job too; install and quit must wait for its writes to finish.
+    let guard = shell.lifecycle.lock().await;
+    shell.require_launch(launch)?;
     let folder = shell.check_folder(&options["folder"])?;
     match std::fs::read_dir(&folder) {
         Ok(mut entries) => match entries.next() {
@@ -367,11 +388,9 @@ pub async fn create_project(app: &AppHandle, options: Value) -> Result<(), Failu
             ))
         }
     }
-    let launch = *shell.launch.borrow();
     server::initialize(&shell.programs, &folder, &shell.language(), &shell.log).await?;
-    if shell.replaced(launch) {
-        return Err(shell.failure("superseded", "superseded"));
-    }
+    shell.require_launch(launch)?;
+    drop(guard);
     open_project(app, folder).await
 }
 
@@ -390,15 +409,17 @@ pub async fn startup(app: AppHandle) {
                 texts::format(&shell.language(), "missing", "path", &last),
             );
             shell.status(&app, error_status(&last, &failure));
-        } else {
+        } else if shell.startup_project.as_deref() == Some(&last) {
+            shell.status(&app, json!({"phase":"ready", "path":last}));
             let _ = open_project(&app, last).await;
         }
     }
+    window::finish_startup(&app);
 }
 
 pub fn request_quit(app: &AppHandle) {
     let shell = state(app);
-    if shell.closing.swap(true, Ordering::SeqCst) {
+    if !shell.begin_quit() {
         return;
     }
     if let Some(window) = app.get_webview_window("main") {
@@ -422,12 +443,7 @@ pub async fn install_update(
 ) -> Result<(), String> {
     let shell = state(app);
     if !updater::enabled() || updater::portable().map_err(|error| error.to_string())? {
-        return Err(texts::format(
-            &shell.language(),
-            "portableUpdates",
-            "version",
-            &ready.update.version,
-        ));
+        return Err(texts::text(&shell.language(), "installUnavailable").into());
     }
     if shell.closing.swap(true, Ordering::SeqCst) {
         return Ok(());
@@ -439,7 +455,7 @@ pub async fn install_update(
     shell.save();
     let launch = shell.next_launch();
     let _guard = shell.lifecycle.lock().await;
-    let last = shell.settings.lock().unwrap().last_project.clone();
+    let restore = recovery_folder(shell.current.lock().unwrap().as_ref());
     shell.log.write(format!(
         "updater stopping project before installing {}",
         ready.update.version
@@ -481,7 +497,7 @@ pub async fn install_update(
     shell
         .log
         .write("updater install returned an error; pending cleared, restoring project");
-    if let Some(last) = last {
+    if let Some(last) = restore.filter(|_| !shell.quit_requested.load(Ordering::SeqCst)) {
         if let Err(error) = start_project(app, &shell, &last, launch).await {
             shell.log.write(format!(
                 "updater project recovery failed: {}",
@@ -491,11 +507,20 @@ pub async fn install_update(
         }
     }
     shell.closing.store(false, Ordering::SeqCst);
+    if shell.quit_requested.load(Ordering::SeqCst) {
+        request_quit(app);
+    }
     result
 }
 
+fn recovery_folder(current: Option<&Session>) -> Option<String> {
+    current
+        .filter(|session| session.url.is_some())
+        .map(|session| session.folder.clone())
+}
+
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
     use tauri::Url;
 
@@ -520,7 +545,7 @@ mod tests {
         }
     }
 
-    fn shell(directory: &std::path::Path, dialog_folder: Option<&str>) -> Shell {
+    pub(crate) fn shell(directory: &std::path::Path, dialog_folder: Option<&str>) -> Shell {
         Shell {
             directory: directory.into(),
             programs: Programs {
@@ -539,6 +564,7 @@ mod tests {
             launch: watch::channel(0).0,
             lifecycle: tokio::sync::Mutex::new(()),
             closing: AtomicBool::new(false),
+            quit_requested: AtomicBool::new(false),
             quit_ready: AtomicBool::new(false),
             bounds_generation: AtomicU64::new(0),
             board_script: Mutex::new(None),
@@ -546,6 +572,8 @@ mod tests {
             webview_handlers: tokio::sync::OnceCell::new(),
             updates: updater::State::default(),
             whats_new: whats_new::State::default(),
+            startup_project: None,
+            first_show: window::FirstShow::default(),
         }
     }
 
@@ -556,6 +584,28 @@ mod tests {
             url: url.map(String::from),
             process: Server::idle(),
         }
+    }
+
+    #[test]
+    fn recovery_restores_only_a_project_that_was_open() {
+        assert_eq!(recovery_folder(None), None);
+        assert_eq!(recovery_folder(Some(&session(None))), None);
+        assert_eq!(
+            recovery_folder(Some(&session(Some("http://127.0.0.1:3141")))),
+            Some(r"C:\Demo".into())
+        );
+    }
+
+    #[test]
+    fn quit_during_install_or_recovery_is_retained() {
+        let sandbox = Sandbox::new();
+        let shell = shell(&sandbox.0, None);
+        shell.closing.store(true, Ordering::SeqCst);
+        assert!(!shell.begin_quit());
+        assert!(shell.quit_requested.load(Ordering::SeqCst));
+        shell.closing.store(false, Ordering::SeqCst);
+        assert!(shell.begin_quit());
+        assert!(!shell.begin_quit());
     }
 
     #[test]

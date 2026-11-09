@@ -262,8 +262,8 @@ jobs:
           }
           $assetName = "Deckmate.Setup.$env:VERSION.exe"
           $installerUrl = "https://github.com/$env:GITHUB_REPOSITORY/releases/download/$env:RELEASE_TAG/$assetName"
-          # The release job checks this URL against GitHub's actual asset name and
-          # browser_download_url. Neither the date nor the manifest is rewritten there.
+          # The release job checks the planned URL against the API asset name in
+          # the draft, then browser_download_url after publication, without rewriting it.
           node desktop/scripts/updater-manifest.mjs --version $env:VERSION --url $installerUrl --installer $installer --signature-file "$installer.sig" --pub-date $env:PUB_DATE --out desktop/release/latest.json
           if ($LASTEXITCODE -ne 0) { throw "updater-manifest exited with code $LASTEXITCODE." }
           $installerMb = [math]::Round((Get-Item -LiteralPath $installer).Length / 1MB, 1)
@@ -284,8 +284,8 @@ jobs:
           retention-days: 7
           path: desktop/release/*
 
-  # npm, GHCR and the public GitHub Release all wait for the successful desktop
-  # job above. The GitHub Release stays draft until latest.json is uploaded last.
+  # npm and GHCR wait for all draft assets to be uploaded and verified, with
+  # latest.json last. An identical public release resumes only public verification.
   release:
     needs: [preflight, desktop]
     runs-on: ubuntu-latest
@@ -332,14 +332,21 @@ jobs:
                   raise SystemExit("The portable THIRD-PARTY-NOTICES.txt is empty")
           PY
           node desktop/scripts/github-release.mjs verify
-      - name: Create or resume a draft GitHub Release
+      - name: Create or inspect the GitHub Release
         id: github-release
         env:
           GH_TOKEN: ${{ github.token }}
         run: node desktop/scripts/github-release.mjs prepare
+      - name: Upload and verify draft assets, with latest.json last
+        id: upload
+        if: steps.github-release.outputs.published == 'false'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_ID: ${{ steps.github-release.outputs.release_id }}
+        run: node desktop/scripts/github-release.mjs upload
       - name: Check published npm artifact
         id: npm
-        if: github.event_name == 'push' && needs.preflight.outputs.dry_run == 'false'
+        if: github.event_name == 'push' && needs.preflight.outputs.dry_run == 'false' && steps.github-release.outputs.published == 'false'
         run: |
           node --input-type=module <<'NODE'
           import { readFileSync, appendFileSync } from 'node:fs';
@@ -359,14 +366,14 @@ jobs:
           NODE
       - name: Build container only after the desktop build succeeds
         id: container
-        if: github.event_name == 'push' && needs.preflight.outputs.dry_run == 'false'
+        if: github.event_name == 'push' && needs.preflight.outputs.dry_run == 'false' && steps.github-release.outputs.published == 'false'
         run: |
           set -euo pipefail
           image="ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/deckmate"
           docker build --pull --label "org.opencontainers.image.source=https://github.com/${GITHUB_REPOSITORY}" --label "org.opencontainers.image.revision=${GITHUB_SHA}" --label "org.opencontainers.image.version=${VERSION}" --tag "${image}:${VERSION}" .
           printf 'image=%s\n' "$image" >> "$GITHUB_OUTPUT"
       - name: Publish npm package
-        if: github.event_name == 'push' && needs.preflight.outputs.dry_run == 'false' && steps.npm.outputs.published == 'false'
+        if: github.event_name == 'push' && needs.preflight.outputs.dry_run == 'false' && steps.github-release.outputs.published == 'false' && steps.npm.outputs.published == 'false'
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
@@ -376,7 +383,7 @@ jobs:
           if [[ "$VERSION" == *-* ]]; then npm_tag=next; fi
           npm publish "release-input/npm/$package_file" --access public --provenance --tag "$npm_tag"
       - name: Publish container
-        if: github.event_name == 'push' && needs.preflight.outputs.dry_run == 'false'
+        if: github.event_name == 'push' && needs.preflight.outputs.dry_run == 'false' && steps.github-release.outputs.published == 'false'
         env:
           IMAGE: ${{ steps.container.outputs.image }}
           GH_TOKEN: ${{ github.token }}
@@ -389,22 +396,21 @@ jobs:
             docker push "${IMAGE}:latest"
           fi
           docker logout ghcr.io
-      - name: Upload and verify draft assets, with latest.json last
-        env:
-          GH_TOKEN: ${{ github.token }}
-          RELEASE_ID: ${{ steps.github-release.outputs.release_id }}
-        run: node desktop/scripts/github-release.mjs upload
       - name: Publish the completed draft release
+        if: github.event_name == 'push' && needs.preflight.outputs.dry_run == 'false' && steps.github-release.outputs.published == 'false'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_ID: ${{ steps.github-release.outputs.release_id }}
+          VERIFIED_ASSETS: ${{ steps.upload.outputs.verified_assets }}
+        run: node desktop/scripts/github-release.mjs publish
+      - name: Verify public assets and anonymous installer and updater endpoints
         if: github.event_name == 'push' && needs.preflight.outputs.dry_run == 'false'
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_ID: ${{ steps.github-release.outputs.release_id }}
-        run: node desktop/scripts/github-release.mjs publish
-      - name: Verify anonymous tag and stable updater endpoints
-        if: github.event_name == 'push' && needs.preflight.outputs.dry_run == 'false'
         run: node desktop/scripts/github-release.mjs verify-public
       - name: Delete the dry-run draft even after a failed asset check
-        if: always() && github.event_name == 'workflow_dispatch' && needs.preflight.outputs.dry_run == 'true' && steps.github-release.outputs.release_id != ''
+        if: always() && github.event_name == 'workflow_dispatch' && needs.preflight.outputs.dry_run == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_ID: ${{ steps.github-release.outputs.release_id }}

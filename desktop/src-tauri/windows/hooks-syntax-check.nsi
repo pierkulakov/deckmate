@@ -16,6 +16,9 @@ OutFile "$%TEMP%\deckmate-hooks-syntax-check.exe"
 !include "MUI2.nsh"
 !include "FileFunc.nsh"
 
+; the bundler's installer.nsi declares this and sets it to 1 for /UPDATE runs
+Var UpdateMode
+
 ; stubs for pieces the bundler's installer.nsi provides around the hook
 !macro IsShortcutTarget shortcut target
   Push 0

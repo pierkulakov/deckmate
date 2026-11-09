@@ -262,6 +262,12 @@ LangString DeckmateOldManualRemove 1049 "Старую установку Deckmat
 ; old registration is already gone. Uses $0-$2 and $R6-$R9; Tauri's section
 ; code sets its own registers again after the hook.
 !macro NSIS_HOOK_PREINSTALL
-  !insertmacro DECKMATE_OLD_REPLACE_PER_USER
-  !insertmacro DECKMATE_OLD_REPLACE_PER_MACHINE
+  ; 2026-11-09: an over-the-air update (/UPDATE, set by the bundler's installer.nsi before this section runs)
+  ; only replaces an existing Tauri install, whose first installation already removed Electron. Running the
+  ; per-machine branch again would show its notice and a UAC prompt on every update where an all-users
+  ; Electron install was left behind after a declined prompt.
+  ${If} $UpdateMode <> 1
+    !insertmacro DECKMATE_OLD_REPLACE_PER_USER
+    !insertmacro DECKMATE_OLD_REPLACE_PER_MACHINE
+  ${EndIf}
 !macroend

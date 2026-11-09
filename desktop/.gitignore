@@ -2,7 +2,6 @@ node_modules/
 release/
 *.tgz
 .cache/
-capture/out/
-capture/*.log
-# The lock pins a local deckmate-*.tgz path; scripts/prepare-deckmate.mjs regenerates it (2026-11-08).
-package-lock.json
+# Staged release inputs for the Tauri build, written by scripts/prepare-sidecar.mjs; not committed (2026-11-09).
+src-tauri/binaries/
+src-tauri/resources/

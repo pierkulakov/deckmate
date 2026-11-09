@@ -1,0 +1,17 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "launcher",
+  "description": "Bundled start screen: project selection and status subscription.",
+  "local": true,
+  "windows": ["main"],
+  "permissions": [
+    "allow-desktop-get-state",
+    "allow-desktop-choose-folder",
+    "allow-desktop-open-project",
+    "allow-desktop-create-project",
+    "allow-desktop-remove-recent",
+    "allow-desktop-set-language",
+    "core:event:allow-listen",
+    "core:event:allow-unlisten"
+  ]
+}

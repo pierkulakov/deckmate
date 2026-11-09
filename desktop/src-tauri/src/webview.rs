@@ -1,0 +1,411 @@
+use crate::{app, settings::Bounds, texts, window};
+use tauri::{Manager, WebviewWindow};
+use webview2_com::{
+    AcceleratorKeyPressedEventHandler, AddScriptToExecuteOnDocumentCreatedCompletedHandler,
+    CallDevToolsProtocolMethodCompletedHandler, DevToolsProtocolEventReceivedEventHandler,
+    Microsoft::Web::WebView2::Win32::*, NavigationCompletedEventHandler,
+    NavigationStartingEventHandler, NewWindowRequestedEventHandler,
+    PermissionRequestedEventHandler, ZoomFactorChangedEventHandler,
+};
+use windows::{
+    core::{BOOL, HSTRING, PWSTR},
+    Win32::UI::{
+        Input::KeyboardAndMouse::*,
+        WindowsAndMessaging::{GetWindowPlacement, WINDOWPLACEMENT},
+    },
+};
+
+pub fn normal_bounds(window: &WebviewWindow) -> Option<Bounds> {
+    let mut placement = WINDOWPLACEMENT {
+        length: std::mem::size_of::<WINDOWPLACEMENT>() as u32,
+        ..Default::default()
+    };
+    unsafe {
+        GetWindowPlacement(window.hwnd().ok()?, &mut placement).ok()?;
+    }
+    let scale = window.scale_factor().ok()?;
+    let rect = placement.rcNormalPosition;
+    let (offset_x, offset_y) = window
+        .current_monitor()
+        .ok()
+        .flatten()
+        .map(|monitor| {
+            (
+                monitor.work_area().position.x - monitor.position().x,
+                monitor.work_area().position.y - monitor.position().y,
+            )
+        })
+        .unwrap_or_default();
+    Some(Bounds {
+        x: (f64::from(rect.left + offset_x) / scale).round() as i32,
+        y: (f64::from(rect.top + offset_y) / scale).round() as i32,
+        width: (f64::from(rect.right - rect.left) / scale).round() as u32,
+        height: (f64::from(rect.bottom - rect.top) / scale).round() as u32,
+    })
+}
+
+pub async fn install(window: &WebviewWindow) -> Result<(), String> {
+    let shell = app::state(window.app_handle());
+    shell
+        .webview_handlers
+        .get_or_init(|| async {
+            install_once(window).await.map_err(|error| {
+                shell
+                    .log
+                    .write(format!("WebView2 handlers failed: {error}"));
+                texts::format(&shell.language(), "guardsFailed", "error", error)
+            })
+        })
+        .await
+        .clone()
+}
+
+async fn install_once(window: &WebviewWindow) -> Result<(), String> {
+    let window = window.clone();
+    let handle = window.clone();
+    let (sender, receiver) = tokio::sync::oneshot::channel();
+    window
+        .with_webview(move |webview| {
+            let result = unsafe { install_handlers(&handle, webview.controller()) };
+            let _ = sender.send(result.map_err(|error| error.to_string()));
+        })
+        .map_err(|error| error.to_string())?;
+    receiver.await.map_err(|error| error.to_string())?
+}
+
+unsafe fn install_handlers(
+    window: &WebviewWindow,
+    controller: ICoreWebView2Controller,
+) -> windows::core::Result<()> {
+    let core = controller.CoreWebView2()?;
+    install_navigation(window, &core)?;
+    install_popup_and_permissions(window, &core)?;
+    install_zoom_keys(window, &controller)?;
+    install_zoom(window, &controller)?;
+    install_console(window, &core)
+}
+
+unsafe fn install_navigation(
+    window: &WebviewWindow,
+    core: &ICoreWebView2,
+) -> windows::core::Result<()> {
+    let mut token = 0;
+    let navigation_window = window.clone();
+    core.add_NavigationStarting(
+        &NavigationStartingEventHandler::create(Box::new(move |_, args| {
+            let Some(args) = args else {
+                return Ok(());
+            };
+            args.SetCancel(true)?;
+            let mut uri = PWSTR::null();
+            args.Uri(&mut uri)?;
+            let uri = webview2_com::take_pwstr(uri);
+            if !tauri::Url::parse(&uri)
+                .is_ok_and(|url| window::allow_navigation(navigation_window.app_handle(), &url))
+            {
+                return Ok(());
+            }
+            args.SetCancel(false)?;
+            let shell = app::state(navigation_window.app_handle());
+            let mut loading = shell.loading.lock().unwrap();
+            if let Some(load) = loading
+                .as_mut()
+                .filter(|load| uri == load.url || uri.starts_with(&format!("{}/", load.url)))
+            {
+                let mut navigation = 0;
+                args.NavigationId(&mut navigation)?;
+                load.navigation = Some(navigation);
+            }
+            Ok(())
+        })),
+        &mut token,
+    )?;
+    let frame_app = window.app_handle().clone();
+    core.add_FrameNavigationStarting(
+        &NavigationStartingEventHandler::create(Box::new(move |_, args| {
+            let Some(args) = args else {
+                return Ok(());
+            };
+            args.SetCancel(true)?;
+            let mut uri = PWSTR::null();
+            args.Uri(&mut uri)?;
+            let uri = webview2_com::take_pwstr(uri);
+            if tauri::Url::parse(&uri)
+                .is_ok_and(|url| window::is_server_url(&app::state(&frame_app), &url))
+            {
+                args.SetCancel(false)?;
+            }
+            Ok(())
+        })),
+        &mut token,
+    )?;
+    let load_window = window.clone();
+    core.add_NavigationCompleted(
+        &NavigationCompletedEventHandler::create(Box::new(move |_, args| {
+            let Some(args) = args else {
+                return Ok(());
+            };
+            let mut navigation = 0;
+            args.NavigationId(&mut navigation)?;
+            let mut success = BOOL::default();
+            args.IsSuccess(&mut success)?;
+            if success.as_bool() {
+                window::finish_load(&load_window, navigation, Ok(()));
+                return Ok(());
+            }
+            let shell = app::state(load_window.app_handle());
+            let mut code = COREWEBVIEW2_WEB_ERROR_STATUS::default();
+            args.WebErrorStatus(&mut code)?;
+            if load_window
+                .url()
+                .is_ok_and(|url| window::is_launcher_url(&url))
+                && shell.current.lock().unwrap().is_none()
+            {
+                window::launcher_error(
+                    &load_window,
+                    &texts::format(&shell.language(), "launcherFailed", "code", code.0),
+                );
+            }
+            window::finish_load(
+                &load_window,
+                navigation,
+                Err(texts::format(
+                    &shell.language(),
+                    "loadFailed",
+                    "code",
+                    code.0,
+                )),
+            );
+            Ok(())
+        })),
+        &mut token,
+    )?;
+    Ok(())
+}
+
+unsafe fn install_popup_and_permissions(
+    window: &WebviewWindow,
+    core: &ICoreWebView2,
+) -> windows::core::Result<()> {
+    let mut token = 0;
+    let app = window.app_handle().clone();
+    // 2026-11-09: register all guards here so a failed HRESULT blocks board startup through install().
+    core.add_NewWindowRequested(
+        &NewWindowRequestedEventHandler::create(Box::new(move |_, args| {
+            let Some(args) = args else {
+                return Ok(());
+            };
+            args.SetHandled(true)?;
+            let mut uri = PWSTR::null();
+            args.Uri(&mut uri)?;
+            if let Ok(url) = tauri::Url::parse(&webview2_com::take_pwstr(uri)) {
+                window::open_external(&app, &url);
+            }
+            Ok(())
+        })),
+        &mut token,
+    )?;
+    core.add_PermissionRequested(
+        &PermissionRequestedEventHandler::create(Box::new(|_, args| {
+            let Some(args) = args else {
+                return Ok(());
+            };
+            args.SetState(COREWEBVIEW2_PERMISSION_STATE_DENY)?;
+            let mut kind = COREWEBVIEW2_PERMISSION_KIND::default();
+            args.PermissionKind(&mut kind)?;
+            if kind == COREWEBVIEW2_PERMISSION_KIND_NOTIFICATIONS {
+                args.SetState(COREWEBVIEW2_PERMISSION_STATE_ALLOW)?;
+            }
+            Ok(())
+        })),
+        &mut token,
+    )?;
+    Ok(())
+}
+
+unsafe fn install_zoom_keys(
+    window: &WebviewWindow,
+    controller: &ICoreWebView2Controller,
+) -> windows::core::Result<()> {
+    let mut token = 0;
+    let key_window = window.clone();
+    controller.add_AcceleratorKeyPressed(
+        &AcceleratorKeyPressedEventHandler::create(Box::new(move |_, args| {
+            let Some(args) = args else {
+                return Ok(());
+            };
+            let mut kind = COREWEBVIEW2_KEY_EVENT_KIND::default();
+            args.KeyEventKind(&mut kind)?;
+            if kind != COREWEBVIEW2_KEY_EVENT_KIND_KEY_DOWN {
+                return Ok(());
+            }
+            if GetKeyState(i32::from(VK_CONTROL.0)) >= 0
+                || GetKeyState(i32::from(VK_MENU.0)) < 0
+                || GetKeyState(i32::from(VK_LWIN.0)) < 0
+                || GetKeyState(i32::from(VK_RWIN.0)) < 0
+            {
+                return Ok(());
+            }
+            let mut key = 0;
+            args.VirtualKey(&mut key)?;
+            let action = match VIRTUAL_KEY(key as u16) {
+                VK_OEM_PLUS | VK_ADD => Some(0.1),
+                VK_OEM_MINUS | VK_SUBTRACT => Some(-0.1),
+                VK_0 | VK_NUMPAD0 => Some(0.0),
+                _ => None,
+            };
+            if let Some(delta) = action {
+                args.SetHandled(true)?;
+                let app = key_window.app_handle().clone();
+                let dispatch = app.clone();
+                let _ = app.run_on_main_thread(move || {
+                    if delta == 0.0 {
+                        window::set_zoom(&dispatch, 1.0);
+                    } else {
+                        window::change_zoom(&dispatch, delta);
+                    }
+                });
+            }
+            Ok(())
+        })),
+        &mut token,
+    )?;
+    Ok(())
+}
+
+unsafe fn install_zoom(
+    window: &WebviewWindow,
+    controller: &ICoreWebView2Controller,
+) -> windows::core::Result<()> {
+    let mut token = 0;
+    let zoom_window = window.clone();
+    controller.add_ZoomFactorChanged(
+        &ZoomFactorChangedEventHandler::create(Box::new(move |controller, _| {
+            if let Some(controller) = controller {
+                let mut factor = 1.0;
+                controller.ZoomFactor(&mut factor)?;
+                let app = zoom_window.app_handle();
+                let stored = app::state(app).settings.lock().unwrap().zoom_factor;
+                if stored != factor {
+                    window::set_zoom(app, factor);
+                }
+            }
+            Ok(())
+        })),
+        &mut token,
+    )?;
+    Ok(())
+}
+
+unsafe fn install_console(
+    window: &WebviewWindow,
+    core: &ICoreWebView2,
+) -> windows::core::Result<()> {
+    let receiver =
+        core.GetDevToolsProtocolEventReceiver(&HSTRING::from("Runtime.consoleAPICalled"))?;
+    let log = app::state(window.app_handle()).log.clone();
+    let mut token = 0;
+    receiver.add_DevToolsProtocolEventReceived(
+        &DevToolsProtocolEventReceivedEventHandler::create(Box::new(move |_, args| {
+            let Some(args) = args else {
+                return Ok(());
+            };
+            let mut parameters = PWSTR::null();
+            args.ParameterObjectAsJson(&mut parameters)?;
+            let parameters = webview2_com::take_pwstr(parameters);
+            let Ok(value) = serde_json::from_str::<serde_json::Value>(&parameters) else {
+                return Ok(());
+            };
+            if !matches!(value["type"].as_str(), Some("warning" | "error")) {
+                return Ok(());
+            }
+            let arguments = value["args"]
+                .as_array()
+                .map(|args| {
+                    args.iter()
+                        .map(|arg| {
+                            arg["value"]
+                                .as_str()
+                                .or_else(|| arg["description"].as_str())
+                                .map(str::to_owned)
+                                .unwrap_or_else(|| arg["value"].to_string())
+                        })
+                        .collect::<Vec<_>>()
+                        .join(" ")
+                })
+                .unwrap_or_default();
+            log.write(format!(
+                "[renderer {}] {arguments}",
+                value["type"].as_str().unwrap_or("error")
+            ));
+            Ok(())
+        })),
+        &mut token,
+    )?;
+    core.CallDevToolsProtocolMethod(
+        &HSTRING::from("Runtime.enable"),
+        &HSTRING::from("{}"),
+        &CallDevToolsProtocolMethodCompletedHandler::create(Box::new(|result, _| result)),
+    )
+}
+
+pub async fn board_script(window: &WebviewWindow, origin: Option<String>) -> Result<(), String> {
+    let shell = app::state(window.app_handle());
+    let (sender, receiver) = tokio::sync::oneshot::channel();
+    window
+        .with_webview(move |webview| {
+            let result = (|| unsafe {
+                let core = webview.controller().CoreWebView2()?;
+                if let Some(previous) = shell.board_script.lock().unwrap().take() {
+                    core.RemoveScriptToExecuteOnDocumentCreated(&HSTRING::from(previous))?;
+                }
+                Ok::<_, windows::core::Error>(core)
+            })();
+            let core = match result {
+                Ok(core) => core,
+                Err(error) => {
+                    let _ = sender.send(Err(error.to_string()));
+                    return;
+                }
+            };
+            let Some(origin) = origin else {
+                let _ = sender.send(Ok(()));
+                return;
+            };
+            let script = format!(
+                r#"(() => {{
+          if (window.top !== window || location.origin !== {}) return;
+          const invoke = window.__TAURI_INTERNALS__.invoke;
+          Object.defineProperty(window, 'deckmateBoard', {{ value: Object.freeze({{
+            recentProjects: () => invoke('board_recent_projects'),
+            switchProject: folder => invoke('board_switch_project', {{ folder }}),
+            showStartScreen: () => invoke('board_show_start_screen')
+          }}) }});
+        }})();"#,
+                serde_json::to_string(&origin).unwrap()
+            );
+            let sender = std::sync::Arc::new(std::sync::Mutex::new(Some(sender)));
+            let callback_sender = sender.clone();
+            let callback = AddScriptToExecuteOnDocumentCreatedCompletedHandler::create(Box::new(
+                move |error, id| {
+                    let result = error.map_err(|error| error.to_string());
+                    if result.is_ok() {
+                        *shell.board_script.lock().unwrap() = Some(id);
+                    }
+                    if let Some(sender) = callback_sender.lock().unwrap().take() {
+                        let _ = sender.send(result);
+                    }
+                    Ok(())
+                },
+            ));
+            if let Err(error) = unsafe {
+                core.AddScriptToExecuteOnDocumentCreated(&HSTRING::from(script), &callback)
+            } {
+                if let Some(sender) = sender.lock().unwrap().take() {
+                    let _ = sender.send(Err(error.to_string()));
+                }
+            }
+        })
+        .map_err(|error| error.to_string())?;
+    receiver.await.map_err(|error| error.to_string())?
+}

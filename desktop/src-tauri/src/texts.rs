@@ -1,0 +1,121 @@
+pub fn text(language: &str, key: &str) -> &'static str {
+    let (en, ru) = match key {
+        "file" => ("File", "Файл"),
+        "openFolder" => ("Open folder…", "Открыть папку…"),
+        "recentProjects" => ("Recent projects", "Недавние проекты"),
+        "noRecent" => ("No recent projects", "Нет недавних проектов"),
+        "clearRecent" => ("Clear recent", "Очистить список"),
+        "revealProject" => ("Reveal project folder", "Показать папку проекта"),
+        "switchProject" => ("Switch project", "Сменить проект"),
+        "closeProject" => ("Close project", "Закрыть проект"),
+        "reload" => ("Reload", "Перезагрузить"),
+        "toggleDevTools" => ("Toggle DevTools", "Инструменты разработчика"),
+        "quit" => ("Quit", "Выход"),
+        "edit" => ("Edit", "Правка"),
+        "undo" => ("Undo", "Отменить"),
+        "redo" => ("Redo", "Повторить"),
+        "cut" => ("Cut", "Вырезать"),
+        "copy" => ("Copy", "Копировать"),
+        "paste" => ("Paste", "Вставить"),
+        "selectAll" => ("Select all", "Выделить всё"),
+        "view" => ("View", "Вид"),
+        "zoomIn" => ("Zoom in", "Увеличить"),
+        "zoomOut" => ("Zoom out", "Уменьшить"),
+        "actualSize" => ("Actual size", "Исходный размер"),
+        "toggleFullScreen" => ("Toggle full screen", "Полноэкранный режим"),
+        "help" => ("Help", "Справка"),
+        "openLogs" => ("Open logs folder", "Открыть папку журналов"),
+        "about" => ("About Deckmate", "О программе Deckmate"),
+        "ok" => ("OK", "ОК"),
+        "openFailed" => ("Cannot open the project", "Не удалось открыть проект"),
+        "absolutePath" => (
+            "An absolute folder path is required.",
+            "Требуется абсолютный путь к папке.",
+        ),
+        "networkPath" => (
+            "Network and device paths can be opened only through the folder dialog.",
+            "Сетевые пути и пути устройств можно открыть только через диалог выбора папки.",
+        ),
+        "missing" => ("Folder not found: {path}", "Папка не найдена: {path}"),
+        "notEmpty" => (
+            "The folder must be empty or not exist yet: {path}",
+            "Папка должна быть пустой или ещё не существовать: {path}",
+        ),
+        "unreadable" => (
+            "Cannot read the folder: {path}",
+            "Не удалось прочитать папку: {path}",
+        ),
+        "superseded" => (
+            "Another action replaced this launch.",
+            "Запуск заменён другим действием.",
+        ),
+        "closed" => ("The window was closed.", "Окно было закрыто."),
+        "language" => (
+            "Language must be \"en\" or \"ru\".",
+            "Язык должен быть \"en\" или \"ru\".",
+        ),
+        "launcherOnly" => (
+            "Only the launcher may call this.",
+            "Вызов доступен только стартовому экрану.",
+        ),
+        "boardOnly" => (
+            "Only the main board frame of the current project may call this.",
+            "Вызов доступен только основной странице доски текущего проекта.",
+        ),
+        "notRecent" => (
+            "Only a recent project may be opened from the board.",
+            "С доски можно открыть только недавний проект.",
+        ),
+        "serverExit" => (
+            "Server exited with code {code}.",
+            "Сервер завершился с кодом {code}.",
+        ),
+        "serverStopped" => (
+            "The Deckmate server stopped (code {code}).",
+            "Сервер Deckmate остановился (код {code}).",
+        ),
+        "timeout" => (
+            "Server did not start in 20 s.",
+            "Сервер не запустился за 20 с.",
+        ),
+        "loadTimeout" => (
+            "The board did not finish loading in 20 s.",
+            "Доска не загрузилась за 20 с.",
+        ),
+        "loadFailed" => (
+            "Could not load the board (WebView2 error {code}).",
+            "Не удалось загрузить доску (ошибка WebView2 {code}).",
+        ),
+        "guardsFailed" => (
+            "Could not install WebView2 security guards; the board will not open: {error}",
+            "Не удалось установить защиту WebView2; доска не будет открыта: {error}",
+        ),
+        "launcherTimeout" => (
+            "The start screen did not finish loading. Reload the window to try again.",
+            "Стартовый экран не загрузился. Перезагрузите окно, чтобы повторить попытку.",
+        ),
+        "launcherFailed" => (
+            "Could not load the start screen (WebView2 error {code}). Reload the window to try again.",
+            "Не удалось загрузить стартовый экран (ошибка WebView2 {code}). Перезагрузите окно, чтобы повторить попытку.",
+        ),
+        "initFailed" => (
+            "Project initialization exited with code {code}.",
+            "Создание проекта завершилось с кодом {code}.",
+        ),
+        _ => ("Deckmate", "Deckmate"),
+    };
+    if language == "ru" {
+        ru
+    } else {
+        en
+    }
+}
+
+pub fn format(
+    language: &str,
+    key: &str,
+    placeholder: &str,
+    value: impl std::fmt::Display,
+) -> String {
+    text(language, key).replace(&format!("{{{placeholder}}}"), &value.to_string())
+}

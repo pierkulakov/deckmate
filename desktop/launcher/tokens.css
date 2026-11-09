@@ -1,0 +1,51 @@
+/* Deckmate desktop launcher. Tokens mirror client/styles.css (2026-11-08) so the screen reads as one app with the board. */
+@font-face { font-family: 'Source Sans 3'; src: url('fonts/SourceSans3-latin-wght.woff2') format('woff2-variations'); font-weight: 200 900; font-display: swap; unicode-range: U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD; }
+@font-face { font-family: 'Source Sans 3'; src: url('fonts/SourceSans3-cyrillic-wght.woff2') format('woff2-variations'); font-weight: 200 900; font-display: swap; unicode-range: U+0301,U+0400-045F,U+0490-0491,U+04B0-04B1,U+2116; }
+@font-face { font-family: 'Geist Mono'; src: url('fonts/GeistMono-Regular.ttf'); font-weight: 400; font-display: swap; }
+@font-face { font-family: 'Geist Mono'; src: url('fonts/GeistMono-Medium.ttf'); font-weight: 500; font-display: swap; }
+
+:root {
+  color-scheme: light;
+  --font-sans: 'Source Sans 3', sans-serif;
+  --font-mono: 'Geist Mono', monospace;
+  --canvas: #f4eef9; --surface: #fdfaff; --ground: #eee6f4; --sidebar: #e9e0f2;
+  --ink: #2f2440; --muted: #6b587b; --line: #d5c5e5; --hover: #e8d9f3;
+  --accent: #7443a6; --accent-button: #7443a6; --accent-hover: #5f338c; --accent-soft: #ecdaf8; --focus: #8251ba; --danger: #a63a5c;
+  --mark-back: #a184e0; --mark-front: #6538a3; --mark-pip: #e8ad2e;
+  --plum: #9c6acf; --champagne: #cb973c;
+  --shadow: 0 8px 28px #30243812;
+  --card-face: #ffffff; --card-edge: #cdc8dc; --card-metal: #c6bee3; --card-metal-ink: #2b2540; --doc-metal: #9bd4c7; --hero-metal: #e8c062; --metal-sheen: #fff8df;
+  --card-shadow: 0 5px 12px #18213624;
+  --card-hover-shadow: 0 9px 20px #18213638;
+  --button-ink: #fdfaff;
+  --panel: linear-gradient(160deg, color-mix(in srgb, var(--ground) 90%, var(--plum)), var(--ground) 55%, color-mix(in srgb, var(--ground) 94%, var(--champagne)));
+  --panel-shadow: 0 12px 32px #30243814;
+  --cover-window: #1c1a24; --cover-lift: 0 1px 0 rgb(48 36 56 / .2), 0 10px 20px -10px rgb(48 36 56 / .5);
+  --canvas-wash: radial-gradient(900px 500px at 85% -10%, color-mix(in srgb, var(--plum) 10%, transparent), transparent 70%);
+  --scroll-thumb: #b9a9cf; --scroll-track: transparent;
+  --ease-out: cubic-bezier(.16, 1, .3, 1);
+  --motion-feedback: 150ms;
+  --motion-material: 220ms;
+}
+:root.dark {
+  color-scheme: dark;
+  --canvas: #322f40; --surface: #39354a; --ground: #27242f; --sidebar: #1c1a24;
+  --ink: #edeef2; --muted: #cdc8dc; --line: #4a4560; --hover: #443f59;
+  /* 2026-11-08: white on the #9258e5 accent reaches 4.4:1; the button face darkens one step to #8a4fe0 (4.9:1), hover darker still. */
+  --accent: #9258e5; --accent-button: #8a4fe0; --accent-hover: #7d43d6; --accent-soft: #442b5d; --focus: #b79cf2; --danger: #ff8a80;
+  --mark-back: #7a52d6; --mark-front: #b08af3; --mark-pip: #f5c24c;
+  --plum: #9258e5; --champagne: #f7e18e;
+  --shadow: 0 10px 28px #0c0a1366;
+  /* The board's dark card face equals the canvas; the fan lifts it one step to --surface so the cards read on the page. */
+  --card-face: #39354a; --card-edge: #4a4560; --card-metal: #c6bee3; --card-metal-ink: #2b2540; --doc-metal: #9bd4c7; --hero-metal: #d8a944;
+  --card-shadow: 0 4px 12px #0c0a1366;
+  --card-hover-shadow: 0 6px 16px #0c0a1377;
+  --link-ink: #b79cf2;
+  --button-ink: #f9f9fa;
+  --panel: linear-gradient(var(--ground), var(--ground));
+  --panel-shadow: 0 16px 40px #0c0a1340;
+  --cover-lift: 0 1px 0 rgb(0 0 0 / .45), 0 10px 20px -10px rgb(0 0 0 / .6);
+  --canvas-wash: radial-gradient(900px 520px at 85% -10%, color-mix(in srgb, var(--accent) 9%, transparent), transparent 70%);
+  --scroll-thumb: #66718a; --scroll-track: #222838;
+}
+

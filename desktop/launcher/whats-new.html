@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
+  <title>Deckmate</title>
+  <link rel="stylesheet" href="tokens.css">
+  <link rel="stylesheet" href="whats-new.css">
+  <script src="theme.js"></script>
+</head>
+<body>
+  <main class="page" id="whats-new" aria-busy="true">
+    <header class="intro">
+      <div class="brand"><svg class="mark" viewBox="0 0 16 16" shape-rendering="crispEdges" aria-hidden="true"><path class="mark-back" d="M3 4H4V13H11V14H10V15H3V14H2V5H3Z"/><path class="mark-front" d="M6 1H13V2H14V11H13V12H6V11H5V2H6Z"/><path class="mark-pip" d="M9 4H10V5H11V6H12V7H11V8H10V9H9V8H8V7H7V6H8V5H9Z"/></svg><span>Deckmate</span></div>
+      <h1 id="heading"></h1>
+      <p id="since" hidden></p>
+    </header>
+    <div class="content" id="content" aria-live="polite"></div>
+    <footer class="footer"><a id="releases"></a></footer>
+  </main>
+  <script src="whats-new.js"></script>
+</body>
+</html>

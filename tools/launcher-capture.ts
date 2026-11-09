@@ -12,9 +12,10 @@ import { openHeadlessBrowser, type HeadlessPage } from './layout-capture.ts';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const pageUrl = pathToFileURL(path.join(here, '..', 'desktop', 'launcher', 'index.html')).href;
+const whatsNewUrl = pathToFileURL(path.join(here, '..', 'desktop', 'launcher', 'whats-new.html')).href;
 const output = path.join(here, '..', '.deckmate', 'launcher-shots');
 
-interface Frame { name: string; theme: 'dark' | 'light'; lang: 'en' | 'ru'; size: [number, number]; state?: 'empty' | 'error' | 'hover-row' | 'focus-open' | 'focus-row' }
+interface Frame { name: string; theme: 'dark' | 'light'; lang: 'en' | 'ru'; size: [number, number]; page?: 'whats-new'; state?: 'empty' | 'error' | 'hover-row' | 'focus-open' | 'focus-row' }
 
 const frames: Frame[] = [
   { name: 'dark-en-1280', theme: 'dark', lang: 'en', size: [1280, 820] },
@@ -28,6 +29,10 @@ const frames: Frame[] = [
   { name: 'dark-en-focus-open', theme: 'dark', lang: 'en', size: [1280, 820], state: 'focus-open' },
   { name: 'dark-en-focus-row', theme: 'dark', lang: 'en', size: [1280, 820], state: 'focus-row' },
   { name: 'light-ru-hover-row', theme: 'light', lang: 'ru', size: [1280, 820], state: 'hover-row' },
+  { name: 'whats-new-dark-en', theme: 'dark', lang: 'en', size: [760, 680], page: 'whats-new' },
+  { name: 'whats-new-dark-ru', theme: 'dark', lang: 'ru', size: [760, 680], page: 'whats-new' },
+  { name: 'whats-new-light-en', theme: 'light', lang: 'en', size: [760, 680], page: 'whats-new' },
+  { name: 'whats-new-light-ru', theme: 'light', lang: 'ru', size: [760, 680], page: 'whats-new' },
 ];
 
 // Every script sent to the page is a fixed string picked by key: nothing from the frame table is spliced into code.
@@ -80,16 +85,16 @@ async function pollPage(page: HeadlessPage, expression: string, timeoutMs: numbe
 }
 
 // The previous document may already report readyState 'complete', so a flag on the old page marks the wait as being for the new one.
-async function navigateAndWait(page: HeadlessPage, what: string): Promise<void> {
+async function navigateAndWait(page: HeadlessPage, what: string, url = pageUrl): Promise<void> {
   await page.evaluate('window.__deckmateCaptureOldDocument = true');
-  await page.send('Page.navigate', { url: pageUrl });
+  await page.send('Page.navigate', { url });
   const loaded = await pollPage(page, `!window.__deckmateCaptureOldDocument && document.readyState === 'complete'`, 10000);
   if (!loaded) throw new Error(`${what}: the launcher page did not finish loading within 10 s`);
 }
 
 // Waits until the launcher finished its first render and the fonts are loaded.
-async function waitForPageReady(page: HeadlessPage, frame: string): Promise<void> {
-  const busyCleared = await pollPage(page, `!document.getElementById('launcher').hasAttribute('aria-busy')`, 5000);
+async function waitForPageReady(page: HeadlessPage, frame: string, root = 'launcher'): Promise<void> {
+  const busyCleared = await pollPage(page, `!document.getElementById('${root}').hasAttribute('aria-busy')`, 5000);
   if (!busyCleared) throw new Error(`${frame}: the launcher is still aria-busy after 5 s`);
   await page.evaluate('document.fonts.ready.then(() => true)');
 }
@@ -114,12 +119,12 @@ async function captureFrame(page: HeadlessPage, frame: Frame, destination: strin
   // The settings are written on the loaded page; the reload below re-runs theme.js and launcher.js against them.
   await page.evaluate(scriptFor(THEME_SCRIPTS, frame.theme, 'theme'));
   await page.evaluate(scriptFor(LANG_SCRIPTS, frame.lang, 'language'));
-  await navigateAndWait(page, frame.name);
+  await navigateAndWait(page, frame.name, frame.page === 'whats-new' ? whatsNewUrl : pageUrl);
   await page.callFunction(INJECT_STYLE, NO_MOTION);
-  await waitForPageReady(page, frame.name);
+  await waitForPageReady(page, frame.name, frame.page === 'whats-new' ? 'whats-new' : 'launcher');
 
   const state = frame.state ?? 'list';
-  await page.evaluate(scriptFor(STATE_SCRIPTS, state, 'state'));
+  if (frame.page !== 'whats-new') await page.evaluate(scriptFor(STATE_SCRIPTS, state, 'state'));
   if (state === 'error') {
     const failed = await pollPage(page, `document.getElementById('status').dataset.phase === 'error'`, 4000);
     if (!failed) throw new Error(`${frame.name}: the status phase is not 'error' after 4 s`);

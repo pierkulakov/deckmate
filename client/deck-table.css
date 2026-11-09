@@ -103,8 +103,9 @@
 :root:not(.dark) .deck-table-hero { color: var(--hero-ink); }
 .deck-table-hero .catalog-table-title { font-weight: 500; }
 .deck-table-hero .catalog-table-title > svg { color: inherit; }
-.deck-table-hero .sub-card-progress { position: relative; z-index: 1; top: 1px; flex: 0 0 auto; width: auto; min-width: 47px; height: 4px; gap: 1px; overflow: hidden; border-radius: 4px; }
-.deck-table-hero .sub-card-progress-segment { flex: 1 0 3px; border-radius: 0; }
+.deck-table-hero .sub-card-progress { position: relative; z-index: 1; top: 1px; flex: 0 0 auto; width: auto; min-width: 47px; height: 4px; --sub-card-gap: 1px; overflow: hidden; border-radius: 4px; }
+/* The chip is as wide as its steps need (at least 47px), so each step starts at 3px and takes its weight's share of the rest. */
+.deck-table-hero .sub-card-progress-segment { flex: var(--sub-card-weight, 1) 0 3px; min-width: 0; border-radius: 0; }
 
 /* Tag chips occupy a 162 px column: 12/700/14 text, padding 0 4, radius 4 and gap 4; an 11 px emoji or # precedes the name. */
 .deck-table-tags { overflow: hidden; }

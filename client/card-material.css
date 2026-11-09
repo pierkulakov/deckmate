@@ -21,8 +21,10 @@
   /* 2026-11-09: sparse glitter — four dot layers with unrelated tile sizes read as scattered, not as a grid (author). */
   --holo-glitter: radial-gradient(circle at 23% 31%, #fff 0 .45px, transparent .8px) 0 0 / 13px 11px, radial-gradient(circle at 71% 64%, #fff 0 .4px, transparent .75px) 5px 3px / 17px 19px, radial-gradient(circle at 42% 83%, #fff6c8 0 .5px, transparent .85px) 2px 9px / 23px 17px, radial-gradient(circle at 86% 12%, #e9f6ff 0 .4px, transparent .7px) 11px 6px / 29px 31px;
 }
-.sub-card-progress { display: flex; gap: 2px; width: 100%; height: 8px; }
-.sub-card-progress-segment { display: block; flex: 1 1 0; min-width: 0; height: 100%; padding: 0; border: 0; border-radius: 2px; background-color: var(--sub-card-state-planned); }
+.sub-card-progress { --sub-card-gap: 2px; display: flex; gap: var(--sub-card-gap); width: 100%; height: 8px; }
+/* 2026-11-09: a step is as long as its Sub Card's weight (subCardWeight), in exact proportion. The 3px floor keeps a
+   tiny step visible and gives way only when --sub-card-steps steps would not fit the width. */
+.sub-card-progress-segment { display: block; flex: var(--sub-card-weight, 1) 1 0; min-width: min(3px, (100% - (var(--sub-card-steps, 1) - 1) * var(--sub-card-gap)) / var(--sub-card-steps, 1)); height: 100%; padding: 0; border: 0; border-radius: 2px; background-color: var(--sub-card-state-planned); }
 .sub-card-progress-segment[data-state="accepted"] { background-color: var(--sub-card-state-accepted); }
 .sub-card-progress-segment[data-state="working"] { background-color: var(--sub-card-state-working); }
 .sub-card-progress-segment[data-state="review"] { background-color: var(--sub-card-state-review); }
@@ -33,11 +35,24 @@ button.sub-card-progress-segment { cursor: pointer; }
 .deck-card-identity > .catalog-card-effort { margin-right: auto; font-weight: 700; line-height: 16px; }
 .deck-card-identity > .catalog-card-kind { font-family: var(--font-sans); }
 .catalog-card-hero > .deck-card-band { border-radius: 0 0 5px 5px; }
-/* One Hero band height in a row: the «No Sub Cards» line takes the bar's slot, 18 + 3 + 11 = 18 + 6 + 8 px. */
+/* One Hero band height in a row: the «No Sub Cards» line takes the line's slot, 18 + 3 + 11 = 18 + 6 + (2 + 3 + 3) px. */
 .catalog-card-hero .deck-card-identity:has(+ .catalog-card-progress) { margin-bottom: 3px; }
 .catalog-card-hero .catalog-card-progress { line-height: 11px; }
-/* A Hero tile's unstarted steps use the Hero tint; --hero-step-empty distinguishes them from working steps. */
-.catalog-card-hero { --sub-card-state-planned: var(--hero-step-empty); --metal-sheen: var(--hero-sheen); }
+.catalog-card-hero { --metal-sheen: var(--hero-sheen); }
+/* 2026-11-09: the author's reference — a Hero tile's Sub Cards read as a thin line of light on the gold, quiet beside the
+   effort and the crown (the 8px bar of five saturated colours caught the eye). Done steps are near-white, working steps
+   brighter cream, review and blocked steps carry a faint violet and rose; the Sub Cards panel keeps the full colours. */
+.catalog-card-hero .sub-card-progress {
+  --sub-card-state-accepted: var(--hero-step-done);
+  --sub-card-state-working: var(--hero-step-working);
+  --sub-card-state-review: var(--hero-step-review);
+  --sub-card-state-blocked: var(--hero-step-blocked);
+  --sub-card-state-planned: var(--hero-step-empty);
+  /* Padding, not margins: the identity row's bottom margin would swallow a top margin and shorten the band. */
+  box-sizing: border-box;
+  padding: 2px 0 3px;
+}
+.catalog-card-hero .sub-card-progress-segment { border-radius: 1.5px; }
 
 .catalog-card-hero:not(.is-family-done) > .deck-card-band,
 .deck-card.catalog-card-hero.is-family-done > .deck-card-band,
@@ -205,8 +220,12 @@ button.sub-card-progress-segment { cursor: pointer; }
   border-radius: 0 0 3px 3px;
   --material-inset: inset 0 1px 2px color-mix(in srgb, var(--metal-shadow) 12%, transparent);
 }
-/* White segments vanished on the foil-lit gold; accepted green keeps the finished bar readable. */
-.deck-card.catalog-card-hero.is-family-done .sub-card-progress-segment { background-color: var(--accepted-metal); }
+/* A finished family closes into one unbroken line of light, the same light as a done step on a working Hero; the done
+   medallion carries the green. A won't-do step counts as closed too. */
+.deck-card.catalog-card-hero.is-family-done .sub-card-progress { --sub-card-gap: 0px; }
+.deck-card.catalog-card-hero.is-family-done .sub-card-progress-segment { background-color: var(--hero-step-done); }
+.deck-card.catalog-card-hero.is-family-done .sub-card-progress-segment:not(:first-child) { border-top-left-radius: 0; border-bottom-left-radius: 0; }
+.deck-card.catalog-card-hero.is-family-done .sub-card-progress-segment:not(:last-child) { border-top-right-radius: 0; border-bottom-right-radius: 0; }
 /* Face film and its glitter sit under the band (z-index 2) and blend with the face, so the title keeps its colour. */
 .deck-card.catalog-card-hero.is-family-done::before,
 .deck-card.catalog-card-hero.is-family-done::after,

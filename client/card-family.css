@@ -35,7 +35,7 @@
 .card-family-hero-title strong { overflow: hidden; color: var(--ink); font-size: 12px; font-weight: 400; line-height: 14px; white-space: nowrap; text-overflow: ellipsis; }
 .card-family-row { display: flex; flex-direction: column; width: 100%; min-height: 53px; overflow: hidden; cursor: default; }
 .card-family-row[data-kind="doc"] { --strip: var(--doc-metal); }
-/* Strip = state of the Sub Card, the same colors as the progress strip on the Hero tile. */
+/* Strip = state of the Sub Card in the full state colors; the Hero tile shows the same states as light tints on its gold (2026-11-09). */
 .card-family-row[data-progress-state="accepted"] { --strip: var(--sub-card-state-accepted); }
 .card-family-row[data-progress-state="working"] { --strip: var(--sub-card-state-working); }
 .card-family-row[data-progress-state="review"] { --strip: var(--sub-card-state-review); }

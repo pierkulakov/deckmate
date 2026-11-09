@@ -1,5 +1,5 @@
 import { readStoredValue } from '../storage.ts';
-import { useCallback, useEffect, useId, useMemo, useRef, useState, Fragment, type PointerEvent, type ReactNode } from 'react';
+import { useCallback, useEffect, useId, useMemo, useRef, useState, Fragment, type CSSProperties, type PointerEvent, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import { DndContext, DragOverlay, KeyboardSensor, PointerSensor, closestCenter, useSensor, useSensors, type CollisionDetection, type DragEndEvent } from '@dnd-kit/core';
@@ -11,7 +11,7 @@ import { dependencyCycle, openDependencies, waitingCards, type CardHistoryCreate
 import type { DataSource } from '../../src/workspace-contracts.ts';
 import { orderSubCards } from '../catalog-lookups.ts';
 import { cardOrdering, groupAndSortCards, laneOrderOf, type CardOrdering } from '../catalog-ordering.ts';
-import { subCardStateLabel, subCardVisualState } from '../sub-card-state.ts';
+import { subCardStateLabel, subCardVisualState, subCardWeight } from '../sub-card-state.ts';
 import type { CatalogAction } from '../useCatalog.ts';
 import { Button } from './ui/button.tsx';
 import { CardOwnerAvatar, CardQuickSettings, type CardQuickSettingsTab } from './CardQuickSettings.tsx';
@@ -307,7 +307,7 @@ function readSubCardOrder(): SubCardOrder {
   return subCardOrders.find(option => option.key === stored)?.key ?? 'manual';
 }
 
-/** One ordered, state-colored strip for Hero tiles and the Journey execution summary. */
+/** One ordered, state-colored strip for Hero tiles and the Deck table; each step is as long as its Sub Card's weight. */
 export function SubCardProgress({ cards, cardsById, disabled = false, onOpen }: {
   cards: CatalogCard[]; cardsById: ReadonlyMap<string, CatalogCard>; disabled?: boolean; onOpen?: (card: CatalogCard) => void;
 }) {
@@ -316,13 +316,14 @@ export function SubCardProgress({ cards, cardsById, disabled = false, onOpen }: 
   if (!cards.length) return null;
   const accepted = cards.filter(card => card.state === 'done').length;
   const label = t.progress(accepted, cards.length);
-  return <div className="sub-card-progress" role={onOpen ? 'group' : 'img'} title={label} aria-label={label}>
+  return <div className="sub-card-progress" role={onOpen ? 'group' : 'img'} title={label} aria-label={label} style={{ '--sub-card-steps': cards.length } as CSSProperties}>
     {cards.map(card => {
       const state = subCardVisualState(card, cardsById);
       const stepLabel = `${card.title} · ${subCardStateLabel(state, lang)}`;
-      if (onOpen) return <button key={card.id} type="button" className="sub-card-progress-segment" data-state={state} disabled={disabled}
+      const style = { '--sub-card-weight': subCardWeight(card) } as CSSProperties;
+      if (onOpen) return <button key={card.id} type="button" className="sub-card-progress-segment" data-state={state} style={style} disabled={disabled}
         title={stepLabel} aria-label={t.openSubCard(stepLabel)} onClick={() => onOpen(card)} />;
-      return <span key={card.id} className="sub-card-progress-segment" data-state={state} title={stepLabel} aria-hidden="true" />;
+      return <span key={card.id} className="sub-card-progress-segment" data-state={state} style={style} title={stepLabel} aria-hidden="true" />;
     })}
   </div>;
 }

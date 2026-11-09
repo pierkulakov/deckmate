@@ -44,6 +44,20 @@ it('keeps the existing Archive mark for archived cards and no lifecycle mark on 
   expect(renderTile()).not.toContain('card-trash-indicator');
 });
 
+it('sizes each Hero progress step by its Sub Card weight, the same weight as the effort total', () => {
+  const base = { path: 'cards/tile.md', version: null, owner: null, markdown: '', sourceHash: 'hash', range: null, deckId: 'deck', trackIds: [] };
+  const hero: CatalogCard = { ...base, id: 'card:hero', kind: 'hero', title: 'Lantern', state: 'not-started', parentId: null };
+  const child = (id: string, effort: number | null, state: CatalogCard['state']): CatalogCard =>
+    ({ ...base, id, kind: 'task', title: id, state, effort, parentId: hero.id });
+  const children = [child('card:a', 5, 'done'), child('card:b', null, 'started'), child('card:c', 0, 'not-started')];
+  const noop = () => {};
+  const html = renderToStaticMarkup(<CatalogCardTile card={hero} lookups={buildCatalogLookups([hero, ...children])} members={[]}
+    selected={false} checked={false} selectionActive={false} disabled={false} onOpen={noop} onToggle={noop} onFamilyOpen={noop} />);
+  const weights = [...html.matchAll(/class="sub-card-progress-segment" data-state="(\w+)" style="--sub-card-weight:([\d.]+)"/g)].map(match => `${match[1]}:${match[2]}`);
+  expect(weights).toEqual(['accepted:5', 'working:1', 'planned:0']);
+  expect(html).toContain('title="Effort: own and Sub Cards — 6">6</strong>');
+});
+
 it('puts only the type icon and question count around the Doc owner, retaining accessible labels', () => {
   const html = renderTile({ kind: 'doc', state: null, openQuestions: [{ text: 'Question?', taskRef: null }] });
   const identity = html.slice(html.indexOf('<div class="deck-card-identity">'), html.indexOf('<span class="catalog-card-progress">'));

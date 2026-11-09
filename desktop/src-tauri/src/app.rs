@@ -3,8 +3,8 @@ use crate::{
     menu,
     paths::{self, Programs},
     server::{self, Failure, Server},
-    settings::Settings,
-    texts, window,
+    settings::{PendingUpdate, Settings},
+    texts, updater, whats_new, window,
 };
 use serde_json::{json, Value};
 use std::{
@@ -49,6 +49,8 @@ pub struct Shell {
     pub board_script: Mutex<Option<String>>,
     pub loading: Mutex<Option<Loading>>,
     pub webview_handlers: tokio::sync::OnceCell<Result<(), String>>,
+    pub updates: updater::State,
+    pub whats_new: whats_new::State,
 }
 
 pub fn state(app: &AppHandle) -> Arc<Shell> {
@@ -80,6 +82,8 @@ impl Shell {
             board_script: Mutex::new(None),
             loading: Mutex::new(None),
             webview_handlers: tokio::sync::OnceCell::new(),
+            updates: updater::State::default(),
+            whats_new: whats_new::State::default(),
         })
     }
 
@@ -188,9 +192,12 @@ async fn launcher_locked(app: &AppHandle, shell: &Shell, status: Option<Value>) 
 
 pub async fn show_launcher(app: &AppHandle, status: Option<Value>) {
     let shell = state(app);
+    if shell.closing.load(Ordering::SeqCst) {
+        return;
+    }
     let launch = shell.next_launch();
     let _guard = shell.lifecycle.lock().await;
-    if shell.replaced(launch) {
+    if shell.replaced(launch) || shell.closing.load(Ordering::SeqCst) {
         return;
     }
     launcher_locked(app, &shell, status).await;
@@ -202,6 +209,9 @@ fn error_status(folder: &str, failure: &Failure) -> Value {
 
 pub async fn open_project(app: &AppHandle, folder: String) -> Result<(), Failure> {
     let shell = state(app);
+    if shell.closing.load(Ordering::SeqCst) {
+        return Err(shell.failure("closed", "closed"));
+    }
     let folder =
         paths::resolve(&folder).map_err(|error| Failure::new("invalid-path", error.to_string()))?;
     if !Path::new(&folder).is_dir() {
@@ -328,6 +338,9 @@ fn watch_exit(app: AppHandle, process: Server, launch: u64, folder: String) {
 
 pub async fn create_project(app: &AppHandle, options: Value) -> Result<(), Failure> {
     let shell = state(app);
+    if shell.closing.load(Ordering::SeqCst) {
+        return Err(shell.failure("closed", "closed"));
+    }
     let folder = shell.check_folder(&options["folder"])?;
     match std::fs::read_dir(&folder) {
         Ok(mut entries) => match entries.next() {
@@ -403,6 +416,84 @@ pub fn request_quit(app: &AppHandle) {
     });
 }
 
+pub async fn install_update(
+    app: &AppHandle,
+    ready: Arc<updater::ReadyUpdate>,
+) -> Result<(), String> {
+    let shell = state(app);
+    if !updater::enabled() || updater::portable().map_err(|error| error.to_string())? {
+        return Err(texts::format(
+            &shell.language(),
+            "portableUpdates",
+            "version",
+            &ready.update.version,
+        ));
+    }
+    if shell.closing.swap(true, Ordering::SeqCst) {
+        return Ok(());
+    }
+    if let Some(window) = app.get_webview_window("main") {
+        window::capture_bounds(&window);
+    }
+    shell.bounds_generation.fetch_add(1, Ordering::SeqCst);
+    shell.save();
+    let launch = shell.next_launch();
+    let _guard = shell.lifecycle.lock().await;
+    let last = shell.settings.lock().unwrap().last_project.clone();
+    shell.log.write(format!(
+        "updater stopping project before installing {}",
+        ready.update.version
+    ));
+    shell.stop().await;
+    shell.log.write("updater project stopped");
+    let saved = {
+        let mut settings = shell.settings.lock().unwrap();
+        settings.updates.pending = Some(PendingUpdate {
+            version: ready.update.version.clone(),
+            from: app.package_info().version.to_string(),
+            extra: Default::default(),
+        });
+        settings
+            .save_for_install(&shell.directory)
+            .map_err(|error| error.to_string())
+    };
+    let result = match saved {
+        Ok(()) => {
+            shell.log.write(format!(
+                "updater pending saved; installing {}",
+                ready.update.version
+            ));
+            // 2026-11-09: Windows exits inside install, bypassing request_quit and Rust destructors.
+            tauri::async_runtime::spawn_blocking(move || ready.update.install(&ready.bytes))
+                .await
+                .map_err(|error| error.to_string())
+                .and_then(|result| result.map_err(|error| error.to_string()))
+        }
+        Err(error) => Err(error),
+    };
+    if result.is_ok() {
+        shell.quit_ready.store(true, Ordering::SeqCst);
+        app.exit(0);
+        return result;
+    }
+    shell.settings.lock().unwrap().updates.pending = None;
+    shell.save();
+    shell
+        .log
+        .write("updater install returned an error; pending cleared, restoring project");
+    if let Some(last) = last {
+        if let Err(error) = start_project(app, &shell, &last, launch).await {
+            shell.log.write(format!(
+                "updater project recovery failed: {}",
+                error.message
+            ));
+            launcher_locked(app, &shell, Some(error_status(&last, &error))).await;
+        }
+    }
+    shell.closing.store(false, Ordering::SeqCst);
+    result
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -453,6 +544,8 @@ mod tests {
             board_script: Mutex::new(None),
             loading: Mutex::new(None),
             webview_handlers: tokio::sync::OnceCell::new(),
+            updates: updater::State::default(),
+            whats_new: whats_new::State::default(),
         }
     }
 

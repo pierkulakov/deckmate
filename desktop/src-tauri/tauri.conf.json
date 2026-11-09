@@ -9,8 +9,16 @@
   "app": {
     "windows": [],
     "security": {
-      "capabilities": ["launcher", "board"],
+      "capabilities": ["launcher", "board", "whats-new"],
       "csp": "default-src 'self'; connect-src 'self' ipc: http://ipc.localhost; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'"
+    }
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDAzRjcxQjBDOUJCQUZGNzAKUldSdy83cWJEQnYzQXlIRnZuNnBEZEVKREpyTkZpbUxrUlBibVhKQ2RFYzgrLzNZKzFFcWppa2sK",
+      "endpoints": ["https://github.com/pierkulakov/deckmate/releases/latest/download/latest.json"],
+      "windows": { "installMode": "passive" },
+      "requireSignedVersion": true
     }
   },
   "bundle": {

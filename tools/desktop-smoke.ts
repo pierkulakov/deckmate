@@ -311,7 +311,10 @@ async function main(): Promise<number> {
     shell.kill();
     await poll(async () => serverProcesses(needles).length === 0,
       'the Job Object to reap the server after killing the shell', 15000);
-    const saved = JSON.parse(readFileSync(path.join(settings, 'desktop.json'), 'utf8')) as { recent?: { path: string }[] };
+    const saved = JSON.parse(readFileSync(path.join(settings, 'desktop.json'), 'utf8')) as {
+      recent?: { path: string }[];
+      updates?: { autoCheck: boolean; lastCheck: string | null; skippedVersion: string | null; pending: unknown };
+    };
     const recentPaths = (saved.recent ?? []).map(entry => norm(String(entry.path)));
     for (const project of [demo, created]) {
       if (!recentPaths.includes(norm(project))) {
@@ -319,6 +322,19 @@ async function main(): Promise<number> {
       }
     }
     pass('f', `createProject opened new-project; killing the shell reaped the server (Job Object); desktop.json lists ${saved.recent!.length} projects`);
+
+    // 2026-11-09: debug smoke must exercise the new settings without contacting the update service.
+    currentStep = 'updates';
+    const updates = saved.updates;
+    if (!updates || updates.autoCheck !== true || updates.lastCheck !== null
+      || updates.skippedVersion !== null || updates.pending !== null) {
+      throw new SmokeFailure(`unexpected update settings in debug: ${JSON.stringify(updates)}`);
+    }
+    const log = readFileSync(path.join(settings, 'server.log'), 'utf8');
+    if (!log.includes('updater disabled in debug/self-test mode') || log.includes('updater checking')) {
+      throw new SmokeFailure('debug shell did not keep update checks disabled');
+    }
+    pass('updates', 'update defaults persisted; debug updater stayed disabled');
 
     pass('smoke', 'all steps passed');
     return 0;

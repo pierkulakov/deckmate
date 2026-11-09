@@ -1,6 +1,10 @@
-use crate::{app, bridge, paths, texts::text, window};
+use crate::{
+    app, bridge, paths,
+    texts::{self, text},
+    updater, whats_new, window,
+};
 use tauri::{
-    menu::{Menu, MenuEvent, MenuItem, PredefinedMenuItem, Submenu},
+    menu::{CheckMenuItem, Menu, MenuEvent, MenuItem, PredefinedMenuItem, Submenu},
     AppHandle, Manager,
 };
 use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
@@ -87,11 +91,38 @@ fn build(app: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
         text(lang, "help"),
         true,
         &[
+            &item(
+                "checkUpdates",
+                updater::enabled() && !shell.updates.busy(),
+                None,
+            )?,
+            &CheckMenuItem::with_id(
+                app,
+                "autoCheckUpdates",
+                text(lang, "autoCheckUpdates"),
+                true,
+                settings.updates.auto_check,
+                None::<&str>,
+            )?,
+            &item("whatsNew", true, None)?,
+            &separator()?,
             &item("openLogs", true, None)?,
             &separator()?,
             &item("about", true, None)?,
         ],
     )?;
+    if let Some(version) = shell.updates.ready_version() {
+        help.insert(
+            &MenuItem::with_id(
+                app,
+                "installPending",
+                texts::format(lang, "installPending", "version", version),
+                !shell.updates.busy(),
+                None::<&str>,
+            )?,
+            1,
+        )?;
+    }
     Menu::with_items(app, &[&file, &edit, &view, &help])
 }
 
@@ -134,6 +165,7 @@ pub fn handle(app: &AppHandle, event: MenuEvent) {
     let window = app.get_webview_window("main");
     match id {
         "quit" => app::request_quit(app),
+        "autoCheckUpdates" => updater::toggle_auto_check(app),
         "zoomIn" => window::change_zoom(app, 0.1),
         "zoomOut" => window::change_zoom(app, -0.1),
         "actualSize" => window::set_zoom(app, 1.0),
@@ -209,6 +241,9 @@ pub fn handle(app: &AppHandle, event: MenuEvent) {
             let id = id.to_owned();
             tauri::async_runtime::spawn(async move {
                 match id.as_str() {
+                    "checkUpdates" => updater::check(&app, true).await,
+                    "installPending" => updater::install_ready(&app).await,
+                    "whatsNew" => whats_new::open(&app, None).await,
                     "openFolder" => {
                         if let Some(folder) = bridge::choose_folder(&app).await {
                             open(&app, folder).await;

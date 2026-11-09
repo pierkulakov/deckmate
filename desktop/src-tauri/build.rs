@@ -21,6 +21,7 @@ fn main() {
             "board_recent_projects",
             "board_switch_project",
             "board_show_start_screen",
+            "whats_new_get",
         ]),
     ))
     .expect("build Tauri shell");

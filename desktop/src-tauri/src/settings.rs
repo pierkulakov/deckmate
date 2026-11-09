@@ -32,6 +32,63 @@ pub struct Bounds {
     pub height: u32,
 }
 
+#[derive(Clone, Debug, Serialize, PartialEq)]
+pub struct PendingUpdate {
+    pub version: String,
+    pub from: String,
+    #[serde(flatten)]
+    pub extra: Map<String, Value>,
+}
+
+#[derive(Clone, Debug, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct Updates {
+    pub auto_check: bool,
+    pub last_check: Option<String>,
+    pub skipped_version: Option<String>,
+    pub pending: Option<PendingUpdate>,
+    #[serde(flatten)]
+    pub extra: Map<String, Value>,
+}
+
+fn nonempty_string(value: &Value) -> Option<String> {
+    value
+        .as_str()
+        .filter(|value| !value.trim().is_empty())
+        .map(str::to_owned)
+}
+
+impl Updates {
+    fn normalize(value: &Value) -> Self {
+        let mut extra = value.as_object().cloned().unwrap_or_default();
+        for key in ["autoCheck", "lastCheck", "skippedVersion", "pending"] {
+            extra.remove(key);
+        }
+        let pending = value["pending"].as_object().and_then(|object| {
+            let version = nonempty_string(&value["pending"]["version"])?;
+            let from = nonempty_string(&value["pending"]["from"])?;
+            let mut extra = object.clone();
+            extra.remove("version");
+            extra.remove("from");
+            Some(PendingUpdate {
+                version,
+                from,
+                extra,
+            })
+        });
+        Self {
+            auto_check: value["autoCheck"].as_bool().unwrap_or(true),
+            last_check: value["lastCheck"]
+                .as_str()
+                .filter(|date| DateTime::parse_from_rfc3339(date).is_ok())
+                .map(str::to_owned),
+            skipped_version: nonempty_string(&value["skippedVersion"]),
+            pending,
+            extra,
+        }
+    }
+}
+
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Settings {
@@ -41,6 +98,7 @@ pub struct Settings {
     pub zoom_factor: f64,
     pub window_bounds: Option<Bounds>,
     pub window_maximized: bool,
+    pub updates: Updates,
     #[serde(flatten)]
     pub extra: Map<String, Value>,
 }
@@ -123,6 +181,7 @@ impl Settings {
             "zoomFactor",
             "windowBounds",
             "windowMaximized",
+            "updates",
         ] {
             extra.remove(key);
         }
@@ -140,6 +199,7 @@ impl Settings {
             zoom_factor: clamp_zoom(value["zoomFactor"].as_f64().unwrap_or(1.0)),
             window_bounds: valid_bounds(&value["windowBounds"]),
             window_maximized: value["windowMaximized"] == true,
+            updates: Updates::normalize(&value["updates"]),
             extra,
         }
     }
@@ -159,9 +219,7 @@ impl Settings {
 
     pub fn save(&self, directory: &Path) -> io::Result<()> {
         // 2026-11-09: automatic bounds saves must not overwrite a rejected settings file.
-        if fs::metadata(directory.join("desktop.json"))
-            .is_ok_and(|stat| stat.len() > MAX_SETTINGS_BYTES)
-        {
+        if oversized_settings(directory) {
             return Ok(());
         }
         fs::create_dir_all(directory)?;
@@ -179,6 +237,14 @@ impl Settings {
             let _ = fs::remove_file(&temporary);
         }
         result
+    }
+
+    pub fn save_for_install(&self, directory: &Path) -> io::Result<()> {
+        // 2026-11-09: an installer must not launch without a durable pending marker.
+        if oversized_settings(directory) {
+            return Err(io::ErrorKind::FileTooLarge.into());
+        }
+        self.save(directory)
     }
 
     pub fn remember(&mut self, folder: &str) {
@@ -205,6 +271,10 @@ impl Settings {
             self.last_project = None;
         }
     }
+}
+
+fn oversized_settings(directory: &Path) -> bool {
+    fs::metadata(directory.join("desktop.json")).is_ok_and(|stat| stat.len() > MAX_SETTINGS_BYTES)
 }
 
 fn read_settings(path: &Path) -> io::Result<String> {
@@ -255,6 +325,46 @@ mod tests {
         assert_eq!(
             serde_json::to_value(Settings::normalize(serialized.clone(), "en")).unwrap(),
             serialized
+        );
+    }
+
+    #[test]
+    fn updates_normalize_defaults_and_invalid_fields() {
+        for value in [Value::Null, json!([]), json!(false), json!({})] {
+            let updates = Settings::normalize(json!({"updates": value}), "en").updates;
+            assert!(updates.auto_check);
+            assert!(updates.last_check.is_none());
+            assert!(updates.skipped_version.is_none());
+            assert!(updates.pending.is_none());
+        }
+        let updates = Settings::normalize(
+            json!({"updates": {
+                "autoCheck": "false", "lastCheck": "yesterday", "skippedVersion": " ",
+                "pending": {"version": "1.0.0", "from": 42}
+            }}),
+            "en",
+        )
+        .updates;
+        assert!(updates.auto_check);
+        assert!(updates.last_check.is_none());
+        assert!(updates.skipped_version.is_none());
+        assert!(updates.pending.is_none());
+    }
+
+    #[test]
+    fn updates_round_trip_preserves_unknown_fields() {
+        let value = json!({"updates": {
+            "autoCheck": false, "lastCheck": "2026-11-09T12:00:00Z",
+            "skippedVersion": "0.6.0", "future": {"keep": true},
+            "pending": {"version": "0.7.0", "from": "0.5.0", "future": [1, 2]}
+        }});
+        let settings = Settings::normalize(value.clone(), "en");
+        assert!(!settings.updates.auto_check);
+        let serialized = serde_json::to_value(&settings).unwrap();
+        assert_eq!(serialized["updates"], value["updates"]);
+        assert_eq!(
+            Settings::normalize(serialized, "en").updates,
+            settings.updates
         );
     }
 

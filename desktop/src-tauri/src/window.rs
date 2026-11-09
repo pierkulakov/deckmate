@@ -24,14 +24,20 @@ pub fn launcher_url() -> Url {
 }
 
 pub fn is_launcher_url(url: &Url) -> bool {
+    is_app_page_url(url, "index.html")
+}
+
+pub fn is_app_page_url(url: &Url, page: &str) -> bool {
     let mut url = url.clone();
     url.set_query(None);
     url.set_fragment(None);
     // 2026-11-09: Tauri initially serves App("index.html") at the root URL.
-    if url.path() == "/" {
+    if page == "index.html" && url.path() == "/" {
         url.set_path("/index.html");
     }
-    url == launcher_url()
+    let mut expected = launcher_url();
+    expected.set_path(page);
+    url == expected
 }
 
 pub fn is_server_url(shell: &Shell, url: &Url) -> bool {
@@ -47,7 +53,7 @@ pub fn is_server_url(shell: &Shell, url: &Url) -> bool {
 
 pub fn open_external(app: &AppHandle, url: &Url) {
     if matches!(url.scheme(), "http" | "https")
-        && !is_launcher_url(url)
+        && url.origin() != launcher_url().origin()
         && !is_server_url(&app::state(app), url)
         && !record_external(url)
     {

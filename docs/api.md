@@ -33,6 +33,7 @@ See [catalog.md](catalog.md#two-language-file-format--2026-11-05) for byte-prese
 - `DECKMATE_DATA` — the project folder. Default `direct` mode edits it in place without requiring git; use git commits for recovery.
 - `DECKMATE_WRITE` enables `sandbox` mode: a separate worktree outside the project, on branch `deckmate/sandbox` or `freetion/sandbox`. Only this copy is writable; the original stays read-only.
 - `--read-only` or `DECKMATE_READ_ONLY=1` selects `read-only` mode and overrides `DECKMATE_WRITE`.
+- `DECKMATE_SHUTDOWN_STDIN=1` is set by Deckmate Desktop only: the server stops on a `{"type":"shutdown"}` line on stdin or when stdin ends (the shell died); without it stdin is not read.
 - Every endpoint takes `source=live|sandbox` (query parameter or body field, default `sandbox`). The internal name `sandbox` means the writable source: the project itself in `direct`, the separate copy in `sandbox`. Writes to `source=live` are rejected.
 
 ## Token and actor

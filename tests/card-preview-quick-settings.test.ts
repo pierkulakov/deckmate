@@ -7,7 +7,7 @@ import path from 'node:path';
 import { createServer, type ViteDevServer } from 'vite';
 import tailwindcss from '@tailwindcss/vite';
 import { freePort } from './free-port.ts';
-import { waitForPageTarget } from './browser-target.ts';
+import { closeBrowserGently, waitForPageTarget } from './browser-target.ts';
 
 const browserPath = [process.env.DECKMATE_BROWSER, process.env.BROWSER,
   'C:/Program Files/Google/Chrome/Application/chrome.exe', 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe',
@@ -141,7 +141,7 @@ describe.skipIf(!browserPath)('CardPreview Quick Settings (browser)', () => {
 
   afterAll(async () => {
     if (socket?.readyState === WebSocket.OPEN) {
-      await send('Browser.close').catch(() => {});
+      await closeBrowserGently(send);
       socket.close();
     }
     if (browser?.pid && browser.exitCode === null) {

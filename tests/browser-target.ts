@@ -18,3 +18,12 @@ export async function waitForPageTarget(port: number, browser: ChildProcess, tim
   }
   throw new Error(`Browser did not start within ${timeoutMs / 1000} s on port ${port}`);
 }
+
+// 2026-11-09: Browser.close can stay unanswered when the browser drops the socket first; an unbounded
+// await then held afterAll until its 20 s limit on a Windows CI runner. The caller kills the process next.
+export async function closeBrowserGently(send: (method: string) => Promise<unknown>, timeoutMs = 2000): Promise<void> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<void>(resolve => { timer = setTimeout(resolve, timeoutMs); });
+  await Promise.race([send('Browser.close').then(() => undefined, () => undefined), timeout]);
+  clearTimeout(timer);
+}

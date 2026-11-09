@@ -14,7 +14,7 @@ import { splitJourneyStepLink } from '../client/components/journey-step-link.ts'
 import { journeyStepTitle } from '../client/components/journey-step-title.ts';
 import type { CatalogCard, CatalogJourneyStep } from '../src/catalog-contracts.ts';
 import { freePort } from './free-port.ts';
-import { waitForPageTarget } from './browser-target.ts';
+import { closeBrowserGently, waitForPageTarget } from './browser-target.ts';
 
 vi.hoisted(() => {
   vi.stubGlobal('document', { documentElement: { lang: '' }, cookie: '' });
@@ -283,7 +283,7 @@ describe.skipIf(!browserPath)('Journey navigation (headless CDP)', () => {
   }, 90000);
 
   afterAll(async () => {
-    if (socket?.readyState === WebSocket.OPEN) { await send('Browser.close').catch(() => {}); socket.close(); }
+    if (socket?.readyState === WebSocket.OPEN) { await closeBrowserGently(send); socket.close(); }
     if (browser?.pid && browser.exitCode === null) {
       const command = process.platform === 'win32' ? spawn('taskkill', ['/T', '/F', '/PID', String(browser.pid)], { stdio: 'ignore' }) : browser;
       if (process.platform !== 'win32') browser.kill();

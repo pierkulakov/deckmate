@@ -298,7 +298,11 @@ const text = defineText({
   trackProgress: (done: number, total: number) => `${number(done)} of ${number(total)} ${new Intl.PluralRules(locale('en')).select(total) === 'one' ? 'task' : 'tasks'} done · a track connects cards across decks`,
   cardResults: (scope: string, shown: number, total: number) => `${scope} · ${number(shown)} of ${number(total)} ${new Intl.PluralRules(locale('en')).select(total) === 'one' ? 'card' : 'cards'}`,
   sourceWarnings: (count: number) => `Source warnings: ${number(count)}`,
-  sources: (documents: number, tasks: number, heroes: number, docs: number) => `${number(documents)} Markdown ${new Intl.PluralRules(locale('en')).select(documents) === 'one' ? 'document' : 'documents'} · ${number(tasks)} Task · ${number(heroes)} Hero · ${number(docs)} Doc Cards`,
+  // 2026-11-09: the inventory under the project name sets each number apart in Geist Mono, so the nouns are separate keys.
+  sourceDocuments: (count: number) => `Markdown ${new Intl.PluralRules(locale('en')).select(count) === 'one' ? 'document' : 'documents'}`,
+  sourceTasks: 'Task',
+  sourceHeroes: 'Hero',
+  sourceDocs: 'Doc Cards',
   transferCount: (count: number) => count === 1 ? 'Move the card to' : `Move ${number(count)} cards to`,
   defaultDeckType: (kind: string) => `Default deck type: ${kind}`,
   deleteDeckConfirm: (title: string, count: number) => {
@@ -536,13 +540,14 @@ const text = defineText({
   cardResults: (scope: string, shown: number, total: number) => `${scope} · ${number(shown)} из ${number(total)} карточек`,
   sourceWarnings: (count: number) => `Замечания к источникам: ${number(count)}`,
   // 2026-11-06: Russian counts need the plural form, not a fixed genitive ("1 Markdown-документ", not "1 …документов").
-  sources: (documents: number, tasks: number, heroes: number, docs: number) => {
-    const rule = new Intl.PluralRules(locale('ru')).select(documents);
-    let form = 'документов';
-    if (rule === 'one') form = 'документ';
-    else if (rule === 'few') form = 'документа';
-    return `${number(documents)} Markdown-${form} · ${number(tasks)} Task · ${number(heroes)} Hero · ${number(docs)} Doc Cards`;
+  sourceDocuments: (count: number) => {
+    const rule = new Intl.PluralRules(locale('ru')).select(count);
+    if (rule === 'one') return 'Markdown-документ';
+    return rule === 'few' ? 'Markdown-документа' : 'Markdown-документов';
   },
+  sourceTasks: 'Task',
+  sourceHeroes: 'Hero',
+  sourceDocs: 'Doc Cards',
   transferCount: (count: number) => count === 1 ? 'Перенести карточку в' : `Перенести карточки (${number(count)}) в`,
   defaultDeckType: (kind: string) => `Тип колоды по умолчанию: ${kind}`,
   deleteDeckConfirm: (title: string, count: number) => {
@@ -628,6 +633,17 @@ export function DeckHeaderHint({ label, keys, note, side = 'bottom', children }:
       </Tooltip.Content>
     </Tooltip.Portal>
   </Tooltip.Root>;
+}
+
+/** 2026-11-09: the project's file inventory reads as a caption under its name on the home screen, replacing the footer line
+ * under the covers (the author's choice); the same line opens the source warnings, which list under the header. */
+function CatalogSourceLine({ documents, kinds, warnings, warningsOpen, onToggleWarnings }: { documents: number; kinds: Record<CardKind, number>; warnings: number; warningsOpen: boolean; onToggleWarnings: () => void }) {
+  const t = useText(text);
+  const parts: [number, string][] = [[documents, t.sourceDocuments(documents)], [kinds.task, t.sourceTasks], [kinds.hero, t.sourceHeroes], [kinds.doc, t.sourceDocs]];
+  return <p className="catalog-source">
+    {parts.map(([count, label], index) => <Fragment key={index}>{index > 0 && <span className="dot-separator">·</span>}<span className="catalog-source-part"><span className="catalog-source-count">{number(count)}</span> {label}</span></Fragment>)}
+    {warnings > 0 && <><span className="dot-separator">·</span><button type="button" className="catalog-source-warnings" aria-expanded={warningsOpen} aria-controls="catalog-source-warnings" onClick={onToggleWarnings}>{t.sourceWarnings(warnings)}</button></>}
+  </p>;
 }
 
 function DeckCounts({ counts }: { counts: DeckCardCounts }) {
@@ -1332,6 +1348,7 @@ export function Deck({ snapshot, refreshKey, onEditing, onImportCsv, onStartFrom
   const [collapsedSpaces, setCollapsedSpaces] = useState<Set<string>>(new Set());
   const [search, setSearch] = useState(initialQuery.get('q') ?? '');
   const [includeShelved, setIncludeShelved] = useState(initialQuery.get('archive') === '1');
+  const [sourceWarningsOpen, setSourceWarningsOpen] = useState(false);
   const [laneSearch, setLaneSearch] = useState(() => readLaneSearch(initialQuery));
   const resultsRoot = useRef<HTMLDivElement | null>(null);
   const hoveredCardActions = useRef<DeckHoveredCardActionsHandle | null>(null);
@@ -2338,7 +2355,9 @@ export function Deck({ snapshot, refreshKey, onEditing, onImportCsv, onStartFrom
         </DeckHeaderHint>
       </div>
       </Tooltip.Provider>}
-    </header> : <header className={'deck-heading catalog-heading' + (!showCards ? ' deck-gallery-header' : '')}>{!showCards ? <div className="deck-gallery-project">{writable && <Button variant="outline" size="icon" className="deck-gallery-add" onClick={event => { creationOpener.current = event.currentTarget; setCreation({ kind: 'space' }); }} disabled={navigationLocked || !catalog} aria-label={t.labelCreateSpace} title={t.labelCreateSpace}><Plus size={22} /></Button>}<h1>{snapshot.projectName}</h1></div> : <div><h1>{title}</h1><p>{snapshot.projectName}{catalog && <><span className="dot-separator">·</span>{t.cardsCountLong(scopedCards.length)}</>}</p></div>}<div className="catalog-heading-actions">{loading && catalog && <span className="catalog-updating" role="status"><LoaderCircle size={14} className="spin" />{t.updating}</span>}
+    </header> : <header className={'deck-heading catalog-heading' + (!showCards ? ' deck-gallery-header' : '')}>{!showCards ? <div className="deck-gallery-project">{writable && <Button variant="outline" size="icon" className="deck-gallery-add" onClick={event => { creationOpener.current = event.currentTarget; setCreation({ kind: 'space' }); }} disabled={navigationLocked || !catalog} aria-label={t.labelCreateSpace} title={t.labelCreateSpace}><Plus size={22} /></Button>}<div className="deck-gallery-title"><h1>{snapshot.projectName}</h1>
+      {/* 2026-11-06: a first-run folder has nothing to count; the template prompt below already says what to do. */}
+      {catalog && (catalog.documents.length > 0 || catalog.cards.length > 0) && <CatalogSourceLine documents={catalog.documents.length} kinds={lookups.kindCounts} warnings={catalog.warnings.length} warningsOpen={sourceWarningsOpen} onToggleWarnings={() => setSourceWarningsOpen(open => !open)} />}</div></div> :<div><h1>{title}</h1><p>{snapshot.projectName}{catalog && <><span className="dot-separator">·</span>{t.cardsCountLong(scopedCards.length)}</>}</p></div>}<div className="catalog-heading-actions">{loading && catalog && <span className="catalog-updating" role="status"><LoaderCircle size={14} className="spin" />{t.updating}</span>}
       {!showCards && catalog && <div className="deck-gallery-search"><label className="catalog-search"><Search size={20} /><span className="visually-hidden">{t.deckSearchLabel}</span><input type="search" value={deckSearch} disabled={navigationLocked} onChange={event => setDeckSearch(event.target.value)} placeholder={t.searchDecks} />{deckSearch && <button type="button" disabled={navigationLocked} onClick={() => setDeckSearch('')} aria-label={t.clearDeckSearch} title={t.clearSearch}><X size={14} /></button>}</label><span role="status" className="visually-hidden">{t.deckResults(visibleDecks.length, catalog.decks.length)}</span></div>}
       {!showCards && browserNavigation}</div></header>}
 
@@ -2347,6 +2366,7 @@ export function Deck({ snapshot, refreshKey, onEditing, onImportCsv, onStartFrom
     {!catalog && <p className="catalog-empty" role="status">{loading ? t.loadingCatalog : t.catalogNotLoaded}</p>}
     {catalog && <>
       {!selectedDeck && showCards && browserNavigation}
+      {!showCards && catalog.warnings.length > 0 && <ul id="catalog-source-warnings" className="catalog-warnings" aria-label={t.sourceWarnings(catalog.warnings.length)} hidden={!sourceWarningsOpen}>{catalog.warnings.map((item, index) => <li key={index}>{item}</li>)}</ul>}
 
       {!showCards && catalog.decks.length === 0 && onStartFromTemplate && <section className="project-template-start"><div><h2>{t.startTemplateTitle}</h2><p>{t.startTemplateHelp}</p></div><Button disabled={navigationLocked} onClick={onStartFromTemplate}><Layers size={16} />{t.startTemplate}</Button></section>}
       {!showCards && <ProjectPulseStrip source={snapshot.source} refreshKey={`${refreshKey}:${catalog.indexedAt}`} members={catalog.members ?? []} disabled={navigationLocked}
@@ -2410,10 +2430,7 @@ export function Deck({ snapshot, refreshKey, onEditing, onImportCsv, onStartFrom
         </div>
         {!showFamily && <DeckHoveredCardActions ref={hoveredCardActions} key={selectionKey} root={resultsRoot} catalog={catalog} lookups={lookups} snapshot={snapshot} writable={writable} locked={navigationLocked || Boolean(cardTransfer)} onEdit={edit} onSelect={selection.toggle} />}
       </div>{cardTransfer && cardDragPreview && <CardGroupDropPanel groups={dragGroups} baseline={cardTransfer} laneOf={laneOfGroup} />}</div>}
-      {catalog.warnings.length > 0 && <details className="catalog-warnings"><summary>{t.sourceWarnings(catalog.warnings.length)}</summary><ul>{catalog.warnings.map((item, index) => <li key={index}>{item}</li>)}</ul></details>}
       {attachmentHeroId && lookups.cardById.get(attachmentHeroId) && <AttachSubCards key={attachmentHeroId} hero={lookups.cardById.get(attachmentHeroId)!} catalog={catalog} writable={writable} pending={pending} onAttach={attachCards} onClose={() => setAttachmentHeroId(null)} />}
-      {/* 2026-11-06: a first-run folder has nothing to count; the template prompt above already says what to do. */}
-      {(catalog.documents.length > 0 || catalog.cards.length > 0) && <footer className="catalog-source">{t.sources(catalog.documents.length, lookups.kindCounts.task, lookups.kindCounts.hero, lookups.kindCounts.doc)}</footer>}
     </>}
     {cardTransfer && catalog && <CardTransferTargets baseline={cardTransfer} catalog={catalog} source={snapshot.source} />}
     {cardTransfer && cardDragPreview && catalog && <CardDragTabs baseline={cardTransfer} catalog={catalog} memberLabel={currentMember?.label} />}

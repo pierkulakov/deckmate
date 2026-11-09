@@ -326,10 +326,6 @@ kbd { display: inline-flex; align-items: center; justify-content: center; min-wi
 .catalog-error > button { flex-shrink: 0; }
 .catalog-saved-warning { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
 .catalog-saved-warning > span { flex: 1 1 250px; }
-.catalog-warnings { margin-top: 28px; color: var(--warning-ink); font-size: 12px; line-height: 1.6; }
-.catalog-warnings summary { cursor: pointer; }
-.catalog-warnings li { overflow-wrap: anywhere; }
-.catalog-source { margin-top: 32px; padding-top: 18px; border-top: 1px solid var(--line); color: var(--muted); font-size: 11px; line-height: 1.6; }
 .dark .catalog-field input:disabled, .dark .catalog-field select:disabled, .dark .catalog-field textarea:disabled { color: #9299a7; background: #262b35; opacity: 1; }
 .dark .catalog-field select:hover, .dark .catalog-search:hover, .dark .catalog-track-picker select:hover:not(:disabled), .dark .global-search-field:hover:not(:focus-within) { border-color: #505967; }
 @media (max-width: 760px) { .catalog-heading { gap: 18px; align-items: stretch; } .catalog-heading-actions { justify-content: space-between; } .catalog-search { flex-basis: 100%; } .catalog-space-heading { gap: 5px; } .catalog-space-heading h2 > button { font-size: 13px; gap: 6px; flex-wrap: wrap; } .catalog-space-heading small { font-size: 10px; } .catalog-space-heading > button { flex-shrink: 0; } .catalog-create-form { padding: 16px; } .catalog-create-form fieldset { grid-template-columns: minmax(0, 1fr); } .catalog-error { align-items: start; flex-direction: column; } }
@@ -384,9 +380,8 @@ kbd { display: inline-flex; align-items: center; justify-content: center; min-wi
 .catalog-resize-handle:focus-visible > span { left: 2px; width: 3px; }
 .catalog-view-toggle, .catalog-panel-controls { display: flex; align-items: center; gap: 4px; }
 .catalog-view.is-deck-open { max-width: none; padding: 12px 16px 40px; }
-/* 2026-11-05: in an open deck the columns run down to the footer line, so the divider and the sidebar scroller end on it
-   instead of stopping short; the breathing room moves inside the columns. */
-.catalog-view.is-deck-open > .catalog-source { margin-top: 0; }
+/* 2026-11-05: in an open deck the breathing room below the cards sits inside the columns, so the divider and the sidebar
+   scroller run the full height of the list. */
 .catalog-view.is-deck-open .catalog-content-layout > :is(.catalog-results, .catalog-preview-slot) { padding-bottom: 24px; }
 .catalog-view-toggle { border: 1px solid var(--line); border-radius: 6px; padding: 1px; }
 .catalog-view-toggle button[aria-pressed="true"] { background: var(--accent-soft); color: var(--accent); }

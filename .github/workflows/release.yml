@@ -33,19 +33,18 @@ jobs:
         id: release
         run: |
           node --input-type=module <<'NODE'
-          import { readFileSync, writeFileSync, appendFileSync } from 'node:fs';
+          import { readFileSync, writeFileSync, appendFileSync, existsSync } from 'node:fs';
+          import { pathToFileURL } from 'node:url';
           const { version } = JSON.parse(readFileSync('package.json', 'utf8'));
           if (process.env.GITHUB_REF_NAME !== `v${version}`) {
             throw new Error('The tag must match the version in package.json.');
           }
-          const changelog = readFileSync('CHANGELOG.md', 'utf8');
-          const section = changelog.split(/^## /m).find((entry) => entry.startsWith(`[${version}] - `));
-          if (!section || !section.includes('\n')) {
-            throw new Error(`CHANGELOG.md needs a dated [${version}] release section.`);
+          // release-notes.mjs is the single changelog parser, also used by desktop/scripts/updater-manifest.mjs.
+          const { extractReleaseNotes } = await import(pathToFileURL('desktop/scripts/release-notes.mjs').href);
+          writeFileSync('release-notes.md', `${extractReleaseNotes(readFileSync('CHANGELOG.md', 'utf8'), version)}\n`);
+          if (existsSync('CHANGELOG.ru.md')) {
+            extractReleaseNotes(readFileSync('CHANGELOG.ru.md', 'utf8'), version, 'CHANGELOG.ru.md');
           }
-          const notes = section.slice(section.indexOf('\n') + 1).trim();
-          if (!notes) throw new Error('Release notes must not be empty.');
-          writeFileSync('release-notes.md', `${notes}\n`);
           appendFileSync(process.env.GITHUB_OUTPUT, `version=${version}\n`);
           NODE
       - name: Validate publication access
@@ -199,9 +198,28 @@ jobs:
       - name: Install desktop dependencies
         working-directory: desktop
         run: npm ci
+      - name: Check updater signing secrets
+        # Only the build step receives the secrets below; without them createUpdaterArtifacts
+        # fails deep inside the Tauri build, so empties are caught here first (2026-11-09).
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          foreach ($name in 'TAURI_SIGNING_PRIVATE_KEY', 'TAURI_SIGNING_PRIVATE_KEY_PASSWORD') {
+            if ([string]::IsNullOrEmpty([Environment]::GetEnvironmentVariable($name))) {
+              throw "$name is empty. Set the repository secret before pushing a release tag; without it the updater cannot sign the installer."
+            }
+          }
       - name: Build Windows installer
         working-directory: desktop
-        run: npm run dist
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          # Updater artifacts are CI-only; a local npm run dist stays unsigned (plan, section 2).
+          # tauri-cli keeps every --config and merges them in order over tauri.release.conf.json
+          # (crates/tauri-cli/src/build.rs: Vec<ConfigValue>), so this JSON only adds the flag.
+          npm run dist -- --config '{"bundle":{"createUpdaterArtifacts":true}}'
       - name: Self-test the unpacked release build
         run: |
           $release = 'desktop/src-tauri/target/release'
@@ -256,6 +274,11 @@ jobs:
           # Keep the asset names the Electron releases already used (2026-11-09).
           $installers = @(Get-ChildItem -LiteralPath "$release/bundle/nsis" -Filter '*-setup.exe')
           if ($installers.Count -ne 1) { throw "Expected one NSIS installer in $release/bundle/nsis, found $($installers.Count)." }
+          # createUpdaterArtifacts signs the installer and writes <installer>.exe.sig next to it;
+          # the manifest step needs that signature text (plan, section 2).
+          $signature = "$($installers[0].FullName).sig"
+          if (-not (Test-Path -LiteralPath $signature)) { throw "Missing updater signature: $signature" }
+          Move-Item -LiteralPath $signature -Destination "desktop/release/Deckmate Setup $env:VERSION.exe.sig"
           Move-Item -LiteralPath $installers[0].FullName -Destination "desktop/release/Deckmate Setup $env:VERSION.exe"
           # The portable zip carries exactly the three release outputs, not the Cargo build junk.
           $inputs = @("$release/Deckmate.exe", "$release/node.exe", "$release/deckmate")
@@ -275,6 +298,7 @@ jobs:
             "| Unpacked | $unpackedMb MB | 380 MB |"
           )
       - name: Upload desktop build to GitHub Release
+        id: upload-desktop
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
@@ -286,4 +310,27 @@ jobs:
             if (-not (Test-Path -LiteralPath $file)) { throw "Missing build output: $file" }
           }
           gh release upload "$env:GITHUB_REF_NAME" @files --clobber
+          if ($LASTEXITCODE -ne 0) { throw "gh release upload exited with code $LASTEXITCODE." }
+          # GitHub replaces spaces with dots in asset names (Deckmate.Setup.0.5.0.exe), so the URL
+          # comes from the release API, not from the local file name (plan, section 2).
+          $release = gh api "repos/{owner}/{repo}/releases/tags/$env:GITHUB_REF_NAME" | ConvertFrom-Json
+          if ($LASTEXITCODE -ne 0) { throw "gh api exited with code $LASTEXITCODE." }
+          $assetName = "Deckmate Setup $env:VERSION.exe".Replace(' ', '.')
+          $assets = @($release.assets | Where-Object { $_.name -eq $assetName })
+          if ($assets.Count -ne 1) { throw "Expected one $assetName asset on the release, found $($assets.Count)." }
+          $localSize = (Get-Item -LiteralPath $installer).Length
+          if ($assets[0].size -ne $localSize) { throw "$assetName size mismatch: the release asset has $($assets[0].size) bytes, the local file has $localSize." }
+          Add-Content -Path $env:GITHUB_OUTPUT -Value "installer_url=$($assets[0].browser_download_url)"
+      - name: Build and upload the updater manifest
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          VERSION: ${{ steps.desktop.outputs.version }}
+          INSTALLER_URL: ${{ steps.upload-desktop.outputs.installer_url }}
+        run: |
+          node desktop/scripts/updater-manifest.mjs --version $env:VERSION --url $env:INSTALLER_URL --signature-file "desktop/release/Deckmate Setup $env:VERSION.exe.sig" --out desktop/release/latest.json
+          if ($LASTEXITCODE -ne 0) { throw "updater-manifest exited with code $LASTEXITCODE." }
+          # latest.json goes last: until it is uploaded, /latest/download/latest.json of the new
+          # release answers 404 and clients simply see no update (plan, section 2).
+          gh release upload "$env:GITHUB_REF_NAME" desktop/release/latest.json --clobber
           if ($LASTEXITCODE -ne 0) { throw "gh release upload exited with code $LASTEXITCODE." }

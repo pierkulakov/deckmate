@@ -68,6 +68,12 @@ button.sub-card-progress-segment { cursor: pointer; }
   --metal-deep: color-mix(in srgb, var(--metal-base) 64%, var(--metal-amber));
   --metal-glare-opacity: 1;
 }
+/* 2026-11-09: Doc Cards wear copper with deep brown ink (the author's «Страница»). The ribbon runs at full strength as
+   on a Hero; at its darkest stop the word count still holds 4.6:1. */
+.catalog-card-doc > .deck-card-band {
+  --metal-glare-opacity: 1;
+  --card-metal-ink: var(--doc-ink);
+}
 
 .deck-card > .deck-card-band,
 .deck-card > .card-family-trigger,

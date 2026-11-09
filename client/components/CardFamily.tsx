@@ -4,7 +4,7 @@ import { createPortal } from 'react-dom';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import { DndContext, DragOverlay, KeyboardSensor, PointerSensor, closestCenter, useSensor, useSensors, type CollisionDetection, type DragEndEvent } from '@dnd-kit/core';
 import { SortableContext, arrayMove, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
-import { ArrowDownUp, Check, Crown, FileText, Filter, Gauge, GripVertical, History as HistoryIcon, Layers, Link2, LoaderCircle, LockKeyhole, LockOpen, Plus, Search, X } from 'lucide-react';
+import { ArrowDownUp, Check, Crown, Filter, Gauge, GripVertical, History as HistoryIcon, Layers, Link2, LoaderCircle, LockKeyhole, LockOpen, NotebookText, Plus, Search, X } from 'lucide-react';
 import type { DeckActivityEvent } from '../../src/activity-contracts.ts';
 import type { CatalogCard, CatalogMember, CatalogView } from '../../src/catalog-contracts.ts';
 import { dependencyCycle, openDependencies, waitingCards, type CardHistoryCreated, type SetCardDependenciesEdit } from '../../src/dependency-contracts.ts';
@@ -878,7 +878,7 @@ export function CardFamilyPanel({ hero, card, children, openedId, catalog, disab
       </div>}
     </div>
     {hero && parentActive ? <button type="button" className={'card-family-hero' + (openedId === hero.id ? ' is-current' : '')} data-kind={hero.kind} disabled={interacting} onClick={() => onOpen(hero)} aria-current={openedId === hero.id ? 'true' : undefined}>
-      <span className="card-family-hero-title"><span className="card-family-hero-icon" aria-hidden="true">{hero.kind === 'doc' ? <FileText size={10} /> : <Crown size={10} />}</span><strong><TagTitlePrefix tags={hero.tags} definitions={catalog.projectTags} />{hero.title}</strong></span>
+      <span className="card-family-hero-title"><span className="card-family-hero-icon" aria-hidden="true">{hero.kind === 'doc' ? <NotebookText size={10} /> : <Crown size={10} />}</span><strong><TagTitlePrefix tags={hero.tags} definitions={catalog.projectTags} />{hero.title}</strong></span>
       <CardTags tags={hero.tags} definitions={catalog.projectTags} compact />
       <CardMetrics card={hero} members={catalog.members} compact />
     </button> : <p className="card-family-parent-empty">{currentHasChildren ? t.hasOwnChildren : t.noParentChosen}</p>}
@@ -1066,7 +1066,7 @@ export function CardFamilyPopover({ hero, children: allChildren, disabled, membe
     </button></DropdownMenu.Trigger>
     <DropdownMenu.Portal><DropdownMenu.Content className="card-family-popover" side="right" align="start" sideOffset={6} collisionPadding={12} aria-label={t.subCardsOf(hero.title)}>
       <DropdownMenu.Arrow className="card-family-popover-arrow" width={12} height={7} />
-      <DropdownMenu.Item className="card-family-popover-hero" onSelect={() => select(hero)}>{hero.kind === 'doc' ? <FileText size={15} /> : <Crown size={15} />}<strong><TagTitlePrefix tags={hero.tags} definitions={projectTags} />{hero.title}</strong>{tasks.length > 0 && <progress value={accepted} max={tasks.length} aria-label={t.taskProgress(accepted, tasks.length)} />}<CardTags tags={hero.tags} definitions={projectTags} compact /></DropdownMenu.Item>
+      <DropdownMenu.Item className="card-family-popover-hero" onSelect={() => select(hero)}>{hero.kind === 'doc' ? <NotebookText size={15} /> : <Crown size={15} />}<strong><TagTitlePrefix tags={hero.tags} definitions={projectTags} />{hero.title}</strong>{tasks.length > 0 && <progress value={accepted} max={tasks.length} aria-label={t.taskProgress(accepted, tasks.length)} />}<CardTags tags={hero.tags} definitions={projectTags} compact /></DropdownMenu.Item>
       <DropdownMenu.Label className="card-family-popover-label"><strong>{t.subCardsCount(children.length)}</strong><span>{t.acceptedCount(accepted)}</span></DropdownMenu.Label>
       <div className="card-family-popover-list">{children.map(card => <DropdownMenu.Item key={card.id} className="card-family-popover-row" data-kind={card.kind} data-state={card.state ?? undefined} onSelect={() => select(card)}>
         <strong><TagTitlePrefix tags={card.tags} definitions={projectTags} />{card.title}</strong><span>{card.state === 'done' && <Check size={12} />}{card.state ? stateLabel(card.state, lang) : (card.kind === 'doc' ? t.docCard : kindLabel(card.kind, lang))}</span><CardTags tags={card.tags} definitions={projectTags} compact /><CardMetrics card={card} members={members} />

@@ -6,7 +6,7 @@ import { CardTags } from './CardTags.tsx';
 import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from 'react';
 import * as Dialog from '@radix-ui/react-dialog';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
-import { Archive, ArchiveRestore, Bookmark, CalendarDays, Check, CopyPlus, Crown, Download, FileText, Flag, Gauge, Hand, IterationCw, Layers, LoaderCircle, MoreHorizontal, RotateCcw, Search, Tags, Trash2, UserRound, X } from 'lucide-react';
+import { Archive, ArchiveRestore, Bookmark, CalendarDays, Check, CopyPlus, Crown, Download, FileText, Flag, Gauge, Hand, IterationCw, Layers, LoaderCircle, MoreHorizontal, NotebookText, RotateCcw, Search, Tags, Trash2, UserRound, X } from 'lucide-react';
 import type { BulkChange, CopyProperty } from '../../src/bulk-contracts.ts';
 import { deckAcceptsCard, type CardContent, type CardPriority, type CatalogCard, type CatalogView } from '../../src/catalog-contracts.ts';
 import { cardExportColumns, defaultCardExportColumns, exportCardsCsv, type CardExportColumnId } from '../../src/card-export.ts';
@@ -574,7 +574,7 @@ export function BulkActions({ cards, catalog, pending, onAction, onOpenDeck, sou
             {(['hero', 'doc'] as const).map(kind => {
               const referenceQuery = query.match(/\bc-[a-z0-9]{10}\b/u)?.[0] ?? query;
               const matches = parentCandidates.filter(card => card.kind === kind && [card.title, card.id, shortReference('c', card.id)].join(' ').toLocaleLowerCase('ru').includes(referenceQuery));
-              const Icon = kind === 'hero' ? Crown : FileText;
+              const Icon = kind === 'hero' ? Crown : NotebookText;
               return matches.length > 0 && <div key={kind}><p className="bulk-help">{kind === 'hero' ? t.uiHeroCards : t.uiDocCards}</p>{matches.map(parent => <button key={parent.id} type="button" className="bulk-pick-option" aria-pressed={draft.parentId === parent.id} onClick={() => update('parentId', parent.id)}><Icon size={16} /><span>{parent.title}</span>{draft.parentId === parent.id && <Check size={15} />}</button>)}</div>;
             })}
           </div>

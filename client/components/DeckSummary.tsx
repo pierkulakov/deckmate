@@ -1,5 +1,5 @@
 import { useMemo, type CSSProperties } from 'react';
-import { FileText, Gauge, Layers, PanelLeftClose, Route } from 'lucide-react';
+import { FileText, Gauge, Layers, NotebookText, PanelLeftClose, Route } from 'lucide-react';
 import type { CatalogCard, CatalogDeck, CatalogView } from '../../src/catalog-contracts.ts';
 import type { WorkspaceSnapshot } from '../../src/workspace-contracts.ts';
 import type { CardPriority } from '../../src/catalog-contracts.ts';
@@ -122,7 +122,7 @@ export function DeckSummary({ deck, cards, catalog, source, refreshKey, onOpen, 
       </div>
       <progress className="deck-overview-progress" value={summary.accepted} max={Math.max(1, summary.tasks.length)} aria-label={t.accepted(stateLabel('done', lang), numberFormat.format(summary.accepted), numberFormat.format(summary.tasks.length), taskLabel)} />
       <div className="deck-overview-count">
-        {deck.kind === 'knowledge' ? <FileText size={16} aria-hidden="true" /> : <Layers size={16} aria-hidden="true" />}
+        {deck.kind === 'knowledge' ? <NotebookText size={16} aria-hidden="true" /> : <Layers size={16} aria-hidden="true" />}
         <strong>{numberFormat.format(summary.cardCount)} {deck.kind === 'knowledge' ? t.documents(summary.cardCount) : t.cards}</strong>
         {deck.kind === 'asset' && <span>· {numberFormat.format(summary.tasks.length)} {t.subCards}</span>}
       </div>

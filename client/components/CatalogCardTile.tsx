@@ -2,9 +2,10 @@
 import { createContext, memo, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import type { CSSProperties, PointerEvent, RefObject } from 'react';
 import { useDraggable } from '@dnd-kit/core';
-import { Check, CircleHelp, Crown, Eye, FileText, Gauge, GripVertical, Hourglass, Layers, ListChecks, Paperclip, Play, Archive } from 'lucide-react';
+import { Check, CircleHelp, Crown, Eye, Gauge, GripVertical, Hourglass, Layers, ListChecks, NotebookText, Paperclip, Play, Archive } from 'lucide-react';
 import type { CardKind, CatalogCard, CatalogMember, CatalogView } from '../../src/catalog-contracts.ts';
 import { countCatalogCardWords } from '../card-word-count.ts';
+import { catalogDocExcerpt, type DocExcerptBlock } from '../doc-excerpt.ts';
 import { sameCardTileData, type CardTileCatalog, type CardTileLookups } from '../card-tile-equality.ts';
 import { familyChildren } from '../catalog-lookups.ts';
 import { HOVER_CARD_SHORTCUTS, markShortcutPropertyHover, matchShortcut, shortcutTargetBlocked } from '../keyboard-shortcuts.ts';
@@ -40,6 +41,7 @@ const text = defineText({
   noPriority: 'No priority',
   noSubCards: 'No Sub Cards',
   wordCount: (count: string) => 'Word count: ' + count,
+  docWords: (count: string) => count + 'w',
   tags: (names: string) => 'tags: ' + names,
   familyDone: 'Hero done: all Sub Cards accepted',
   heroDone: 'Hero done',
@@ -62,6 +64,7 @@ const text = defineText({
   noPriority: 'Без приоритета',
   noSubCards: 'Без Sub Cards',
   wordCount: (count: string) => 'Число слов: ' + count,
+  docWords: (count: string) => count + ' сл.',
   tags: (names: string) => 'теги: ' + names,
   familyDone: 'Hero выполнена: все Sub Cards приняты',
   heroDone: 'Hero выполнена',
@@ -72,9 +75,11 @@ export const cardKinds: Record<CardKind, string> = {
   get hero() { return kindLabel('hero'); },
   get doc() { return textNow(text).docCard; },
 };
-export const cardIcons = { task: ListChecks, hero: Crown, doc: FileText };
+// 2026-11-09: Doc is a notebook (the author's pick with the «Страница» tile); a plain file icon stays for files.
+export const cardIcons = { task: ListChecks, hero: Crown, doc: NotebookText };
 export const taskStateIcons: Record<string, typeof Hourglass> = { done: Check, started: Play, review: Eye };
 export const emptyCards: CatalogCard[] = [];
+const emptyExcerpt: DocExcerptBlock[] = [];
 
 export const CardAttachmentRefreshContext = createContext<string | undefined>(undefined);
 
@@ -197,6 +202,7 @@ export const CatalogCardTile = memo(function CatalogCardTile({ card, lookups, me
   const showEffortTotal = heroEffort != null;
   const openQuestionCount = card.kind === 'doc' ? (card.openQuestions?.length ?? 0) : 0;
   const wordCount = useMemo(() => card.kind === 'doc' ? countCatalogCardWords(card) : 0, [card.kind, card.id, card.sourceHash, card.markdown]);
+  const excerpt = useMemo(() => card.kind === 'doc' ? catalogDocExcerpt(card) : emptyExcerpt, [card.kind, card.id, card.sourceHash, card.markdown]);
   const Icon = cardIcons[card.kind];
   const StateIcon = taskStateIcons[card.state ?? ''] ?? Hourglass;
   const parent = card.parentId ? lookups.cardById.get(card.parentId) : undefined;
@@ -242,6 +248,8 @@ export const CatalogCardTile = memo(function CatalogCardTile({ card, lookups, me
       }}>
         <button type="button" className="deck-card-open" title={card.title} onClick={event => onOpen(card, event.currentTarget, event.shiftKey)} disabled={disabled} aria-label={`${actionLabel}: ${card.title}, ${cardKinds[card.kind]}${card.version ? ` ${card.version}` : ''}${card.tags?.length ? ', ' + t.tags(card.tags.join(', ')) : ''}`} aria-pressed={selectionActive ? checked : selected}>
           <span className="deck-card-title"><TagTitlePrefix tags={card.tags} definitions={tagDefinitions} />{card.title}</span>
+          {/* 2026-11-09: «Страница» — a Doc face opens on its own text; the button's label already names the card. */}
+          {excerpt.length > 0 && <span className="deck-card-doc-excerpt" aria-hidden="true">{excerpt.map((block, index) => block.heading ? <b key={index}>{block.text}</b> : <span key={index}>{block.text}</span>)}</span>}
         </button>
         <CardIndicators card={card} lookups={lookups} members={members} catalog={catalog} currentMemberId={currentMemberId} variant="tile"
           onQuickSettings={!disabled && !card.deleted && onQuickSettings ? (tab, anchor) => onQuickSettings(card.id, tab, anchor) : undefined} />
@@ -251,7 +259,8 @@ export const CatalogCardTile = memo(function CatalogCardTile({ card, lookups, me
             {card.archived && !card.deleted && <Archive size={15} aria-label={t.archived} />}
             {card.kind === 'task' && <><StateIcon size={15} /><span className="visually-hidden">{cardStateLabel}</span></>}
           </span>}
-          <TagColorIndicator tags={card.tags} definitions={tagDefinitions} />
+          {/* 2026-11-09: a Doc face carries only its title (author's reference); its tags show in the open card. */}
+          {card.kind !== 'doc' && <TagColorIndicator tags={card.tags} definitions={tagDefinitions} />}
         </span>
       </div>
       <div className="deck-card-band">{/* 2026-11-09: a finished Hero shows a done medallion in the owner's place (author); the owner stays in the open card. */}
@@ -262,9 +271,10 @@ export const CatalogCardTile = memo(function CatalogCardTile({ card, lookups, me
         {card.kind === 'task' && <div className="deck-card-task-metrics"><span data-shortcut-property="effort" onPointerEnter={event => markShortcutPropertyHover(event.currentTarget, true)} onPointerLeave={event => markShortcutPropertyHover(event.currentTarget, false)} title={t.effort(effortLabel)}><Gauge size={18} /><strong>{effortLabel}</strong></span><span data-shortcut-property="priority" onPointerEnter={event => markShortcutPropertyHover(event.currentTarget, true)} onPointerLeave={event => markShortcutPropertyHover(event.currentTarget, false)} title={t.priority(cardPriorityLabel)}><Layers size={17} /><span className="visually-hidden">{cardPriorityLabel}</span></span>{attachmentBadge}</div>}
         {/* 2026-11-09: no attachment badge on the Hero band — it stacked above the crown and made the band taller (author). */}
         {card.kind === 'hero' && <div className="deck-card-identity">{showEffortTotal && <Gauge className="catalog-card-effort-icon" size={16} aria-hidden="true" data-shortcut-property="effort" onPointerEnter={event => markShortcutPropertyHover(event.currentTarget, true)} onPointerLeave={event => markShortcutPropertyHover(event.currentTarget, false)} />}<strong className={identityClassName} title={identityTitle}>{identityValue}</strong><Icon size={18} aria-hidden="true" /></div>}
-        {card.kind === 'doc' && <div className="deck-card-identity"><span className="deck-card-doc-kind" role="img" title={cardKinds.doc} aria-label={cardKinds.doc}><Icon size={18} aria-hidden="true" /></span>{openQuestionCount > 0 && <OpenQuestionsBadge card={card} />}</div>}
+        {/* 2026-11-09: one row on the Doc band after the author's reference — the type icon left, the word count right;
+            open questions and attachments join the row only when the document has them. */}
+        {card.kind === 'doc' && <div className="deck-card-identity"><span className="deck-card-doc-kind" role="img" title={cardKinds.doc} aria-label={cardKinds.doc}><Icon size={18} aria-hidden="true" /></span>{openQuestionCount > 0 && <OpenQuestionsBadge card={card} />}{attachmentBadge}{wordCount > 0 && <strong className="deck-card-doc-words" title={t.wordCount(numberFormat.format(wordCount))} aria-label={t.wordCount(numberFormat.format(wordCount))}>{t.docWords(numberFormat.format(wordCount))}</strong>}</div>}
         {progress && (children.length ? progress.children.length > 0 && <SubCardProgress cards={progress.children} cardsById={lookups.cardById} /> : <span className="catalog-card-progress">{t.noSubCards}</span>)}
-        {card.kind === 'doc' && <span className="catalog-card-progress"><span className="deck-card-doc-caption">Markdown{wordCount > 0 && <> · <span title={t.wordCount(numberFormat.format(wordCount))} aria-label={t.wordCount(numberFormat.format(wordCount))}>{numberFormat.format(wordCount)}</span></>}</span>{attachmentBadge}</span>}
       </div>
     </article>
   </div>;

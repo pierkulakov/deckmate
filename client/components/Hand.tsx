@@ -1,6 +1,6 @@
 import { readStoredValue } from '../storage.ts';
 import { runLabel } from '../run-label.ts';
-import { ArrowUpRight, Bookmark, Check, Crown, FileText, Gauge, GripVertical, Hand as HandIcon, Users } from 'lucide-react';
+import { ArrowUpRight, Bookmark, Check, Crown, Gauge, GripVertical, Hand as HandIcon, NotebookText, Users } from 'lucide-react';
 import { useMemo, useRef, useState } from 'react';
 import type { PointerEvent as ReactPointerEvent, ReactNode } from 'react';
 import { DndContext, DragEndEvent, DragOverlay, KeyboardSensor, PointerSensor, closestCenter, pointerWithin, useSensor, useSensors, type CollisionDetection } from '@dnd-kit/core';
@@ -687,7 +687,7 @@ function HandMemberCard({ card, cardsById, decksById, members, projectTags, onOp
       </span>
     </button>
     <span className="sprint-task-band">
-      {card.kind === 'task' ? <StatusBadge state={card.state ?? 'not-started'} /> : <span className="hand-card-kind">{card.kind === 'hero' ? <Crown size={12} /> : <FileText size={12} />}{card.kind === 'hero' ? kindLabel('hero', lang) : kindLabel('doc', lang)}</span>}
+      {card.kind === 'task' ? <StatusBadge state={card.state ?? 'not-started'} /> : <span className="hand-card-kind">{card.kind === 'hero' ? <Crown size={12} /> : <NotebookText size={12} />}{card.kind === 'hero' ? kindLabel('hero', lang) : kindLabel('doc', lang)}</span>}
       {card.effort != null && <span className="sprint-task-effort" title={t.effort}><Gauge size={13} />{(card.effort).toLocaleString(locale())}</span>}<ArrowUpRight size={14} />
     </span>
   </div>;

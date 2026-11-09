@@ -10,6 +10,8 @@
 // Console errors and uncaught exceptions are counted from the first navigation and printed, so a look is needed only when numbers say so.
 // 2026-11-09: the headless-browser harness (lookup, launch, CDP session, teardown) is exported for tools/launcher-capture.ts,
 // so the repository keeps one browser driver (desktop/README.md, "Development loop").
+// 2026-11-09: every CDP request has a deadline, error replies reject, and a dead socket fails all waiting calls —
+// a browser that stops answering ends the run instead of hanging it forever.
 import { spawn } from 'node:child_process';
 import { environmentValue } from '../server/environment.ts';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
@@ -30,7 +32,8 @@ export function findHeadlessBrowser(): string {
 /** One headless page over CDP. For openHeadlessBrowser close() ends the browser tree and removes the temporary
  * profile; for connectToHeadlessBrowser it only detaches and leaves the app running. */
 export interface HeadlessPage {
-  send(method: string, params?: object): Promise<any>;
+  /** A CDP command; timeoutMs (2026-11-09, default 30 s) bounds the wait for the reply. */
+  send(method: string, params?: object, timeoutMs?: number): Promise<any>;
   evaluate(expression: string): Promise<any>;
   callFunction(functionDeclaration: string, ...args: unknown[]): Promise<any>;
   readonly consoleErrors: string[];
@@ -39,34 +42,103 @@ export interface HeadlessPage {
 
 type PageChannel = Omit<HeadlessPage, 'close'>;
 
-/** Polls a CDP endpoint on 127.0.0.1:<port> until it exposes a page target. */
-async function pageTargetUrl(port: number, attempts = 50): Promise<string> {
-  for (let attempt = 0; attempt < attempts; attempt += 1) {
+/** 2026-11-09: a browser or renderer that stops answering must fail the run instead of hanging it —
+ * every CDP request waits at most this long (overridable per connection and per call). */
+const REQUEST_TIMEOUT_MS = 30_000;
+
+/** Polls a CDP endpoint on 127.0.0.1:<port> until it exposes a page target.
+ * 2026-11-09: a wall-clock deadline and a 2 s abort per /json/list request (the pattern of
+ * tests/browser-target.ts, waitForPageTarget) — an endpoint that never answers fails fast. */
+async function pageTargetUrl(port: number, timeoutMs = 45_000): Promise<string> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
     try {
-      const list = await (await fetch(`http://127.0.0.1:${port}/json/list`)).json() as { type: string; webSocketDebuggerUrl: string }[];
+      const list = await (await fetch(`http://127.0.0.1:${port}/json/list`, { signal: AbortSignal.timeout(2000) })).json() as { type: string; webSocketDebuggerUrl: string }[];
       const page = list.find(item => item.type === 'page');
       if (page) return page.webSocketDebuggerUrl;
     } catch { /* browser still starting */ }
     await sleep(200);
   }
-  throw new Error('Browser did not expose a page target');
+  throw new Error(`Browser did not expose a page target within ${timeoutMs / 1000} s on port ${port}`);
 }
 
-/** The CDP session shared by launched and connected pages: framing, evaluate/callFunction, console errors. */
-function wirePage(socket: WebSocket): PageChannel {
+/** Opens a page's CDP socket and waits for 'open'.
+ * 2026-11-09: a refused or silent endpoint never fires 'open'; the wait rejects instead of hanging forever. */
+async function openPageSocket(url: string, timeoutMs = 10_000): Promise<WebSocket> {
+  const socket = new WebSocket(url);
+  await new Promise<void>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      socket.close();
+      reject(new Error(`CDP socket ${url} did not open within ${timeoutMs / 1000} s`));
+    }, timeoutMs);
+    socket.addEventListener('open', () => { clearTimeout(timer); resolve(); }, { once: true });
+    socket.addEventListener('error', () => { clearTimeout(timer); reject(new Error(`CDP socket ${url} failed to open`)); }, { once: true });
+  });
+  return socket;
+}
+
+/** The CDP session shared by launched and connected pages: framing, evaluate/callFunction, console errors.
+ * 2026-11-09: every request has a deadline, CDP error replies reject, and socket death fails the waiting calls. */
+function wirePage(socket: WebSocket, requestTimeoutMs = REQUEST_TIMEOUT_MS): PageChannel {
   let sequence = 0;
   let executionContextId: number | undefined;
-  const pending = new Map<number, (value: any) => void>();
+  const pending = new Map<number, { method: string; resolve: (value: any) => void; reject: (error: Error) => void; timer: ReturnType<typeof setTimeout> }>();
   const consoleErrors: string[] = [];
+  // 2026-11-09: a closed or errored socket must fail every waiting call at once, and no timer may outlive its call.
+  const failPending = (error: Error) => {
+    for (const [id, call] of pending) {
+      clearTimeout(call.timer);
+      pending.delete(id);
+      call.reject(error);
+    }
+  };
+  socket.addEventListener('close', () => failPending(new Error('The CDP socket closed before the response arrived')));
+  socket.addEventListener('error', () => failPending(new Error('The CDP socket errored before the response arrived')));
   socket.addEventListener('message', event => {
     const message = JSON.parse(String(event.data));
     if (message.method === 'Runtime.executionContextCreated' && message.params.context.auxData?.isDefault)
       executionContextId = message.params.context.id;
-    if (message.id && pending.has(message.id)) { pending.get(message.id)!(message); pending.delete(message.id); return; }
+    if (message.id && pending.has(message.id)) {
+      const call = pending.get(message.id)!;
+      pending.delete(message.id);
+      clearTimeout(call.timer);
+      // 2026-11-09: CDP reports failures on the success shape with an `error` field — reject instead of resolving
+      // to a phantom response whose `result` readers would read as undefined.
+      if (message.error) call.reject(new Error(`${call.method}: ${message.error.message ?? JSON.stringify(message.error)}`));
+      else call.resolve(message);
+      return;
+    }
     if (message.method === 'Runtime.exceptionThrown') consoleErrors.push(String(message.params?.exceptionDetails?.exception?.description ?? message.params.exceptionDetails?.text ?? 'exception').split('\n')[0]);
     if (message.method === 'Runtime.consoleAPICalled' && message.params?.type === 'error') consoleErrors.push((message.params.args ?? []).map((arg: { value?: unknown; description?: string }) => String(arg.value ?? arg.description ?? '')).join(' ').slice(0, 200));
   });
-  const send = (method: string, params: object = {}) => new Promise<any>(resolve => { const id = ++sequence; pending.set(id, resolve); socket.send(JSON.stringify({ id, method, params })); });
+  // 2026-11-09: send() can now reject; a caller that discards the result (desktop-smoke.ts fires Page.crash
+  // without awaiting) must not die of an unhandled rejection. The no-op catch marks this very promise handled
+  // and changes nothing for callers that await it — they still see the throw.
+  const send = (method: string, params: object = {}, timeoutMs: number = requestTimeoutMs) => {
+    const call = new Promise<any>((resolve, reject) => {
+      if (socket.readyState !== WebSocket.OPEN) {
+        reject(new Error(`${method}: the CDP socket is closed`));
+        return;
+      }
+      const id = ++sequence;
+      // 2026-11-09: a renderer that dies mid-command never answers; the deadline rejects with the method name in the message.
+      const timer = setTimeout(() => {
+        pending.delete(id);
+        reject(new Error(`${method}: no CDP response within ${timeoutMs / 1000} s`));
+      }, timeoutMs);
+      pending.set(id, { method, resolve, reject, timer });
+      try {
+        socket.send(JSON.stringify({ id, method, params }));
+      } catch (error) {
+        // The socket can start closing between the readyState check above and the send.
+        clearTimeout(timer);
+        pending.delete(id);
+        reject(error instanceof Error ? error : new Error(String(error)));
+      }
+    });
+    call.catch(() => {});
+    return call;
+  };
   const evaluate = async (expression: string) => {
     const response = await send('Runtime.evaluate', { expression, returnByValue: true, awaitPromise: true });
     if (response.result?.exceptionDetails) throw new Error(response.result.exceptionDetails.exception?.description ?? response.result.exceptionDetails.text);
@@ -94,10 +166,9 @@ async function enablePage(page: PageChannel, viewport?: { width: number; height:
  * started with DECKMATE_DESKTOP_CDP_PORT. Unlike openHeadlessBrowser this owns no browser process,
  * so close() only detaches and leaves the app running (tools/desktop-smoke.ts, 2026-11-09).
  */
-export async function connectToHeadlessBrowser(port: number): Promise<HeadlessPage> {
-  const socket = new WebSocket(await pageTargetUrl(port));
-  await new Promise(resolve => socket.addEventListener('open', resolve, { once: true }));
-  const page = wirePage(socket);
+export async function connectToHeadlessBrowser(port: number, requestTimeoutMs = REQUEST_TIMEOUT_MS): Promise<HeadlessPage> {
+  const socket = await openPageSocket(await pageTargetUrl(port));
+  const page = wirePage(socket, requestTimeoutMs);
   await enablePage(page);
   let closed = false;
   const close = async () => {
@@ -108,7 +179,7 @@ export async function connectToHeadlessBrowser(port: number): Promise<HeadlessPa
   return { ...page, close };
 }
 
-export async function openHeadlessBrowser(viewport: { width: number; height: number; scale: number }): Promise<HeadlessPage> {
+export async function openHeadlessBrowser(viewport: { width: number; height: number; scale: number }, requestTimeoutMs = REQUEST_TIMEOUT_MS): Promise<HeadlessPage> {
   const browser = findHeadlessBrowser();
   const port = 9300 + Math.floor(Math.random() * 500);
   const profile = mkdtempSync(path.join(tmpdir(), 'deckmate-capture-'));
@@ -137,9 +208,8 @@ export async function openHeadlessBrowser(viewport: { width: number; height: num
     try { rmSync(profile, { recursive: true, force: true }); } catch { /* the browser may still hold the profile briefly */ }
   };
   try {
-    socket = new WebSocket(await pageTargetUrl(port));
-    await new Promise(resolve => socket!.addEventListener('open', resolve, { once: true }));
-    const page = wirePage(socket);
+    socket = await openPageSocket(await pageTargetUrl(port));
+    const page = wirePage(socket, requestTimeoutMs);
     await enablePage(page, viewport);
     return { ...page, close };
   } catch (error) {

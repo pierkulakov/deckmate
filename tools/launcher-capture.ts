@@ -177,8 +177,12 @@ export async function captureLauncherReadme(destination: string): Promise<Shot> 
         onStatus() { return () => {}; },
       };
     })()`;
-    const registered = await page.send('Page.addScriptToEvaluateOnNewDocument', { source });
-    if (registered.error) throw new Error(`Cannot register launcher bridge: ${registered.error.message}`);
+    // 2026-11-09: layout-capture rejects CDP error replies, so a failed registration arrives as a rejection.
+    try {
+      await page.send('Page.addScriptToEvaluateOnNewDocument', { source });
+    } catch (error) {
+      throw new Error(`Cannot register launcher bridge: ${error instanceof Error ? error.message : String(error)}`);
+    }
     await navigateAndWait(page, 'initial load');
     const shot = await captureFrame(page, frames[0], destination);
     const footer = await page.evaluate('document.getElementById("version").textContent');

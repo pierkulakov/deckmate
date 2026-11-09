@@ -4,6 +4,10 @@ schema: 1
 id: action
 title: Action
 description: Weapons, enemies and combat maps built around responsive controls and readable threats.
+locales:
+  ru:
+    title: Экшен
+    description: Оружие, враги и боевые карты вокруг отзывчивого управления и читаемых угроз.
 category: games
 genre: action
 order: 1

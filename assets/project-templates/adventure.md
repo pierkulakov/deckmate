@@ -4,6 +4,10 @@ schema: 1
 id: adventure
 title: Adventure
 description: Story beats, locations, characters, puzzles and dialogue choices for exploration-led adventures.
+locales:
+  ru:
+    title: Приключение
+    description: Сюжетные биты, локации, персонажи, головоломки и диалоговые выборы для приключений с упором на исследование.
 category: games
 genre: adventure
 order: 2

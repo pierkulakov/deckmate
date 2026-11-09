@@ -4,6 +4,10 @@ schema: 1
 id: ui-screen
 title: UI Screen
 description: Develop a UI screen from its purpose and sketches through concept selection, layout, states, accessibility and verification.
+locales:
+  ru:
+    title: Экран UI
+    description: Разработать экран UI от назначения и эскизов через выбор концепта, макет, состояния, доступность и проверку.
 category: Design
 tags: [UI]
 author: Deckmate

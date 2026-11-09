@@ -20,6 +20,7 @@ describe.skipIf(!browserPath)('CardPreview Quick Settings (browser)', () => {
   let browser: ChildProcess | undefined;
   let profile: string | undefined;
   let socket: WebSocket | undefined;
+  let executionContextId: number | undefined;
   let sequence = 0;
   const pending = new Map<number, { resolve: (value: any) => void; reject: (error: Error) => void }>();
   const errors: string[] = [];
@@ -33,16 +34,24 @@ describe.skipIf(!browserPath)('CardPreview Quick Settings (browser)', () => {
     if (result.exceptionDetails) throw new Error(result.exceptionDetails.exception?.description ?? result.exceptionDetails.text);
     return result.result?.value;
   }
+  // 2026-11-09: keep data out of executable source, including selectors with quotes or backslashes.
+  async function call(functionDeclaration: string, ...args: unknown[]): Promise<any> {
+    if (executionContextId === undefined) throw new Error('No default browser execution context');
+    const result = await send('Runtime.callFunctionOn', { functionDeclaration, executionContextId,
+      arguments: args.map(value => ({ value })), returnByValue: true, awaitPromise: true });
+    if (result.exceptionDetails) throw new Error(result.exceptionDetails.exception?.description ?? result.exceptionDetails.text);
+    return result.result?.value;
+  }
   // 2026-11-08: the first page load waits for Vite's cold dependency scan, which can exceed five seconds on Windows.
-  async function until(expression: string, attempts = 100) {
+  async function until(expression: string | (() => Promise<unknown>), attempts = 100) {
     for (let attempt = 0; attempt < attempts; attempt++) {
-      if (await evaluate(expression)) return;
+      if (await (typeof expression === 'string' ? evaluate(expression) : expression())) return;
       await delay(50);
     }
     throw new Error('Timed out: ' + expression + '\n' + errors.join('\n'));
   }
   async function click(selector: string) {
-    await evaluate(`document.querySelector(${JSON.stringify(selector)}).click()`);
+    await call('function(selector) { document.querySelector(selector).click(); }', selector);
     await delay(60);
   }
   async function key(key: string, code = key) {
@@ -50,26 +59,28 @@ describe.skipIf(!browserPath)('CardPreview Quick Settings (browser)', () => {
     await delay(80);
   }
   async function render(kind = 'task', options: object = {}) {
-    await evaluate(`window.previewTest.render(${JSON.stringify(kind)}, ${JSON.stringify(options)})`);
-    await until(`document.querySelector('.card-preview-${kind}') && document.querySelector('[data-panel="content"]')?.textContent.includes('Card text remains visible.')`);
+    await call('function(kind, options) { window.previewTest.render(kind, options); }', kind, options);
+    await until(() => call(`function(kind) { return document.querySelector('.card-preview-' + kind)
+      && document.querySelector('[data-panel="content"]')?.textContent.includes('Card text remains visible.'); }`, kind));
   }
   const button = (tab: string) => `.card-preview [data-quick-settings-tab="${tab}"]`;
   async function expectPopup(tab: string, anchor: string) {
-    await until(`document.querySelector('.card-quick-settings')?.dataset.tab === ${JSON.stringify(tab)}`);
+    await until(() => call(`function(tab) { return document.querySelector('.card-quick-settings')?.dataset.tab === tab; }`, tab));
     expect(await evaluate(`document.querySelectorAll('.card-quick-settings').length`)).toBe(1);
-    expect(await evaluate(`document.querySelector(${JSON.stringify(anchor)}).getAttribute('aria-expanded')`)).toBe('true');
+    expect(await call(`function(anchor) { return document.querySelector(anchor).getAttribute('aria-expanded'); }`, anchor)).toBe('true');
     expect(await evaluate(`document.querySelector('.card-preview-action-rail button').getAttribute('aria-pressed')`)).toBe('false');
     expect(await evaluate(`document.querySelector('.card-properties-slot').hidden`)).toBe(true);
     expect(await evaluate(`document.querySelector('[data-panel="content"]').getBoundingClientRect().height > 0`)).toBe(true);
-    expect(await evaluate(`(() => {
-      const button = document.querySelector(${JSON.stringify(anchor)}).getBoundingClientRect();
+    expect(await call(`function(anchor) {
+      const button = document.querySelector(anchor).getBoundingClientRect();
       const popup = document.querySelector('.deck-picker-popover').getBoundingClientRect();
       return Math.abs(popup.left - button.left) <= 32 && (Math.abs(popup.bottom - button.top) <= 9 || Math.abs(popup.top - button.bottom) <= 9);
-    })()`)).toBe(true);
+    }`, anchor)).toBe(true);
   }
   async function expectClosed(anchor: string) {
-    await until(`!document.querySelector('.card-quick-settings') && document.activeElement === document.querySelector(${JSON.stringify(anchor)})`);
-    expect(await evaluate(`document.querySelector(${JSON.stringify(anchor)}).getAttribute('aria-expanded')`)).toBe('false');
+    await until(() => call(`function(anchor) { return !document.querySelector('.card-quick-settings')
+      && document.activeElement === document.querySelector(anchor); }`, anchor));
+    expect(await call(`function(anchor) { return document.querySelector(anchor).getAttribute('aria-expanded'); }`, anchor)).toBe('false');
   }
 
   beforeAll(async () => {
@@ -92,7 +103,7 @@ describe.skipIf(!browserPath)('CardPreview Quick Settings (browser)', () => {
     profile = await mkdtemp(path.join(tmpdir(), 'deckmate-quick-settings-'));
     // 2026-11-09: a headless Chrome on a Linux CI runner sees no pointing device and reports (hover: none), where the
     // tile ribbon stays pinned at rest by design; the suite tests the desktop pointer, so it declares a fine hovering one.
-    browser = spawn(browserPath!, ['--headless=new', '--disable-gpu', '--no-first-run', '--no-default-browser-check',
+    browser = spawn(browserPath!, ['--headless=new', '--disable-gpu', '--no-first-run', '--no-default-browser-check', '--window-size=1280,1000',
       '--blink-settings=primaryHoverType=2,availableHoverTypes=2,primaryPointerType=4,availablePointerTypes=4',
       `--remote-debugging-port=${port}`, `--user-data-dir=${profile}`, 'about:blank'], { stdio: 'ignore' });
     let target: string | undefined;
@@ -115,12 +126,24 @@ describe.skipIf(!browserPath)('CardPreview Quick Settings (browser)', () => {
         else request?.resolve(message.result);
       }
       if (message.method === 'Runtime.exceptionThrown') errors.push(message.params.exceptionDetails.exception?.description ?? message.params.exceptionDetails.text);
+      if (message.method === 'Runtime.executionContextCreated' && message.params.context.auxData?.isDefault) executionContextId = message.params.context.id;
+      if (message.method === 'Runtime.executionContextsCleared') executionContextId = undefined;
     });
     await send('Page.enable');
     await send('Runtime.enable');
     await send('Emulation.setDeviceMetricsOverride', { width: 1280, height: 1000, deviceScaleFactor: 1, mobile: false });
+    await send('Emulation.setFocusEmulationEnabled', { enabled: true });
+    // 2026-11-09: Windows CI can inherit disabled OS animations. Both the tile and flat bands ignore pointers in reduce.
+    await setMotionPreference('no-preference');
     await send('Page.navigate', { url: server.resolvedUrls!.local[0] });
+    await send('Page.bringToFront');
     await until(`Boolean(window.previewTest && document.querySelector('[data-panel="content"]'))`, 600);
+    await evaluate(`document.addEventListener('pointermove', event => {
+      window.previewPointerSample = { target: event.target, trusted: event.isTrusted, pointerType: event.pointerType,
+        x: event.clientX, y: event.clientY };
+    }, true)`);
+    expect(await evaluate(`matchMedia('(hover: hover) and (pointer: fine) and (prefers-reduced-motion: no-preference)').matches`),
+      'The browser fixture requires a fine hovering pointer with motion enabled').toBe(true);
   }, 60000);
 
   afterAll(async () => {
@@ -188,8 +211,7 @@ describe.skipIf(!browserPath)('CardPreview Quick Settings (browser)', () => {
 
   it.each([0, 9])('keeps immediate numeric Effort assignment (%s) without a popup', async amount => {
     await render();
-    const point = await evaluate(`(() => { const box = document.querySelector(${JSON.stringify(button('effort'))}).getBoundingClientRect(); return { x: box.x + box.width / 2, y: box.y + box.height / 2 }; })()`);
-    await send('Input.dispatchMouseEvent', { type: 'mouseMoved', ...point });
+    await moveOver(button('effort'), .5);
     await key(String(amount), `Digit${amount}`);
     expect(await evaluate(`document.querySelector('.card-quick-settings') === null`)).toBe(true);
     expect(await evaluate('window.previewTest.actions[0].change')).toEqual({ kind: 'properties', effort: amount });
@@ -201,7 +223,7 @@ describe.skipIf(!browserPath)('CardPreview Quick Settings (browser)', () => {
     await click(button('effort'));
     await click(button('owner'));
     await expectPopup('owner', button('owner'));
-    expect(await evaluate(`document.querySelector(${JSON.stringify(button('effort'))}).getAttribute('aria-expanded')`)).toBe('false');
+    expect(await call(`function(selector) { return document.querySelector(selector).getAttribute('aria-expanded'); }`, button('effort'))).toBe('false');
     await key('Escape');
     await expectClosed(button('owner'));
   });
@@ -213,7 +235,7 @@ describe.skipIf(!browserPath)('CardPreview Quick Settings (browser)', () => {
     await key('Escape');
     expect(await evaluate(`document.querySelector('.deck-picker-popover').getAttribute('aria-busy')`)).toBe('true');
     expect(await evaluate(`document.querySelector('.card-preview-action-rail button').disabled`)).toBe(true);
-    expect(await evaluate(`document.querySelector(${JSON.stringify(button('owner'))}).disabled`)).toBe(true);
+    expect(await call('function(selector) { return document.querySelector(selector).disabled; }', button('owner'))).toBe(true);
     await evaluate('window.previewTest.finishSave()');
     await expectClosed(button(tab));
   });
@@ -246,7 +268,7 @@ describe.skipIf(!browserPath)('CardPreview Quick Settings (browser)', () => {
     await click('.card-preview-action-rail button');
     await evaluate(`document.querySelector('.card-properties-effort-custom input').focus()`);
     await send('Input.insertText', { text: '4' });
-    await until(`document.querySelector(${JSON.stringify(button('effort'))}).disabled`);
+    await until(() => call('function(selector) { return document.querySelector(selector).disabled; }', button('effort')));
     await click(button('effort'));
     await evaluate('document.activeElement.blur()');
     await key('e', 'KeyE');
@@ -255,8 +277,8 @@ describe.skipIf(!browserPath)('CardPreview Quick Settings (browser)', () => {
 
   it('does not expose Effort or Priority for Doc, but still opens Owner', async () => {
     await render('doc');
-    expect(await evaluate(`document.querySelector(${JSON.stringify(button('effort'))}) === null`)).toBe(true);
-    expect(await evaluate(`document.querySelector(${JSON.stringify(button('priority'))}) === null`)).toBe(true);
+    expect(await call('function(selector) { return document.querySelector(selector) === null; }', button('effort'))).toBe(true);
+    expect(await call('function(selector) { return document.querySelector(selector) === null; }', button('priority'))).toBe(true);
     await key('e', 'KeyE');
     expect(await evaluate(`document.querySelector('.card-quick-settings') === null`)).toBe(true);
     await click(button('owner'));
@@ -266,19 +288,63 @@ describe.skipIf(!browserPath)('CardPreview Quick Settings (browser)', () => {
     expect(errors).toEqual([]);
   });
 
+  async function setMotionPreference(value: 'reduce' | 'no-preference') {
+    await send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value }] });
+  }
+  async function pointerDiagnostics(selector: string, point: { x: number; y: number } | null = null) {
+    return call(`function(selector, point) {
+      const element = document.querySelector(selector);
+      const bounds = element?.getBoundingClientRect();
+      const sample = window.previewPointerSample;
+      point ??= { x: sample?.x ?? bounds?.x ?? 0, y: sample?.y ?? bounds?.y ?? 0 };
+      const hit = document.elementFromPoint(point.x, point.y);
+      const describe = node => node ? node.tagName + '#' + node.id + '.' + [...node.classList].join('.') : null;
+      return { selector, point, bounds: bounds?.toJSON(),
+        viewport: { width: innerWidth, height: innerHeight }, window: { width: outerWidth, height: outerHeight },
+        scroll: { x: scrollX, y: scrollY }, visibility: document.visibilityState, focused: document.hasFocus(),
+        hoverCapable: matchMedia('(hover: hover) and (pointer: fine)').matches,
+        reducedMotion: matchMedia('(prefers-reduced-motion: reduce)').matches,
+        hit: describe(hit), hitMatches: Boolean(element && hit && element.contains(hit)), hovered: element?.matches(':hover'),
+        event: sample ? { target: describe(sample.target), trusted: sample.trusted, pointerType: sample.pointerType,
+          x: sample.x, y: sample.y, hitMatches: Boolean(element?.contains(sample.target)) } : null };
+    }`, selector, point);
+  }
   async function moveOver(selector: string, fraction: number) {
-    const point = await evaluate(`(() => { const box = document.querySelector(${JSON.stringify(selector)}).getBoundingClientRect(); return { x: box.x + box.width * ${fraction}, y: box.y + box.height / 2 }; })()`);
-    await send('Input.dispatchMouseEvent', { type: 'mouseMoved', ...point });
+    await send('Page.bringToFront');
+    const point = await call(`function(selector, fraction) {
+      const element = document.querySelector(selector);
+      if (!element) throw new Error('Pointer target not found: ' + selector);
+      element.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'instant' });
+      const box = element.getBoundingClientRect();
+      window.previewPointerSample = null;
+      return { x: box.x + box.width * fraction, y: box.y + box.height / 2 };
+    }`, selector, fraction);
+    const before = await pointerDiagnostics(selector, point);
+    expect(before.hitMatches, 'Pointer hit test failed: ' + JSON.stringify(before)).toBe(true);
+    await send('Input.dispatchMouseEvent', { type: 'mouseMoved', ...point, button: 'none', buttons: 0, pointerType: 'mouse' });
+    const started = Date.now();
+    let state;
+    let received;
+    do {
+      state = await pointerDiagnostics(selector, point);
+      received = state.event?.hitMatches && state.event.trusted && state.event.pointerType === 'mouse'
+        && Math.abs(state.event.x - point.x) < 1 && Math.abs(state.event.y - point.y) < 1;
+      if (received && state.hovered && state.visibility === 'visible' && state.focused) break;
+      await delay(40);
+    } while (Date.now() - started < 2000);
+    expect({ received: Boolean(received), hovered: state.hovered, visibility: state.visibility, focused: state.focused },
+      'CDP mouse did not reach the visible, focused target: ' + JSON.stringify(state))
+      .toEqual({ received: true, hovered: true, visibility: 'visible', focused: true });
   }
   async function reflection(selector: string) {
-    return evaluate(`(() => {
-      const layer = document.querySelector(${JSON.stringify(selector)}).querySelector('.card-material-glare');
+    return call(`function(selector) {
+      const layer = document.querySelector(selector).querySelector('.card-material-glare');
       const style = getComputedStyle(layer);
       const card = layer.closest('.deck-card');
       return { opacity: Number(style.opacity), display: style.display, willChange: style.willChange,
         layers: card ? getComputedStyle(card).willChange + ' / ' + getComputedStyle(layer, '::before').willChange : null,
         x: new DOMMatrix(getComputedStyle(layer, '::before').transform).m41 };
-    })()`);
+    }`, selector);
   }
   // 2026-11-09: polling with a 2s ceiling instead of fixed delays — a CI runner can be several times slower than a desktop.
   async function reflectionWhen(selector: string, accept: (value: Awaited<ReturnType<typeof reflection>>) => boolean, timeout = 2000) {
@@ -288,6 +354,8 @@ describe.skipIf(!browserPath)('CardPreview Quick Settings (browser)', () => {
       await delay(40);
       value = await reflection(selector);
     }
+    if (!accept(value)) throw new Error('Reflection did not reach the expected state: '
+      + JSON.stringify({ selector, value, pointer: await pointerDiagnostics(selector) }) + '\n' + errors.join('\n'));
     return value;
   }
   async function reflectionSettled(selector: string, timeout = 2000) {
@@ -296,61 +364,61 @@ describe.skipIf(!browserPath)('CardPreview Quick Settings (browser)', () => {
     while (Date.now() - started < timeout) {
       await delay(120);
       const next = await reflection(selector);
-      if (next.x === value.x) return next;
+      if (next.x === value.x && next.opacity === value.opacity) return next;
       value = next;
     }
-    return value;
+    throw new Error('Reflection did not settle: ' + JSON.stringify({ selector, value, pointer: await pointerDiagnostics(selector) }));
+  }
+  // 2026-11-09: sample throughout a hold, rather than sleeping and missing an intermediate drift.
+  async function reflectionHolds(selector: string, accept: (value: Awaited<ReturnType<typeof reflection>>) => void, duration: number) {
+    const started = Date.now();
+    do {
+      accept(await reflection(selector));
+      await delay(40);
+    } while (Date.now() - started < duration);
   }
 
   // 2026-11-08: the open card's band glows softly at rest and drifts towards the pointer.
-  // 2026-11-09: hover-driven light needs a real pointer; the hosted Windows runner's headless Chrome never reports one
-  // reliably, so these three run locally and on Linux CI only. The resting states are still covered on every runner.
-  const pointerHover = it.skipIf(process.env.CI === 'true' && process.platform === 'win32');
-  pointerHover('.card-preview-material-band keeps a soft glow at rest and drifts towards the pointer', async () => {
+  it('.card-preview-material-band keeps a soft glow at rest and drifts towards the pointer', async () => {
     const selector = '.card-preview-material-band';
     await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 0, y: 0 });
     await render('hero');
-    await delay(500);
-    const rest = await reflection(selector);
+    const rest = await reflectionSettled(selector);
     expect(rest.display).not.toBe('none');
     expect(rest.opacity).toBeCloseTo(.7, 2);
     await moveOver(selector, .15);
-    await delay(900);
-    const left = await reflection(selector);
+    await reflectionWhen(selector, value => value.opacity > rest.opacity);
+    const left = await reflectionSettled(selector);
     expect(left.opacity).toBeGreaterThan(rest.opacity);
     await moveOver(selector, .85);
-    await delay(900);
-    const right = await reflection(selector);
+    await reflectionWhen(selector, value => value.x > left.x);
+    const right = await reflectionSettled(selector);
     expect(right.x).toBeGreaterThan(left.x);
     await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 0, y: 0 });
-    await delay(600);
-    const after = await reflection(selector);
+    const after = await reflectionWhen(selector, value => Math.abs(value.opacity - .7) < .001);
     expect(after.opacity).toBeCloseTo(.7, 2);
     expect(after.x).toBeCloseTo(right.x, 1);
-  });
+  }, 15000);
 
   // 2026-11-09: the gold parent bar above a Sub Card carries the open card's soft light, in the metal under its ink.
-  pointerHover('.card-preview-parent glows softly at rest, brightens under the pointer and keeps the light under its ink', async () => {
+  it('.card-preview-parent glows softly at rest, brightens under the pointer and keeps the light under its ink', async () => {
     const selector = '.card-preview-parent';
     await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 0, y: 0 });
     await render('task', { child: true });
-    await delay(500);
-    const rest = await reflection(selector);
+    const rest = await reflectionSettled(selector);
     expect(rest.opacity).toBeCloseTo(.7, 2);
-    expect(await evaluate(`getComputedStyle(document.querySelector('${selector} > .card-material-glare')).zIndex`)).toBe('-1');
+    expect(await call(`function(selector) { return getComputedStyle(document.querySelector(selector + ' > .card-material-glare')).zIndex; }`, selector)).toBe('-1');
     await moveOver(selector, .5);
-    await delay(600);
-    expect((await reflection(selector)).opacity).toBeGreaterThan(rest.opacity);
+    expect((await reflectionWhen(selector, value => value.opacity > rest.opacity)).opacity).toBeGreaterThan(rest.opacity);
     await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 0, y: 0 });
-    await delay(600);
-    expect((await reflection(selector)).opacity).toBeCloseTo(.7, 2);
-  });
+    expect((await reflectionWhen(selector, value => Math.abs(value.opacity - .7) < .001)).opacity).toBeCloseTo(.7, 2);
+  }, 15000);
 
   // 2026-11-08: the tile ribbon rests beyond the right edge, sweeps in once,
   // moves against the pointer horizontally (with the tilt) and sweeps back out on leave.
-  pointerHover.each(['.deck-card-space'])('%s ribbon sweeps in, follows the tilt, holds while paused and sweeps out on leave', async selector => {
+  it.each(['.deck-card-space'])('%s ribbon sweeps in, follows the tilt, holds while paused and sweeps out on leave', async selector => {
     // Without a hovering fine pointer the ribbon is pinned by design; fail on the environment, not on the motion.
-    expect(await evaluate(`matchMedia('(hover: hover) and (pointer: fine)').matches`)).toBe(true);
+    expect(await evaluate(`matchMedia('(hover: hover) and (pointer: fine) and (prefers-reduced-motion: no-preference)').matches`)).toBe(true);
     await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 0, y: 0 });
     await render('hero');
     const rest = await reflectionSettled(selector);
@@ -368,8 +436,7 @@ describe.skipIf(!browserPath)('CardPreview Quick Settings (browser)', () => {
     await reflectionWhen(selector, value => value.x < left.x - 30);
     const right = await reflectionSettled(selector);
     expect(right.x).toBeLessThan(left.x - 30);
-    await delay(1400);
-    expect(await reflection(selector)).toEqual(right);
+    await reflectionHolds(selector, value => expect(value).toEqual(right), 1400);
     await moveOver(selector, .3);
     const reversed = await reflectionWhen(selector, value => value.x > right.x + 20);
     expect(reversed.x).toBeGreaterThan(right.x + 20);
@@ -383,14 +450,17 @@ describe.skipIf(!browserPath)('CardPreview Quick Settings (browser)', () => {
     const idle = await reflectionWhen(selector, value => Math.abs(value.x - rest.x) < .05);
     expect(idle.x).toBeCloseTo(rest.x, 1);
     expect([idle.willChange, idle.layers]).toEqual([rest.willChange, rest.layers]);
-  });
+  }, 15000);
 
   it.each([[115, 147], [180, 210]])('keeps both ribbon cuts on one diagonal across a %s × %s tile', async (width, height) => {
     await render('task', { child: true });
-    await evaluate(`document.querySelector('.deck-card').style.setProperty('--tile-width', '${width}px'); document.querySelector('.deck-card').style.setProperty('--tile-height', '${height}px')`);
+    await call(`function(width, height) {
+      const style = document.querySelector('.deck-card').style;
+      style.setProperty('--tile-width', width + 'px'); style.setProperty('--tile-height', height + 'px');
+    }`, width, height);
     try {
       await moveOver('.deck-card-space', .6);
-      await delay(350);
+      await reflectionSettled('.deck-card-space');
       // The hot cut sits at the middle of a ribbon five band widths long.
       const bands = await evaluate(`['.card-family-trigger', '.deck-card-band'].map(selector => {
         const band = document.querySelector('.deck-card > ' + selector);
@@ -413,53 +483,47 @@ describe.skipIf(!browserPath)('CardPreview Quick Settings (browser)', () => {
   it('shares the ribbon with Sub Card affiliation and keeps checked or disabled tiles at rest', async () => {
     await render('task', { child: true });
     await moveOver('.deck-card-space', .6);
-    await delay(350);
+    await reflectionSettled('.deck-card-space');
     expect((await reflection('.card-family-trigger')).opacity).toBeGreaterThan((await reflection('.deck-card-band')).opacity);
     for (const options of [{ checked: true }, { pending: true }]) {
       await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 0, y: 0 });
       await render('hero', options);
-      await delay(100);
-      const rest = await reflection('.deck-card-space');
+      const rest = await reflectionSettled('.deck-card-space');
       await moveOver('.deck-card-space', .7);
-      await delay(350);
-      expect((await reflection('.deck-card-space')).x).toBeCloseTo(rest.x, 1);
+      await reflectionHolds('.deck-card-space', value => expect(value.x).toBeCloseTo(rest.x, 1), 350);
     }
   });
 
   it('ignores touch and reduced motion and cancels a pointer frame when leaving immediately', async () => {
     await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 0, y: 0 });
     await render('hero');
-    await delay(100);
     // The tile's ribbon stays where it rests; the open card's band keeps its resting glow (0.7) instead of reacting.
-    const tileRest = (await reflection('.deck-card-space')).x;
-    const resting = async (selector: string) => {
-      const value = await reflection(selector);
+    const tileRest = (await reflectionSettled('.deck-card-space')).x;
+    const resting = (selector: string, value: Awaited<ReturnType<typeof reflection>>) => {
       if (selector === '.deck-card-space') expect(value.x).toBeCloseTo(tileRest, 1);
       else expect(value.opacity).toBeCloseTo(.7, 2);
     };
     for (const selector of ['.deck-card-space', '.card-preview-material-band']) {
-      await evaluate(`(() => { const el = document.querySelector(${JSON.stringify(selector)}); el.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, pointerType: 'touch', clientX: 80, clientY: 80 })); })()`);
-      await delay(450);
-      await resting(selector);
-      await evaluate(`(() => { const el = document.querySelector(${JSON.stringify(selector)}); el.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, pointerType: 'mouse', clientX: 80, clientY: 80 })); el.dispatchEvent(new PointerEvent('pointerout', { bubbles: true, pointerType: 'mouse', relatedTarget: document.body })); })()`);
-      await delay(450);
-      await resting(selector);
+      await call(`function(selector) { const el = document.querySelector(selector); el.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, pointerType: 'touch', clientX: 80, clientY: 80 })); }`, selector);
+      await reflectionHolds(selector, value => resting(selector, value), 450);
+      await call(`function(selector) { const el = document.querySelector(selector); el.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, pointerType: 'mouse', clientX: 80, clientY: 80 })); el.dispatchEvent(new PointerEvent('pointerout', { bubbles: true, pointerType: 'mouse', relatedTarget: document.body })); }`, selector);
+      await reflectionHolds(selector, value => resting(selector, value), 450);
     }
-    await send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: 'reduce' }] });
+    await setMotionPreference('reduce');
     try {
       // Under reduced motion the ribbon is still the band's material; it stays pinned where it rests.
       await moveOver('.deck-card-space', .8);
-      await delay(350);
       expect((await reflection('.deck-card-space')).display).not.toBe('none');
-      await resting('.deck-card-space');
+      await reflectionHolds('.deck-card-space', value => resting('.deck-card-space', value), 350);
       // Under reduced motion the open card's glow is still part of the material; it just stops drifting.
       await moveOver('.card-preview-material-band', .8);
-      await delay(50);
       expect((await reflection('.card-preview-material-band')).display).not.toBe('none');
+      await reflectionHolds('.card-preview-material-band', value => resting('.card-preview-material-band', value), 350);
     } finally {
-      await send('Emulation.setEmulatedMedia', { features: [] });
+      await setMotionPreference('no-preference');
       await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 0, y: 0 });
     }
+    expect(await evaluate(`matchMedia('(prefers-reduced-motion: no-preference)').matches`)).toBe(true);
     expect(errors).toEqual([]);
   });
 });

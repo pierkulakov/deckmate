@@ -33,6 +33,10 @@ export function useCardTilt<Element extends HTMLElement>(maximum: number, disabl
     }
     // The last horizontal position stays after leaving: the open card's glow finishes its drift while fading out.
     style.setProperty('--glare-x', `${x * 100}%`);
+    // 2026-11-09: the accepted Hero's foil and glitter also follow the pointer vertically.
+    style.setProperty('--glare-y', `${y * 100}%`);
+    style.setProperty('--glare-u', x.toFixed(4));
+    style.setProperty('--glare-v', y.toFixed(4));
     style.setProperty('--glare-opacity', hovered ? '1' : '0');
     let moving = false;
     if (maximum) {

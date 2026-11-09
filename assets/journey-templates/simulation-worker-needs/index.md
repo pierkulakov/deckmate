@@ -4,6 +4,10 @@ schema: 1
 id: simulation-worker-needs
 title: "Simulation: Worker Needs"
 description: Add a worker need with thresholds, reachable satisfaction actions and understandable feedback.
+locales:
+  ru:
+    title: "Симуляция: потребности работников"
+    description: Добавить потребность работника с порогами, доступными способами удовлетворения и понятной обратной связью.
 category: Production
 tags:
   - Simulation

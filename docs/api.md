@@ -171,7 +171,7 @@ The write path for the catalog; Runs and Milestones use `POST /api/planning` bel
 
 Field notes:
 
-- `cards` selections are `[{ cardId, sourceHash }]`, 1–1000 unique entries; nullable fields are passed explicitly as `null`, empty lists as `[]`.
+- `cards` selections are `[{ cardId, sourceHash }]`, 1–1000 unique entries; only `bulk-edit-cards` with `change.kind: "promote-parent"` allows `cards: []` to promote a card without attaching children. Nullable fields are passed explicitly as `null`, empty lists as `[]`.
 - `create-card.deckId: null` means automatic placement: Inbox if it accepts `kind`, otherwise Unassigned (`deckId: null`), including Sub Cards. An explicit deck must exist and accept the card kind. `set-inbox-deck` allows only Task or Mixed decks; null clears it. Legacy Inbox kinds remain readable. Changing the Inbox to a kind that cannot take Tasks clears it with a warning.
 - `bulk-edit-cards.change`: `kind` one of `properties, state, parent, create-parent, promote-parent, options, hand, tags, convert, duplicate, track` — each kind brings its own fields (see `src/bulk-contracts.ts`).
 - `state`: English ids `not-started`, `discussing`, `in-iteration`, `started`, `review`, `done`; the Russian words from the table above are accepted as input too. Responses always use ids. `priority`: `high|medium|low` or null. `effort`: number ≥ 0 or null.

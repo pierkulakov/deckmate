@@ -4,6 +4,10 @@ schema: 1
 id: bug-fix
 title: Bug Fix
 description: Take a bug from reproduction through root cause analysis, a fix, a regression test, and reporter verification.
+locales:
+  ru:
+    title: Исправление бага
+    description: Провести баг от воспроизведения через поиск первопричины, исправление, регрессионный тест и проверку тем, кто сообщил о баге.
 category: QA
 tags: [QA]
 author: Deckmate

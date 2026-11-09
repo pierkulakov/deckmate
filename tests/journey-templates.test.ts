@@ -122,7 +122,48 @@ it('reads bundled and project templates with fields, zones and an aggregate hash
   expect(second.templates.find(candidate => candidate.id === 'unit-3d' && candidate.source === 'project')!.fileHash).toBe(template.fileHash);
   const catalog = await readProjectCatalog(root);
   expect(catalog.journeyTemplates!.filter(template => template.source === 'project').map(candidate => candidate.id)).toEqual(['unit-3d']);
+  expect(template.locales).toBeUndefined();
   expect(catalog.warnings).toEqual([]);
+});
+
+it('reads trimmed Russian picker text and ignores other locale keys', async () => {
+  const root = await fixture();
+  const directory = await writeTemplate(root);
+  const filename = path.join(directory, 'index.md');
+  const source = await readFile(filename, 'utf8');
+  await writeFile(filename, source.replace('description: Путь отряда от дизайна до проверки.', [
+    'description: Squad pipeline from design to review.',
+    'locales:',
+    '  fr: ignored',
+    '  ru:',
+    "    title: '  Отряд (3D)  '",
+    "    description: '  Путь отряда от дизайна до проверки.  '",
+  ].join('\n')));
+  const result = await readJourneyTemplates(path.join(root, 'missing-bundled'), root);
+  expect(result.templates[0].locales).toEqual({ ru: { title: 'Отряд (3D)', description: 'Путь отряда от дизайна до проверки.' } });
+  expect(result.warnings).toEqual([]);
+  await writeFile(filename, (await readFile(filename, 'utf8')).replace("title: '  Отряд (3D)  '", "title: '   '"));
+  const blank = await readJourneyTemplates(path.join(root, 'missing-bundled'), root);
+  expect(blank.templates[0].locales).toEqual({ ru: { description: 'Путь отряда от дизайна до проверки.' } });
+});
+
+it.each([
+  'locales: []',
+  'locales: ru',
+  'locales:\n  ru: []',
+  'locales:\n  ru:\n    title: 42',
+  `locales:\n  ru:\n    title: ${'x'.repeat(201)}`,
+  `locales:\n  ru:\n    description: ${'x'.repeat(2001)}`,
+])('rejects invalid Journey template locales', async header => {
+  const root = await fixture();
+  const directory = await writeTemplate(root, 'broken');
+  const filename = path.join(directory, 'index.md');
+  await writeFile(filename, (await readFile(filename, 'utf8')).replace('description: Путь отряда от дизайна до проверки.',
+    `description: Путь отряда от дизайна до проверки.\n${header}`));
+  const result = await readJourneyTemplates(path.join(root, 'missing-bundled'), root);
+  expect(result.templates).toEqual([]);
+  expect(result.warnings).toHaveLength(1);
+  expect(result.warnings[0]).toContain('locales');
 });
 
 it('reports a broken template as a warning and keeps the rest of the catalog', async () => {
@@ -149,6 +190,29 @@ it('import add creates a new journey, maps roles and creates a Task deck for unm
   expect(journey.zones?.map(zone => zone.id)).toEqual(['default', 'sculpt']);
   expect(journey.steps.map(step => [step.id, step.deckId])).toEqual([['design', 'code'], ['model', created.id]]);
   expect(journey.steps[1]).toMatchObject({ effort: 2, priority: 'high', zoneId: 'sculpt', owner: null, dependsOn: ['design'] });
+  expect(after.warnings).toEqual([]);
+});
+
+it('import add uses Russian picker text in a Russian-format project', async () => {
+  const root = await fixture();
+  const manifestPath = path.join(root, 'tasks/deckmate.md');
+  await writeFile(manifestPath, (await readFile(manifestPath, 'utf8')).replace('schema: 1', 'schema: 1\nformatLanguage: ru'));
+  const directory = await writeTemplate(root);
+  const filename = path.join(directory, 'index.md');
+  await writeFile(filename, (await readFile(filename, 'utf8'))
+    .replace('title: Отряд (3D)', 'title: Squad (3D)')
+    .replace('description: Путь отряда от дизайна до проверки.', [
+      'description: Squad pipeline from design to review.',
+      'locales:',
+      '  ru:',
+      '    title: Отряд (3D)',
+      '    description: Путь отряда от дизайна до проверки.',
+    ].join('\n')));
+  await importJourneyTemplate(root, await readProjectCatalog(root), await importEdit(root, 'add',
+    { design: { deckId: 'code' }, art: { deckId: 'art' } }));
+  const after = await readProjectCatalog(root);
+  expect(after.formatLanguage).toBe('ru');
+  expect(after.journeys![0]).toMatchObject({ title: 'Отряд (3D)', description: 'Путь отряда от дизайна до проверки.' });
   expect(after.warnings).toEqual([]);
 });
 

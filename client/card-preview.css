@@ -270,6 +270,10 @@
 .card-preview-material-band { position: relative; display: flex; align-items: center; justify-content: space-between; flex-wrap: nowrap; gap: 8px; height: 58px; min-height: 58px; padding: 7px 16px; color: var(--card-metal-ink); font-size: 12px; }
 .card-preview-doc .card-preview-material-band { --card-metal: var(--doc-metal); justify-content: center; }
 .card-preview-sheet[data-state="done"] > .card-preview-material-band { --card-metal: var(--accepted-metal); --card-metal-ink: var(--accepted-metal-ink); }
+/* 2026-11-09: these two read live — the open card is `aside.card-preview-hero`; dropping them as dead in 0.3.0 turned the
+   Hero band's owner medallion and ink lavender and lost the accepted Hero band colour. */
+.card-preview-hero .card-preview-material-band { --card-metal: var(--hero-metal); --card-metal-ink: var(--hero-ink); --metal-sheen: var(--hero-sheen); box-shadow: 0 1px 6px var(--hero-glow, transparent); }
+.card-preview-hero .card-preview-sheet[data-family-done] > .card-preview-material-band { --card-metal: var(--accepted-metal); --card-metal-ink: var(--accepted-metal-ink); --metal-sheen: #ffffff; box-shadow: none; }
 /* Constant padding adds room around the hover label; the negative margin (border + padding) keeps the label
    text exactly on the band's 16px axis — the border-width adds 1px, so the margin cancels 9px. */
 .card-preview .card-preview-material-band .ui-button.card-preview-property-shortcut { gap: 4px; height: 30px; min-height: 30px; padding-inline: 8px; margin-inline: -9px; border-radius: 6px; color: inherit; background: transparent; border-color: transparent; transition: background-color 120ms ease, box-shadow 120ms ease; }

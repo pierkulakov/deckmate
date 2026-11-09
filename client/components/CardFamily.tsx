@@ -1,5 +1,5 @@
 import { readStoredValue } from '../storage.ts';
-import { useCallback, useEffect, useId, useMemo, useRef, useState, Fragment, type PointerEvent, type ReactNode } from 'react';
+import { useCallback, useEffect, useId, useMemo, useRef, useState, Fragment, type CSSProperties, type PointerEvent, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import { DndContext, DragOverlay, KeyboardSensor, PointerSensor, closestCenter, useSensor, useSensors, type CollisionDetection, type DragEndEvent } from '@dnd-kit/core';
@@ -11,7 +11,7 @@ import { dependencyCycle, openDependencies, waitingCards, type CardHistoryCreate
 import type { DataSource } from '../../src/workspace-contracts.ts';
 import { orderSubCards } from '../catalog-lookups.ts';
 import { cardOrdering, groupAndSortCards, laneOrderOf, type CardOrdering } from '../catalog-ordering.ts';
-import { subCardStateLabel, subCardVisualState } from '../sub-card-state.ts';
+import { subCardStateLabel, subCardVisualState, subCardWeight } from '../sub-card-state.ts';
 import type { CatalogAction } from '../useCatalog.ts';
 import { Button } from './ui/button.tsx';
 import { CardOwnerAvatar, CardQuickSettings, type CardQuickSettingsTab } from './CardQuickSettings.tsx';
@@ -113,6 +113,7 @@ const text = defineText({
   dragCancel: 'Move cancelled.',
   deckUnavailable: 'Deck unavailable',
   noDeck: 'No deck',
+  withoutDeckCount: (count: number) => `No deck: ${count}`,
   dependenciesTitle: 'Open card dependencies: waiting on / waiting on this card',
   dependenciesAction: 'Dependencies',
   historyTitle: 'Open card change history',
@@ -239,6 +240,7 @@ const text = defineText({
   dragCancel: 'Перенос отменён.',
   deckUnavailable: 'Колода недоступна',
   noDeck: 'Без колоды',
+  withoutDeckCount: (count: number) => `Без колоды: ${count}`,
   dependenciesTitle: 'Зависимости открытой карточки: ждёт / ждут её',
   dependenciesAction: 'Зависимости',
   historyTitle: 'История изменений открытой карточки',
@@ -307,7 +309,7 @@ function readSubCardOrder(): SubCardOrder {
   return subCardOrders.find(option => option.key === stored)?.key ?? 'manual';
 }
 
-/** One ordered, state-colored strip for Hero tiles and the Journey execution summary. */
+/** One ordered, state-colored strip for Hero tiles and the Deck table; each step is as long as its Sub Card's weight. */
 export function SubCardProgress({ cards, cardsById, disabled = false, onOpen }: {
   cards: CatalogCard[]; cardsById: ReadonlyMap<string, CatalogCard>; disabled?: boolean; onOpen?: (card: CatalogCard) => void;
 }) {
@@ -316,13 +318,14 @@ export function SubCardProgress({ cards, cardsById, disabled = false, onOpen }: 
   if (!cards.length) return null;
   const accepted = cards.filter(card => card.state === 'done').length;
   const label = t.progress(accepted, cards.length);
-  return <div className="sub-card-progress" role={onOpen ? 'group' : 'img'} title={label} aria-label={label}>
+  return <div className="sub-card-progress" role={onOpen ? 'group' : 'img'} title={label} aria-label={label} style={{ '--sub-card-steps': cards.length } as CSSProperties}>
     {cards.map(card => {
       const state = subCardVisualState(card, cardsById);
       const stepLabel = `${card.title} · ${subCardStateLabel(state, lang)}`;
-      if (onOpen) return <button key={card.id} type="button" className="sub-card-progress-segment" data-state={state} disabled={disabled}
+      const style = { '--sub-card-weight': subCardWeight(card) } as CSSProperties;
+      if (onOpen) return <button key={card.id} type="button" className="sub-card-progress-segment" data-state={state} style={style} disabled={disabled}
         title={stepLabel} aria-label={t.openSubCard(stepLabel)} onClick={() => onOpen(card)} />;
-      return <span key={card.id} className="sub-card-progress-segment" data-state={state} title={stepLabel} aria-hidden="true" />;
+      return <span key={card.id} className="sub-card-progress-segment" data-state={state} style={style} title={stepLabel} aria-hidden="true" />;
     })}
   </div>;
 }
@@ -699,6 +702,8 @@ export function CardFamilyPanel({ hero, card, children, openedId, catalog, disab
   const currentHasChildren = catalog.cards.some(candidate => candidate.parentId === card.id);
   const canChooseParent = card.kind !== 'hero' && !card.journey && !currentHasChildren && !card.archived && !card.deleted;
   const activeChildren = children.filter(child => !child.archived && !child.deleted);
+  // A Sub Card without a deck is an indication only: the heading count and row badges never block anything (2026-11-09).
+  const withoutDeck = activeChildren.filter(child => child.deckId === null);
   let parentReason = t.parentHero;
   if (card.journey) parentReason = t.journeyLink;
   else if (currentHasChildren) parentReason = t.nestedFamilies;
@@ -880,7 +885,7 @@ export function CardFamilyPanel({ hero, card, children, openedId, catalog, disab
     {parentPicker ? <div className="card-family-parent-slot">{parentPicker}</div> : <div className="card-family-subcards-slot">
     {/* Title and search stay left; add, attach, and filter controls stay right. */}
     <div className="card-family-heading">
-      <div className="card-family-heading-title"><h2>{t.subCardsHeading}</h2>
+      <div className="card-family-heading-title"><h2>{t.subCardsHeading}</h2>{withoutDeck.length > 0 && <span className="card-family-no-deck-count">{t.withoutDeckCount(withoutDeck.length)}</span>}
         <Button type="button" variant="ghost" size="icon" title={t.findSubCards} aria-label={t.findSubCards} aria-expanded={searchOpen} aria-controls={searchId} disabled={interacting} onClick={() => { setSearchOpen(!searchOpen); if (searchOpen) setSearch(''); }}><Search size={16} /></Button>
       </div>
       <div className="card-family-actions">
@@ -1011,6 +1016,7 @@ function SortableSubCard({ card, hero, current, deckName, disabled, writable, ca
               aria-label={t.assignOwner(card.title, card.owner ?? t.unassigned)} onClick={event => onOwner?.(card, event.currentTarget)}>
               <CardOwnerAvatar owner={card.owner} members={members} />{card.owner && <span>{card.owner}</span>}
             </button>
+            {card.deckId === null && <span className="card-family-row-no-deck">{t.noDeck}</span>}
             {(runName || milestoneLabel) && <span className="card-family-row-planning">
               {runName && <span title={runTitle}>{runName}</span>}
               {runName && milestoneLabel && <span className="card-family-row-planning-separator" aria-hidden="true">·</span>}

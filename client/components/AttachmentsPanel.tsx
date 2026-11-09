@@ -7,14 +7,14 @@ import { Button } from './ui/button.tsx';
 import { AttachmentImageViewer } from './AttachmentImageViewer.tsx';
 import { CardOwnerAvatar } from './CardQuickSettings.tsx';
 import {
-  attachmentAddedByLabel, attachmentFileUrl, attachmentMarkdownReference, attachmentSource,
+  attachmentAddedByLabel, attachmentFileUrl, attachmentSource,
   fetchCardAttachments, formatAttachmentDate, formatAttachmentSize, readAttachmentAsDataUrl,
   readAttachmentSortOrder, sortAttachmentFiles, validateAttachmentFile, writeAttachmentSortOrder,
   type AttachmentSortOrder, type AttachmentTypeFilter,
 } from '../attachments.ts';
 import { defineText, textNow, useText } from '../i18n.ts';
 import { failureMessage } from '../failure-message.ts';
-import { attachmentMarkdown } from '../attachment-markdown.ts';
+import { attachmentMarkdown, removeAttachmentLinks } from '../attachment-markdown.ts';
 import '../attachments-panel.css';
 
 const text = defineText({
@@ -23,6 +23,12 @@ const text = defineText({
   readFailed: 'Could not read the file.',
   notSaved: (name: string) => `“${name}”: attachment not saved. Check that the list is current and try again.`,
   notRemoved: 'Attachment not removed. Refresh the list and try again.',
+  linksNotRemoved: 'Nothing was deleted: the card text changed. Try again.',
+  usedInText: (count: number) => count === 1 ? 'This file is inserted in the card text. Remove the link from the text too?'
+    : `This file is inserted in the card text ${count} times. Remove the links from the text too?`,
+  removeWithLinks: 'Delete and remove from text',
+  removeKeepText: 'Delete, keep text',
+  cancel: 'Cancel',
   heading: (count: number) => `${count} attached ${new Intl.PluralRules('en-US').select(count) === 'one' ? 'file' : 'files'}`,
   previousNewest: 'Previous image (newer)',
   previousOldest: 'Previous image (older)',
@@ -56,6 +62,12 @@ const text = defineText({
   readFailed: 'Не удалось прочитать файл.',
   notSaved: (name: string) => `«${name}»: вложение не сохранено. Проверьте актуальность списка и повторите.`,
   notRemoved: 'Вложение не удалено. Обновите список и повторите действие.',
+  linksNotRemoved: 'Ничего не удалено: текст карточки изменился. Повторите действие.',
+  usedInText: (count: number) => count === 1 ? 'Файл вставлен в текст карточки. Убрать ссылку из текста тоже?'
+    : `Файл вставлен в текст карточки (${count}). Убрать ссылки из текста тоже?`,
+  removeWithLinks: 'Удалить и убрать из текста',
+  removeKeepText: 'Удалить, текст оставить',
+  cancel: 'Отмена',
   heading: (count: number) => {
     const rule = new Intl.PluralRules('ru-RU').select(count);
     const noun = { one: 'вложение', few: 'вложения', many: 'вложений', zero: 'вложений', two: 'вложения', other: 'вложения' }[rule]!;
@@ -112,6 +124,7 @@ export function AttachmentsPanel({ card, catalog, writable, onEdit }: Attachment
   const [sortOrder, setSortOrder] = useState<AttachmentSortOrder>(readAttachmentSortOrder);
   const [dragActive, setDragActive] = useState(false);
   const [viewerIndex, setViewerIndex] = useState<number | null>(null);
+  const [pendingRemoval, setPendingRemoval] = useState<{ file: string; count: number } | null>(null);
   const viewRef = useRef<CardAttachments | null>(null);
   const uploadInFlight = useRef(false);
   const fileInput = useRef<HTMLInputElement>(null);
@@ -169,7 +182,7 @@ export function AttachmentsPanel({ card, catalog, writable, onEdit }: Attachment
         await load();
         if (origin === 'paste' && file.type !== 'application/pdf') {
           const newest = viewRef.current ? sortAttachmentFiles(viewRef.current.files, 'newest')[0] : null;
-          if (newest && newest.kind === 'image') pastedImages.push(`![${newest.name}](${attachmentMarkdownReference(newest.file, card.path)})`);
+          if (newest && newest.kind === 'image') pastedImages.push(attachmentMarkdown(card.path, newest));
         }
       }
       if (!pastedImages.length) return;
@@ -182,13 +195,28 @@ export function AttachmentsPanel({ card, catalog, writable, onEdit }: Attachment
     }
   }
 
-  async function removeAttachment(file: CardAttachment) {
+  /** An attachment inserted into the card text asks first: deleting it alone would leave a broken image there. */
+  function requestRemoval(file: CardAttachment) {
     if (!view || busy) return;
+    const { count } = removeAttachmentLinks(card.markdown, card.path, file.file);
+    if (count) setPendingRemoval({ file: file.file, count });
+    else void removeAttachment(file.file, false);
+  }
+
+  async function removeAttachment(file: string, dropLinks: boolean) {
+    if (!view || busy) return;
+    setPendingRemoval(null);
     setBusy(true);
     setError('');
     setNotice('');
     try {
-      const saved = await onEdit({ action: 'remove-attachment', cardId: card.id, attachmentsHash: view.hash, file: file.file });
+      // The text goes first: if it changed meanwhile, nothing is deleted and the person can retry on fresh text.
+      if (dropLinks) {
+        const { markdown } = removeAttachmentLinks(card.markdown, card.path, file);
+        const cleaned = await onEdit({ action: 'update-card-content', cardId: card.id, sourceHash: card.sourceHash, title: card.title, markdown });
+        if (!cleaned) { setError(t.linksNotRemoved); return; }
+      }
+      const saved = await onEdit({ action: 'remove-attachment', cardId: card.id, attachmentsHash: view.hash, file });
       if (saved) await load();
       else setError(t.notRemoved);
     } finally { setBusy(false); }
@@ -263,9 +291,17 @@ export function AttachmentsPanel({ card, catalog, writable, onEdit }: Attachment
                 onClick={() => setViewerIndex(images.indexOf(file))}><Eye size={16} /></Button>}
               <AttachmentCopyButton cardPath={card.path} attachment={file} />
               {!file.missing && <a className="ui-button button-ghost button-size-icon" href={attachmentFileUrl(source, file.file)} download={file.name} aria-label={t.download(file.name)} title={t.download(file.name)}><Download size={16} /></a>}
-              {writable && <Button type="button" variant="ghost" size="icon" className="attachments-remove" aria-label={t.remove(file.name)} title={t.removeAttachment} disabled={busy} onClick={() => void removeAttachment(file)}><Trash2 size={16} /></Button>}
+              {writable && <Button type="button" variant="ghost" size="icon" className="attachments-remove" aria-label={t.remove(file.name)} title={t.removeAttachment} disabled={busy} onClick={() => requestRemoval(file)}><Trash2 size={16} /></Button>}
             </div>
           </div>
+          {pendingRemoval?.file === file.file && <div className="attachments-confirm" role="alertdialog" aria-label={t.removeAttachment}>
+            <p>{t.usedInText(pendingRemoval.count)}</p>
+            <div className="attachments-confirm-actions">
+              <Button type="button" size="sm" autoFocus onClick={() => void removeAttachment(file.file, true)}>{t.removeWithLinks}</Button>
+              <Button type="button" size="sm" variant="outline" onClick={() => void removeAttachment(file.file, false)}>{t.removeKeepText}</Button>
+              <Button type="button" size="sm" variant="ghost" onClick={() => setPendingRemoval(null)}>{t.cancel}</Button>
+            </div>
+          </div>}
           {viewable
             ? <button type="button" className="attachments-preview" aria-label={t.view(file.name)} title={file.name} onClick={() => setViewerIndex(images.indexOf(file))}><img src={attachmentFileUrl(source, file.file)} alt="" loading="lazy" /></button>
             : <div className="attachments-file">{file.kind === 'image' ? <ImageIcon size={16} /> : <FileText size={16} />}<span title={file.name}>{file.name}</span>{file.missing && <small>{t.missing}</small>}</div>}

@@ -4,6 +4,10 @@ schema: 1
 id: roguelike-items-power-ups
 title: "Roguelike: Items & Power-ups"
 description: Define an item interaction, create its effects and sound, implement the behavior and test its power within a run.
+locales:
+  ru:
+    title: "Roguelike: предметы и бонусы"
+    description: Определить взаимодействие предмета, создать эффекты и звук, внедрить поведение и проверить силу предмета внутри Run.
 category: Production
 tags:
   - Roguelike

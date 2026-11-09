@@ -4,6 +4,10 @@ schema: 1
 id: rpg-quests
 title: "RPG: Quests"
 description: Take a branching quest from objectives and dialogue through state handling, rewards and a complete playthrough.
+locales:
+  ru:
+    title: "RPG: квесты"
+    description: Провести ветвящийся квест от целей и диалога через обработку состояний, награды и полный проход.
 category: Production
 tags:
   - RPG

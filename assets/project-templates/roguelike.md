@@ -4,6 +4,10 @@ schema: 1
 id: roguelike
 title: Roguelike
 description: Characters, items, enemies and room types for varied runs and lasting progression.
+locales:
+  ru:
+    title: Roguelike
+    description: Персонажи, предметы, враги и типы комнат для разнообразных Run и долговременного прогресса.
 category: games
 genre: roguelike
 order: 5

@@ -4,6 +4,10 @@ schema: 1
 id: puzzle-elements
 title: "Puzzle: Puzzle Elements"
 description: Build a reusable puzzle piece with unambiguous states.
+locales:
+  ru:
+    title: "Головоломка: элементы"
+    description: Сделать многоразовый элемент головоломки с однозначными состояниями.
 category: Production
 tags:
   - Puzzle

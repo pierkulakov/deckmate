@@ -4,6 +4,10 @@ schema: 1
 id: simulation
 title: Simulation
 description: Resources, buildings, recipes and worker needs for a simulation of production and everyday life.
+locales:
+  ru:
+    title: Симуляция
+    description: Ресурсы, здания, рецепты и потребности работников для симуляции производства и повседневной жизни.
 category: games
 genre: simulation
 order: 7

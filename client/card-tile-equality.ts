@@ -1,5 +1,5 @@
 import type { CatalogCard, CatalogMember, CatalogView } from '../src/catalog-contracts.ts';
-import type { CatalogLookups } from './catalog-lookups.ts';
+import { familyChildren, type CatalogLookups } from './catalog-lookups.ts';
 
 export type CardTileLookups = Pick<CatalogLookups, 'cardById' | 'childrenByParent' | 'outgoingByCard' | 'milestoneProgress'>;
 export type CardTileCatalog = Pick<CatalogView, 'runs' | 'milestones' | 'indexedAt'>;
@@ -13,7 +13,6 @@ export interface TileData {
 }
 
 const noIds: readonly string[] = [];
-const noCards: readonly CatalogCard[] = [];
 
 function sameData(previous: unknown, next: unknown): boolean {
   return previous === next || JSON.stringify(previous) === JSON.stringify(next);
@@ -30,8 +29,8 @@ export function cardTileData(card: CatalogCard, lookups: CatalogLookups, catalog
   for (const parentId of [card.parentId, card.kind === 'hero' ? card.id : null]) {
     if (!parentId) continue;
     relatedIds.add(parentId);
-    const children = lookups.childrenByParent.get(parentId);
-    if (!children) continue;
+    const children = familyChildren(lookups, parentId);
+    if (!children.length) continue;
     childrenByParent.set(parentId, children);
     for (const child of children) {
       relatedIds.add(child.id);
@@ -57,10 +56,10 @@ export function cardTileData(card: CatalogCard, lookups: CatalogLookups, catalog
 function sameFamily(previous: TileData, next: TileData): boolean {
   const parentId = next.card.parentId;
   if (parentId && (!sameData(previous.lookups.cardById.get(parentId), next.lookups.cardById.get(parentId))
-    || !sameData(previous.lookups.childrenByParent.get(parentId) ?? noCards, next.lookups.childrenByParent.get(parentId) ?? noCards))) return false;
+    || !sameData(familyChildren(previous.lookups, parentId), familyChildren(next.lookups, parentId)))) return false;
   if (next.card.kind !== 'hero') return true;
-  const previousChildren = previous.lookups.childrenByParent.get(next.card.id) ?? noCards;
-  const nextChildren = next.lookups.childrenByParent.get(next.card.id) ?? noCards;
+  const previousChildren = familyChildren(previous.lookups, next.card.id);
+  const nextChildren = familyChildren(next.lookups, next.card.id);
   if (!sameData(previousChildren, nextChildren)) return false;
   // 2026-11-05: a child's segment also changes when its dependency is accepted outside this family.
   return nextChildren.every(child => sameAcceptance(child.dependsOn ?? noIds, previous.lookups, next.lookups));

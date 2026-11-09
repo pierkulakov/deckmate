@@ -11,6 +11,8 @@
 .card-family-subcards-slot { margin-top: 32px; }
 .card-family-heading { display: flex; align-items: center; gap: 12px; height: 24px; margin-bottom: 12px; }
 .card-family-heading-title { display: flex; align-items: center; gap: 8px; min-width: 0; }
+/* 2026-11-09: a Sub Card without a deck is an indication, not a block; the heading count and row badge use the quiet warning tone in both themes. */
+.card-family-no-deck-count { flex: 0 0 auto; padding: 0 6px; border: 1px solid color-mix(in srgb, var(--warning-ink) 35%, var(--line)); border-radius: 3px; background: var(--warning-bg); color: var(--warning-ink); font-size: 10px; font-weight: 700; line-height: 14px; }
 .card-family-actions { display: flex; flex-shrink: 0; gap: 16px; margin-left: auto; }
 .card-family-action-group { display: flex; gap: 4px; }
 /* Secondary buttons share 24 px height, a 1 px violet edge, 12/700 violet text and radius 4. */
@@ -35,7 +37,7 @@
 .card-family-hero-title strong { overflow: hidden; color: var(--ink); font-size: 12px; font-weight: 400; line-height: 14px; white-space: nowrap; text-overflow: ellipsis; }
 .card-family-row { display: flex; flex-direction: column; width: 100%; min-height: 53px; overflow: hidden; cursor: default; }
 .card-family-row[data-kind="doc"] { --strip: var(--doc-metal); }
-/* Strip = state of the Sub Card, the same colors as the progress strip on the Hero tile. */
+/* Strip = state of the Sub Card in the full state colors; the Hero tile shows the same states as light tints on its gold (2026-11-09). */
 .card-family-row[data-progress-state="accepted"] { --strip: var(--sub-card-state-accepted); }
 .card-family-row[data-progress-state="working"] { --strip: var(--sub-card-state-working); }
 .card-family-row[data-progress-state="review"] { --strip: var(--sub-card-state-review); }
@@ -59,6 +61,8 @@
 .card-family-row-waiting { display: flex; align-items: center; gap: 4px; min-width: 0; margin-top: 4px; color: var(--sub-card-state-blocked); font-size: 10px; line-height: 14px; }
 .card-family-row-waiting > svg { flex-shrink: 0; }
 .card-family-row-waiting > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* The badge keeps the wrapped details row's flow: at narrow widths it wraps whole onto its own line instead of truncating. */
+.card-family-row-no-deck { display: inline-flex; flex: 0 0 auto; align-items: center; max-width: 100%; padding: 0 6px; border: 1px solid color-mix(in srgb, var(--warning-ink) 35%, var(--line)); border-radius: 3px; background: var(--warning-bg); color: var(--warning-ink); font-size: 10px; font-weight: 700; line-height: 14px; }
 .card-metrics.is-compact { flex-wrap: nowrap; align-items: center; gap: 4px; color: inherit; font-size: 12px; font-weight: 700; line-height: 14px; letter-spacing: .12px; }
 .card-metrics.is-compact > span { gap: 2px; }
 .card-metrics.is-compact svg { flex-shrink: 0; }
@@ -198,6 +202,8 @@ button.card-parent-picker-option { width: 100%; background: transparent; color: 
 .card-family-composer-deck svg { flex-shrink: 0; color: var(--muted); }
 .card-family-composer-deck select { flex: 1; min-width: 0; width: 100%; height: 34px; padding: 0; border: 0; background: transparent; color: var(--ink); font: inherit; font-size: 12px; }
 .card-family-composer-deck:focus-within > span:last-child { outline: 2px solid var(--focus); outline-offset: 1px; }
+/* The framed row above already shows focus; the select's own ring would draw a second frame inside it. */
+.card-family-composer-deck select:focus-visible { outline: none; }
 .card-family-composer-recents { display: flex; flex-wrap: wrap; gap: 6px; margin-top: -5px; }
 .card-family-composer-recents .ui-button { max-width: 100%; min-height: 25px; padding: 3px 8px; overflow: hidden; text-overflow: ellipsis; font-size: 11px; }
 .card-family-composer-recents .ui-button[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent); }

@@ -4,6 +4,10 @@ schema: 1
 id: web-app
 title: Web App
 description: Features, screens, API endpoints, bugs and release slices for a web product.
+locales:
+  ru:
+    title: Веб-приложение
+    description: Фичи, экраны, эндпоинты API, баги и релизные срезы для веб-продукта.
 category: software
 genre: null
 order: 12

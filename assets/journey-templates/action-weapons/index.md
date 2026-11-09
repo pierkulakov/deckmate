@@ -4,6 +4,10 @@ schema: 1
 id: action-weapons
 title: "Action: Weapons"
 description: Define handling, build the weapon and verify its combat role.
+locales:
+  ru:
+    title: "Экшен: оружие"
+    description: Задать ощущение оружия в руках, собрать его и проверить боевую роль.
 category: Production
 tags:
   - Action

@@ -4,6 +4,10 @@ schema: 1
 id: adventure-locations
 title: "Adventure: Locations"
 description: Create an explorable location whose clues and exits support the story.
+locales:
+  ru:
+    title: "Приключение: локации"
+    description: Создать исследуемую локацию, чьи подсказки и выходы поддерживают сюжет.
 category: Production
 tags:
   - Adventure

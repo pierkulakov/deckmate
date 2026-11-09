@@ -4,6 +4,10 @@ schema: 1
 id: item-weapon
 title: Item / Weapon
 description: Take an item or weapon from its data and role through a model, icon, use animations, audio, and balance.
+locales:
+  ru:
+    title: Предмет / Оружие
+    description: Провести предмет или оружие от данных и роли через модель, иконку, анимации использования, звук и баланс.
 category: Production
 tags: [2D, 3D]
 author: Deckmate

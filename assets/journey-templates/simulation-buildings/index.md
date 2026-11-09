@@ -4,6 +4,10 @@ schema: 1
 id: simulation-buildings
 title: "Simulation: Buildings"
 description: Specify and implement a facility with placement rules, visible operating states and checks for blocked production.
+locales:
+  ru:
+    title: "Симуляция: здания"
+    description: Описать и внедрить сооружение с правилами размещения, видимыми рабочими состояниями и проверками заблокированного производства.
 category: Production
 tags:
   - Simulation

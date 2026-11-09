@@ -11,6 +11,7 @@ import { createApp } from '../server/app.ts';
 import { readProjectCatalog } from '../server/catalog.ts';
 import { loadConfig } from '../server/config.ts';
 import { initializeDemo } from '../server/demo.ts';
+import { editNativeCardProperties } from '../server/native-cards.ts';
 import { packagePath } from '../server/package-path.ts';
 
 const executeFile = promisify(execFile);
@@ -171,6 +172,16 @@ try {
   await capture('social-cards', deckUrl, '.catalog-card-hero', [],
     { width: 1280, height: 912, dpr: 2, after: [scrollToTop, markCards], clip: '[data-shot="cards"]', file: packagePath('docs', 'social-cards.png') });
   await capture('social', pathToFileURL(packagePath('docs', 'social-preview.html')).href, '.cards', [], { width: 1280, height: 640, dpr: 1 }, true);
+  // 2026-11-09: finish a real demo family after the overview captures to show the accepted Hero's foil.
+  const current = await readProjectCatalog(project);
+  const children = current.cards.filter(card => card.parentId === hero.id && card.kind === 'task');
+  if (!children.length) throw new Error('Demo Hero has no task Sub Cards to accept.');
+  for (const child of children) {
+    if (child.state !== 'done') await editNativeCardProperties(project, child.id, child.sourceHash, { state: 'done' }, undefined, current.formatLanguage);
+  }
+  await capture('deck-accepted', deckUrl, '.catalog-card-hero.is-family-done',
+    [ready('.catalog-card-hero.is-family-done .deck-card-done-medallion')],
+    { width: 1280, height: 912, dpr: 1.25, after: [scrollToTop] });
   if (createHash('sha256').update(await readFile(clientEntry)).digest('hex') !== clientBuildHash) {
     throw new Error('The client build changed during capture; rerun screenshots after the build completes.');
   }

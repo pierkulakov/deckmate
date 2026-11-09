@@ -4,6 +4,10 @@ schema: 1
 id: strategy
 title: Strategy
 description: Units, buildings, technologies and maps for RTS, 4X and tactics.
+locales:
+  ru:
+    title: Стратегия
+    description: Юниты, здания, технологии и карты для RTS, 4X и тактик.
 category: games
 genre: rts
 order: 9

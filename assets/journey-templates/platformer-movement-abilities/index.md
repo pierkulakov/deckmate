@@ -4,6 +4,10 @@ schema: 1
 id: platformer-movement-abilities
 title: "Platformer: Movement Abilities"
 description: Tune a traversal ability and make its timing visible to the player.
+locales:
+  ru:
+    title: "Платформер: способности передвижения"
+    description: Настроить способность перемещения и сделать её тайминги заметными для игрока.
 category: Production
 tags:
   - Platformer

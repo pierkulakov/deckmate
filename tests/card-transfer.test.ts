@@ -78,6 +78,44 @@ describe('card transfer payload', () => {
     expect(cardTransferRequest(baseline, deck('target', 'mixed'))?.cards).toHaveLength(3);
   });
 
+  it('asks before promoting one top-level Task without Sub Cards dropped into an Asset deck', () => {
+    const active = card('active');
+    const baseline = capture([active]);
+    expect(cardTransferTargetIssue(baseline, deck('target', 'asset'), [active])).toBe('confirm-promotion');
+    expect(cardTransferRequest(baseline, deck('target', 'asset'), [active])).toBeNull();
+  });
+
+  it('moves a Task into a Mixed deck as a Task, without offering promotion', () => {
+    const active = card('active');
+    const baseline = capture([active]);
+    expect(cardTransferTargetIssue(baseline, deck('target', 'mixed'), [active])).toBeNull();
+    expect(cardTransferRequest(baseline, deck('target', 'mixed'), [active])?.cards).toHaveLength(1);
+  });
+
+  it('keeps the previous transfer decision when a Task is not eligible for promotion', () => {
+    const ineligible = [
+      card('child', { parentId: 'hero' }),
+      card('archived', { archived: true }),
+      card('deleted', { deleted: true }),
+      card('journey', { journey: { journeyId: 'journey', version: 1, stepId: 'step', instanceId: 'instance' } }),
+    ];
+    for (const active of ineligible) {
+      const baseline = capture([active]);
+      expect(cardTransferTargetIssue(baseline, deck('target', 'asset'), [active])).toBe('incompatible');
+      expect(cardTransferTargetIssue(baseline, deck('target', 'mixed'), [active])).toBeNull();
+    }
+    const hero = card('hero', { kind: 'hero' });
+    expect(cardTransferTargetIssue(capture([hero]), deck('target', 'asset'), [hero])).toBeNull();
+    const parent = card('parent');
+    const children = [parent, card('hidden-child', { parentId: parent.id, archived: true })];
+    expect(cardTransferTargetIssue(capture([parent]), deck('target', 'asset'), children)).toBe('incompatible');
+    const multiple = [card('first'), card('second')];
+    expect(cardTransferTargetIssue(capture(multiple), deck('target', 'mixed'), multiple)).toBeNull();
+    const active = card('active');
+    expect(cardTransferTargetIssue(capture([active]), deck('target', 'task'), [active])).toBeNull();
+    expect(cardTransferTargetIssue(capture([active]), deck('target', 'knowledge'), [active])).toBe('incompatible');
+  });
+
   it.each([
     ['task', 'task'], ['hero', 'asset'], ['doc', 'knowledge'],
   ] as const)('accepts a %s card in its compatible %s deck', (kind, deckKind) => {

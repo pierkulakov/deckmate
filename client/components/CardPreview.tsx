@@ -23,7 +23,7 @@ import { subCardsCount } from './CardFamily.tsx';
 import { DependencyStateWarning, dependencyConflicts, type DependencyConflict } from './DependencyWarning.tsx';
 import { AttachmentsPanel } from './AttachmentsPanel.tsx';
 import { JourneyReturnPrompt, isJourneyReturn, journeyLessonAction, type JourneyReturnAnswer } from './JourneyReturnPrompt.tsx';
-import { buildCatalogLookups, orderSubCards } from '../catalog-lookups.ts';
+import { buildCatalogLookups, familyChildren } from '../catalog-lookups.ts';
 import { familyFinished, useJustFinished } from '../done-impact.ts';
 import { useCardTilt } from '../useCardTilt.ts';
 import { OPEN_CARD_SHORTCUTS, claimOpenCardShortcuts, markShortcutPropertyHover, matchShortcut, resolveHoveredCardShortcut, shortcutTargetBlocked } from '../keyboard-shortcuts.ts';
@@ -315,15 +315,17 @@ export function CardPreview({ card, catalog, snapshot, writable, pending, onClos
   const latestRevision = useRef(revision);
   latestRevision.current = revision;
   const exists = Boolean(currentCard);
+  const indicatorLookups = useMemo(() => buildCatalogLookups(catalog.cards, catalog.subCardOrder), [catalog.cards, catalog.subCardOrder]);
   const parent = catalog.cards.find(candidate => candidate.id === card.parentId && !candidate.deleted && !candidate.archived);
-  const siblings = parent ? catalog.cards.filter(candidate => candidate.parentId === parent.id && candidate.kind === 'task' && !candidate.deleted && !candidate.archived) : [];
-  const parentAccepted = siblings.filter(candidate => candidate.state === 'done').length;
+  const siblings = parent ? familyChildren(indicatorLookups, parent.id) : [];
+  const siblingTasks = siblings.filter(candidate => candidate.kind === 'task');
+  const parentAccepted = siblingTasks.filter(candidate => candidate.state === 'done').length;
   const deck = catalog.decks.find(candidate => candidate.id === card.deckId);
   const supportsChildren = (card.kind === 'hero' || card.kind === 'doc') && !card.parentId;
-  const children = supportsChildren ? catalog.cards.filter(candidate => candidate.parentId === card.id && !candidate.deleted && !candidate.archived) : [];
+  const children = supportsChildren ? familyChildren(indicatorLookups, card.id) : [];
   const familyDone = card.kind === 'hero' && familyFinished(children);
   const justDone = useJustFinished(card.state === 'done' || familyDone, card.id);
-  const orderedChildren = orderSubCards(children, catalog.subCardOrder?.[card.id]);
+  const orderedChildren = children;
   const journeyChild = orderedChildren.find(child => child.journey);
   const journeyReference = journeyChild?.journey;
   const journeyDefinition = journeyReference ? catalog.journeys?.find(journey => journey.id === journeyReference.journeyId) : undefined;
@@ -335,7 +337,6 @@ export function CardPreview({ card, catalog, snapshot, writable, pending, onClos
   const stepNoteShown = Boolean(card.journey && stepRunCards.some(candidate => candidate.id === card.id));
   const journeyChildren = journeyReference ? orderedChildren.filter(child => child.journey?.journeyId === journeyReference.journeyId
     && child.journey.version === journeyReference.version && child.journey.instanceId === journeyReference.instanceId) : [];
-  const indicatorLookups = useMemo(() => buildCatalogLookups(catalog.cards, catalog.subCardOrder), [catalog.cards, catalog.subCardOrder]);
   const cardsById = indicatorLookups.cardById;
   const backlinks = useMemo(() => card.kind === 'doc' ? catalog.cards.filter(candidate => candidate.id !== card.id && !candidate.deleted && !candidate.archived
     && cardLinksTo(candidate, shortReference('c', card.id), snapshot.source)) : [], [catalog.cards, card.id, card.kind, snapshot.source]);
@@ -697,7 +698,7 @@ export function CardPreview({ card, catalog, snapshot, writable, pending, onClos
       title={onReturnToHero ? t.returnToHero(parent.title) : t.openFamily} aria-keyshortcuts={onReturnToHero ? 'Escape' : undefined}
       onPointerEnter={parentGlare.tilt} onPointerMove={parentGlare.tilt} onPointerLeave={parentGlare.reset}>
       <span className="card-material-glare" aria-hidden="true" />
-      <Crown size={18} /><span>{parent.title}</span><progress value={parentAccepted} max={Math.max(siblings.length, 1)} aria-label={t.parentProgress(parentAccepted, siblings.length)} />
+      <Crown size={18} /><span>{parent.title}</span><progress value={parentAccepted} max={Math.max(siblingTasks.length, 1)} aria-label={t.parentProgress(parentAccepted, siblingTasks.length)} />
       {onReturnToHero && <kbd>Esc</kbd>}
     </button>}
     <div className={'card-preview-sheet' + (justDone ? ' is-just-done' : '')} data-state={card.state ?? undefined} data-family-done={familyDone || undefined}>

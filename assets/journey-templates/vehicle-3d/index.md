@@ -4,6 +4,10 @@ schema: 1
 id: vehicle-3d
 title: Vehicle (3D)
 description: Develop a vehicle from specifications and blueprints through modeling, materials, handling physics, sound and driving tests.
+locales:
+  ru:
+    title: Транспорт (3D)
+    description: Разработать транспорт от спецификаций и чертежей через моделирование, материалы, физику управления, звук и тесты вождения.
 category: Production
 tags: [3D]
 author: Deckmate

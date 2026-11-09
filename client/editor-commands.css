@@ -27,6 +27,8 @@
 .markdown a.card-reference-chip:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
 .markdown .card-reference-chip-id { font-weight: 400; color: color-mix(in srgb, var(--gold-chip-ink) 80%, var(--gold-chip)); }
 .markdown .card-reference-chip.is-missing { background: color-mix(in srgb, var(--muted) 16%, transparent); color: var(--muted); font-weight: 400; }
+.markdown .card-reference-chip.is-image { display: inline-flex; align-items: center; gap: 4px; max-width: 100%; vertical-align: bottom; }
+.markdown .card-reference-chip.is-image svg { flex: none; }
 .editor-checklist-count { width: fit-content; margin-block: 4px 12px; color: var(--muted); font: 500 12px/18px var(--font-sans); font-variant-numeric: tabular-nums; }
 .card-edit-text.is-dragging-media { outline: 2px dashed var(--mint-edge, var(--focus)); outline-offset: -4px; }
 .editor-media-insert { padding: 12px; color: var(--ink); border-top: 1px solid var(--edit-line); background: var(--edit-bg); font: 400 13px/18px var(--font-sans); }

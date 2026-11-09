@@ -2,6 +2,7 @@ import type { BulkEditRequest, BulkOutcome, CardOptions } from './bulk-contracts
 import type { ProjectTag } from './project-tags.ts';
 import type { ByteRange } from './contracts.ts';
 import type { CardState, FormatLanguage } from './format-vocabulary.ts';
+import type { Lang } from './i18n.ts';
 
 export type CardKind = 'task' | 'hero' | 'doc';
 export type DeckKind = 'asset' | 'task' | 'knowledge' | 'mixed';
@@ -165,6 +166,9 @@ export interface CatalogJourney {
 export type JourneyTemplateSource = 'bundled' | 'project';
 export interface CatalogJourneyTemplateRole { id: string; title: string }
 export interface CatalogJourneyTemplateStep extends Omit<CatalogJourneyStep, 'deckId' | 'owner'> { roleId: string }
+/** 2026-11-09: a bundled template's picker title and description in another interface language. `title` and
+ *  `description` stay English, the fallback; frontmatter `locales: { ru: { title, description } }`. */
+export type TemplateLocales = Partial<Record<Exclude<Lang, 'en'>, { title?: string; description?: string }>>;
 export interface CatalogJourneyTemplate {
   id: string;
   source: JourneyTemplateSource;
@@ -177,6 +181,8 @@ export interface CatalogJourneyTemplate {
   roles: CatalogJourneyTemplateRole[];
   zones: CatalogJourneyZone[];
   steps: CatalogJourneyTemplateStep[];
+  /** Localized picker text; absent for project-made templates. */
+  locales?: TemplateLocales;
   fileHash: string;
 }
 export type JourneyRoleTarget = { deckId: string } | { createDeck: { title: string; spaceId: string } };
@@ -208,6 +214,8 @@ export interface ProjectTemplate {
   spaces: ProjectTemplateSpace[]; decks: ProjectTemplateDeck[]; tags: ProjectTag[]; samples: ProjectTemplateSample[];
   /** Markdown body: the longer text of the picker. */
   details: string;
+  /** Localized picker text. */
+  locales?: TemplateLocales;
   fileHash: string;
 }
 export interface ProjectTemplatePlanItem { kind: 'space' | 'deck' | 'journey' | 'tag' | 'sample'; title: string; status: 'create' | 'resume' | 'reuse' | 'skip'; reason?: string }

@@ -4,6 +4,10 @@ schema: 1
 id: roguelike-enemies
 title: "Roguelike: Enemies"
 description: Define enemy combat stats, create its visual identity, implement its pattern and add readable sound cues.
+locales:
+  ru:
+    title: "Roguelike: враги"
+    description: Определить боевые характеристики врага, создать его визуальный образ, внедрить паттерн поведения и добавить читаемые звуковые подсказки.
 category: Production
 tags:
   - Roguelike

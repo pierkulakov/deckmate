@@ -4,6 +4,33 @@ Notable changes are grouped by version using [Keep a Changelog](https://keepacha
 
 ## [Unreleased]
 
+### Added
+
+- **Deckmate Desktop.** The Windows app now uses Tauri 2; its installer is about 32 MB instead of 121 MB. The installer automatically removes the old Electron installation while keeping `%APPDATA%\Deckmate`, including settings, recent projects and language.
+- **Updates.** Installed Desktop downloads updates in the background and verifies their update signature; you can install later or skip a version. The portable build only notifies you and offers the download page.
+- **What's new.** A window shows the changes after an update; you can also open it from Help.
+- **Workspace.** Pin, remove and reorder projects on the start screen or in the board's side panel; Ctrl+1–9 opens the first nine. The side panel shows shortcut labels and project initials; Ctrl+Shift+P opens the start screen.
+- **Deck covers.** Six new covers: Characters, Levels, Story, Agents, Releases and Ideas.
+- **Unsaved work.** Desktop warns before closing, switching projects or installing an update if you have unsaved changes. Windows shows why Deckmate is blocking shutdown so you can cancel it and save.
+- **Third-party licenses.** Desktop includes licenses for Node.js, Rust dependencies and WebView2 in `THIRD-PARTY-NOTICES.txt` next to the app.
+
+### Changed
+
+- **Start screen.** Navigate project lists with the keyboard; workspace projects no longer repeat under Recent. The start screen, menus and dialogs use clearer wording, including that Create project makes a sample project.
+- **Smoother board.** Opening and closing decks and cards, moving between cards and hovering tiles do much less work per frame, and these transitions no longer shift the layout.
+- **Installer.** The installer and the Windows app list show the publisher, homepage and license. Deleting app data when you uninstall now also removes `%APPDATA%\Deckmate`. The bundled server is smaller.
+- **Agent skill.** The `/deckmate` skill's commands, states and references match the CLI, and the HTTP actions it relies on ship inside the skill, so agents no longer need files from the Deckmate repository.
+- **Release checks.** Releases are prepared as drafts, the update signature is checked before publication, and the update manifest is uploaded last. `npm run desktop:updater-e2e` checks updates end to end, and screenshot capture has timeouts.
+
+### Fixed
+
+- **Long paths.** Projects in Windows folders with paths longer than 260 characters can be opened and created.
+- **Page recovery.** A page that keeps crashing no longer reloads endlessly: choose Reload or Start screen. A page that stops responding offers Reload or Wait.
+- **Board preferences.** Saved card drafts and board preferences remain available after a restart or project switch when the saved local port is free.
+- **Desktop settings.** A setting that could not be saved no longer looks applied, and a damaged `desktop.json` is kept as a dated copy before the defaults are used.
+- **Drive roots.** A project at the root of a drive is named after the drive instead of showing an empty name.
+- **Agent briefs.** Answers recorded under an English `## Decided` heading now appear in `deckmate project brief`.
+
 ## [0.5.0] - 2026-11-09
 
 ### Added

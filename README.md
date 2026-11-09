@@ -19,7 +19,7 @@
 
 <p align="center">
   Open a project folder, create a new one, or pick up a recent project.<br />
-  <sub>Lightweight native app · Tauri 2 · Node.js included · Nothing else to install</sub>
+  <sub>Lightweight native app · Tauri 2 · Node.js included · No terminal needed</sub>
 </p>
 
 <p align="center">
@@ -40,9 +40,19 @@
 
 ### Desktop
 
-Deckmate Desktop is a lightweight native app built on Tauri for Windows 10 and 11 (x64); macOS support is planned later. Download the installer (`Deckmate Setup <version>.exe`) or the portable zip (`Deckmate-<version>-win-x64.zip`) from the [latest release](https://github.com/pierkulakov/deckmate/releases/latest). The build is not code-signed, so Windows SmartScreen warns about an unknown publisher: choose **More info → Run anyway**.
+Deckmate Desktop is a lightweight Tauri 2 app for Windows 10 and 11 (x64); macOS support is planned. Download the installer (`Deckmate Setup <version>.exe`) or portable zip (`Deckmate-<version>-win-x64.zip`) from the [latest release](https://github.com/pierkulakov/deckmate/releases/latest). The installer is about 32 MB; the installed app is about 131 MB. The builds are not Windows code-signed, so SmartScreen may warn about an unknown publisher: choose **More info → Run anyway**.
 
-Run the installer and launch Deckmate from its icon, or unzip the portable build and start `Deckmate.exe` (the zip holds `Deckmate.exe`, `node.exe` and the `deckmate/` folder). Then open an existing project folder or create a project in an empty folder. The interface renders through the system Microsoft Edge WebView2 runtime, which is part of Windows 11; on Windows 10 the installer sets it up when it is missing. The app ships its own Node.js 26 runtime for the local server, so you install nothing else and need no terminal. Upgrading from an Electron version (0.5.0 and earlier): the new installer removes the old app first and keeps the settings — recent projects, language, zoom and window position carry over.
+Run the installer and launch Deckmate from its icon, or unzip the portable build and start `Deckmate.exe`. The app includes Node.js 26 for its local server; no terminal is needed. Open a project folder or choose **Create project…** to fill an empty folder with a sample project.
+
+The interface uses [Microsoft Edge WebView2 Runtime](https://developer.microsoft.com/microsoft-edge/webview2/), included with Windows 11 but not necessarily Windows 10. The portable build requires it to be installed already; the installer installs it if missing, which needs internet access. The zip contains `Deckmate.exe`, `node.exe`, `deckmate/` and `THIRD-PARTY-NOTICES.txt`.
+
+When upgrading from Electron (0.5.0 and earlier), the installer removes the old app and leaves `%APPDATA%\Deckmate` and project folders untouched. Recent projects, language, zoom and window position carry over.
+
+### Desktop updates
+
+Desktop checks for updates automatically by default; use **Help → Check for updates…** to check manually or turn automatic checks off in the same menu. The installed app downloads updates and verifies their updater signature and version, then offers to restart and install them. This signature is separate from Windows code signing. You can defer or skip a version.
+
+The portable build only notifies you and offers to open the download page; download and replace it yourself. After an in-app update, **What's new** opens with the changes since the previous version. You can also open it from **Help → What's new**.
 
 ### CLI
 
@@ -55,18 +65,19 @@ npx deckmate --data deckmate-demo
 
 To run from source instead, follow [CONTRIBUTING.md](CONTRIBUTING.md): `npm ci && npm run build`, then `node bin/deckmate.mjs init deckmate-demo` creates the demo and `node bin/deckmate.mjs --data deckmate-demo` opens it.
 
-The board opens at `http://127.0.0.1:4317/`. The sample is a small fictional game studio: five decks, two Heroes with Sub Cards, people and agents, a Journey, a Run and a Vision board. The interface is English by default; switch to Russian in the app menu. Stop the server with `Ctrl+C`.
+The board opens at `http://127.0.0.1:4317/`. The sample is a small fictional game studio: five decks, two Heroes with Sub Cards, people and agents, a Journey, a Run and a Vision board. The browser interface defaults to English; switch to Russian in the app menu. Stop the server with `Ctrl+C`.
 
 ## Start screen
 
 ![Deckmate Desktop start screen: open a folder, create a project, recent projects](docs/screenshots/desktop-start.png)
 
-Without a project, choose **Open folder…** to select an existing project in the system dialog, or **Create project** to start in an empty folder.
-Recent projects show their last-opened time and can be removed from the list; language (EN/RU) and theme controls are also available.
-The last project opens automatically on the next launch. Use **File → Switch project** (`Ctrl+Shift+O`) to return to the start screen, or `Ctrl+O` to open another folder.
-The project menu in the board also lists other recent projects for one-click switching.
-Desktop runs the same local Deckmate server on `127.0.0.1` with a randomly selected free port; project data remains in the project folder.
-Settings — recent projects, last project, language, zoom and window position — live in `%APPDATA%\Deckmate\desktop.json`; the server log is `server.log` next to it, and the disposable index is in `%APPDATA%\Deckmate\index`.
+Without a project, choose **Open folder…** to select a folder, or **Create project…** to put the sample in an empty or new folder. Recent projects show their last-opened time and can be removed from the list; language (EN/RU) and theme controls are also available. Desktop initially follows the system locale for English or Russian.
+
+Pin up to 30 projects to **Workspace** from the start screen or the board's project menu. Reorder or remove them without deleting their folders; switch with a click or `Ctrl+1`–`Ctrl+9` for the first nine. Projects are not pinned merely by opening them.
+
+The last local project opens on the next launch if its folder is available; network folders are not reopened automatically. Use **File → Switch project…** (`Ctrl+Shift+P`) to return to the start screen, or `Ctrl+O` to open another folder. Desktop runs the local server on `127.0.0.1`, reusing its saved port when available and choosing a free port otherwise. Project data remains in the project folder.
+
+Settings — workspace, recent projects, language, updates, zoom and window position — live in `%APPDATA%\Deckmate\desktop.json`; the server log is `server.log` next to it, and the disposable index is in `%APPDATA%\Deckmate\index`.
 
 ## Use it with your project
 
@@ -77,7 +88,7 @@ cd my-project
 npx deckmate
 ```
 
-**A new project.** In Desktop, choose **Create project** and an empty folder. With the CLI, create an empty folder and open it: `mkdir my-game`, then `npx deckmate --data my-game`. On the Decks tab choose **Start from template** (or click the logo in the top-left corner → **Start from template…**). Starters come for games and for software, on the **Games** and **Software** shelves: ten game genres — Action, Adventure, Platformer, Puzzle, Roguelike, RPG, Simulation, Sports, Strategy and Survival — plus software starters such as pet projects, web apps and libraries. A starter creates decks and Journeys for its kind of project, optionally with example cards.
+**A new project.** To start with an empty project in Desktop, choose **Open folder…** and select an empty folder. With the CLI, create an empty folder and open it: `mkdir my-game`, then `npx deckmate --data my-game`. On the Decks tab choose **Start from template** (or click the logo in the top-left corner → **Start from template…**). Starters come for games and for software, on the **Games** and **Software** shelves: ten game genres — Action, Adventure, Platformer, Puzzle, Roguelike, RPG, Simulation, Sports, Strategy and Survival — plus software starters such as pet projects, web apps and libraries. A starter creates decks and Journeys for its kind of project, optionally with example cards.
 
 Built-in project and Journey templates show Russian titles and descriptions in the Russian interface. Importing a Journey into a Russian-format project also gives it a Russian name.
 
@@ -85,9 +96,9 @@ Edits are saved straight into the project folder. Commit with git to keep a hist
 
 | Option | What it does |
 |---|---|
-| `--data <folder>` | Project folder; defaults to the current folder. |
-| `--port <number>` | Port, 4317 by default. |
-| `--read-only` | Disable all writes. |
+| `--data <folder>` | Project folder; defaults to `DECKMATE_DATA`, then the current folder. |
+| `--port <number>` | Port; defaults to `DECKMATE_PORT`, then 4317. |
+| `--read-only` | Disable writes to project files. |
 | `--no-open` | Do not open the browser. |
 
 These CLI settings can also live in `.env.local` in the folder you start from — see [.env.example](.env.example).
@@ -97,9 +108,9 @@ These CLI settings can also live in `.env.local` in the folder you start from �
 | Concept | Meaning |
 |---|---|
 | **Deck** | A typed collection of cards — tasks, documents or assets — grouped into spaces. |
-| **Card** | One Markdown file in `cards/`. A **Task** has a state, owner, effort and priority; a **Doc** holds rules and reference text. |
+| **Card** | A native card is a Markdown file in `cards/`; existing project documents can also appear as cards. A **Task** has a state, owner, effort and priority; a **Doc** holds rules and reference text. |
 | **Hero** | A feature card. Its **Sub Cards** are the tasks that build it, and its progress comes from them. |
-| **Hand** | A teammate's queue: seven focus slots, an ordered reserve and the cards done this week. |
+| **Hand** | A teammate's queue: seven focus slots, an ordered reserve and a pile of accepted cards with weekly counts. |
 | **Run** and **Milestone** | A dated iteration and a dated goal on the Timeline. Unfinished cards move to the next Run. |
 | **Journey** | A repeatable recipe of steps, such as concept → model → review. Applying it creates Sub Cards, each with its own instructions for a person or an agent. |
 | **Track** | A thread that links cards across decks, such as a release or a feature area. |
@@ -111,13 +122,13 @@ Open a deck to work with its cards, description, progress and activity:
 
 ![An open Deck with Hero Sub Card progress strips, task states, owners and effort](docs/screenshots/deck.png)
 
-A Hero tile shows Sub Card progress as a quiet line, with each step sized by its effort. When all its task Sub Cards are accepted, the Hero gains holographic foil, an iridescent rim and a done medallion. The foil follows the pointer; with reduced motion or touch it stays still. Doc Sub Cards appear in the Hero's family too, but only Task Sub Cards count towards its progress; the Sub Cards panel flags those without a deck. Drop a Task that has no Sub Cards into an Asset deck and Deckmate offers to make it a Hero. A Hero without Task Sub Cards can be marked done by hand from its Sub Cards bar. Doc Cards read as pages: a copper band with the word count, and the start of the text on the tile.
+A Hero tile shows Sub Card progress as a quiet line, with each step sized by its effort. When it has eligible Task Sub Cards and all of them are accepted, the Hero gains holographic foil, an iridescent rim and a done medallion; `wont-do` tasks are excluded. The foil follows the pointer; with reduced motion or touch it stays still. Doc Sub Cards appear in the Hero's family too, but only Task Sub Cards count towards its progress; the Sub Cards panel flags those without a deck. Drop a Task that has no Sub Cards into an Asset deck and Deckmate offers to make it a Hero. A native Hero without eligible Task Sub Cards can be marked done by hand from its Sub Cards bar. Doc Cards read as pages: a copper band with the word count, and the start of the text on the tile.
 
 ![Moonwake Lantern with holographic foil and a done medallion after its Sub Cards are accepted](docs/screenshots/deck-accepted.png)
 
 Press `?` in the app for all keyboard shortcuts: `N` creates a card, `/` searches, `Shift+1`–`Shift+4` switch between Hand, Decks, Timeline and Vision, and hovering a card with `O`, `E`, `P` or `,` changes its owner, effort, priority or Run.
 
-On an open card, use its properties for quick settings and click a tag to open project tags. A Hero shows its Journey as mini-cards; the Journey name opens a menu of steps and assignees. Open a step to see its Sub Card, then press `Esc` to return to the Hero. In the text editor, use the paperclip to insert an attachment, or copy its Markdown link from the attachments panel. Deleting an attachment used in the text offers to remove its links too. An image whose file is missing shows a “file not found” chip. Card covers are no longer used.
+On an open card, use its properties for quick settings and click a tag to open project tags. A Hero shows its Journey as mini-cards; the Journey name opens a menu of steps and assignees. Open a step to see its Sub Card, then press `Esc` to return to the Hero. In the text editor, use the paperclip to insert an attachment, or copy its Markdown link from the attachments panel. Deleting an attachment used in the text offers to remove its links too. An image whose file is missing shows a “file not found” chip. Card covers are not used.
 
 <table>
 <tr>
@@ -175,7 +186,7 @@ Starter templates assign Inbox to their first Task deck if none is set; in the d
 
 ### Only an Asset deck?
 
-If you have only an Asset deck and expect a Sub Card not to be created, it now creates without a deck. For a useful destination, create a Task deck, or designate an existing Task or Mixed deck as Inbox; then move the card into a suitable deck.
+If you have only an Asset deck, a new Sub Card is created without a deck. For a useful destination, create a Task deck, or designate an existing Task or Mixed deck as Inbox; then move the card into a suitable deck.
 
 ## Working with AI agents
 
@@ -212,7 +223,7 @@ npx deckmate project brief <card-ref>     # the card, its rules and what to read
 npx deckmate project report <card-ref> --file report.md --member <member> --state review
 ```
 
-Assigning an owner never starts a model, and an agent's report never marks work accepted — a person does.
+Assigning an owner never starts a model. The example submits work for review; a reviewer can then accept it. If a deck has Guardians, only a Guardian can accept its cards.
 
 Deckmate also ships an agent skill in the open Agent Skills format. Once the project has its first deck or member, `npx deckmate skills install` copies it into the project for Claude Code and other agents; then `/deckmate work <card>`, `/deckmate plan`, `/deckmate review <card>` and other scenarios guide the model through the board. See [docs/skills.md](docs/skills.md), the [data contract](docs/catalog.md) and the [local API](docs/api.md).
 
@@ -220,7 +231,7 @@ Deckmate also ships an agent skill in the open Agent Skills format. Once the pro
 
 **Where is my data?** In your project folder: Markdown cards and instructions, the catalog manifest and `.excalidraw` boards. The SQLite index lives in a cache folder and is rebuilt from the files. Desktop keeps its settings and the index separately in `%APPDATA%\Deckmate\` (`desktop.json` and `index`).
 
-**Do I need the internet?** For installation, downloading Excalidraw's handwritten fonts and loading external embeds in Vision. The board itself runs locally on `127.0.0.1`; agents can read the files with the server stopped.
+**Do I need the internet?** To download Deckmate, install WebView2 when needed, check for Desktop updates, download Excalidraw's handwritten fonts and load external embeds in Vision. The board itself runs locally on `127.0.0.1`; agents can read the files with the server stopped.
 
 **Do I need Python?** Only projects with their own `Tools/board.py` need Python.
 

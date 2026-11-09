@@ -72,6 +72,7 @@ Inside Deckmate, and in API and JSON CLI responses, a Task state is always its E
 | `started` | `started` | `в работе` |
 | `review` | `review` | `приёмка` |
 | `done` | `done` | `принято` |
+| `wont-do` | `wont-do` | `не делаем` |
 
 The same read-both/write-project-language rule applies to these Markdown markers:
 
@@ -264,7 +265,7 @@ Commands use the same `POST /api/catalog` with `source: "sandbox"`, token, and `
 | action | Additional fields | Change boundary |
 |---|---|---|
 | `set-card-parent` | `expectedParentId`, `parentId`, `parentSourceHash` | Task/Doc without children: attach to a top-level Hero/Doc, change parent, or detach with null. |
-| `set-card-state` | `state`, optional `returnReason` | Task: `discussing`, `in-iteration`, `started`, `review`, `done`, `not-started`. Native Hero: `done` sets its manual mark and `not-started` removes it (`state: null`); `done` is refused while the Hero has Task Sub Cards other than `wont-do`, and a legacy Hero has no mark. |
+| `set-card-state` | `state`, optional `returnReason` | Task: `discussing`, `in-iteration`, `started`, `review`, `done`, `not-started`, `wont-do`. Native Hero: `done` sets its manual mark and `not-started` removes it (`state: null`); `done` is refused while the Hero has Task Sub Cards other than `wont-do`, and a legacy Hero has no mark. |
 | `set-card-properties` | `owner`, `effort`, `priority` | Send all three fields explicitly; each accepts null to clear its value. |
 
 `expectedParentId` records the selected Task/Doc's original parent. Attaching requires `parentSourceHash`, which validates the target Hero/Doc's file; detaching uses null. Changing parent preserves the card's deck, tracks, and Markdown. Legacy membership receives an override; the original H2 and slice location are not rearranged. Families have one level: a Task/Doc child cannot have children, and a Hero/Doc parent cannot have parentId. Nesting checks include archived and deleted descendants so restoring them cannot create a nested family. Restore archived/deleted parents and children first. Once a Journey is applied, changing or removing the parent is prohibited to preserve the instance relationship. Repeating the current assignment is a valid no-op.

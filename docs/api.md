@@ -18,6 +18,7 @@ API input, `state:` search and CLI `--state` accept both languages. API response
 | `started` | `started` | `в работе` |
 | `review` | `review` | `приёмка` |
 | `done` | `done` | `принято` |
+| `wont-do` | `wont-do` | `не делаем` |
 | Open questions | `## Open questions` | `## Открыто` |
 | Decision Task | `Decision: …` | `Решение: …` |
 | Workflow assignment | `## Assignment: <role>` | `## Задание: <role>` |
@@ -34,7 +35,7 @@ See [catalog.md](catalog.md#two-language-file-format--2026-11-05) for byte-prese
 - `DECKMATE_WRITE` enables `sandbox` mode: a separate worktree outside the project, on branch `deckmate/sandbox` or `freetion/sandbox`. Only this copy is writable; the original stays read-only.
 - `--read-only` or `DECKMATE_READ_ONLY=1` selects `read-only` mode and overrides `DECKMATE_WRITE`.
 - `DECKMATE_SHUTDOWN_STDIN=1` is set by Deckmate Desktop only: the server stops on a `{"type":"shutdown"}` line on stdin or when stdin ends (the shell died); without it stdin is not read.
-- Every endpoint takes `source=live|sandbox` (query parameter or body field, default `sandbox`). The internal name `sandbox` means the writable source: the project itself in `direct`, the separate copy in `sandbox`. Writes to `source=live` are rejected.
+- Project data endpoints accept `source=live|sandbox` (query parameter or body field, default `sandbox`). The internal name `sandbox` means the writable source: the project itself in `direct`, the separate copy in `sandbox`. Writes to `source=live` are rejected.
 
 ## Token and actor
 
@@ -69,7 +70,7 @@ On success a write returns the updated `CatalogView` — its `manifestHash` is t
 
 ## Read endpoints
 
-All accept `?source=live|sandbox`.
+Project data reads, the template plan and short-link redirects accept `?source=live|sandbox`; health, onboarding facts, the template list and events do not select a source.
 
 | Endpoint | Returns |
 |---|---|
@@ -176,7 +177,7 @@ Field notes:
 - `cards` selections are `[{ cardId, sourceHash }]`, 1–1000 unique entries; only `bulk-edit-cards` with `change.kind: "promote-parent"` allows `cards: []` to promote a card without attaching children. Nullable fields are passed explicitly as `null`, empty lists as `[]`.
 - `create-card.deckId: null` means automatic placement: Inbox if it accepts `kind`, otherwise Unassigned (`deckId: null`), including Sub Cards. An explicit deck must exist and accept the card kind. `set-inbox-deck` allows only Task or Mixed decks; null clears it. Legacy Inbox kinds remain readable. Changing the Inbox to a kind that cannot take Tasks clears it with a warning.
 - `bulk-edit-cards.change`: `kind` one of `properties, state, parent, create-parent, promote-parent, options, hand, tags, convert, duplicate, track` — each kind brings its own fields (see `src/bulk-contracts.ts`).
-- `state`: English ids `not-started`, `discussing`, `in-iteration`, `started`, `review`, `done`; the Russian words from the table above are accepted as input too. Responses always use ids. `priority`: `high|medium|low` or null. `effort`: number ≥ 0 or null.
+- `state`: English ids `not-started`, `discussing`, `in-iteration`, `started`, `review`, `done`, `wont-do`; the Russian words from the table above are accepted as input too. Responses always use ids. `priority`: `high|medium|low` or null. `effort`: number ≥ 0 or null.
 - Card `title` ≤ 1000 chars, no line breaks; `markdown` ≤ 200000 chars. Titles of spaces/decks/tracks/journeys/templates ≤ 120 chars. `description`, `questionText`, `answer` ≤ 2000 chars.
 - Attachment actions run through the attachment module; with `x-deckmate-actor` the uploader is the actor, not `addedBy` from the body.
 - Card covers were removed on 2026-11-09. Uploads and removals replace only the registry's `files` block; legacy `cover` entries remain byte-for-byte unchanged and are not shown. New registries have no `cover` field. Deck, Run and Milestone covers and Vision images are unaffected.
@@ -206,7 +207,7 @@ Response shape: `{ code, message }`, codes `CATALOG`, `CONTENT`, `IMPORT`, `MODE
 | 503 | Write landed, follow-up failed (`saved: true`) — re-read instead of repeating. |
 | 500 | Unexpected server error. |
 
-Body limits: 512 KB default; `/api/catalog` 16 MB; `/api/catalog-import` 24 MB; `/api/boards` 21 MB. Attachment registry ≤ 500 files per card. Writes are serialized server-side, so concurrent requests cannot interleave; each confirmed mutation appends an event to `tasks/deckmate-activity/`.
+Body limits: 512 KB default; `/api/catalog` 16 MB; `/api/catalog-import` 24 MB; `/api/boards` 21 MB. Attachment registry ≤ 500 files per card. Catalog writes use a server-side queue; attachment operations follow a separate hash-guarded path and do not create activity events. Other activity events are recorded in `tasks/deckmate-activity/` when applicable.
 
 ## Examples
 

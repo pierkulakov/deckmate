@@ -2,8 +2,9 @@
 Input: deck (ID or name) or Journey (`p-ref`); choose the profile, genre, and lens for the deck's area using `SKILL.md`. Deliver proposals with effort estimates and, with the user's approval, cards created and then moved to `discussing` (discussion).
 
 ## Step 1 — inventory (self)
-- For a deck, get its ID from `map`, cards from `find --deck <id> --limit 100`, and events from `GET /api/activity?deckId=<id>`.
-- For a Journey, use `pipeline <p-ref>` for the overview, `step <p-ref> <step-id>` only for steps in question, and `GET /api/journey-metrics?journeyId=<id>` for returns.
+- Prefix board commands as in `workflows/work.md`, with explicit `--data <project>` and `--read-only` during research. HTTP reads need a running server on the same project; see `references/api.md`. If unavailable, mark event/metrics checks as not checked rather than inventing history.
+- For a deck, get its ID from `map` and cards from `find --deck <id> --fields brief --limit 100`. Search excludes Archive/Trash; raise the limit up to 1000 or narrow filters if it is full. Get events from `GET /api/activity?source=sandbox&deckId=<id>` and follow `nextCursor`, even after an empty page.
+- For a Journey, get its p-ref from `pipelines`, use `pipeline <p-ref>` for the overview and canonical UUID, and `step <p-ref> <step-id>` for steps in question. Use `GET /api/journey-metrics?source=sandbox&journeyId=<UUID>` for returns, not the p-ref.
 - Find stale cards with `summary --stale-hours 72`.
 - Save the inventory to `{out}/cards.md` for the roles to read: c-ref, title, kind, state, owner, effort, Run, and file path.
 
@@ -20,11 +21,11 @@ Record each finding as “c-ref — violation — rule from `workflows/plan.md`�
 - Find steps missing instructions, an owner, or a target deck; find dependencies between steps that do not wait on each other.
 - Treat two or more returns at a step for similar reasons as evidence of a missing step or instructions to revise. A step closed without work may be redundant.
 - Find required work repeatedly added outside the Journey and steps routinely skipped; propose template instructions, dependencies, effort, or optional zones that match completed instances.
-- Find lessons in the step file's `## Грабли` section that have not been incorporated into its instructions.
+- Find lessons in the step file's `## Lessons` (legacy `## Грабли`) section that have not been incorporated into its instructions.
 - Match every item in the lens's Requirements section to a card or step; record gaps. Check card text against Warning signs.
 
 ## Step 4 — delegate assignments (self)
-- After saving `{out}/cards.md`, assign `research`, `code`, and `docs` roles as described in Delegate to agents in `SKILL.md`.
+- After saving `{out}/cards.md`, assign `research`, `code`, and `docs` roles as described in Delegate to agents in `SKILL.md` only with permission; otherwise perform the assignments yourself in sequence.
 
 ## Step 5 — proposals (self)
 - Write a table of ≤ 15 rows: proposal | basis (c-ref, rule, anchor) | effort | risk. Put low-cost proposals with a large impact on the profile's `goal` first.

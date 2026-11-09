@@ -68,6 +68,12 @@ button.sub-card-progress-segment { cursor: pointer; }
   --metal-deep: color-mix(in srgb, var(--metal-base) 64%, var(--metal-amber));
   --metal-glare-opacity: 1;
 }
+/* 2026-11-09: Doc Cards wear copper with deep brown ink. The ribbon runs at full strength as
+   on a Hero; at its darkest stop the word count still holds 4.6:1. */
+.catalog-card-doc > .deck-card-band {
+  --metal-glare-opacity: 1;
+  --card-metal-ink: var(--doc-ink);
+}
 
 .deck-card > .deck-card-band,
 .deck-card > .card-family-trigger,
@@ -201,8 +207,8 @@ button.sub-card-progress-segment { cursor: pointer; }
   transition: transform 700ms cubic-bezier(.22, .61, .36, 1);
 }
 
-/* 2026-11-09: an accepted Hero turns holographic: its band stays gold under a
-   rainbow foil, the face carries a faint rainbow film, a 2px rainbow ring replaces the border, and glitter gathers around
+/* 2026-11-09: an accepted Hero turns holographic: its band keeps the working
+   Hero's gold metal, the face carries a faint rainbow film, a 2px rainbow ring replaces the border, and glitter gathers around
    the pointer. The rainbow moves with the pointer (--glare-x/-y from useCardTilt); --glare-opacity lifts it while hovered.
    Only accepted Heroes pay for the blend layers; ink stays above the foil, so numbers keep their contrast. */
 .deck-card-space > .deck-card.catalog-card-hero.is-family-done {
@@ -228,9 +234,7 @@ button.sub-card-progress-segment { cursor: pointer; }
 .deck-card.catalog-card-hero.is-family-done .sub-card-progress-segment:not(:last-child) { border-top-right-radius: 0; border-bottom-right-radius: 0; }
 /* Face film and its glitter sit under the band (z-index 2) and blend with the face, so the title keeps its colour. */
 .deck-card.catalog-card-hero.is-family-done::before,
-.deck-card.catalog-card-hero.is-family-done::after,
-.deck-card.catalog-card-hero.is-family-done > .deck-card-band::before,
-.deck-card.catalog-card-hero.is-family-done > .deck-card-band::after {
+.deck-card.catalog-card-hero.is-family-done::after {
   content: '';
   position: absolute;
   inset: 0;
@@ -257,8 +261,7 @@ button.sub-card-progress-segment { cursor: pointer; }
 }
 /* Glitter at rest read as a grey dot grid on the dark face; it now mostly waits for the pointer. */
 :root.dark .deck-card.catalog-card-hero.is-family-done::after { opacity: calc(var(--glare-opacity, 0) * .6); }
-.deck-card.catalog-card-hero.is-family-done::after,
-.deck-card.catalog-card-hero.is-family-done > .deck-card-band::after {
+.deck-card.catalog-card-hero.is-family-done::after {
   z-index: 1;
   background: var(--holo-glitter);
   mix-blend-mode: screen;
@@ -266,21 +269,8 @@ button.sub-card-progress-segment { cursor: pointer; }
   -webkit-mask: radial-gradient(90px 70px at var(--glare-x, 50%) var(--glare-y, 50%), #000, transparent 75%);
   mask: radial-gradient(90px 70px at var(--glare-x, 50%) var(--glare-y, 50%), #000, transparent 75%);
 }
-.deck-card.catalog-card-hero.is-family-done > .deck-card-band::after {
-  z-index: 0;
-  -webkit-mask: radial-gradient(90px 70px at var(--glare-x, 50%) calc(var(--glare-y, 50%) * 3.8 - 280%), #000, transparent 75%);
-  mask: radial-gradient(90px 70px at var(--glare-x, 50%) calc(var(--glare-y, 50%) * 3.8 - 280%), #000, transparent 75%);
-}
-/* The band's foil blends with the gold ribbon below it (z-index -1) and stays under the ink (z-index 1). */
-.deck-card.catalog-card-hero.is-family-done > .deck-card-band::before {
-  z-index: 0;
-  background: var(--holo-stripes);
-  background-size: 300% 100%;
-  background-position: calc(var(--glare-x, 50%) * .7 + var(--glare-y, 50%) * .3) 0;
-  mix-blend-mode: color-dodge;
-  /* 2026-11-09: at .4 + .45 the dodge lit the gold nearly white under the pointer; a little less is used. */
-  opacity: calc(.3 + var(--glare-opacity, 0) * .3);
-}
+/* 2026-11-09: the band keeps exactly the working Hero's metal — the same gold ribbon, no rainbow foil or glitter over
+   it; the holographic finish lives on the face and the rim. */
 
 /* While the pointer is on an accepted Hero its glitter drifts: each dot layer slides by exactly one tile in its own
    direction and pace, so the loop is seamless and the dots seem to wander at random. */
@@ -288,8 +278,7 @@ button.sub-card-progress-segment { cursor: pointer; }
   to { background-position: 13px -11px, -12px 22px, 25px 26px, -18px -25px; }
 }
 @media (hover: hover) and (pointer: fine) and (prefers-reduced-motion: no-preference) {
-  .deck-card-space:hover > .deck-card.catalog-card-hero.is-family-done::after,
-  .deck-card-space:hover > .deck-card.catalog-card-hero.is-family-done > .deck-card-band::after { animation: holo-glitter-drift 3.2s linear infinite; }
+  .deck-card-space:hover > .deck-card.catalog-card-hero.is-family-done::after { animation: holo-glitter-drift 3.2s linear infinite; }
 }
 /* The done medallion takes the owner's place on a finished Hero (2026-11-09): accepted green with a white
    check inside the same gold ring, so the finish reads at a glance from the middle of the card. */

@@ -65,16 +65,23 @@ it('sizes each Hero progress step by its Sub Card weight, the same weight as the
   expect(html).toContain('title="Effort: own and Sub Cards — 6">6</strong>');
 });
 
-it('puts only the type icon and question count around the Doc owner, retaining accessible labels', () => {
-  const html = renderTile({ kind: 'doc', state: null, openQuestions: [{ text: 'Question?', taskRef: null }] });
-  const identity = html.slice(html.indexOf('<div class="deck-card-identity">'), html.indexOf('<span class="catalog-card-progress">'));
+// 2026-11-09: a Doc tile has one band row (type icon, questions, word count) and opens on the document's text.
+it('shows the Doc type, questions and word count in one band row and opens the face on the document text', () => {
+  // Its own hash: tiles remember text-derived values per card revision, and other tests render card:tile with other text.
+  const doc: Partial<CatalogCard> = { kind: 'doc', state: null, sourceHash: 'doc-page', markdown: 'Watch a new player arrive.\n\n## Working notes\nCan they find the lantern?', openQuestions: [{ text: 'Question?', taskRef: null }] };
+  const html = renderTile(doc);
+  const identity = html.slice(html.indexOf('<div class="deck-card-identity">'));
   expect(identity).toContain('class="deck-card-doc-kind" role="img" title="Doc Card" aria-label="Doc Card"');
   expect(identity).toContain('aria-label="Open questions: 1"');
-  expect(identity).not.toContain('<strong');
+  expect(identity).toContain('class="deck-card-doc-words" title="Word count: 13" aria-label="Word count: 13">13w</strong>');
+  expect(html).not.toContain('Markdown');
+  expect(html).toContain('<span class="deck-card-doc-excerpt" aria-hidden="true"><span>Watch a new player arrive.</span><b>Working notes</b><span>Can they find the lantern?</span></span>');
   expect(html).toContain('class="deck-card-owner-medallion" title="Owner: Alex"');
-  expect(html).toContain('class="deck-card-doc-caption">Markdown');
+  expect(renderTile({ kind: 'task' })).not.toContain('deck-card-doc-excerpt');
   setLang('ru');
-  expect(renderTile({ kind: 'doc', openQuestions: [{ text: 'Question?', taskRef: null }] })).toContain('aria-label="Открытых вопросов: 1"');
+  const russian = renderTile(doc);
+  expect(russian).toContain('aria-label="Открытых вопросов: 1"');
+  expect(russian).toContain('aria-label="Число слов: 13">13 сл.</strong>');
 });
 
 // 2026-11-09: a finished Hero shows a localized done medallion in the owner's place; an unfinished one keeps its owner.
@@ -94,6 +101,20 @@ it('marks a Hero whose Sub Cards are all accepted with a done medallion instead 
   expect(started).toContain('title="Owner: Alex"');
   setLang('ru');
   expect(render([child('done')])).toContain('title="Hero выполнена: все Sub Cards приняты"');
+});
+
+// 2026-11-09: a Hero without Task Sub Cards marked done by hand wears the same done look as a finished family.
+it('marks a Hero without Task Sub Cards done by its own mark', () => {
+  const hero: CatalogCard = { id: 'card:hero', kind: 'hero', title: 'Hero title', path: 'cards/hero.md', version: null, state: 'done', owner: 'Alex',
+    markdown: 'Hero text.', sourceHash: 'hash', range: null, deckId: 'deck', trackIds: [], parentId: null };
+  const noop = () => {};
+  const render = (card: CatalogCard) => renderToStaticMarkup(<CatalogCardTile card={card} lookups={buildCatalogLookups([card])} members={[]}
+    selected={false} checked={false} selectionActive={false} disabled={false} onOpen={noop} onToggle={noop} onFamilyOpen={noop} />);
+  const done = render(hero);
+  expect(done).toContain('is-family-done');
+  expect(done).not.toContain('deck-state-accepted');
+  expect(done).toContain('class="deck-card-owner-medallion deck-card-done-medallion" role="img" title="Hero done"');
+  expect(render({ ...hero, state: null })).not.toContain('is-family-done');
 });
 
 it('does not call a Hero with only live Doc Sub Cards empty or count Docs as Task progress', () => {

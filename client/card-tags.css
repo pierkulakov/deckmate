@@ -26,6 +26,11 @@
 .card-title-tags .card-tag-emoji { font-size: 15px; }
 /* On a tile the glyphs fill exactly one 17 px title line, so a tagged title starts and wraps like a plain one (as the Hero strip, card-family.css). */
 .deck-card-title .card-title-tags { height: 17px; vertical-align: top; }
+/* 2026-11-09: the open card's 24/700 title: its tag glyphs are sized to the title and fill exactly its first line
+   box, so they sit centred on that line and a wrapping title continues under them like a plain one. */
+.card-preview-title .card-title-tags { height: 1lh; gap: 4px; margin-right: 6px; vertical-align: top; }
+.card-preview-title .card-title-tags .card-tag-emoji { font-size: 20px; }
+.card-preview-title .card-title-tags .card-tag-icon { width: 20px; height: 20px; }
 .card-project-tags { --tag-personal-foreground: var(--tag-personal-on-card); z-index: 160; display: flex; flex-direction: column; align-items: flex-start; gap: var(--tag-gap); max-width: min(300px, calc(100vw - 24px)); padding: 8px 10px 10px; border-radius: 6px; background: var(--tag-popover-background); color: var(--tag-foreground); box-shadow: var(--shadow); animation: overlay-pop var(--motion-spring-quick) var(--ease-spring-quick); }
 .card-project-tags-title { font-size: 12px; font-weight: 700; line-height: 14px; text-transform: uppercase; }
 .card-tag-tooltip { z-index: 160; display: flex; flex-direction: column; align-items: flex-start; gap: 3px; padding: 7px 10px; border-radius: 6px; background: var(--tag-popover-background); color: var(--tag-foreground); box-shadow: var(--shadow); font-size: 12px; max-width: 300px; overflow-wrap: anywhere; animation: overlay-pop var(--motion-spring-quick) var(--ease-spring-quick); }

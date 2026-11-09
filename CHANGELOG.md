@@ -4,6 +4,25 @@ Notable changes are grouped by version using [Keep a Changelog](https://keepacha
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-11-09
+
+### Added
+
+- **Spaces.** Reorder spaces with Move up and Move down in the space header or the Position field in space settings.
+- **Hero done by hand.** A Hero without Task Sub Cards can be marked done and unmarked; with Task Sub Cards it is done once they are all accepted, and the server rejects a manual mark.
+
+### Changed
+
+- **Doc Cards.** A Doc tile reads as a page: copper band with the notebook icon and word count, a chapter mark and the start of the text on its face; the open Doc card uses the same copper.
+- **Decks.** Hero Cards come first when a deck is grouped by priority or state.
+- **Accepted Hero.** The band keeps the working Hero's gold metal and ribbon; the holographic finish stays on the face and rim.
+
+### Fixed
+
+- The Hero strip on Sub Card tiles starts level with the card title.
+- The open editor no longer jumps while a card is dragged between lanes.
+- Browser tests wait up to 45 s for headless Chrome on CI instead of about 10 s.
+
 ## [0.4.0] - 2026-11-09
 
 ### Added

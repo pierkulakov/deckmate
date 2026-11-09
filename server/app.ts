@@ -372,6 +372,7 @@ export async function createApp(config: ServerConfig) {
     'set-deck-kind': ['deckId', 'kind'],
     'upload-cover': ['deckId', 'dataUrl'],
     'move-deck': ['deckId', 'spaceId', 'beforeDeckId'],
+    'move-space': ['spaceId', 'beforeSpaceId'],
     'set-deck-watchers': ['deckId', 'watcherIds'],
     'set-deck-pile': ['deckId', 'piled'],
     'set-deck-guardians': ['deckId', 'guardianIds'],
@@ -459,6 +460,7 @@ export async function createApp(config: ServerConfig) {
       description: { type: 'string', maxLength: 2000 }, cardId: { type: 'string', maxLength: 1000 },
       deckId: { type: ['string', 'null'], maxLength: 80 },
       beforeDeckId: { type: ['string', 'null'], maxLength: 80 },
+      beforeSpaceId: { type: ['string', 'null'], maxLength: 80 },
       zoneId: { type: ['string', 'null'], pattern: '^[a-z0-9][a-z0-9-]{0,59}$' },
       beforeCardId: { type: ['string', 'null'], maxLength: 1000 },
       // Deck actions: watching, guardians, automation, deletion, and guardian approval (2026-11-04).

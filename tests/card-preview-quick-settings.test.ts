@@ -7,6 +7,7 @@ import path from 'node:path';
 import { createServer, type ViteDevServer } from 'vite';
 import tailwindcss from '@tailwindcss/vite';
 import { freePort } from './free-port.ts';
+import { waitForPageTarget } from './browser-target.ts';
 
 const browserPath = [process.env.DECKMATE_BROWSER, process.env.BROWSER,
   'C:/Program Files/Google/Chrome/Application/chrome.exe', 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe',
@@ -106,15 +107,7 @@ describe.skipIf(!browserPath)('CardPreview Quick Settings (browser)', () => {
     browser = spawn(browserPath!, ['--headless=new', '--disable-gpu', '--no-first-run', '--no-default-browser-check', '--window-size=1280,1000',
       '--blink-settings=primaryHoverType=2,availableHoverTypes=2,primaryPointerType=4,availablePointerTypes=4',
       `--remote-debugging-port=${port}`, `--user-data-dir=${profile}`, 'about:blank'], { stdio: 'ignore' });
-    let target: string | undefined;
-    for (let attempt = 0; attempt < 100 && !target; attempt++) {
-      try {
-        const pages = await (await fetch(`http://127.0.0.1:${port}/json/list`)).json() as { type: string; webSocketDebuggerUrl: string }[];
-        target = pages.find(page => page.type === 'page')?.webSocketDebuggerUrl;
-      } catch { /* Headless browser is starting. */ }
-      if (!target) await delay(100);
-    }
-    if (!target) throw new Error('Browser did not start');
+    const target = await waitForPageTarget(port, browser!);
     socket = new WebSocket(target);
     await new Promise(resolve => socket!.addEventListener('open', resolve, { once: true }));
     socket.addEventListener('message', event => {
@@ -144,7 +137,7 @@ describe.skipIf(!browserPath)('CardPreview Quick Settings (browser)', () => {
     }, true)`);
     expect(await evaluate(`matchMedia('(hover: hover) and (pointer: fine) and (prefers-reduced-motion: no-preference)').matches`),
       'The browser fixture requires a fine hovering pointer with motion enabled').toBe(true);
-  }, 60000);
+  }, 90000);
 
   afterAll(async () => {
     if (socket?.readyState === WebSocket.OPEN) {

@@ -7,6 +7,7 @@ import path from 'node:path';
 import { createServer, type ViteDevServer } from 'vite';
 import tailwindcss from '@tailwindcss/vite';
 import { freePort } from './free-port.ts';
+import { waitForPageTarget } from './browser-target.ts';
 
 const browserPath = [process.env.DECKMATE_BROWSER, process.env.BROWSER,
   'C:/Program Files/Google/Chrome/Application/chrome.exe', 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe',
@@ -108,15 +109,7 @@ describe.skipIf(!browserPath)('one-step Hero return (browser)', () => {
     const port = await freePort();
     browser = spawn(browserPath!, ['--headless=new', '--disable-gpu', '--no-first-run', '--no-default-browser-check',
       '--disable-features=OverlayScrollbar', `--remote-debugging-port=${port}`, `--user-data-dir=${path.join(temporary, 'profile')}`, 'about:blank'], { stdio: 'ignore' });
-    let target: string | undefined;
-    for (let attempt = 0; attempt < 100 && !target; attempt++) {
-      try {
-        const pages = await (await fetch(`http://127.0.0.1:${port}/json/list`)).json() as { type: string; webSocketDebuggerUrl: string }[];
-        target = pages.find(page => page.type === 'page')?.webSocketDebuggerUrl;
-      } catch { /* Browser is starting. */ }
-      if (!target) await delay(100);
-    }
-    if (!target) throw new Error('Browser did not start');
+    const target = await waitForPageTarget(port, browser!);
     socket = new WebSocket(target);
     await new Promise(resolve => socket!.addEventListener('open', resolve, { once: true }));
     socket.addEventListener('message', event => {
@@ -136,7 +129,7 @@ describe.skipIf(!browserPath)('one-step Hero return (browser)', () => {
     await send('Emulation.setDeviceMetricsOverride', { width: 1700, height: 900, deviceScaleFactor: 1, mobile: false });
     await send('Page.navigate', { url: server.resolvedUrls!.local[0] });
     await until(`Boolean(window.heroReturnTest && document.querySelector(${JSON.stringify(tile('hero'))}))`, 600);
-  }, 60000);
+  }, 90000);
 
   afterAll(async () => {
     if (socket?.readyState === WebSocket.OPEN) { await send('Browser.close').catch(() => {}); socket.close(); }

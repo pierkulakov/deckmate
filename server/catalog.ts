@@ -26,6 +26,7 @@ import { milestonesPath, planningHistoryPath, runsPath } from '../src/planning-f
 import { canonicalDataPath } from '../src/brand-compat.ts';
 import { resolveDataPath } from './data-paths.ts';
 import { validateCardFamily } from './card-family.ts';
+import { heroCountedTasks } from '../src/hero-done.ts';
 import { deckTypeChangeIssue } from '../src/deck-type-policy.ts';
 import { catalogFileChanged, currentCatalogSnapshot, readCatalogSnapshot } from './catalog-snapshot.ts';
 import { defineText, serverText, serverLang } from './i18n.ts';
@@ -62,6 +63,7 @@ const catalogText = defineText({
   deckMissing: "Deck not found.",
   spaceMissing: "Space not found.",
   selfDeckOrder: "A deck cannot be placed before itself.",
+  selfSpaceOrder: "A Space cannot be placed before itself.",
   deckInsertion: "The insertion deck must be in the target Space.",
   autoTagOrNull: "Deck auto-tag must be a nonempty string of up to 80 characters or null.",
   templateEffortOrNull: "Template Effort must be a nonnegative number or null.",
@@ -103,7 +105,10 @@ const catalogText = defineText({
   effort: "Card Effort must be a finite nonnegative number or null.",
   priority: "Card Priority must be high, medium, low or null.",
   cardSourceHash: "The edit needs the card's current version. Refresh the catalog and try again.",
-  stateTaskOnly: "Only Task cards can change state.",
+  stateTaskOnly: "Only Task cards can change state; a Hero can only be marked done.",
+  heroMarkStates: "A Hero can only be marked done or have that mark removed.",
+  heroLegacyMark: "Only a Hero with its own card file can be marked done; a Hero from a mechanics document cannot.",
+  heroHasTasks: (accepted: number, total: number) => `A Hero with Task Sub Cards is done when all of them are accepted: ${accepted} of ${total} so far.`,
   invalidState: `Invalid Task state. Use one of: ${cardStates.flatMap(cardStateWords).join(', ')}.`,
   returnReason: "The return reason must be one line of up to 500 characters.",
   returnFromReview: "A reason can only be recorded when returning a card from review.",
@@ -210,6 +215,7 @@ const catalogText = defineText({
   deckMissing: "Колода не найдена.",
   spaceMissing: "Пространство не найдено.",
   selfDeckOrder: "Нельзя поставить колоду перед самой собой.",
+  selfSpaceOrder: "Нельзя поставить Space перед самим собой.",
   deckInsertion: "Колода для вставки должна находиться в целевом пространстве.",
   autoTagOrNull: "Автотег колоды — непустая строка до 80 символов или null.",
   templateEffortOrNull: "Оценка шаблона — число не меньше нуля или null.",
@@ -251,7 +257,10 @@ const catalogText = defineText({
   effort: "Цена карточки — конечное число не меньше нуля или null.",
   priority: "Приоритет карточки — high, medium, low или null.",
   cardSourceHash: "Нужна актуальная версия карточки. Обновите каталог и повторите действие.",
-  stateTaskOnly: "Состояние можно менять только у Task.",
+  stateTaskOnly: "Состояние можно менять только у Task; Hero можно только отметить выполненной.",
+  heroMarkStates: "Hero можно только отметить выполненной или снять эту отметку.",
+  heroLegacyMark: "Отметить выполненной можно только Hero с собственным файлом карточки, но не Hero из документа механики.",
+  heroHasTasks: (accepted: number, total: number) => `Hero с Task Sub Cards становится выполненной, когда приняты все они: пока принято ${accepted} из ${total}.`,
   invalidState: `Недопустимое состояние Task. Допустимо: ${cardStates.flatMap(cardStateWords).join(', ')}.`,
   returnReason: "Причина возврата — одна строка до 500 символов.",
   returnFromReview: "Причина пишется только при возврате карточки с приёмки.",
@@ -825,7 +834,8 @@ function assembleCatalog(inputs: CatalogInputs): CatalogView {
   for (const card of cards) {
     Object.assign(card, options.options[card.id] ?? {});
     if (!card.id.startsWith('card:') && card.kindOverride) card.kind = card.kindOverride;
-    if (card.kind !== 'task') card.state = null;
+    // 2026-11-09: a native Hero keeps its manual done mark; Docs and legacy Heroes have no state.
+    if (card.kind !== 'task' && !(card.kind === 'hero' && card.id.startsWith('card:') && card.state === 'done')) card.state = null;
     // 2026-11-03: a promoted legacy H3 retains its ID/body, but no longer inherits its structural Hero.
     if (card.kind === 'hero') { card.parentId = null; card.range = null; }
   }
@@ -860,6 +870,10 @@ function assembleCatalog(inputs: CatalogInputs): CatalogView {
     if (card.parentId && !['hero', 'doc'].includes(byId.get(card.parentId)?.kind ?? '')) warnings.push(serverText(catalogText).missingParent(card));
     for (const dependency of card.dependsOn ?? []) if (!byId.has(dependency)) warnings.push(serverText(catalogText).missingDependency(dependency, card));
   }
+  // 2026-11-09: a Hero's manual done mark counts only while it has no counted Task Sub Cards; once it has them, they decide,
+  // so the Hand pile, dependencies and the agent queue never see a mark the tile does not show.
+  const heroesWithTasks = new Set(heroCountedTasks(cards.filter(card => !card.archived && !card.deleted)).map(card => card.parentId));
+  for (const card of cards) if (card.kind === 'hero' && heroesWithTasks.has(card.id)) card.state = null;
   // 2026-11-04: the Doc's open-question entry is authoritative; question counts and warnings are derived.
   for (const card of cards) {
     if (card.kind !== 'doc') continue;
@@ -914,6 +928,15 @@ function requiredSpace(manifest: CatalogManifest, spaceId: string): CatalogSpace
   const space = manifest.spaces.find(candidate => candidate.id === spaceId);
   if (!space) throw new Error(serverText(catalogText).spaceMissing);
   return space;
+}
+
+function moveSpace(manifest: CatalogManifest, edit: Extract<CatalogEdit, { action: 'move-space' }>): void {
+  const space = requiredSpace(manifest, edit.spaceId);
+  if (edit.beforeSpaceId === edit.spaceId) throw new Error(serverText(catalogText).selfSpaceOrder);
+  if (edit.beforeSpaceId !== null) requiredSpace(manifest, edit.beforeSpaceId);
+  manifest.spaces.splice(manifest.spaces.indexOf(space), 1);
+  const position = edit.beforeSpaceId === null ? manifest.spaces.length : manifest.spaces.findIndex(candidate => candidate.id === edit.beforeSpaceId);
+  manifest.spaces.splice(position, 0, space);
 }
 
 function moveDeck(manifest: CatalogManifest, edit: Extract<CatalogEdit, { action: 'move-deck' }>): void {
@@ -1059,6 +1082,7 @@ async function applyCatalogEdit(root: string, manifest: CatalogManifest, edit: C
       style: edit.style, cover: edit.cover, coverPosition: edit.coverPosition });
   }
   if (edit.action === 'move-deck') moveDeck(manifest, edit);
+  if (edit.action === 'move-space') moveSpace(manifest, edit);
   if (edit.action === 'upload-cover') {
     const deck = requiredDeck(manifest, edit.deckId);
     const asset = await storeCatalogCover(root, edit.dataUrl);
@@ -2005,9 +2029,21 @@ function requiredCardState(value: string): CardState {
   return state;
 }
 
+// 2026-11-09: a native Hero without counted Task Sub Cards takes a manual done mark; with them, its children decide.
+function validateHeroMark(catalog: CatalogView, hero: CatalogCard, state: CardState) {
+  if (!hero.id.startsWith('card:')) throw new Error(serverText(catalogText).heroLegacyMark);
+  if (state !== 'done' && state !== 'not-started') throw new Error(serverText(catalogText).heroMarkStates);
+  if (state !== 'done') return;
+  const tasks = heroCountedTasks(catalog.cards.filter(card => card.parentId === hero.id && !card.archived && !card.deleted));
+  if (tasks.length) throw new Error(serverText(catalogText).heroHasTasks(tasks.filter(task => task.state === 'done').length, tasks.length));
+}
+
 function validateCardState(catalog: CatalogView, card: CatalogCard, edit: CardStateEdit, actorMemberId: string | null): boolean {
-  if (card.kind !== 'task') throw new Error(serverText(catalogText).stateTaskOnly);
-  if (edit.state === 'done' && card.state !== 'done') {
+  if (card.kind === 'hero') validateHeroMark(catalog, card, edit.state);
+  else if (card.kind !== 'task') throw new Error(serverText(catalogText).stateTaskOnly);
+  // A Hero without its done mark stores null; for the request it reads as not started.
+  const current = card.state ?? 'not-started';
+  if (edit.state === 'done' && current !== 'done') {
     const refusal = guardianAcceptanceRefusal(catalog, card, actorMemberId, edit.acceptedBy);
     if (refusal) throw new Error(refusal);
   }
@@ -2015,8 +2051,8 @@ function validateCardState(catalog: CatalogView, card: CatalogCard, edit: CardSt
   if (returnReason !== null && (typeof returnReason !== 'string' || returnReason.length > 500 || /[\r\n]/u.test(returnReason))) {
     throw new Error(serverText(catalogText).returnReason);
   }
-  if (card.state === edit.state) return card.id.startsWith('task:') && edit.state === 'not-started';
-  if (returnReason?.trim() && (card.state !== 'review' || edit.state === 'done')) throw new Error(serverText(catalogText).returnFromReview);
+  if (current === edit.state) return card.id.startsWith('task:') && edit.state === 'not-started';
+  if (returnReason?.trim() && (current !== 'review' || edit.state === 'done')) throw new Error(serverText(catalogText).returnFromReview);
   return true;
 }
 
@@ -2064,7 +2100,7 @@ async function setCardAttributes(root: string, source: ManifestSource, edit: Ext
         title: serverText(catalogText).stateStage,
         run: async () => {
           const changed = card.id.startsWith('card:')
-            ? await editNativeCardProperties(root, card.id, edit.sourceHash, { state }, verify, formatLanguage)
+            ? await editNativeCardProperties(root, card.id, edit.sourceHash, { state: card.kind === 'hero' && state !== 'done' ? null : state }, verify, formatLanguage)
             : await updateLegacyCardState(root, card, state, verify, formatLanguage);
           return changed ? [card.path] : [];
         },
@@ -2505,7 +2541,9 @@ export async function editProjectCatalog(root: string, edit: CatalogEdit, actorM
   let asset: StoredCatalogCover | null = null;
   let manifestSaved = false;
   try {
+    const previousSpaces = edit.action === 'move-space' ? [...source.manifest.spaces] : null;
     asset = await applyCatalogEdit(root, source.manifest, edit);
+    if (previousSpaces?.every((space, index) => space === source.manifest.spaces[index])) return [];
     validateManifest(source.manifest);
     await writeManifest(root, source, edit.manifestHash);
     manifestSaved = true;
@@ -2517,7 +2555,7 @@ export async function editProjectCatalog(root: string, edit: CatalogEdit, actorM
     }
     throw error;
   }
-  return [];
+  return edit.action === 'move-space' ? [catalogPath] : [];
 }
 async function verifyManifestHash(root: string, expected: string): Promise<void> {
   const fresh = await readManifest(root);

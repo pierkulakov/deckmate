@@ -11,7 +11,7 @@ import * as Tooltip from '@radix-ui/react-tooltip';
 import { DndContext, DragOverlay, KeyboardSensor, MeasuringStrategy, PointerSensor, closestCenter, pointerWithin, useDndContext, useDraggable, useDroppable, useSensor, useSensors } from '@dnd-kit/core';
 import { SortableContext, arrayMove, rectSortingStrategy, sortableKeyboardCoordinates, useSortable } from '@dnd-kit/sortable';
 import type { AutoScrollOptions, CollisionDetection, DragStartEvent, DragEndEvent, DragOverEvent, KeyboardCoordinateGetter } from '@dnd-kit/core';
-import { Activity, Archive, BookOpen, Bot, Box, Braces, Bug, ChevronDown, ChevronRight, CircleCheck, Eye, Flag, FoldHorizontal, Gamepad2, Gauge, GripVertical, Hourglass, Image, Inbox, Layers, LayersArrowDown, LayersArrowUp, LayoutGrid, ListChecks, LoaderCircle, Palette, Pencil, Plus, Route, ScrollText, Search, Shield, Swords, Table2, Tag, Trash2, UsersRound, Volume2, X } from 'lucide-react';
+import { Activity, Archive, ArrowDown, ArrowUp, BookOpen, Bot, Box, Braces, Bug, ChevronDown, ChevronRight, CircleCheck, Eye, Flag, FoldHorizontal, Gamepad2, Gauge, GripVertical, Hourglass, Image, Inbox, Layers, LayersArrowDown, LayersArrowUp, LayoutGrid, ListChecks, LoaderCircle, Palette, Pencil, Plus, Route, ScrollText, Search, Shield, Swords, Table2, Tag, Trash2, UsersRound, Volume2, X } from 'lucide-react';
 import type { CatalogCard, CatalogDeck, CatalogDeckZone, CatalogSpace, CatalogView, CardKind, CardPriority, DeckKind, DeckStyle, SpaceKind } from '../../src/catalog-contracts.ts';
 import { defaultDeckKind, deckCanBeInbox } from '../../src/catalog-contracts.ts';
 import type { WorkspaceSnapshot } from '../../src/workspace-contracts.ts';
@@ -222,6 +222,9 @@ const text = defineText({
   dragImage: "Drag the image up or down",
   moveDeck: "Move deck",
   position: "Position",
+  moveSpaceUp: "Move space up",
+  moveSpaceDown: "Move space down",
+  beforeSpace: (title: string) => `Before “${title}”`,
   atEnd: "At the end",
   move: "Move",
   saveBeforeMove: "Save the appearance before moving.",
@@ -463,6 +466,9 @@ const text = defineText({
   dragImage: "Потяните картинку вверх или вниз",
   moveDeck: "Переместить колоду",
   position: "Позиция",
+  moveSpaceUp: "Переместить space выше",
+  moveSpaceDown: "Переместить space ниже",
+  beforeSpace: (title: string) => `Перед «${title}»`,
   atEnd: "В конец",
   move: "Переместить",
   saveBeforeMove: "Сохраните оформление перед перемещением.",
@@ -2322,7 +2328,7 @@ export function Deck({ snapshot, refreshKey, onEditing, onImportCsv, onStartFrom
     } }}>
     <CardTransferContext.Provider value={transferContext}>
     <CardAttachmentRefreshContext.Provider value={catalog?.indexedAt}>
-    <section ref={sticky.root} onClickCapture={event => { if (transferBaseline.current || Date.now() < suppressTransferClickUntil.current) { event.preventDefault(); event.stopPropagation(); } }} className={'deck-view catalog-view' + (cardTransfer ? ' is-card-transfer-active' : '') + (cardDragPreview ? ' is-card-pointer-transfer' : '') + (selectedDeck ? ' is-deck-open' : '') + (!selectedDeck && !showCards ? ' deck-gallery' : '')} style={{ '--left-panel-width': panels.leftPanelWidth + 'px' } as CSSProperties} aria-label={t.projectCatalog}>
+    <section ref={sticky.root} onClickCapture={event => { if (transferBaseline.current || Date.now() < suppressTransferClickUntil.current) { event.preventDefault(); event.stopPropagation(); } }} className={'deck-view catalog-view' + (cardTransfer ? ' is-card-transfer-active' : '') + (cardDragPreview ? ' is-card-pointer-transfer' : '') + (selectedDeck ? ' is-deck-open' : '') + (hasPreview ? ' has-preview' : '') + (!selectedDeck && !showCards ? ' deck-gallery' : '')} style={{ '--left-panel-width': panels.leftPanelWidth + 'px' } as CSSProperties} aria-label={t.projectCatalog}>
     {selectedDeck && catalog && <nav className="deck-neighbor-rail" aria-label={t.spaceDecks}>{catalog.decks.filter(deck => deck.spaceId === selectedDeck.spaceId).map(deck => {
       const counts = deckCounts.get(deck.id) ?? emptyDeckCounts;
       return <DeckNeighborCover key={deck.id} deck={deck} counts={counts} source={snapshot.source} current={deck.id === selectedDeck.id} disabled={navigationLocked} baseline={cardTransfer} catalogCards={cards} onOpen={() => openDeck(deck)} />;
@@ -2650,6 +2656,7 @@ function CatalogSpaces({ catalog, deckCounts, visibleDecks, filtering, source, w
       {catalog.spaces.length === 0 && <p className="catalog-empty">{t.noSpaces}{writable ? t.createSpaceHelp : t.sandboxSpaceHelp}</p>}
       {filtering && visibleDecks.length === 0 && <p className="catalog-empty">{t.noDeckMatches}</p>}
       {catalog.spaces.filter(space => !filtering || visibleDecks.some(deck => deck.spaceId === space.id)).map(space => {
+        const spaceIndex = catalog.spaces.indexOf(space);
         const ids = layout[space.id] ?? [];
         const pile = decksOf(piles[space.id] ?? []);
         const pileOpen = filtering || openPiles.has(space.id);
@@ -2657,7 +2664,11 @@ function CatalogSpaces({ catalog, deckCounts, visibleDecks, filtering, source, w
         const tileProps = (deck: CatalogDeck) => ({ deck, source, counts: deckCounts.get(deck.id) ?? emptyDeckCounts, disabled, writable, inbox: deck.id === (catalog.inboxDeckId ?? null), canOpen, onOpen: () => onOpen(deck), onSettings: () => onForm({ kind: 'deck', deckId: deck.id, editing: true }) });
         return <SpaceDrop key={space.id} space={space} disabled={disabled || !writable}>
           <header className="catalog-space-heading"><h2><button type="button" disabled={filtering} aria-expanded={!spaceCollapsed} aria-controls={`space-${space.id}`} onClick={() => onToggle(space.id)}>{spaceCollapsed ? <ChevronRight size={17} /> : <ChevronDown size={17} />}<DeckIcon name={space.icon ?? spacePresets[space.kind ?? 'custom'].icon} size={17} /><span>{space.title}</span></button></h2>
-            {writable && <div className="catalog-space-actions"><Button variant="ghost" size="icon" disabled={disabled} onClick={event => onForm({ kind: 'space', spaceId: space.id, editing: true }, event.currentTarget)} aria-label={t.configureSpace(space.title)}><Pencil size={14} /></Button></div>}
+            {writable && <div className="catalog-space-actions">
+              <Button variant="ghost" size="icon" disabled={disabled} onClick={event => onForm({ kind: 'space', spaceId: space.id, editing: true }, event.currentTarget)} aria-label={t.configureSpace(space.title)}><Pencil size={14} /></Button>
+              <Button variant="ghost" size="icon" disabled={disabled || spaceIndex === 0} aria-label={t.moveSpaceUp} title={t.moveSpaceUp} onClick={() => void onEdit({ action: 'move-space', spaceId: space.id, beforeSpaceId: catalog.spaces[spaceIndex - 1].id })}><ArrowUp size={14} /></Button>
+              <Button variant="ghost" size="icon" disabled={disabled || spaceIndex === catalog.spaces.length - 1} aria-label={t.moveSpaceDown} title={t.moveSpaceDown} onClick={() => void onEdit({ action: 'move-space', spaceId: space.id, beforeSpaceId: catalog.spaces[spaceIndex + 2]?.id ?? null })}><ArrowDown size={14} /></Button>
+            </div>}
           </header>
           <div id={`space-${space.id}`} hidden={spaceCollapsed}><SortableContext items={ids} strategy={rectSortingStrategy}><div className="catalog-deck-grid">
             {decksOf(ids).map(deck => <DeckCover key={deck.id} spaceId={space.id} {...tileProps(deck)} />)}
@@ -2829,9 +2840,11 @@ function SpaceForm({ creation, catalog, disabled, pending, onCancel, onSaved, on
   const [kind, setKind] = useState<SpaceKind>(original ? original.kind ?? 'custom' : 'gdd');
   const [customName, setCustomName] = useState(original?.title ?? '');
   const [icon, setIcon] = useState(original?.icon ?? spacePresets[kind].icon);
+  const initialBeforeSpaceId = original ? catalog.spaces[catalog.spaces.indexOf(original) + 1]?.id ?? '' : '';
+  const [beforeSpaceId, setBeforeSpaceId] = useState(initialBeforeSpaceId);
   const title = kind === 'custom' ? customName.trim() : spacePresets[kind].title;
   const dirty = original
-    ? kind !== (original.kind ?? 'custom') || customName !== original.title || icon !== original.icon
+    ? kind !== (original.kind ?? 'custom') || customName !== original.title || icon !== original.icon || beforeSpaceId !== initialBeforeSpaceId
     : kind !== 'gdd' || Boolean(customName) || icon !== spacePresets.gdd.icon;
   useEffect(() => {
     onDirtyChange(dirty);
@@ -2843,7 +2856,10 @@ function SpaceForm({ creation, catalog, disabled, pending, onCancel, onSaved, on
     const action: CatalogAction = original
       ? { action: 'update-space', spaceId: original.id, title, kind, icon }
       : { action: 'create-space', title, kind, icon };
-    if (await onSubmit(action)) onSaved();
+    if (!await onSubmit(action)) return;
+    if (original && beforeSpaceId !== initialBeforeSpaceId
+      && !await onSubmit({ action: 'move-space', spaceId: original.id, beforeSpaceId: beforeSpaceId || null })) return;
+    onSaved();
   }
   return <form ref={form} className="catalog-create-form space-preset-form" onSubmit={event => void submit(event)}>
     <FormHeading title={original ? t.labelUpdateSpace : t.labelCreateSpace} pending={pending} onCancel={onCancel} />
@@ -2857,6 +2873,7 @@ function SpaceForm({ creation, catalog, disabled, pending, onCancel, onSaved, on
     <fieldset disabled={disabled} className="space-custom-fields">
       <label className="catalog-field">{t.labelIcon}<select value={icon} onChange={event => setIcon(event.target.value)}>{Object.entries(icons).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
       {kind === 'custom' && <label className="catalog-field">{t.labelCustomname}<input value={customName} onChange={event => setCustomName(event.target.value)} maxLength={120} required /></label>}
+      {original && <label className="catalog-field">{t.position}<select value={beforeSpaceId} onChange={event => setBeforeSpaceId(event.target.value)}><option value="">{t.atEnd}</option>{catalog.spaces.filter(space => space.id !== original.id).map(space => <option key={space.id} value={space.id}>{t.beforeSpace(space.title)}</option>)}</select></label>}
     </fieldset>
     <p className="catalog-form-help">{t.defaultDeckType(deckKinds[defaultDeckKind(kind)])}</p>
     <div className="catalog-form-actions"><Button type="button" variant="ghost" disabled={pending} onClick={onCancel}>{t.labelCancel}</Button><Button type="submit" disabled={disabled || !title}>{pending && <LoaderCircle className="spin" size={14} />}{original ? t.labelUpdate : t.labelAdd}</Button></div>

@@ -7,6 +7,7 @@ import path from 'node:path';
 import { createServer, type ViteDevServer } from 'vite';
 import tailwindcss from '@tailwindcss/vite';
 import { freePort } from './free-port.ts';
+import { waitForPageTarget } from './browser-target.ts';
 const browserPath = [process.env.DECKMATE_BROWSER, process.env.BROWSER,
   'C:/Program Files/Google/Chrome/Application/chrome.exe', 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe',
   '/usr/bin/google-chrome', '/usr/bin/chromium', '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome']
@@ -88,15 +89,7 @@ describe.skipIf(!browserPath)('Inbox flows (browser)', () => {
     profile = await mkdtemp(path.join(tmpdir(), 'deckmate-inbox-flows-'));
     browser = spawn(browserPath!, ['--headless=new', '--disable-gpu', '--no-first-run', '--no-default-browser-check',
       '--disable-features=OverlayScrollbar', `--remote-debugging-port=${port}`, `--user-data-dir=${profile}`, 'about:blank'], { stdio: 'ignore' });
-    let target: string | undefined;
-    for (let attempt = 0; attempt < 100 && !target; attempt++) {
-      try {
-        const pages = await (await fetch(`http://127.0.0.1:${port}/json/list`)).json() as { type: string; webSocketDebuggerUrl: string }[];
-        target = pages.find(page => page.type === 'page')?.webSocketDebuggerUrl;
-      } catch { /* Headless browser is starting. */ }
-      if (!target) await delay(100);
-    }
-    if (!target) throw new Error('Browser did not start');
+    const target = await waitForPageTarget(port, browser!);
     socket = new WebSocket(target);
     await new Promise(resolve => socket!.addEventListener('open', resolve, { once: true }));
     socket.addEventListener('message', event => {
@@ -118,7 +111,7 @@ describe.skipIf(!browserPath)('Inbox flows (browser)', () => {
     // once it settles, one reload brings the page up.
     try { await until(`Boolean(window.inboxTest && document.querySelector('.card-family-composer'))`, 100); }
     catch { await send('Page.reload'); await until(`Boolean(window.inboxTest && document.querySelector('.card-family-composer'))`, 600); }
-  }, 60000);
+  }, 90000);
 
   afterAll(async () => {
     if (socket?.readyState === WebSocket.OPEN) {
@@ -238,6 +231,69 @@ describe.skipIf(!browserPath)('Inbox flows (browser)', () => {
     await send('Input.dispatchMouseEvent', { type: 'mouseMoved', ...point });
     await delay(450);
     expect(await evaluate(`Boolean(document.querySelector('[role="tooltip"]'))`)).toBe(false);
+  });
+
+  const spaces = [
+    { id: 'space:one', title: 'Work', kind: 'custom', icon: 'layers' },
+    { id: 'qa', title: 'QA', kind: 'custom', icon: 'layers' },
+    { id: 'empty', title: 'Empty', kind: 'custom', icon: 'layers' },
+  ];
+  const spaceOrder = `Array.from(document.querySelectorAll('.catalog-space-heading h2 span'), node => node.textContent)`;
+  async function renderSpaces(options: Record<string, unknown> = {}) {
+    await callFunction(`options => window.inboxTest.render('gallery', options)`, { spaces, ...options });
+    await until(`document.querySelectorAll('.catalog-space').length === 3 && !document.querySelector('.project-pulse-loading')`);
+  }
+  async function moveSpace(id: string, direction: 'up' | 'down') {
+    await callFunction(`(id, direction) => document.getElementById('space-' + id).closest('.catalog-space')
+      .querySelector('[aria-label="Move space ' + direction + '"]').click()`, id, direction);
+  }
+
+  it('moves spaces with the header arrows, disables the ends, and preserves collapse state', async () => {
+    await renderSpaces();
+    expect(await evaluate(`Array.from(document.querySelectorAll('[aria-label="Move space up"]'), node => node.disabled)`)).toEqual([true, false, false]);
+    expect(await evaluate(`Array.from(document.querySelectorAll('[aria-label="Move space down"]'), node => node.disabled)`)).toEqual([false, false, true]);
+    await callFunction(`() => document.getElementById('space-qa').closest('.catalog-space').querySelector('h2 button').click()`);
+    await until(`document.getElementById('space-qa').hidden`);
+    await moveSpace('qa', 'up');
+    await until(`window.inboxTest.actions.length === 1 && document.querySelector('.catalog-space-heading h2 span')?.textContent === 'QA'`);
+    expect(await evaluate('window.inboxTest.actions[0]')).toMatchObject({ action: 'move-space', spaceId: 'qa', beforeSpaceId: 'space:one', manifestHash: 'manifest-hash' });
+    expect(await evaluate(spaceOrder)).toEqual(['QA', 'Work', 'Empty']);
+    expect(await evaluate(`document.getElementById('space-qa').hidden`)).toBe(true);
+    await moveSpace('qa', 'down');
+    await until(`window.inboxTest.actions.length === 2 && document.querySelector('.catalog-space-heading h2 span')?.textContent === 'Work'`);
+    expect(await evaluate('window.inboxTest.actions[1]')).toMatchObject({ action: 'move-space', spaceId: 'qa', beforeSpaceId: 'empty' });
+    await moveSpace('qa', 'down');
+    await until(`window.inboxTest.actions.length === 3 && document.querySelectorAll('.catalog-space-heading h2 span')[2]?.textContent === 'QA'`);
+    expect(await evaluate('window.inboxTest.actions[2]')).toMatchObject({ action: 'move-space', spaceId: 'qa', beforeSpaceId: null });
+    expect(await evaluate(`document.querySelectorAll('[aria-label="Move space down"]')[2].disabled`)).toBe(true);
+    expect(await evaluate(`document.querySelectorAll('[aria-label="Move space up"]')[0].disabled`)).toBe(true);
+  });
+
+  it('saves Space position only when changed, using the hash returned by the settings update', async () => {
+    await renderSpaces();
+    await click('[aria-label="Configure space Work"]');
+    await until(`Boolean(document.querySelector('.space-preset-form'))`);
+    const select = '.space-custom-fields label:last-child select';
+    expect(await callFunction(`selector => ({ value: document.querySelector(selector).value,
+      options: Array.from(document.querySelector(selector).options, option => option.value) })`, select)).toEqual({ value: 'qa', options: ['', 'qa', 'empty'] });
+    await click('.space-preset-form button[type="submit"]');
+    await until(`!document.querySelector('.space-preset-form') && window.inboxTest.actions.length === 1`);
+    expect(await evaluate('window.inboxTest.actions.map(action => action.action)')).toEqual(['update-space']);
+    await click('[aria-label="Configure space Work"]');
+    await until(`Boolean(document.querySelector('.space-preset-form'))`);
+    await callFunction(`selector => { const select = document.querySelector(selector); select.value = ''; select.dispatchEvent(new Event('change', { bubbles: true })); }`, select);
+    await click('.space-preset-form button[type="submit"]');
+    await until(`!document.querySelector('.space-preset-form') && window.inboxTest.actions.length === 3`);
+    expect(await evaluate('window.inboxTest.actions[2]')).toMatchObject({ action: 'move-space', spaceId: 'space:one', beforeSpaceId: null, manifestHash: 'manifest-hash-saved-saved' });
+    expect(await evaluate(spaceOrder)).toEqual(['QA', 'Empty', 'Work']);
+  });
+
+  it('localizes the space arrows and hides them with the pencil in read-only mode', async () => {
+    await renderSpaces({ lang: 'ru' });
+    expect(await evaluate(`document.querySelectorAll('[aria-label="Переместить space выше"]').length`)).toBe(3);
+    expect(await evaluate(`document.querySelectorAll('[aria-label="Переместить space ниже"]').length`)).toBe(3);
+    await renderSpaces({ writable: false });
+    expect(await evaluate(`document.querySelectorAll('.catalog-space-actions').length`)).toBe(0);
   });
 
   it('keeps the fixture free of page errors', () => {

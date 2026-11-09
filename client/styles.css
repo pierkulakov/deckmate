@@ -52,7 +52,7 @@
 /* Shared card material keeps the same identity in Decks, Board and Hand. */
 /* Light cards use a #fff face, .67 px #cdc8dc edge, #2a2440 text and #cdc8dc Task band. Dark cards keep their dark face. Image overlays use a fixed pair (--overlay-*). */
 /* 2026-11-06: --scrim backs every dialog. The light theme veils the page with the palette's violet-black (as Deck settings does), so the page under a dialog stays lilac instead of turning cold gray; the dark theme overrides it with a navy veil. --scrim-heavy is the image viewer's near-black field in both themes. */
-:root { --card-face: #ffffff; --card-ink: #2a2440; --card-muted: #514a66; --card-edge: #cdc8dc; --card-metal: #cdc8dc; --card-metal-ink: #40465a; --overlay-ink: #f9f9fa; --overlay-face: #322f40; --hero-metal: #edc451; --hero-ink: #24180a; --hero-sheen: #fff4c2; --hero-strip: #bf8f34; --hero-chip: #f4e4b8; --hero-step-done: #fff9dd; --hero-step-working: #fff4c2b8; --hero-step-review: #e0ced7b3; --hero-step-blocked: #eea39abf; --hero-step-empty: #fff4c257; --doc-metal: #9bd4c7; --accepted-metal: #34a865; --accepted-metal-ink: #102016; --card-highlight: #2b9e7f; --card-shadow: 0 5px 12px #18213624; --card-hover-shadow: 0 9px 20px #18213638; --kind-hero-bg: #f4e7c6; --kind-hero-ink: #876125; --kind-task-bg: #c5d9ed; --kind-task-ink: #1d4873; --kind-doc-bg: #f6e3a6; --kind-doc-ink: #9d5f00; --quote-bg: #e2f7ef; --quote-bar: #2fae97; --quote-edge: #74dcc8; --count-face: #ffffff; --count-foot: #e2dcee; --count-ink: #4c5060; --cover-window: #1c1a24; --motion-feedback: 150ms; --scrim: color-mix(in srgb, #24182d 40%, transparent); --scrim-heavy: #080b12cc; --busy-dim-delay: 300ms; --motion-material: 220ms; --ease-out: cubic-bezier(.16, 1, .3, 1); }
+:root { --card-face: #ffffff; --card-ink: #2a2440; --card-muted: #514a66; --card-edge: #cdc8dc; --card-metal: #cdc8dc; --card-metal-ink: #40465a; --overlay-ink: #f9f9fa; --overlay-face: #322f40; --hero-metal: #edc451; --hero-ink: #24180a; --hero-sheen: #fff4c2; --hero-strip: #bf8f34; --hero-chip: #f4e4b8; --hero-step-done: #fff9dd; --hero-step-working: #fff4c2b8; --hero-step-review: #e0ced7b3; --hero-step-blocked: #eea39abf; --hero-step-empty: #fff4c257; --doc-metal: #e0ac86; --doc-ink: #2e1606; --accepted-metal: #34a865; --accepted-metal-ink: #102016; --card-highlight: #2b9e7f; --card-shadow: 0 5px 12px #18213624; --card-hover-shadow: 0 9px 20px #18213638; --kind-hero-bg: #f4e7c6; --kind-hero-ink: #876125; --kind-task-bg: #c5d9ed; --kind-task-ink: #1d4873; --kind-doc-bg: #f6e3a6; --kind-doc-ink: #9d5f00; --quote-bg: #e2f7ef; --quote-bar: #2fae97; --quote-edge: #74dcc8; --count-face: #ffffff; --count-foot: #e2dcee; --count-ink: #4c5060; --cover-window: #1c1a24; --motion-feedback: 150ms; --scrim: color-mix(in srgb, #24182d 40%, transparent); --scrim-heavy: #080b12cc; --busy-dim-delay: 300ms; --motion-material: 220ms; --ease-out: cubic-bezier(.16, 1, .3, 1); }
 /* 2026-11-06: Decks home. The cover rim lights the deck color the same in both themes; the lift and the pulse strip follow the page. */
 :root { --cover-rim: inset 0 1px 0 rgb(255 255 255 / .32), inset 0 0 0 1px rgb(255 255 255 / .1); --cover-lift: 0 1px 0 rgb(48 36 56 / .2), 0 10px 20px -10px rgb(48 36 56 / .5); --cover-progress: #a6f2c8;
   --pulse-face: var(--surface); --pulse-bar: #52917a; --pulse-today: #2b9e7f; --pulse-track: #e8dff0; }
@@ -144,6 +144,9 @@ kbd { display: inline-flex; align-items: center; justify-content: center; min-wi
 .workspace-main { position: relative; overflow: auto; min-height: 0; flex: 1; scroll-behavior: smooth; scroll-padding-top: 32px; scrollbar-gutter: stable; } /* Reserve scrollbar space so the layout stays stable when it appears. */
 /* 2026-11-06: an empty open deck has no scrollbar; reserving its gutter left a blank strip beside the full-width toolbar. */
 .workspace-main:has(> .catalog-view.is-deck-open) { scrollbar-gutter: auto; }
+/* 2026-11-09: a priority drop can add a tile row and reveal the workspace scrollbar. Keep its gutter reserved while the
+   editor is open so the percentage-based preview column and the deck do not contract when that row is committed. */
+.workspace-main:has(> .catalog-view.is-deck-open.has-preview) { scrollbar-gutter: stable; }
 /* 2026-11-05: the fixed notifications corner publishes the height it covers (Notifications.tsx); the scroll end clears it, so the last
    rows scroll out from under it. Vision's canvas fills the view, and its side panel clears the corner instead (workspace.css). */
 .workspace-main:not(:has(> .vision-workspace)) { padding-bottom: var(--notifications-clearance, 0px); }
@@ -259,7 +262,9 @@ kbd { display: inline-flex; align-items: center; justify-content: center; min-wi
 .deck-card-open:focus-visible { outline: none; }
 .deck-card > .card-family-trigger { --material-position: absolute; position: absolute; z-index: 5; top: 0; inset-inline: 0; width: 100%; max-width: none; height: 18px; min-height: 18px; padding: 2px 2px 2px 7px; border: 0; border-radius: 4px 4px 0 0; color: var(--hero-ink); font-size: 9.5px; font-weight: 600; line-height: 14px; letter-spacing: 0; }
 /* 2026-11-08: reserve the checkbox's 10px intrusion plus 4px in every state, so affiliation never jumps on hover. */
-.deck-card:has(> .catalog-card-checkbox) > .card-family-trigger { padding-left: 14px; }
+/* 2026-11-09: 14px pushed the Hero name 7px right of the card title. 9px ends the hover checkbox
+   (16px at -6px) right before the first glyph and keeps the name within 2px of the title below. */
+.deck-card:has(> .catalog-card-checkbox) > .card-family-trigger { padding-left: 9px; }
 .deck-card > .card-family-trigger:focus-visible { outline: 2px solid var(--hero-ink); outline-offset: -2px; }
 .deck-card:has(> .card-family-trigger) .deck-card-open { padding-top: 24px; }
 @media (max-width: 760px) { .deck-view { padding: 27px 20px 40px; } .deck-heading { align-items: start; flex-direction: column; gap: 18px; } }
@@ -303,12 +308,22 @@ kbd { display: inline-flex; align-items: center; justify-content: center; min-wi
 /* Opened card: the strongest mint ring; hover and focus stay at 1px / 12px (see .deck-card). */
 .catalog-card-grid .deck-card.is-selected { border-color: var(--tile-highlight); box-shadow: 0 0 0 2px color-mix(in srgb, var(--tile-highlight) 85%, transparent), 0 0 18px color-mix(in srgb, var(--tile-highlight) 38%, transparent); }
 .catalog-card-doc .deck-card-band { --metal-base: var(--doc-metal); }
-/* 2026-11-08: Doc type stays left and questions right, leaving the centered Owner clear; attachments sit below it. */
-.catalog-card-doc .deck-card-identity { display: grid; grid-template-columns: 18px minmax(27px, 1fr) auto; min-height: 18px; }
-.deck-card-doc-kind { grid-column: 1; }
-.catalog-card-doc .deck-card-identity > .catalog-card-open-questions { grid-column: 3; }
-.catalog-card-doc .catalog-card-progress { display: flex; align-items: center; justify-content: space-between; gap: 4px; }
-.deck-card-doc-caption { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+/* 2026-11-09: one row — type icon left, word count right, the centered Owner clear. */
+.catalog-card-doc .deck-card-identity { display: flex; align-items: center; gap: 4px; min-height: 18px; margin-bottom: 0; }
+.deck-card-doc-kind { display: inline-flex; flex: 0 0 auto; }
+.catalog-card-doc .deck-card-doc-words { margin-left: auto; font: 700 13px/18px var(--font-sans); white-space: nowrap; }
+/* 2026-11-09: «Страница» — under a two-line title the Doc face runs its own text and fades out above
+   the band, so beside Hero and Task titles it reads as a page. */
+.catalog-card-doc .deck-card-title { -webkit-line-clamp: 2; }
+/* The Doc accent: copper itself on the dark face, copper deepened towards its ink on the white one. */
+:root { --doc-accent: color-mix(in srgb, var(--doc-metal) 50%, var(--doc-ink)); }
+:root.dark { --doc-accent: var(--doc-metal); }
+/* A short copper chapter mark opens the text; the text itself is the card's own ink, white on the dark face
+  . */
+.deck-card-doc-excerpt { display: flex; flex-direction: column; gap: 3px; flex: 1 1 0; min-height: 0; margin-top: 5px; overflow: hidden; color: var(--card-ink); font-size: 10.5px; line-height: 14px; overflow-wrap: anywhere;
+  -webkit-mask-image: linear-gradient(#000 40%, transparent 97%); mask-image: linear-gradient(#000 40%, transparent 97%); }
+.deck-card-doc-excerpt b { font-weight: 600; color: var(--card-ink); }
+.deck-card-doc-excerpt::before { content: ''; flex: 0 0 auto; width: 16px; height: 2px; margin: 1px 0; border-radius: 1px; background: var(--doc-accent); }
 .catalog-card-hero .deck-card-band { --metal-base: var(--hero-metal); --card-metal-ink: var(--hero-ink); }
 .catalog-card-progress { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 10px; line-height: 14px; }
 .catalog-create-form { border: 1px solid var(--line); background: var(--panel-gradient); border-radius: 8px; padding: 20px; margin-bottom: 28px; }

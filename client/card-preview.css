@@ -59,6 +59,8 @@
 .card-preview-state-actions .ui-button { width: 32px; height: 30px; color: var(--muted); }
 .card-preview-state-actions .ui-button[aria-pressed="true"] { opacity: 1; border-color: color-mix(in srgb, var(--focus) 45%, var(--line)); background: var(--accent-soft); color: var(--ink); }
 .card-preview-state-actions > .spin { margin-left: auto; }
+.card-preview-hero-mark { display: flex; align-items: center; gap: 8px; }
+.card-preview-hero-mark .ui-button[aria-pressed="true"] { opacity: 1; border-color: color-mix(in srgb, var(--focus) 45%, var(--line)); background: var(--accent-soft); color: var(--ink); }
 /* 2026-11-06: the dependency question keeps the reading inset like the other notices instead of touching the sheet edges. */
 .card-preview-sheet > .dependency-warning { margin: 12px 16px 0; }
 .card-preview-state-notice { margin: 10px 16px; font-size: 11px; line-height: 1.6; color: var(--warning-ink); }
@@ -268,7 +270,7 @@
    2026-11-08: 16px side padding puts the EFFORT/PRIORITY captions on the sheet's one reading axis — the same 16px as the
    card text above and the meta row below (the shortcuts' -8px margin and 8px padding cancel out). */
 .card-preview-material-band { position: relative; display: flex; align-items: center; justify-content: space-between; flex-wrap: nowrap; gap: 8px; height: 58px; min-height: 58px; padding: 7px 16px; color: var(--card-metal-ink); font-size: 12px; }
-.card-preview-doc .card-preview-material-band { --card-metal: var(--doc-metal); justify-content: center; }
+.card-preview-doc .card-preview-material-band { --card-metal: var(--doc-metal); --card-metal-ink: var(--doc-ink); justify-content: center; }
 .card-preview-sheet[data-state="done"] > .card-preview-material-band { --card-metal: var(--accepted-metal); --card-metal-ink: var(--accepted-metal-ink); }
 /* 2026-11-09: these two read live — the open card is `aside.card-preview-hero`; dropping them as dead in 0.3.0 turned the
    Hero band's owner medallion and ink lavender and lost the accepted Hero band colour. */
@@ -388,8 +390,9 @@
 @media (prefers-reduced-motion: reduce) { .card-id-feedback:not(:empty) { animation: none; } .card-id-chip { transition: none; } }
 /* 2026-11-08: one meta line above the band — indicators, then tag badges, wrapping when narrow.
    The 16px insets share the reading column and the band captions' axis. The owner medallion rises 16px above the band, so the
-   row keeps 20px of clearance below its content; with neither indicators nor tags it keeps only that clearance, with no line. */
-.card-preview-meta-row { display: flex; flex-wrap: wrap; align-items: center; align-content: center; gap: 6px 12px; padding: 8px 16px 20px; border-top: .67px solid var(--line); }
+   row keeps 15px below its content — 2026-11-09: 8px above and 20px below left the tags hugging the top of their row
+   14/15 centres them, and the 16px medallion overlaps that clearance by 1px only at the centre; with neither indicators nor tags it keeps only that clearance, with no line. */
+.card-preview-meta-row { display: flex; flex-wrap: wrap; align-items: center; align-content: center; gap: 6px 12px; padding: 14px 16px 15px; border-top: .67px solid var(--line); }
 .card-preview-meta-row:not(:has(.card-indicators, .card-tags)) { min-height: 20px; padding: 0; border: 0; }
 /* 2026-11-09: Journey sections belong to reading. They step aside in the same frame the editor appears, so the editor's
    fit measures the whole panel instead of keeping the height it had beside them. */

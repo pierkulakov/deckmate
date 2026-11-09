@@ -6,7 +6,8 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { promisify } from 'node:util';
 import type { FastifyInstance } from 'fastify';
-import { appendActivity, readActivity, readCardActivity } from '../server/activity.ts';
+import { appendActivity, describeActivity, readActivity, readCardActivity } from '../server/activity.ts';
+import { activityEventGroups } from '../src/activity-groups.ts';
 import { createApp } from '../server/app.ts';
 import { CatalogService } from '../server/catalog-service.ts';
 import { editProjectCatalog, emptyManifest, readManifest, readProjectCatalog, renderCatalogManifest } from '../server/catalog.ts';
@@ -288,6 +289,26 @@ it('moving a deck does not attribute a settings edit to untouched neighboring de
   await service.edit({ action: 'move-deck', deckId: 'audio', spaceId: 'archive', beforeDeckId: null, manifestHash: before.manifestHash }, 'sandbox');
   expect((await service.activity('sandbox', 'audio')).events).toHaveLength(1);
   for (const untouched of ['qa', 'concepts', 'other-concepts']) expect((await service.activity('sandbox', untouched)).events).toEqual([]);
+});
+
+it.each(['en', 'ru'] as const)('journals Space order in %s without attributing edits to unchanged decks', async formatLanguage => {
+  const { root, service } = await fixture();
+  const source = await readManifest(root);
+  source.manifest.formatLanguage = formatLanguage;
+  await writeFile(path.join(root, 'tasks/deckmate.md'), renderCatalogManifest(source.manifest));
+  const before = await service.get('sandbox');
+  const after = await service.edit({ action: 'move-space', spaceId: 'archive', beforeSpaceId: 'work', manifestHash: before.manifestHash }, 'sandbox');
+  const event = describeActivity(before, after, 'move-space');
+  expect(event).toMatchObject({ action: 'move-space', summary: formatLanguage === 'en' ? 'Space moved' : 'Space перемещён',
+    deckIds: [], cards: [], details: ['1. Archive', '2. Work'] });
+  expect(activityEventGroups(event!)).toEqual(new Set(['properties']));
+  const journal = await readdir(path.join(root, 'tasks/deckmate-activity'));
+  expect(journal).toHaveLength(1);
+  expect(await readFile(path.join(root, 'tasks/deckmate-activity', journal[0]), 'utf8')).toContain(event!.summary);
+  await service.edit({ action: 'move-space', spaceId: 'archive', beforeSpaceId: 'work', manifestHash: after.manifestHash }, 'sandbox');
+  expect(await readdir(path.join(root, 'tasks/deckmate-activity'))).toEqual(journal);
+  expect(describeActivity(after, after, 'move-space')).toBeNull();
+  for (const deck of after.decks) expect((await service.activity('sandbox', deck.id)).events).toEqual([]);
 });
 
 it('keeps concurrent API errors in the request language and defaults to English', async () => {

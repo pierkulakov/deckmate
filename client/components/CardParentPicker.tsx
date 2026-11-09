@@ -1,6 +1,6 @@
 import { useId, useMemo, useRef, useState } from 'react';
 import * as Dialog from '@radix-ui/react-dialog';
-import { ArrowLeft, Check, Crown, FileText, Gauge, Layers, LoaderCircle, Search, X } from 'lucide-react';
+import { ArrowLeft, Check, Crown, Gauge, Layers, LoaderCircle, NotebookText, Search, X } from 'lucide-react';
 import { deckAcceptsCard, type CatalogCard, type CatalogView } from '../../src/catalog-contracts.ts';
 import { shortReference } from '../../src/references.ts';
 import { Button } from './ui/button.tsx';
@@ -224,7 +224,7 @@ export function CardParentPicker({ card, catalog, pending, embedded = false, onC
   }
 
   function candidateContent(candidate: CatalogCard) {
-    const Icon = candidate.kind === 'hero' ? Crown : candidate.kind === 'doc' ? FileText : Layers;
+    const Icon = candidate.kind === 'hero' ? Crown : candidate.kind === 'doc' ? NotebookText : Layers;
     const priority = candidate.priority ? priorityLabel(candidate.priority, lang) : '—';
     return <><Icon className="card-parent-option-kind" size={16} /><span className="card-parent-option-content"><strong>{candidate.title}</strong>
       <span className="card-parent-option-metrics"><span title={t.effort}><Gauge size={12} />{candidate.effort ?? '—'}</span><span title={t.priority}><Layers size={12} />{priority}</span>

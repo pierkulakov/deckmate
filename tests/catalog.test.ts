@@ -270,6 +270,39 @@ it.each(['conflict', 'rename failure'])('cleans only the new asset after manifes
   expect(await readFile(filename)).toEqual(expected);
 });
 
+it('moves spaces to the start, middle and end without changing decks or cards, and skips no-op writes', async () => {
+  const { root, filename } = await fixture();
+  const manifest = emptyManifest();
+  const initial = await readProjectCatalog(root);
+  manifest.spaces = [...initial.spaces, ...['gdd', 'qa', 'empty'].map(id => ({ id, title: id }))];
+  manifest.decks = initial.decks;
+  await writeFile(filename, renderCatalogManifest(manifest));
+  const before = await readProjectCatalog(root);
+  const move = async (spaceId: string, beforeSpaceId: string | null, manifestHash?: string) => editProjectCatalog(root,
+    { action: 'move-space', spaceId, beforeSpaceId, manifestHash: manifestHash ?? (await readProjectCatalog(root)).manifestHash });
+  const order = async () => (await readProjectCatalog(root)).spaces.map(space => space.id);
+  expect(await move('empty', 'production')).toEqual(['tasks/deckmate.md']);
+  expect(await order()).toEqual(['empty', 'production', 'gdd', 'qa']);
+  await move('qa', 'gdd');
+  expect(await order()).toEqual(['empty', 'production', 'qa', 'gdd']);
+  await move('production', null);
+  expect(await order()).toEqual(['empty', 'qa', 'gdd', 'production']);
+  const after = await readProjectCatalog(root);
+  expect(after.decks).toEqual(before.decks);
+  expect(after.cards).toEqual(before.cards);
+  const saved = await readFile(filename);
+  vi.mocked(filesystem.rename).mockClear();
+  expect(await move('qa', 'gdd')).toEqual([]);
+  expect(await move('production', null)).toEqual([]);
+  expect(filesystem.rename).not.toHaveBeenCalled();
+  for (const [spaceId, beforeSpaceId] of [['missing', null], ['qa', 'missing'], ['qa', 'qa']] as const) {
+    await expect(move(spaceId, beforeSpaceId)).rejects.toThrow();
+  }
+  await expect(move('qa', null, before.manifestHash)).rejects.toThrow('CATALOG_CONFLICT');
+  await expect(move('production', null, before.manifestHash)).rejects.toThrow('CATALOG_CONFLICT');
+  expect(await readFile(filename)).toEqual(saved);
+});
+
 it('moves decks within and between spaces preserving their types and card memberships', async () => {
   const { root, filename } = await fixture();
   const initial = await readProjectCatalog(root);

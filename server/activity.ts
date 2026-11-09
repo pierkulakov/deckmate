@@ -50,6 +50,7 @@ const messages = defineText({
   deckTypeChanged: "Deck type changed",
   coverChanged: "Cover changed",
   deckMoved: "Deck moved",
+  spaceMoved: "Space moved",
   deckPiled: "Deck moved to the pile",
   deckShelved: "Deck back on the shelf",
   deckPiledDetail: (title: string) => `“${title}” is in the pile at the end of its space`,
@@ -120,6 +121,7 @@ const messages = defineText({
   deckTypeChanged: "Изменён тип колоды",
   coverChanged: "Изменена обложка",
   deckMoved: "Колода перемещена",
+  spaceMoved: "Space перемещён",
   deckPiled: "Колода убрана в стопку",
   deckShelved: "Колода возвращена на полку",
   deckPiledDetail: (title: string) => `«${title}» лежит в стопке в конце своего пространства`,
@@ -174,6 +176,7 @@ function activityLabels(formatLanguage: FormatLanguage): Record<string, string> 
     'create-deck': text.deckCreated, 'update-deck': text.deckChanged,
     'set-deck-kind': text.deckTypeChanged,
     'upload-cover': text.coverChanged, 'move-deck': text.deckMoved,
+    'move-space': text.spaceMoved,
     'update-block': text.markdownChanged, 'update-status': text.stateChanged,
     'save-board': text.boardSaved,
     // Record dependency changes and newly unblocked cards (2026-11-04).
@@ -346,6 +349,10 @@ export function describeActivity(before: CatalogView, after: CatalogView, action
       details.push(previous ? text.deckSettings(deck.title) : text.newDeck(deck.title));
     }
   }
+  if (action === 'move-space' && before.spaces.some((space, index) => space.id !== after.spaces[index]?.id)) {
+    // 2026-11-09: Space order belongs to the project; it must not look like settings edits on its unchanged Decks.
+    details.push(...after.spaces.map((space, index) => `${index + 1}. ${space.title}`));
+  }
   // 2026-11-06: the pile has a direction, so its summary says where the deck went instead of one label per action.
   let summary = action === 'apply-project-template' ? text.projectTemplateApplied : activityLabels(after.formatLanguage)[action] ?? text.updatedCards;
   if (action === 'set-deck-pile') {
@@ -387,7 +394,7 @@ export function describeActivity(before: CatalogView, after: CatalogView, action
     for (const space of after.spaces) if (!before.spaces.some(previous => previous.id === space.id)) details.push(text.newSpace(space.title));
     for (const tag of after.projectTags ?? []) if (!before.projectTags?.some(previous => previous.name === tag.name)) details.push(text.newTag(tag.name));
   }
-  if (!details.length || (!deckIds.size && !['add-card-report', 'apply-project-template'].includes(action))) return null;
+  if (!details.length || (!deckIds.size && !['add-card-report', 'apply-project-template', 'move-space'].includes(action))) return null;
   return { schema: 1, id: randomUUID(), at: new Date().toISOString(), action, actor: 'Deckmate', summary, cards, deckIds: [...deckIds], details,
     ...(transitions.length ? { transitions } : {}) };
 }

@@ -124,7 +124,7 @@ The write path for the catalog; Runs and Milestones use `POST /api/planning` bel
 | `action` | Required fields |
 |---|---|
 | `bulk-edit-cards` | `cards`, `optionsHash`, `change` |
-| `set-card-state` | `cardId`, `sourceHash`, `state`; optional `returnReason` (one line, ≤500 characters, only leaving review without acceptance). In a deck with guardians, `done` needs a guardian as `x-deckmate-actor` (without the header, as `acceptedBy`) |
+| `set-card-state` | `cardId`, `sourceHash`, `state`; optional `returnReason` (one line, ≤500 characters, only leaving review without acceptance). In a deck with guardians, `done` needs a guardian as `x-deckmate-actor` (without the header, as `acceptedBy`). A native Hero takes only `done` (manual mark, refused while it has Task Sub Cards other than `wont-do`) and `not-started` (removes the mark) |
 | `set-card-properties` | `cardId`, `sourceHash`, `owner`, `effort`, `priority` |
 | `set-card-parent` | `cardId`, `sourceHash`, `expectedParentId`, `parentId`, `parentSourceHash` |
 | `reorder-subcards` | `cardId`, `sourceHash`, `cardIds` |
@@ -143,6 +143,7 @@ The write path for the catalog; Runs and Milestones use `POST /api/planning` bel
 | `set-deck-default-order` | `deckId`, `defaultOrder` (URL-parameter string ≤200 characters, or null to clear) |
 | `upload-cover` | `deckId`, `dataUrl` (image ≤ 5 MB) |
 | `move-deck` | `deckId`, `spaceId`, `beforeDeckId` |
+| `move-space` | `spaceId`, `beforeSpaceId` (Space ID, or null to append); reorders only `spaces`, leaving Decks unchanged; the current position is a no-op |
 | `delete-deck` | `deckId`; its cards lose the deck, a deck with a Journey cannot be deleted |
 | `set-deck-zones` | `deckId`, `zones` (full ordered list) |
 | `move-cards-in-deck` | `deckId`, `cards`, `zoneId`, `beforeCardId` |

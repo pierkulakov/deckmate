@@ -12,7 +12,7 @@
 
 A local Markdown project board for teams of people and AI agents.
 
-**Status:** 0.4.0, an early release. The project file format (schema 1) may change before 1.0.
+**Status:** 0.5.0, an early release. The project file format (schema 1) may change before 1.0.
 
 [![npm](https://img.shields.io/npm/v/deckmate?color=7a52d6)](https://www.npmjs.com/package/deckmate)
 [![License: AGPL-3.0](docs/badges/license.svg)](LICENSE)
@@ -102,13 +102,13 @@ These CLI settings can also live in `.env.local` in the folder you start from â€
 | **Track** | A thread that links cards across decks, such as a release or a feature area. |
 | **Vision** | An Excalidraw canvas with live links to cards. |
 
-Start on **Decks**: document and card counts sit under the project name; source warnings open from the same line. Jump from the project pulse to work in progress, reviews, the current Run or cards that need a deck. Compact covers show card counts and task progress. Arrange decks with the mouse or keyboard; move less-used decks into a **pile** at the end of their space from deck settings, and bring them back when needed. Search deck names to find a deck even inside a pile.
+Start on **Decks**: document and card counts sit under the project name; source warnings open from the same line. Jump from the project pulse to work in progress, reviews, the current Run or cards that need a deck. Compact covers show card counts and task progress. Arrange decks with the mouse or keyboard; move less-used decks into a **pile** at the end of their space from deck settings, and bring them back when needed. Reorder spaces with the arrows in their headers or the Position field in space settings. Search deck names to find a deck even inside a pile.
 
 Open a deck to work with its cards, description, progress and activity:
 
 ![An open Deck with Hero Sub Card progress strips, task states, owners and effort](docs/screenshots/deck.png)
 
-A Hero tile shows Sub Card progress as a quiet line, with each step sized by its effort. When all its task Sub Cards are accepted, the Hero gains holographic foil, an iridescent rim and a done medallion. The foil follows the pointer; with reduced motion or touch it stays still. Doc Sub Cards appear in the Hero's family too, but only Task Sub Cards count towards its progress; the Sub Cards panel flags those without a deck. Drop a Task that has no Sub Cards into an Asset deck and Deckmate offers to make it a Hero.
+A Hero tile shows Sub Card progress as a quiet line, with each step sized by its effort. When all its task Sub Cards are accepted, the Hero gains holographic foil, an iridescent rim and a done medallion. The foil follows the pointer; with reduced motion or touch it stays still. Doc Sub Cards appear in the Hero's family too, but only Task Sub Cards count towards its progress; the Sub Cards panel flags those without a deck. Drop a Task that has no Sub Cards into an Asset deck and Deckmate offers to make it a Hero. A Hero without Task Sub Cards can be marked done by hand from its Sub Cards bar. Doc Cards read as pages: a copper band with the word count, and the start of the text on the tile.
 
 ![Moonwake Lantern with holographic foil and a done medallion after its Sub Cards are accepted](docs/screenshots/deck-accepted.png)
 

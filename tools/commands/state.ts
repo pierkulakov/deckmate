@@ -14,7 +14,8 @@ export async function run(context: CommandContext, positionals: string[], option
   if (positionals.length !== 2) throw new Error('state: pass a card ID or c-ref and the new state, for example state c-1a2b3c4d5e done --member <ID>.');
   const card = resolveReference(context.catalog.cards, 'c', positionals[0]);
   if (!card) throw new Error('Card not found. Pass a card ID or c-ref from show/find.');
-  if (card.kind !== 'task') throw new Error('state: only a Task card has a state.');
+  // 2026-11-09: a Hero takes only its done mark (done / not-started); the catalog write checks its Task Sub Cards.
+  if (card.kind === 'doc') throw new Error('state: a Doc card has no state; a Hero takes only done or not-started.');
   const state = readCardState(positionals[1]);
   if (!state) throw new Error(`state: the state must be one of: ${cardStates.flatMap(cardStateWords).join(', ')}.`);
   const actor = commandMember(context, options.get('member'), 'state').id;

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { CatalogCard } from '../src/catalog-contracts.ts';
 import { buildCatalogLookups, familyChildren } from '../client/catalog-lookups.ts';
-import { familyFinished } from '../client/done-impact.ts';
+import { heroFinished, heroTakesManualDone } from '../src/hero-done.ts';
 
 function card(id: string, overrides: Partial<CatalogCard> = {}): CatalogCard {
   return { id, kind: 'task', path: 'features/sound.md', version: null, title: id, state: 'not-started', owner: null,
@@ -71,12 +71,29 @@ describe('catalog lookups', () => {
   });
 
   it('finishes a family from Task children only, ignoring Doc cards', () => {
+    const hero = card('hero', { kind: 'hero', state: null });
     const done = card('done', { state: 'done' });
     const started = card('started', { state: 'started' });
     const doc = card('doc', { kind: 'doc', state: 'done' });
-    expect(familyFinished([doc])).toBe(false);
-    expect(familyFinished([done, doc])).toBe(true);
-    expect(familyFinished([started, doc])).toBe(false);
+    expect(heroFinished(hero, [doc])).toBe(false);
+    expect(heroFinished(hero, [done, doc])).toBe(true);
+    expect(heroFinished(hero, [started, doc])).toBe(false);
+  });
+
+  // 2026-11-09: a Hero without counted Task Sub Cards is done by its own mark; with them, only its children decide.
+  it('finishes a Hero without counted Task Sub Cards by its manual mark only', () => {
+    const marked = card('hero', { kind: 'hero', state: 'done' });
+    const unmarked = card('hero', { kind: 'hero', state: null });
+    const wontDo = card('dropped', { state: 'wont-do' });
+    const started = card('started', { state: 'started' });
+    const doc = card('doc', { kind: 'doc', state: null });
+    expect(heroFinished(marked, [])).toBe(true);
+    expect(heroFinished(unmarked, [])).toBe(false);
+    expect(heroFinished(marked, [wontDo, doc])).toBe(true);
+    expect(heroFinished(unmarked, [wontDo])).toBe(false);
+    expect(heroFinished(marked, [started])).toBe(false);
+    expect([[], [wontDo, doc]].map(children => heroTakesManualDone(children))).toEqual([true, true]);
+    expect(heroTakesManualDone([wontDo, started])).toBe(false);
   });
 
   it('preserves literal substring search, Russian casing and adjacent fields', () => {

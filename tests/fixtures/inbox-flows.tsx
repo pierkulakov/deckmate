@@ -7,6 +7,7 @@ import { Deck, DeckCoverTile, DeckSettingsForm } from '../../client/components/D
 import { catalogStore } from '../../client/catalog-store.ts';
 import { DocumentPreviewProvider } from '../../client/components/DocumentPreview.tsx';
 import type { ProjectPulse } from '../../src/pulse-contracts.ts';
+import type { WorkspaceSnapshot } from '../../src/workspace-contracts.ts';
 import { setLang } from '../../client/i18n.ts';
 import '../../client/styles.css';
 import '../../client/deck-cover.css';
@@ -43,7 +44,7 @@ function SettingsShell({ catalog, source }: { catalog: CatalogView; source: 'san
 }
 
 function render(scene: 'family' | 'cover' | 'settings' | 'gallery', options: Record<string, unknown> = {}) {
-  setLang('en');
+  setLang(options.lang === 'ru' ? 'ru' : 'en');
   window.fetch = realFetch;
   actions.length = 0;
   created.length = 0;
@@ -66,17 +67,33 @@ function render(scene: 'family' | 'cover' | 'settings' | 'gallery', options: Rec
   if (scene === 'gallery') {
     history.replaceState(null, '', '/');
     const catalog = catalogOf(options.empty ? [] : Array.from({ length: 8 }, (_, index) => ({ id: `deck:${index}`, title: `Deck ${index}`, kind: 'task' })), null);
+    if (options.spaces) catalog.spaces = options.spaces as CatalogView['spaces'];
     const pulse: ProjectPulse = { inProgress: { count: 0, ownerIds: [] }, review: { count: 0, oldestSince: null, deckId: null }, accepted: { days: Array(14).fill(0), total: 0 }, run: null, withoutDeck: 0 };
     window.fetch = async (input, init) => {
       const url = String(input);
       if (url.startsWith('/api/catalog?')) return Response.json(catalog);
       if (url.startsWith('/api/project-pulse?')) return Response.json(pulse);
+      if (url === '/api/catalog' && init?.method === 'POST') {
+        const action = JSON.parse(String(init.body)) as CatalogAction;
+        actions.push(action);
+        if (action.action === 'move-space') {
+          const space = catalog.spaces.find(space => space.id === action.spaceId)!;
+          catalog.spaces = catalog.spaces.filter(candidate => candidate !== space);
+          const index = action.beforeSpaceId === null ? catalog.spaces.length : catalog.spaces.findIndex(space => space.id === action.beforeSpaceId);
+          catalog.spaces.splice(index, 0, space);
+        }
+        if (action.action === 'update-space') Object.assign(catalog.spaces.find(space => space.id === action.spaceId)!, { title: action.title, kind: action.kind, icon: action.icon });
+        catalog.manifestHash += '-saved';
+        return Response.json(structuredClone(catalog));
+      }
       return realFetch(input, init);
     };
+    const snapshot: WorkspaceSnapshot & { token: string } = { source: 'sandbox', token: 'test-token', projectName: 'Gallery test',
+      writable: options.writable !== false, editMode: 'direct', iteration: { number: 1, goal: '', start: '' } };
     return catalogStore('sandbox').refresh().then(() => {
       root.render(<DocumentPreviewProvider><div key={++instance} className="app-shell global-shell"><div className="workspace">
         <header className="topbar global-topbar">Deckmate</header>
-        <main className="workspace-main board-main"><Deck snapshot={{ source: 'sandbox', projectName: 'Gallery test', writable: true, editMode: 'direct', iteration: { number: 1, goal: '', start: '' } }} refreshKey={0} onEditing={noop} onStartFromTemplate={noop} /></main>
+        <main className="workspace-main board-main"><Deck snapshot={snapshot} refreshKey={0} onEditing={noop} onStartFromTemplate={noop} /></main>
       </div></div></DocumentPreviewProvider>);
     });
   }

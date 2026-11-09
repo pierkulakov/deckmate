@@ -1,7 +1,8 @@
 import type { CatalogCard } from '../src/catalog-contracts.ts';
 import { markdownParser } from '../src/markdown-model.ts';
 
-export function countCardWords(markdown: string, legacyDocument = false): number {
+// The body a tile reads: legacy projections also carry YAML and the H1, which readDocLayout leaves out.
+export function cardBody(markdown: string, legacyDocument = false): string {
   let body = markdown;
   if (legacyDocument) {
     // 2026-11-04: legacy projections include YAML and H1; match the body returned by readDocLayout.
@@ -18,26 +19,35 @@ export function countCardWords(markdown: string, legacyDocument = false): number
       body = text.slice(newline < 0 ? text.length : newline + 1);
     }
   }
-  const content = body.trim();
+  return body;
+}
+
+export function countCardWords(markdown: string, legacyDocument = false): number {
+  const content = cardBody(markdown, legacyDocument).trim();
   return content ? content.split(/\s+/u).length : 0;
 }
 
-const wordCountLimit = 512;
-const wordCounts = new Map<string, { hash: string; count: number }>();
+const revisionLimit = 512;
+
+// 2026-11-05: keep what a tile derives from a card's text across remounts, without retaining Markdown or old revisions.
+export function rememberByRevision<T>(cache: Map<string, { hash: string; value: T }>, card: Pick<CatalogCard, 'id' | 'sourceHash'>, compute: () => T): T {
+  const cached = cache.get(card.id);
+  if (card.sourceHash && cached?.hash === card.sourceHash) {
+    cache.delete(card.id);
+    cache.set(card.id, cached);
+    return cached.value;
+  }
+  const value = compute();
+  cache.delete(card.id);
+  if (card.sourceHash) {
+    cache.set(card.id, { hash: card.sourceHash, value });
+    if (cache.size > revisionLimit) cache.delete(cache.keys().next().value!);
+  }
+  return value;
+}
+
+const wordCounts = new Map<string, { hash: string; value: number }>();
 
 export function countCatalogCardWords(card: Pick<CatalogCard, 'id' | 'sourceHash' | 'markdown'>): number {
-  // 2026-11-05: keep counts across tile remounts without retaining Markdown or old revisions.
-  const cached = wordCounts.get(card.id);
-  if (card.sourceHash && cached?.hash === card.sourceHash) {
-    wordCounts.delete(card.id);
-    wordCounts.set(card.id, cached);
-    return cached.count;
-  }
-  const count = countCardWords(card.markdown, card.id.startsWith('doc:'));
-  wordCounts.delete(card.id);
-  if (card.sourceHash) {
-    wordCounts.set(card.id, { hash: card.sourceHash, count });
-    if (wordCounts.size > wordCountLimit) wordCounts.delete(wordCounts.keys().next().value!);
-  }
-  return count;
+  return rememberByRevision(wordCounts, card, () => countCardWords(card.markdown, card.id.startsWith('doc:')));
 }

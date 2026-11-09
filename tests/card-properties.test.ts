@@ -155,18 +155,51 @@ it.each(['CR-only', 'mixed'] as const)('preserves body, neighbouring status and 
   expect(cards.find(card => card.id === 'task:features/sound.md#1.1')?.state).toBe('done');
 });
 
-it('changes only native state and refuses state changes on Hero/Doc', async () => {
+it('changes only native state and refuses state changes on a Doc or a Hero workflow state', async () => {
   const { root } = await fixture();
   const card = await native(root);
   const before = await readFile(card.filename, 'utf8');
   await editProjectCatalog(root, { action: 'set-card-state', ...await baseline(root, card.id), state: 'приёмка' });
   expect(await readFile(card.filename, 'utf8')).toBe(before.replace('state: план', 'state: "приёмка"'));
-  for (const kind of ['hero', 'doc'] as const) {
+  for (const [kind, refusal] of [['hero', 'only be marked done'], ['doc', 'Only Task']] as const) {
     const nonTask = await native(root, kind);
     const source = await readFile(nonTask.filename);
-    await expect(editProjectCatalog(root, { action: 'set-card-state', ...await baseline(root, nonTask.id), state: 'в работе' })).rejects.toThrow('Only Task');
+    await expect(editProjectCatalog(root, { action: 'set-card-state', ...await baseline(root, nonTask.id), state: 'в работе' })).rejects.toThrow(refusal);
     expect(await readFile(nonTask.filename)).toEqual(source);
   }
+});
+
+// 2026-11-09: a Hero without counted Task Sub Cards is marked done by hand; with them, only its children finish it.
+it('marks a native Hero without counted Task Sub Cards done and back, changing only its state line', async () => {
+  const { root } = await fixture();
+  const hero = await native(root, 'hero');
+  const before = await readFile(hero.filename, 'utf8');
+  await editProjectCatalog(root, { action: 'set-card-state', ...await baseline(root, hero.id), state: 'done' });
+  expect(await readFile(hero.filename, 'utf8')).toBe(before.replace('state: null', 'state: "принято"'));
+  expect((await readProjectCatalog(root)).cards.find(candidate => candidate.id === hero.id)).toMatchObject({ state: 'done', doneAt: expect.any(String) });
+  await editProjectCatalog(root, { action: 'set-card-state', ...await baseline(root, hero.id), state: 'not-started' });
+  expect(await readFile(hero.filename, 'utf8')).toBe(before);
+  const unmarked = (await readProjectCatalog(root)).cards.find(candidate => candidate.id === hero.id)!;
+  expect([unmarked.state, unmarked.doneAt ?? null]).toEqual([null, null]);
+  expect(await editProjectCatalog(root, { action: 'set-card-state', ...await baseline(root, hero.id), state: 'not-started' })).toEqual([]);
+});
+
+it('refuses a manual done mark on a Hero with open Task Sub Cards and on a legacy Hero', async () => {
+  const { root } = await fixture();
+  const hero = await native(root, 'hero');
+  const child = await native(root);
+  await writeFile(child.filename, (await readFile(child.filename, 'utf8')).replace('parentId: null', `parentId: '${hero.id}'`));
+  const source = await readFile(hero.filename);
+  await expect(editProjectCatalog(root, { action: 'set-card-state', ...await baseline(root, hero.id), state: 'done' })).rejects.toThrow('0 of 1');
+  expect(await readFile(hero.filename)).toEqual(source);
+  await editProjectCatalog(root, { action: 'set-card-state', ...await baseline(root, child.id), state: 'не делаем' });
+  await editProjectCatalog(root, { action: 'set-card-state', ...await baseline(root, hero.id), state: 'done' });
+  expect((await readProjectCatalog(root)).cards.find(candidate => candidate.id === hero.id)?.state).toBe('done');
+  // A Task back in work outweighs the mark: the catalog reads the Hero as not done while the file keeps its mark.
+  await editProjectCatalog(root, { action: 'set-card-state', ...await baseline(root, child.id), state: 'план' });
+  expect((await readProjectCatalog(root)).cards.find(candidate => candidate.id === hero.id)?.state).toBeNull();
+  expect(await readFile(hero.filename, 'utf8')).toContain('state: "принято"');
+  await expect(editProjectCatalog(root, { action: 'set-card-state', ...await baseline(root, 'hero:features/sound.md#1'), state: 'done' })).rejects.toThrow('mechanics document');
 });
 
 it('rejects malformed properties and stale hashes without writes', async () => {

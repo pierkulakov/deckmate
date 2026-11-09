@@ -88,6 +88,25 @@ for (const [layout, decks] of layouts) for (const newline of ['\n', '\r\n']) for
 }
 
 const automation: Edit = { action: 'set-deck-automation', deckId: 'audio', autoTag: null, autoTagKeep: false, templateMarkdown: 'new', templateOwner: null, templateEffort: null, templatePriority: null };
+for (const newline of ['\n', '\r\n']) for (const flow of [false, true]) {
+  it(`moves spaces preserving all bytes outside their list (${JSON.stringify(newline)}, flow=${flow})`, async () => {
+    const spaces = flow
+      ? 'spaces: [{id: work, title: "Work"}, {title: QA, id: qa}, {id: empty, title: Empty}] # keep spaces'
+      : 'spaces:\n  - id: work # keep work\n    title: "Work"\n  - title: QA\n    id: qa\n  - id: empty\n    title: Empty';
+    const data = await fixture(`schema: 1 # keep schema\n'extension: # []': {text: Кириллица}\ndecks:\n  - ${fields.join('\n    ')}\n${spaces}\ntracks: [] # keep tracks\nmembership: [] # keep membership`, newline);
+    const start = data.original.indexOf('spaces:');
+    const end = data.original.indexOf('tracks:');
+    await checkEdit(data, { name: 'move space', edit: { action: 'move-space', spaceId: 'empty', beforeSpaceId: 'work' }, change: m => {
+      m.spaces.unshift(m.spaces.pop()!);
+    } });
+    const after = await readFile(data.filename);
+    const prefix = Buffer.from(data.original.slice(0, start));
+    const suffix = Buffer.from(data.original.slice(end));
+    expect(after.subarray(0, prefix.length)).toEqual(prefix);
+    expect(after.subarray(after.length - suffix.length)).toEqual(suffix);
+  });
+}
+
 const edgeCases: Array<{ name: string; yaml: string; edit: Edit; change: (m: CatalogManifest) => void }> = [
   ...['', 'null', '~'].map(value => ({ name: `null ${JSON.stringify(value)}`, yaml: `decks:\n  - ${fields.join('\n    ')}\n    templateMarkdown: ${value} # keep null`, edit: automation, change: (m: CatalogManifest) => { m.decks[0].templateMarkdown = 'new'; } })),
   { name: 'key-only flow null', yaml: `decks: [{${fields.join(', ')}, templateOwner, autoTag: old}]`, edit: automation, change: m => { delete m.decks[0].autoTag; delete m.decks[0].templateOwner; m.decks[0].templateMarkdown = 'new'; } },

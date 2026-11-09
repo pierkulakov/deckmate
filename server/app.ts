@@ -168,7 +168,10 @@ export async function createApp(config: ServerConfig) {
     return reply.code(details.validation ? 400 : frameworkStatus).send({ code: 'SERVER', message: details.validation ? serverText(messages).incomplete : (details.message ?? serverText(messages).actionFailed) });
   });
 
-  app.get('/api/health', async () => ({ app: 'Deckmate', version: '0.1.0', pid: process.pid }));
+  // 2026-11-09: the running package's version; the literal here said 0.1.0 since the first release.
+  const packageVersion = readFile(packagePath('package.json'), 'utf8')
+    .then(text => (JSON.parse(text) as { version: string }).version, () => 'unknown');
+  app.get('/api/health', async () => ({ app: 'Deckmate', version: await packageVersion, pid: process.pid }));
   app.get<{ Params: { ref: string }; Querystring: { source?: DataSource } }>('/r/:ref', async (request, reply) => {
     const source = request.query.source === 'live' ? 'live' : 'sandbox';
     const reference = request.params.ref;

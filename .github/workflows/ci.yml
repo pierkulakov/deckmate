@@ -72,9 +72,10 @@ jobs:
       # A debug shell serves dist/server/main.js from this checkout, so the client
       # and server must be built before the self-test (2026-11-09).
       - run: npm run build
-      - name: Show Rust toolchain
-        # The runner image ships a stable Rust toolchain; showing it fails here,
-        # not deep inside cargo, if that ever changes (2026-11-09).
+      - name: Show the pinned Rust toolchain
+        # rust-toolchain.toml selects the audited version and components; show it
+        # here so a runner provisioning failure is not buried inside cargo.
+        working-directory: desktop/src-tauri
         run: |
           rustup show
           cargo --version
@@ -85,15 +86,20 @@ jobs:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-          key: cargo-${{ runner.os }}-${{ hashFiles('desktop/src-tauri/Cargo.lock') }}
+          key: cargo-${{ runner.os }}-${{ hashFiles('desktop/src-tauri/Cargo.lock', 'desktop/src-tauri/rust-toolchain.toml') }}
           restore-keys: cargo-${{ runner.os }}-
       # Both components are on the runner image; the explicit add keeps the job
       # working if the image ever trims them (2026-11-09).
       - run: rustup component add rustfmt clippy
-      - run: cargo fmt --check --manifest-path desktop/src-tauri/Cargo.toml
-      - run: cargo clippy --manifest-path desktop/src-tauri/Cargo.toml -- -D warnings
-      - run: cargo test --manifest-path desktop/src-tauri/Cargo.toml
-      - run: cargo build --manifest-path desktop/src-tauri/Cargo.toml
+        working-directory: desktop/src-tauri
+      - run: cargo fmt --check
+        working-directory: desktop/src-tauri
+      - run: cargo clippy --locked --all-targets -- -D warnings
+        working-directory: desktop/src-tauri
+      - run: cargo test --locked
+        working-directory: desktop/src-tauri
+      - run: cargo build --locked
+        working-directory: desktop/src-tauri
       - name: Self-test the debug shell
         run: |
           $demo = Join-Path $env:RUNNER_TEMP 'deckmate-shell-demo'
@@ -105,8 +111,14 @@ jobs:
           # the process and read its exit code (2026-11-09).
           $report = Join-Path $env:RUNNER_TEMP 'self-test-debug.json'
           $shell = Start-Process -FilePath $exe -ArgumentList "--self-test $demo" -NoNewWindow -Wait -PassThru -RedirectStandardOutput $report
+          $line = Get-Content -LiteralPath $report | Where-Object { $_.TrimStart().StartsWith('{') } | Select-Object -Last 1
+          if (-not $line) { throw 'Deckmate.exe --self-test did not print a JSON report.' }
+          $result = $line | ConvertFrom-Json
           Get-Content -LiteralPath $report
           if ($shell.ExitCode -ne 0) { throw "Deckmate.exe --self-test exited with code $($shell.ExitCode)." }
+          if ($result.ok -ne $true -or -not [string]::IsNullOrEmpty([string]$result.error)) {
+            throw "Deckmate.exe --self-test reported failure: $line"
+          }
       - name: Smoke-test the real window over CDP
         # Drives the debug shell end to end (launcher, board, bridges, server lifetime) through
         # the page bridges over CDP (2026-11-09). Kept optional: it needs a working WebView2 in

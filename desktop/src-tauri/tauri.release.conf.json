@@ -4,11 +4,13 @@
     "targets": ["nsis"],
     "externalBin": ["binaries/node"],
     "resources": {
-      "resources/deckmate/": "deckmate/"
+      "resources/deckmate/": "deckmate/",
+      "THIRD-PARTY-NOTICES.txt": "THIRD-PARTY-NOTICES.txt"
     },
     "windows": {
       "nsis": {
         "installerHooks": "./windows/installer-hooks.nsh",
+        "installerIcon": "icons/icon.ico",
         "installMode": "currentUser",
         "languages": ["English", "Russian"],
         "displayLanguageSelector": false

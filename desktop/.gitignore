@@ -5,3 +5,4 @@ release/
 # Staged release inputs for the Tauri build, written by scripts/prepare-sidecar.mjs; not committed (2026-11-09).
 src-tauri/binaries/
 src-tauri/resources/
+src-tauri/THIRD-PARTY-NOTICES.txt

@@ -10,9 +10,10 @@
 ; writes any file, registry key or shortcut, and removes only the old Electron
 ; registration (tauri-bundler installer.nsi inserts it at the top of the Install
 ; section). %APPDATA%\Deckmate (desktop.json with recent projects and window
-; state, plus the cache index) always survives: the old uninstaller deletes it
-; only when passed --delete-app-data (uninstaller.nsh 216-248) and this hook
-; never passes it.
+; state, plus the cache index) always survives an install or an update: the old
+; uninstaller deletes it only when passed --delete-app-data (uninstaller.nsh
+; 216-248) and this hook never passes it. NSIS_HOOK_POSTUNINSTALL below is the
+; one place the folder can go: an explicit "delete app data" uninstall.
 
 !define DECKMATE_OLD_APP_ID "com.deckmate.desktop"
 ; electron-builder computes the NSIS GUID as UUIDv5(appId,
@@ -49,8 +50,10 @@ LangString DeckmateOldKillFailed 1033 "Could not close the running Deckmate proc
 LangString DeckmateOldKillFailed 1049 "Не удалось закрыть запущенный процесс Deckmate. Закройте его вручную и запустите установщик снова."
 LangString DeckmateOldAdminNotice 1033 "An older Deckmate installation for all users was found. Windows will now ask for permission to remove it. Your projects and settings are not affected."
 LangString DeckmateOldAdminNotice 1049 "Найдена старая установка Deckmate для всех пользователей. Windows запросит разрешение на её удаление. Ваши проекты и настройки не затрагиваются."
-LangString DeckmateOldManualRemove 1033 "The older Deckmate installation for all users could not be removed automatically. Remove it later in Windows Settings under Installed apps, then start Deckmate again."
-LangString DeckmateOldManualRemove 1049 "Старую установку Deckmate для всех пользователей не удалось удалить автоматически. Удалите её позже в разделе «Установленные приложения» в параметрах Windows и снова запустите Deckmate."
+LangString DeckmateOldUninstallFailed 1033 "The previous Deckmate installation could not be removed completely. The new installation has stopped and the old uninstall entry has been kept. Close Deckmate, then run this installer again. If the problem persists, repair or remove the old installation from Windows Settings first."
+LangString DeckmateOldUninstallFailed 1049 "Не удалось полностью удалить предыдущую установку Deckmate. Новая установка остановлена, а старая запись об удалении сохранена. Закройте Deckmate и снова запустите этот установщик. Если ошибка повторится, сначала восстановите или удалите старую установку через параметры Windows."
+LangString DeckmateOldExitCode 1033 "Exit code:"
+LangString DeckmateOldExitCode 1049 "Код выхода:"
 
 ; The Tauri build provides the nsis_tauri_utils plugin through !addplugindir,
 ; which the bundler's installer.nsi registers after !including this file. The
@@ -100,6 +103,29 @@ LangString DeckmateOldManualRemove 1049 "Старую установку Deckmat
   ${EndIf}
 !macroend
 
+; A stale registration has no executable left and is safe to clean up. A real
+; installation whose executable survives the old uninstaller is not: keep its
+; registry entry and stop before Tauri writes anything, so the user can retry.
+; Callers delete the in-place uninstaller and its empty folder only after this
+; check, leaving both a retry and removal from Windows Settings possible.
+; $R6 is the old uninstaller's exit code (zero also when it was already absent).
+!macro DECKMATE_OLD_ABORT_UNINSTALL
+  DetailPrint "$(DeckmateOldUninstallFailed) $(DeckmateOldExitCode) $R6"
+  ${IfNot} ${Silent}
+    MessageBox MB_OK|MB_ICONSTOP "$(DeckmateOldUninstallFailed)"
+  ${EndIf}
+  Abort "$(DeckmateOldUninstallFailed)"
+!macroend
+
+!macro DECKMATE_OLD_CHECK_UNINSTALL
+  ${If} $R6 <> 0
+    DetailPrint "The previous Deckmate uninstaller exited with code $R6."
+  ${EndIf}
+  ${If} ${FileExists} "$R9\${DECKMATE_OLD_APP_EXE}"
+    !insertmacro DECKMATE_OLD_ABORT_UNINSTALL
+  ${EndIf}
+!macroend
+
 ; Deletes the shortcuts the old installer created — $DESKTOP\<name>.lnk and
 ; $SMPROGRAMS\[dir\]<name>.lnk (common.nsh setLinkVars:84-108; name and dir are
 ; the ShortcutName/MenuDirectory values of the old install key, default
@@ -144,25 +170,27 @@ LangString DeckmateOldManualRemove 1049 "Старую установку Deckmat
 
     !insertmacro DECKMATE_OLD_CLOSE_APP
 
+    StrCpy $R6 0
     ${If} ${FileExists} "$R9\${DECKMATE_OLD_UNINSTALLER}"
       DetailPrint "$(DeckmateOldRemoving) $R9"
       ; /S /currentuser select the old assisted uninstaller's silent per-user
       ; mode (assistedInstaller.nsh initMultiUser:122-133, uninstaller.nsh
       ; 12-16). _? runs it in place so ExecWait really waits; the uninstaller
-      ; then cannot delete its own exe, which the next two lines take care of.
+      ; then cannot delete its own exe, which is cleaned up after the check.
       ; No --delete-app-data: %APPDATA%\Deckmate survives (uninstaller.nsh
       ; 216-248).
       ExecWait '"$R9\${DECKMATE_OLD_UNINSTALLER}" /S /currentuser _?=$R9' $R6
-      Delete "$R9\${DECKMATE_OLD_UNINSTALLER}"
-      RMDir "$R9"
     ${EndIf}
+    !insertmacro DECKMATE_OLD_CHECK_UNINSTALL
+    Delete "$R9\${DECKMATE_OLD_UNINSTALLER}"
+    RMDir "$R9"
 
     ReadRegStr $0 HKCU "${DECKMATE_OLD_UNINSTALL_KEY}" "UninstallString"
     ReadRegStr $1 HKCU "${DECKMATE_OLD_INSTALL_KEY}" "InstallLocation"
     ${If} $0 != ""
     ${OrIf} $1 != ""
-      ; The uninstaller is missing or failed — remove only the stale
-      ; registration and the shortcuts into the old folder, then continue.
+      ; No old executable remains, so this is only a stale registration.
+      ; Remove it and shortcuts into the old folder, then continue.
       ; Never user data: nothing under %APPDATA% is touched, and RMDir only
       ; takes an already-empty folder.
       StrCpy $R8 "${DECKMATE_OLD_NAME}"
@@ -178,8 +206,6 @@ LangString DeckmateOldManualRemove 1049 "Старую установку Deckmat
       DeleteRegKey HKCU "${DECKMATE_OLD_UNINSTALL_KEY}"
       DeleteRegKey HKCU "${DECKMATE_OLD_INSTALL_KEY}"
       !insertmacro DECKMATE_OLD_REMOVE_SHORTCUTS "$R9\${DECKMATE_OLD_APP_EXE}"
-      Delete "$R9\${DECKMATE_OLD_UNINSTALLER}"
-      RMDir "$R9"
     ${EndIf}
   ${EndIf}
 !macroend
@@ -199,12 +225,14 @@ LangString DeckmateOldManualRemove 1049 "Старую установку Deckmat
     ${If} $0 == "Admin"
       !insertmacro DECKMATE_OLD_CLOSE_APP
 
+      StrCpy $R6 0
       ${If} ${FileExists} "$R9\${DECKMATE_OLD_UNINSTALLER}"
         DetailPrint "$(DeckmateOldRemoving) $R9"
         ExecWait '"$R9\${DECKMATE_OLD_UNINSTALLER}" /S /allusers _?=$R9' $R6
-        Delete "$R9\${DECKMATE_OLD_UNINSTALLER}"
-        RMDir "$R9"
       ${EndIf}
+      !insertmacro DECKMATE_OLD_CHECK_UNINSTALL
+      Delete "$R9\${DECKMATE_OLD_UNINSTALLER}"
+      RMDir "$R9"
 
       ReadRegStr $0 HKLM "${DECKMATE_OLD_UNINSTALL_KEY}" "UninstallString"
       ReadRegStr $1 HKLM "${DECKMATE_OLD_INSTALL_KEY}" "InstallLocation"
@@ -243,16 +271,17 @@ LangString DeckmateOldManualRemove 1049 "Старую установку Deckmat
       ${IfNot} ${Silent}
         MessageBox MB_OK|MB_ICONINFORMATION "$(DeckmateOldAdminNotice)"
       ${EndIf}
+      StrCpy $R6 0
       ExecWait '"$R9\${DECKMATE_OLD_UNINSTALLER}" /S /allusers _?=$R9' $R6
-      ; without elevation these two usually fail; they are harmless then and
-      ; finish the job for an admin who re-runs the installer later
-      Delete "$R9\${DECKMATE_OLD_UNINSTALLER}"
-      RMDir "$R9"
+      !insertmacro DECKMATE_OLD_CHECK_UNINSTALL
+      ; A declined elevation or a failed elevated uninstall leaves the old
+      ; registration. Never hide that by installing a second Deckmate entry.
       ReadRegStr $0 HKLM "${DECKMATE_OLD_UNINSTALL_KEY}" "UninstallString"
       ${If} $0 != ""
-      ${AndIfNot} ${Silent}
-        MessageBox MB_OK|MB_ICONINFORMATION "$(DeckmateOldManualRemove)"
+        !insertmacro DECKMATE_OLD_ABORT_UNINSTALL
       ${EndIf}
+      Delete "$R9\${DECKMATE_OLD_UNINSTALLER}"
+      RMDir "$R9"
     ${EndIf}
   ${EndIf}
 !macroend
@@ -269,5 +298,33 @@ LangString DeckmateOldManualRemove 1049 "Старую установку Deckmat
   ${If} $UpdateMode <> 1
     !insertmacro DECKMATE_OLD_REPLACE_PER_USER
     !insertmacro DECKMATE_OLD_REPLACE_PER_MACHINE
+  ${EndIf}
+!macroend
+
+; Tauri calls this at the end of its Uninstall section, after its own removal
+; work (installer.nsi 931-933, tauri-bundler 2.10.4 — the bundler inside
+; @tauri-apps/cli 2.12.4). The bundler's built-in "delete app data" branch
+; removes %APPDATA%\<identifier> and %LOCALAPPDATA%\<identifier>
+; (installer.nsi 915-929), which for this app are
+; %APPDATA%\com.deckmate.desktop and %LOCALAPPDATA%\com.deckmate.desktop. The
+; LOCALAPPDATA one holds the WebView2 profile (EBWebView, the board's
+; localStorage), but the settings, server.log and the index live in
+; %APPDATA%\Deckmate, the Electron-era userData folder kept so an upgrade
+; carries them over. The checkbox alone would therefore leave the real data
+; folder behind, so this hook clears it under the same guards the built-in
+; branch uses (installer.nsi 915-916): the checkbox must be checked (a silent or passive
+; uninstall never checks it, exactly like the built-in branch), and the run
+; must not be an update — the installer invokes the previous uninstaller with
+; /UPDATE on some replace paths (installer.nsi 374), and an update must keep
+; the settings it upgrades. SetShellVarContext current mirrors the built-in
+; branch (installer.nsi 926): the roaming profile of the uninstalling user,
+; never the all-users ProgramData, whatever INSTALLMODE this build uses.
+; Nothing outside %APPDATA%\Deckmate is removed; project folders live where
+; the user put them and are never touched.
+!macro NSIS_HOOK_POSTUNINSTALL
+  ${If} $DeleteAppDataCheckboxState = 1
+  ${AndIf} $UpdateMode <> 1
+    SetShellVarContext current
+    RMDir /r "$APPDATA\Deckmate"
   ${EndIf}
 !macroend

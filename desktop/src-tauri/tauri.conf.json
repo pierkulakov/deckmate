@@ -24,6 +24,12 @@
   "bundle": {
     "active": true,
     "targets": ["nsis"],
-    "icon": ["icons/icon.ico", "icons/icon.png"]
+    "icon": ["icons/icon.ico", "icons/icon.png"],
+    "publisher": "Deckmate",
+    "homepage": "https://github.com/pierkulakov/deckmate",
+    "copyright": "© 2026 pierkulakov and Deckmate contributors",
+    "license": "AGPL-3.0-only",
+    "shortDescription": "A local project board over Markdown files",
+    "longDescription": "A local Markdown project board for teams of people and AI agents. Card decks, Runs and Journeys as plain files in your repository; no account, no cloud sync."
   }
 }

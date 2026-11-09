@@ -113,6 +113,8 @@ Imported card text and states are not copied here. Membership can store explicit
 
 A Deck may carry `piled: true` (2026-11-06): the Decks home screen shows it in the pile at the end of its Space instead of on the shelf. Only `set-deck-pile` sets it, and only by hand; returning the deck to the shelf removes the key instead of writing `false`, so a deck that was never piled has no trace of it. The write adds or removes that one key and keeps every other byte, comments included. The pile changes neither the deck's place in `decks`, nor `deckOrder`, nor any card; a value other than true or false fails the manifest read with the deck's ID.
 
+`move-space` accepts `spaceId` and `beforeSpaceId` (null means the end), guarded by the current `manifestHash`; only the `spaces` list changes, preserving all other manifest bytes, Deck assignments and Deck order. Repeating the current position does not write; unknown IDs and placing a Space before itself are rejected.
+
 ### Members and Owner
 
 The project defines its team in the `members` YAML field of `tasks/deckmate.md`. This optional field defaults to an empty list; members are project data, not a built-in provider list. Example agent configuration:

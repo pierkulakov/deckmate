@@ -143,6 +143,7 @@ The write path for the catalog; Runs and Milestones use `POST /api/planning` bel
 | `set-deck-default-order` | `deckId`, `defaultOrder` (URL-parameter string ≤200 characters, or null to clear) |
 | `upload-cover` | `deckId`, `dataUrl` (image ≤ 5 MB) |
 | `move-deck` | `deckId`, `spaceId`, `beforeDeckId` |
+| `move-space` | `spaceId`, `beforeSpaceId` (Space ID, or null to append); reorders only `spaces`, leaving Decks unchanged; the current position is a no-op |
 | `delete-deck` | `deckId`; its cards lose the deck, a deck with a Journey cannot be deleted |
 | `set-deck-zones` | `deckId`, `zones` (full ordered list) |
 | `move-cards-in-deck` | `deckId`, `cards`, `zoneId`, `beforeCardId` |

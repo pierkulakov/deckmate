@@ -64,6 +64,33 @@ it('serves indexed queries, serializes catalog edits, rejects live writes, stale
   expect(await readFile(path.join(root, 'features/match.md'))).toEqual(sourceBefore);
 });
 
+it('validates move-space fields and returns the reordered spaces with unchanged decks', async () => {
+  const { config } = await fixture();
+  const app = await createApp(config);
+  apps.push(app);
+  const snapshot = (await app.inject({ url: '/api/snapshot', headers })).json();
+  const authorized = { ...headers, 'x-deckmate-token': snapshot.token };
+  let catalog = (await app.inject({ url: '/api/catalog', headers })).json();
+  const post = (edit: Record<string, unknown>) => app.inject({ method: 'POST', url: '/api/catalog', headers: authorized,
+    payload: { source: 'sandbox', manifestHash: catalog.manifestHash, ...edit } });
+  catalog = (await post({ action: 'create-space', title: 'QA' })).json();
+  const qa = catalog.spaces[1].id;
+  const decks = catalog.decks;
+  for (const fields of [{ spaceId: qa }, { beforeSpaceId: null }, { spaceId: qa, beforeSpaceId: {} }]) {
+    expect((await post({ action: 'move-space', ...fields })).statusCode).toBe(400);
+  }
+  const stale = catalog.manifestHash;
+  const response = await post({ action: 'move-space', spaceId: qa, beforeSpaceId: 'work' });
+  expect(response.statusCode, response.body).toBe(200);
+  catalog = response.json();
+  expect(catalog.spaces.map((space: { id: string }) => space.id)).toEqual([qa, 'work']);
+  expect(catalog.decks).toEqual(decks);
+  expect((await post({ action: 'move-space', spaceId: qa, beforeSpaceId: null, manifestHash: stale })).statusCode).toBe(409);
+  const end = await post({ action: 'move-space', spaceId: qa, beforeSpaceId: null });
+  expect(end.statusCode, end.body).toBe(200);
+  expect(end.json().spaces.map((space: { id: string }) => space.id)).toEqual(['work', qa]);
+});
+
 it('observes external card content and a new Markdown file in the derived index', async () => {
   const { root, config } = await fixture();
   const app = await createApp(config);

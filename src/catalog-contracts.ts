@@ -460,6 +460,7 @@ export type CatalogEdit = { manifestHash: string; sourceHash?: string } & (
   | { action: 'update-deck'; deckId: string; title: string; icon: string; color: string; description: string; style: DeckStyle; cover: string | null; coverPosition: number }
   | { action: 'upload-cover'; deckId: string; dataUrl: string }
   | { action: 'move-deck'; deckId: string; spaceId: string; beforeDeckId: string | null }
+  | { action: 'move-space'; spaceId: string; beforeSpaceId: string | null }
   // Deck watching replaces the full watcher list.
   | { action: 'set-deck-watchers'; deckId: string; watcherIds: string[] }
   | { action: 'set-deck-pile'; deckId: string; piled: boolean }

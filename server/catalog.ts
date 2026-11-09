@@ -62,6 +62,7 @@ const catalogText = defineText({
   deckMissing: "Deck not found.",
   spaceMissing: "Space not found.",
   selfDeckOrder: "A deck cannot be placed before itself.",
+  selfSpaceOrder: "A Space cannot be placed before itself.",
   deckInsertion: "The insertion deck must be in the target Space.",
   autoTagOrNull: "Deck auto-tag must be a nonempty string of up to 80 characters or null.",
   templateEffortOrNull: "Template Effort must be a nonnegative number or null.",
@@ -210,6 +211,7 @@ const catalogText = defineText({
   deckMissing: "Колода не найдена.",
   spaceMissing: "Пространство не найдено.",
   selfDeckOrder: "Нельзя поставить колоду перед самой собой.",
+  selfSpaceOrder: "Нельзя поставить Space перед самим собой.",
   deckInsertion: "Колода для вставки должна находиться в целевом пространстве.",
   autoTagOrNull: "Автотег колоды — непустая строка до 80 символов или null.",
   templateEffortOrNull: "Оценка шаблона — число не меньше нуля или null.",
@@ -916,6 +918,15 @@ function requiredSpace(manifest: CatalogManifest, spaceId: string): CatalogSpace
   return space;
 }
 
+function moveSpace(manifest: CatalogManifest, edit: Extract<CatalogEdit, { action: 'move-space' }>): void {
+  const space = requiredSpace(manifest, edit.spaceId);
+  if (edit.beforeSpaceId === edit.spaceId) throw new Error(serverText(catalogText).selfSpaceOrder);
+  if (edit.beforeSpaceId !== null) requiredSpace(manifest, edit.beforeSpaceId);
+  manifest.spaces.splice(manifest.spaces.indexOf(space), 1);
+  const position = edit.beforeSpaceId === null ? manifest.spaces.length : manifest.spaces.findIndex(candidate => candidate.id === edit.beforeSpaceId);
+  manifest.spaces.splice(position, 0, space);
+}
+
 function moveDeck(manifest: CatalogManifest, edit: Extract<CatalogEdit, { action: 'move-deck' }>): void {
   const deck = requiredDeck(manifest, edit.deckId);
   requiredSpace(manifest, edit.spaceId);
@@ -1059,6 +1070,7 @@ async function applyCatalogEdit(root: string, manifest: CatalogManifest, edit: C
       style: edit.style, cover: edit.cover, coverPosition: edit.coverPosition });
   }
   if (edit.action === 'move-deck') moveDeck(manifest, edit);
+  if (edit.action === 'move-space') moveSpace(manifest, edit);
   if (edit.action === 'upload-cover') {
     const deck = requiredDeck(manifest, edit.deckId);
     const asset = await storeCatalogCover(root, edit.dataUrl);
@@ -2505,7 +2517,9 @@ export async function editProjectCatalog(root: string, edit: CatalogEdit, actorM
   let asset: StoredCatalogCover | null = null;
   let manifestSaved = false;
   try {
+    const previousSpaces = edit.action === 'move-space' ? [...source.manifest.spaces] : null;
     asset = await applyCatalogEdit(root, source.manifest, edit);
+    if (previousSpaces?.every((space, index) => space === source.manifest.spaces[index])) return [];
     validateManifest(source.manifest);
     await writeManifest(root, source, edit.manifestHash);
     manifestSaved = true;
@@ -2517,7 +2531,7 @@ export async function editProjectCatalog(root: string, edit: CatalogEdit, actorM
     }
     throw error;
   }
-  return [];
+  return edit.action === 'move-space' ? [catalogPath] : [];
 }
 async function verifyManifestHash(root: string, expected: string): Promise<void> {
   const fresh = await readManifest(root);

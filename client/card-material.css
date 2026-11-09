@@ -278,7 +278,8 @@ button.sub-card-progress-segment { cursor: pointer; }
   background-size: 300% 100%;
   background-position: calc(var(--glare-x, 50%) * .7 + var(--glare-y, 50%) * .3) 0;
   mix-blend-mode: color-dodge;
-  opacity: calc(.4 + var(--glare-opacity, 0) * .45);
+  /* 2026-11-09: at .4 + .45 the dodge lit the gold nearly white under the pointer; the author asked for a little less. */
+  opacity: calc(.3 + var(--glare-opacity, 0) * .3);
 }
 
 /* While the pointer is on an accepted Hero its glitter drifts: each dot layer slides by exactly one tile in its own

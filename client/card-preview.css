@@ -390,8 +390,9 @@
 @media (prefers-reduced-motion: reduce) { .card-id-feedback:not(:empty) { animation: none; } .card-id-chip { transition: none; } }
 /* 2026-11-08: one meta line above the band — indicators, then tag badges, wrapping when narrow.
    The 16px insets share the reading column and the band captions' axis. The owner medallion rises 16px above the band, so the
-   row keeps 20px of clearance below its content; with neither indicators nor tags it keeps only that clearance, with no line. */
-.card-preview-meta-row { display: flex; flex-wrap: wrap; align-items: center; align-content: center; gap: 6px 12px; padding: 8px 16px 20px; border-top: .67px solid var(--line); }
+   row keeps 15px below its content — 2026-11-09: 8px above and 20px below left the tags hugging the top of their row
+   (author); 14/15 centres them, and the 16px medallion overlaps that clearance by 1px only at the centre; with neither indicators nor tags it keeps only that clearance, with no line. */
+.card-preview-meta-row { display: flex; flex-wrap: wrap; align-items: center; align-content: center; gap: 6px 12px; padding: 14px 16px 15px; border-top: .67px solid var(--line); }
 .card-preview-meta-row:not(:has(.card-indicators, .card-tags)) { min-height: 20px; padding: 0; border: 0; }
 /* 2026-11-09: Journey sections belong to reading. They step aside in the same frame the editor appears, so the editor's
    fit measures the whole panel instead of keeping the height it had beside them. */

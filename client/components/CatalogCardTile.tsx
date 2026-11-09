@@ -39,6 +39,7 @@ const text = defineText({
   noSubCards: 'No Sub Cards',
   wordCount: (count: string) => 'Word count: ' + count,
   tags: (names: string) => 'tags: ' + names,
+  familyDone: 'Hero done: all Sub Cards accepted',
 }, {
   docCard: 'Doc Card',
   transferCard: (title: string) => 'Перенести в колоду: ' + title,
@@ -59,6 +60,7 @@ const text = defineText({
   noSubCards: 'Без Sub Cards',
   wordCount: (count: string) => 'Число слов: ' + count,
   tags: (names: string) => 'теги: ' + names,
+  familyDone: 'Hero выполнена: все Sub Cards приняты',
 });
 
 export const cardKinds: Record<CardKind, string> = {
@@ -245,7 +247,10 @@ export const CatalogCardTile = memo(function CatalogCardTile({ card, lookups, me
           <TagColorIndicator tags={card.tags} definitions={tagDefinitions} />
         </span>
       </div>
-      <div className="deck-card-band">{card.owner && <span className="deck-card-owner-medallion" title={t.owner(card.owner)} aria-label={t.owner(card.owner)}><CardOwnerAvatar owner={card.owner} members={members} /></span>}
+      <div className="deck-card-band">{/* 2026-11-09: a finished Hero shows a done medallion in the owner's place (author); the owner stays in the open card. */}
+        {familyDone
+          ? <span className="deck-card-owner-medallion deck-card-done-medallion" role="img" title={t.familyDone} aria-label={t.familyDone}><Check size={14} strokeWidth={3.25} aria-hidden="true" /></span>
+          : card.owner && <span className="deck-card-owner-medallion" title={t.owner(card.owner)} aria-label={t.owner(card.owner)}><CardOwnerAvatar owner={card.owner} members={members} /></span>}
         <span className="card-material-glare" aria-hidden="true" />
         {card.kind === 'task' && <div className="deck-card-task-metrics"><span data-shortcut-property="effort" onPointerEnter={event => markShortcutPropertyHover(event.currentTarget, true)} onPointerLeave={event => markShortcutPropertyHover(event.currentTarget, false)} title={t.effort(effortLabel)}><Gauge size={18} /><strong>{effortLabel}</strong></span><span data-shortcut-property="priority" onPointerEnter={event => markShortcutPropertyHover(event.currentTarget, true)} onPointerLeave={event => markShortcutPropertyHover(event.currentTarget, false)} title={t.priority(cardPriorityLabel)}><Layers size={17} /><span className="visually-hidden">{cardPriorityLabel}</span></span>{attachmentBadge}</div>}
         {/* 2026-11-09: no attachment badge on the Hero band — it stacked above the crown and made the band taller (author). */}

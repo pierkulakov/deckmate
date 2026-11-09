@@ -18,7 +18,8 @@
   --holo-violet: #9c6bff;
   /* One long sweep, not a repeating tile: a repeated angled tile left a vertical seam across the card (author, 2026-11-09). */
   --holo-stripes: linear-gradient(115deg, var(--holo-rose), var(--holo-amber), var(--holo-mint), var(--holo-sky), var(--holo-violet), var(--holo-rose), var(--holo-amber), var(--holo-mint), var(--holo-sky), var(--holo-violet), var(--holo-rose), var(--holo-amber), var(--holo-mint), var(--holo-sky), var(--holo-violet), var(--holo-rose)) no-repeat;
-  --holo-glitter: radial-gradient(circle at 20% 30%, #fff 0 .7px, transparent 1.1px) 0 0 / 6px 5px, radial-gradient(circle at 70% 60%, #fff 0 .55px, transparent 1px) 3px 2px / 8px 7px, radial-gradient(circle at 40% 80%, #fff6c8 0 .5px, transparent .9px) 1px 4px / 11px 9px;
+  /* 2026-11-09: sparse glitter — four dot layers with unrelated tile sizes read as scattered, not as a grid (author). */
+  --holo-glitter: radial-gradient(circle at 23% 31%, #fff 0 .45px, transparent .8px) 0 0 / 13px 11px, radial-gradient(circle at 71% 64%, #fff 0 .4px, transparent .75px) 5px 3px / 17px 19px, radial-gradient(circle at 42% 83%, #fff6c8 0 .5px, transparent .85px) 2px 9px / 23px 17px, radial-gradient(circle at 86% 12%, #e9f6ff 0 .4px, transparent .7px) 11px 6px / 29px 31px;
 }
 .sub-card-progress { display: flex; gap: 2px; width: 100%; height: 8px; }
 .sub-card-progress-segment { display: block; flex: 1 1 0; min-width: 0; height: 100%; padding: 0; border: 0; border-radius: 2px; background-color: var(--sub-card-state-planned); }
@@ -196,7 +197,14 @@ button.sub-card-progress-segment { cursor: pointer; }
   background: linear-gradient(var(--card-face), var(--card-face)) padding-box,
     conic-gradient(from var(--holo-angle), var(--holo-amber), var(--holo-rose), var(--holo-violet), var(--holo-sky), var(--holo-mint), var(--holo-amber)) border-box;
 }
-.deck-card.catalog-card-hero.is-family-done > .deck-card-band { --card-metal-ink: var(--hero-ink); color: var(--hero-ink); }
+.deck-card.catalog-card-hero.is-family-done > .deck-card-band {
+  --card-metal-ink: var(--hero-ink);
+  color: var(--hero-ink);
+  /* Inside the 2px ring the card's inner radius is 3px; the band follows it, and its bottom inset line is dropped,
+     since against the ring it read as a seam (author, 2026-11-09). */
+  border-radius: 0 0 3px 3px;
+  --material-inset: inset 0 1px 2px color-mix(in srgb, var(--metal-shadow) 12%, transparent);
+}
 /* White segments vanished on the foil-lit gold; accepted green keeps the finished bar readable. */
 .deck-card.catalog-card-hero.is-family-done .sub-card-progress-segment { background-color: var(--accepted-metal); }
 /* Face film and its glitter sit under the band (z-index 2) and blend with the face, so the title keeps its colour. */
@@ -224,18 +232,18 @@ button.sub-card-progress-segment { cursor: pointer; }
    dark instead, brightest in a broad pool around the pointer and fading towards the far corner. */
 :root.dark .deck-card.catalog-card-hero.is-family-done::before {
   mix-blend-mode: color-dodge;
-  opacity: calc(.3 + var(--glare-opacity, 0) * .35);
+  opacity: calc(.14 + var(--glare-opacity, 0) * .2);
   -webkit-mask: radial-gradient(140% 110% at var(--glare-x, 50%) var(--glare-y, 50%), #000, rgb(0 0 0 / .45) 45%, rgb(0 0 0 / .12));
   mask: radial-gradient(140% 110% at var(--glare-x, 50%) var(--glare-y, 50%), #000, rgb(0 0 0 / .45) 45%, rgb(0 0 0 / .12));
 }
 /* Glitter at rest read as a grey dot grid on the dark face; it now mostly waits for the pointer. */
-:root.dark .deck-card.catalog-card-hero.is-family-done::after { opacity: calc(.15 + var(--glare-opacity, 0) * .85); }
+:root.dark .deck-card.catalog-card-hero.is-family-done::after { opacity: calc(var(--glare-opacity, 0) * .6); }
 .deck-card.catalog-card-hero.is-family-done::after,
 .deck-card.catalog-card-hero.is-family-done > .deck-card-band::after {
   z-index: 1;
   background: var(--holo-glitter);
   mix-blend-mode: screen;
-  opacity: calc(.35 + var(--glare-opacity, 0) * .65);
+  opacity: calc(var(--glare-opacity, 0) * .7);
   -webkit-mask: radial-gradient(90px 70px at var(--glare-x, 50%) var(--glare-y, 50%), #000, transparent 75%);
   mask: radial-gradient(90px 70px at var(--glare-x, 50%) var(--glare-y, 50%), #000, transparent 75%);
 }
@@ -252,6 +260,28 @@ button.sub-card-progress-segment { cursor: pointer; }
   background-position: calc(var(--glare-x, 50%) * .7 + var(--glare-y, 50%) * .3) 0;
   mix-blend-mode: color-dodge;
   opacity: calc(.4 + var(--glare-opacity, 0) * .45);
+}
+
+/* While the pointer is on an accepted Hero its glitter drifts: each dot layer slides by exactly one tile in its own
+   direction and pace, so the loop is seamless and the dots seem to wander at random. */
+@keyframes holo-glitter-drift {
+  to { background-position: 13px -11px, -12px 22px, 25px 26px, -18px -25px; }
+}
+@media (hover: hover) and (pointer: fine) and (prefers-reduced-motion: no-preference) {
+  .deck-card-space:hover > .deck-card.catalog-card-hero.is-family-done::after,
+  .deck-card-space:hover > .deck-card.catalog-card-hero.is-family-done > .deck-card-band::after { animation: holo-glitter-drift 3.2s linear infinite; }
+}
+/* The done medallion takes the owner's place on a finished Hero (author, 2026-11-09): accepted green with a white
+   check inside the same gold ring, so the finish reads at a glance from the middle of the card. */
+.deck-card-owner-medallion.deck-card-done-medallion {
+  display: grid;
+  place-items: center;
+  width: 23px;
+  height: 23px;
+  box-sizing: content-box;
+  color: #fff;
+  background: var(--accepted-metal);
+  box-shadow: 0 1px 4px rgb(0 0 0 / .3);
 }
 
 @media (prefers-reduced-motion: reduce), (hover: none), (pointer: coarse) {

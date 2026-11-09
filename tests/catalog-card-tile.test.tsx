@@ -55,3 +55,22 @@ it('puts only the type icon and question count around the Doc owner, retaining a
   setLang('ru');
   expect(renderTile({ kind: 'doc', openQuestions: [{ text: 'Question?', taskRef: null }] })).toContain('aria-label="Открытых вопросов: 1"');
 });
+
+// 2026-11-09: a finished Hero shows a localized done medallion in the owner's place; an unfinished one keeps its owner.
+it('marks a Hero whose Sub Cards are all accepted with a done medallion instead of the owner', () => {
+  const hero: CatalogCard = { id: 'card:hero', kind: 'hero', title: 'Hero title', path: 'cards/hero.md', version: null, state: null, owner: 'Alex',
+    markdown: 'Hero text.', sourceHash: 'hash', range: null, deckId: 'deck', trackIds: [], parentId: null };
+  const child = (state: CatalogCard['state']): CatalogCard => ({ ...hero, id: 'card:child', kind: 'task', title: 'Child', path: 'cards/child.md', state, parentId: hero.id });
+  const noop = () => {};
+  const render = (children: CatalogCard[]) => renderToStaticMarkup(<CatalogCardTile card={hero} lookups={buildCatalogLookups([hero, ...children])} members={[]}
+    selected={false} checked={false} selectionActive={false} disabled={false} onOpen={noop} onToggle={noop} onFamilyOpen={noop} />);
+  const done = render([child('done')]);
+  expect(done).toContain('is-family-done');
+  expect(done).toContain('class="deck-card-owner-medallion deck-card-done-medallion" role="img" title="Hero done: all Sub Cards accepted"');
+  expect(done).not.toContain('title="Owner: Alex"');
+  const started = render([child('started')]);
+  expect(started).not.toContain('deck-card-done-medallion');
+  expect(started).toContain('title="Owner: Alex"');
+  setLang('ru');
+  expect(render([child('done')])).toContain('title="Hero выполнена: все Sub Cards приняты"');
+});

@@ -4,6 +4,8 @@ Notable changes are grouped by version using [Keep a Changelog](https://keepacha
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-11-09
+
 ### Added
 
 - **Spaces.** Reorder spaces with Move up and Move down in the space header or the Position field in space settings.

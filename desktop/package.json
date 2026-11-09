@@ -1,7 +1,7 @@
 {
   "name": "deckmate-desktop",
   "productName": "Deckmate",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "description": "Desktop shell for Deckmate, a local project board over Markdown.",
   "main": "main.js",
   "type": "module",

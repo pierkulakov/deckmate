@@ -178,7 +178,7 @@ export const CatalogCardTile = memo(function CatalogCardTile({ card, lookups, me
   const tileElement = useRef<HTMLElement | null>(null);
   const transfer = useCardTransferDrag(card);
   // 2026-11-09: the author's reference video measures ±12deg (perspective 850px); the author asked for a touch less.
-  const { element, tilt, reset } = useCardTilt<HTMLElement>(10, checked || disabled || familyHovered || transfer.anyDragging);
+  const { element, tilt, reset } = useCardTilt<HTMLElement>(8, checked || disabled || familyHovered || transfer.anyDragging);
   const progress = card.kind === 'hero' ? { children: lookups.childrenByParent.get(card.id) ?? emptyCards } : null;
   // Own effort plus Sub Cards' effort matches the table row and properties panel.
   const heroEffort = progress ? cardHeroEffort(card, { cards: progress.children }) : null;

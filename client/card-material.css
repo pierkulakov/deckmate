@@ -10,6 +10,15 @@
   --metal-shadow: #241b24;
   /* 2026-11-08: warm shadow that deepens gold to the reference's amber without greying it. */
   --metal-amber: #6b3f0a;
+  /* 2026-11-09: holographic foil of an accepted Hero (author's choice «A++»): one rainbow, used by the band, face and ring. */
+  --holo-rose: #ff5c9a;
+  --holo-amber: #ffcb3d;
+  --holo-mint: #5dff9a;
+  --holo-sky: #3fc8ff;
+  --holo-violet: #9c6bff;
+  /* One long sweep, not a repeating tile: a repeated angled tile left a vertical seam across the card (author, 2026-11-09). */
+  --holo-stripes: linear-gradient(115deg, var(--holo-rose), var(--holo-amber), var(--holo-mint), var(--holo-sky), var(--holo-violet), var(--holo-rose), var(--holo-amber), var(--holo-mint), var(--holo-sky), var(--holo-violet), var(--holo-rose), var(--holo-amber), var(--holo-mint), var(--holo-sky), var(--holo-violet), var(--holo-rose)) no-repeat;
+  --holo-glitter: radial-gradient(circle at 20% 30%, #fff 0 .7px, transparent 1.1px) 0 0 / 6px 5px, radial-gradient(circle at 70% 60%, #fff 0 .55px, transparent 1px) 3px 2px / 8px 7px, radial-gradient(circle at 40% 80%, #fff6c8 0 .5px, transparent .9px) 1px 4px / 11px 9px;
 }
 .sub-card-progress { display: flex; gap: 2px; width: 100%; height: 8px; }
 .sub-card-progress-segment { display: block; flex: 1 1 0; min-width: 0; height: 100%; padding: 0; border: 0; border-radius: 2px; background-color: var(--sub-card-state-planned); }
@@ -30,6 +39,7 @@ button.sub-card-progress-segment { cursor: pointer; }
 .catalog-card-hero { --sub-card-state-planned: var(--hero-step-empty); --metal-sheen: var(--hero-sheen); }
 
 .catalog-card-hero:not(.is-family-done) > .deck-card-band,
+.deck-card.catalog-card-hero.is-family-done > .deck-card-band,
 .hand-card.kind-hero > .sprint-task-band,
 .card-preview-hero .card-preview-sheet:not([data-family-done]) > .card-preview-material-band,
 .deck-card > .card-family-trigger,
@@ -173,6 +183,75 @@ button.sub-card-progress-segment { cursor: pointer; }
   background: radial-gradient(closest-side, color-mix(in srgb, var(--metal-sheen) 62%, #ffffff), color-mix(in srgb, var(--metal-sheen) 36%, transparent) 45%, color-mix(in srgb, var(--metal-sheen) 12%, transparent) 78%, transparent);
   transform: translateX(calc(var(--glare-x, 72%) * .1875 - 28.125%));
   transition: transform 700ms cubic-bezier(.22, .61, .36, 1);
+}
+
+/* 2026-11-09: an accepted Hero turns holographic (author's choice «A++» from the mock-up): its band stays gold under a
+   rainbow foil, the face carries a faint rainbow film, a 2px rainbow ring replaces the border, and glitter gathers around
+   the pointer. The rainbow moves with the pointer (--glare-x/-y from useCardTilt); --glare-opacity lifts it while hovered.
+   Only accepted Heroes pay for the blend layers; ink stays above the foil, so numbers keep their contrast. */
+.deck-card-space > .deck-card.catalog-card-hero.is-family-done {
+  --card-metal-ink: var(--hero-ink);
+  --holo-angle: calc(var(--glare-u, .5) * 240deg + var(--glare-v, .5) * 90deg);
+  border: 2px solid transparent;
+  background: linear-gradient(var(--card-face), var(--card-face)) padding-box,
+    conic-gradient(from var(--holo-angle), var(--holo-amber), var(--holo-rose), var(--holo-violet), var(--holo-sky), var(--holo-mint), var(--holo-amber)) border-box;
+}
+.deck-card.catalog-card-hero.is-family-done > .deck-card-band { --card-metal-ink: var(--hero-ink); color: var(--hero-ink); }
+/* White segments vanished on the foil-lit gold; accepted green keeps the finished bar readable. */
+.deck-card.catalog-card-hero.is-family-done .sub-card-progress-segment { background-color: var(--accepted-metal); }
+/* Face film and its glitter sit under the band (z-index 2) and blend with the face, so the title keeps its colour. */
+.deck-card.catalog-card-hero.is-family-done::before,
+.deck-card.catalog-card-hero.is-family-done::after,
+.deck-card.catalog-card-hero.is-family-done > .deck-card-band::before,
+.deck-card.catalog-card-hero.is-family-done > .deck-card-band::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  transition: opacity 300ms ease-out;
+}
+.deck-card.catalog-card-hero.is-family-done::before {
+  z-index: 1;
+  background: var(--holo-stripes);
+  background-size: 300% 100%;
+  background-position: calc(var(--glare-x, 50%) * .7 + var(--glare-y, 50%) * .3) 0;
+  mix-blend-mode: screen;
+  opacity: calc(.06 + var(--glare-opacity, 0) * .12);
+}
+:root:not(.dark) .deck-card.catalog-card-hero.is-family-done::before { mix-blend-mode: multiply; opacity: calc(.08 + var(--glare-opacity, 0) * .12); }
+/* 2026-11-09: on the dark face a faint screen turned grey and muddy (author); color-dodge lights the rainbow from the
+   dark instead, brightest in a broad pool around the pointer and fading towards the far corner. */
+:root.dark .deck-card.catalog-card-hero.is-family-done::before {
+  mix-blend-mode: color-dodge;
+  opacity: calc(.3 + var(--glare-opacity, 0) * .35);
+  -webkit-mask: radial-gradient(140% 110% at var(--glare-x, 50%) var(--glare-y, 50%), #000, rgb(0 0 0 / .45) 45%, rgb(0 0 0 / .12));
+  mask: radial-gradient(140% 110% at var(--glare-x, 50%) var(--glare-y, 50%), #000, rgb(0 0 0 / .45) 45%, rgb(0 0 0 / .12));
+}
+/* Glitter at rest read as a grey dot grid on the dark face; it now mostly waits for the pointer. */
+:root.dark .deck-card.catalog-card-hero.is-family-done::after { opacity: calc(.15 + var(--glare-opacity, 0) * .85); }
+.deck-card.catalog-card-hero.is-family-done::after,
+.deck-card.catalog-card-hero.is-family-done > .deck-card-band::after {
+  z-index: 1;
+  background: var(--holo-glitter);
+  mix-blend-mode: screen;
+  opacity: calc(.35 + var(--glare-opacity, 0) * .65);
+  -webkit-mask: radial-gradient(90px 70px at var(--glare-x, 50%) var(--glare-y, 50%), #000, transparent 75%);
+  mask: radial-gradient(90px 70px at var(--glare-x, 50%) var(--glare-y, 50%), #000, transparent 75%);
+}
+.deck-card.catalog-card-hero.is-family-done > .deck-card-band::after {
+  z-index: 0;
+  -webkit-mask: radial-gradient(90px 70px at var(--glare-x, 50%) calc(var(--glare-y, 50%) * 3.8 - 280%), #000, transparent 75%);
+  mask: radial-gradient(90px 70px at var(--glare-x, 50%) calc(var(--glare-y, 50%) * 3.8 - 280%), #000, transparent 75%);
+}
+/* The band's foil blends with the gold ribbon below it (z-index -1) and stays under the ink (z-index 1). */
+.deck-card.catalog-card-hero.is-family-done > .deck-card-band::before {
+  z-index: 0;
+  background: var(--holo-stripes);
+  background-size: 300% 100%;
+  background-position: calc(var(--glare-x, 50%) * .7 + var(--glare-y, 50%) * .3) 0;
+  mix-blend-mode: color-dodge;
+  opacity: calc(.4 + var(--glare-opacity, 0) * .45);
 }
 
 @media (prefers-reduced-motion: reduce), (hover: none), (pointer: coarse) {

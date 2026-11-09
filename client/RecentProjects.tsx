@@ -108,19 +108,24 @@ export function RecentProjectsList({ projects, switching, failureText, disabled,
 }) {
   const busy = switching !== null;
   return <>
-    <ul className="mission-control-recent-list">
+    <div className="mission-control-recent-viewport" data-more={projects.length > 5 || undefined}><ul className="mission-control-recent-list"
+      onScroll={event => {
+        const list = event.currentTarget;
+        list.parentElement?.toggleAttribute('data-more', list.scrollTop + list.clientHeight < list.scrollHeight - 1);
+      }}>
       {projects.map(project => {
         const switchingThis = switching === project.path;
         return <li key={project.path}>
           <button type="button" className="mission-control-project-row mission-control-recent-row" title={project.path}
             disabled={disabled || busy} aria-busy={switchingThis} onClick={() => onSwitch(project.path)}>
             <ProjectTile name={project.name}>{switchingThis && <LoaderCircle className="spin" size={16} />}</ProjectTile>
-            <div><strong>{project.name}</strong><span className="mission-control-recent-path">{compactPath(project.path)}</span>
+            <div><div className="mission-control-recent-heading"><strong>{project.name}</strong>
               <time className="mission-control-recent-time" dateTime={project.lastOpened}>{relativeTimeAgo(project.lastOpened, lang)}</time></div>
+              <span className="mission-control-recent-path">{compactPath(project.path)}</span></div>
           </button>
         </li>;
       })}
-    </ul>
+    </ul></div>
     {failureText && <p className="mission-control-recent-failure" role="alert">{failureText}</p>}
     <button type="button" className="mission-control-recent-open" disabled={disabled || busy} onClick={onOpenStart}>
       <FolderOpen size={14} aria-hidden="true" />{labels.openAnotherFolder}

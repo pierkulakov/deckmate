@@ -122,13 +122,27 @@ describe.skipIf(!browserPath)('application shell (browser)', () => {
       await delay(300);
       expect(await evaluate(`document.querySelector('.mission-control').getBoundingClientRect().width`)).toBe(width === 375 ? 375 : 336);
       expect(await evaluate(`[...document.querySelectorAll('.mission-control-recent-path')].every(e => {
-        const r=e.getBoundingClientRect(); const time=e.nextElementSibling.getBoundingClientRect();
-        const range=document.createRange(); range.setStart(e.firstChild,e.textContent.length-1); range.setEnd(e.firstChild,e.textContent.length);
-        const tail=range.getBoundingClientRect();
-        return e.scrollWidth <= e.clientWidth && getComputedStyle(e).textOverflow !== 'ellipsis' && time.top >= r.bottom && tail.right <= r.right+.5 && tail.bottom <= r.bottom+.5;
+        const r=e.getBoundingClientRect(); const time=e.previousElementSibling.querySelector('time').getBoundingClientRect();
+        const name=e.previousElementSibling.querySelector('strong').getBoundingClientRect();
+        return time.bottom <= r.top + 4 && Math.abs(time.top-name.top) < 5 && time.right <= e.parentElement.getBoundingClientRect().right + .5;
       })`)).toBe(true);
       expect(await evaluate(`document.querySelector('.mission-control-recent-path').textContent.endsWith('первого-релиза')`)).toBe(true);
     }
+  });
+
+  it('keeps five full-width recent rows without scrolling and preserves width when a sixth is added', async () => {
+    await render('app', { lang: 'ru' });
+    await click('.mission-control-trigger');
+    await until(`document.querySelectorAll('.mission-control-recent-row').length === 2`);
+    expect(await evaluate(`(() => {
+      const list = document.querySelector('.mission-control-recent-list');
+      const current = document.querySelector('.mission-control-project > .mission-control-project-row');
+      while (list.children.length < 5) list.append(list.firstElementChild.cloneNode(true));
+      const width = list.querySelector('button').getBoundingClientRect().width;
+      const fits = list.scrollHeight === list.clientHeight && width === current.getBoundingClientRect().width;
+      list.append(list.firstElementChild.cloneNode(true));
+      return fits && list.scrollHeight > list.clientHeight && list.querySelector('button').getBoundingClientRect().width === width;
+    })()`)).toBe(true);
   });
 
   it.each(['en', 'ru'])('D14: %s intentional Stop hides late reconnect failures', async lang => {

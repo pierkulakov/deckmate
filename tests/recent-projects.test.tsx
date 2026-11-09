@@ -116,10 +116,10 @@ describe('recent projects list', () => {
     expect(compactPath('C:\\Work', 30)).toBe('C:\\Work');
   });
 
-  it('keeps the shortened folder suffix and places time below the path in the same text column', () => {
+  it('keeps the shortened folder suffix and places time beside the name', () => {
     const path = 'D:\\Work\\Shared\\Игровая-команда\\Подготовка-первого-релиза';
     const html = renderList({ projects: [{ ...projects[1], path }] });
-    expect(html).toMatch(/mission-control-recent-path[^>]*>[^<]*первого-релиза<\/span><time[^>]*>[^<]*<\/time><\/div>/u);
+    expect(html).toMatch(/<strong>[^<]*<\/strong><time[^>]*>[^<]*<\/time><\/div><span class="mission-control-recent-path">[^<]*первого-релиза<\/span>/u);
     expect(html).toContain(`title="${path}"`);
     expect(compactPath(path).match(/…/gu)).toHaveLength(1);
   });

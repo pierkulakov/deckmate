@@ -217,6 +217,8 @@ async function main(): Promise<void> {
 
   try {
     if (colorScheme) await page.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: colorScheme }] });
+    const preload = option('preload');
+    if (preload) await page.send('Page.addScriptToEvaluateOnNewDocument', { source: readFileSync(preload, 'utf8') });
     await page.send('Page.navigate', { url });
     await sleep(settle);
     for (const step of steps) {

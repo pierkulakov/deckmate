@@ -48,12 +48,8 @@ const LANG_SCRIPTS: Record<string, string> = {
 const STATE_SCRIPTS: Record<string, string> = {
   list: `document.getAnimations().forEach(a => a.finish())`,
   empty: `document.getAnimations().forEach(a => a.finish());
-    document.getElementById('workspace-list').replaceChildren();
-    document.getElementById('workspace-empty').hidden = false;
-    document.getElementById('workspace-count').hidden = true;
-    document.getElementById('recent-list').replaceChildren();
-    document.getElementById('recent-empty').hidden = false;
-    document.getElementById('recent-count').hidden = true;`,
+    state.recent = []; state.workspace = []; renderWorkspace(); renderRecent();
+    document.getElementById('open-folder').focus();`,
   error: `document.getAnimations().forEach(a => a.finish()); document.getElementById('open-folder').click();`,
   'hover-row': `document.getAnimations().forEach(a => a.finish()); document.querySelectorAll('.recent-item')[1].classList.add('is-hover-demo');`,
   'focus-open': `document.getAnimations().forEach(a => a.finish())`,

@@ -121,7 +121,7 @@ button { font: inherit; color: inherit; }
   background: linear-gradient(165deg, color-mix(in srgb, var(--tile) 78%, #ffffff), var(--tile) 55%, color-mix(in srgb, var(--tile) 70%, #000000));
   box-shadow: inset 0 0 0 1px #ffffff2e, inset 0 1px 0 #ffffff55, 0 2px 6px #0c0a1340;
 }
-.recent-tile::before { content: ''; position: absolute; left: 4px; right: 4px; top: 4px; height: 24px; border-radius: 3px; background: color-mix(in srgb, var(--cover-window) 82%, var(--tile)); }
+.recent-tile::before { content: attr(data-initials); position: absolute; left: 4px; right: 4px; top: 4px; height: 24px; border-radius: 3px; display: grid; place-items: center; background: color-mix(in srgb, var(--cover-window) 82%, var(--tile)); color: #fff; font: 700 12px/1 var(--font-sans); }
 .recent-tile::after { content: ''; position: absolute; left: 6px; bottom: 5px; width: 18px; height: 4px; border-radius: 2px; background: #ffffffb0; }
 .recent-name { grid-column: 2; font-size: 15px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; align-self: end; }
 .recent-when { grid-column: 3; grid-row: 1; align-self: end; font-family: var(--font-mono); font-size: 12px; font-weight: 500; font-variant-numeric: tabular-nums; color: var(--muted); white-space: nowrap; }
@@ -140,9 +140,10 @@ button { font: inherit; color: inherit; }
 .workspace-add { margin-left: auto; padding: 4px 8px; border: 1px solid var(--line); border-radius: 5px; background: var(--surface); color: var(--ink); cursor: pointer; }
 .workspace-add:hover:not(:disabled) { background: var(--hover); }
 .workspace-add:disabled, .recent-open:disabled, .recent-remove:disabled { cursor: default; opacity: .55; }
+.workspace-hint { margin: -8px 0 10px; font-size: 12px; color: var(--muted); }
 .workspace-empty { margin: 0; padding: 16px 10px; border-top: 1px solid var(--line); color: var(--muted); max-width: 48ch; }
 .recent-item.is-missing .recent-tile, .recent-item.is-missing .recent-name { opacity: .6; }
-.recent-missing { grid-column: 2 / -1; color: var(--danger); font-size: 12px; }
+.recent-missing { grid-column: 2 / -1; color: var(--muted); font-size: 12px; }
 .recent-pin { right: 40px; }
 .recent-item.has-pin .recent-open { padding-right: 76px; }
 .recent-item .recent-pin.is-pinned { opacity: 1; color: var(--accent); }

@@ -7,9 +7,10 @@ const texts = {
     openFolder: 'Open folder…',
     openHint: 'Pick a project folder on this computer.',
     createProject: 'Create project',
-    createHint: 'Starts a new project in an empty folder.',
+    createHint: 'Creates a sample project in an empty folder, ready to explore.',
     recent: 'Recent projects',
     recentEmpty: 'Nothing opened yet. Projects you open appear here.',
+    recentAllPinned: 'All recent projects are in your workspace.',
     workspace: 'Workspace',
     addProject: 'Add project',
     workspaceEmpty: 'Pin the projects you work on and switch between them in one click.',
@@ -42,9 +43,10 @@ const texts = {
     openFolder: 'Открыть папку…',
     openHint: 'Выберите папку проекта на этом компьютере.',
     createProject: 'Создать проект',
-    createHint: 'Новый проект в пустой папке.',
+    createHint: 'Создаёт в пустой папке пример проекта, чтобы сразу всё попробовать.',
     recent: 'Недавние проекты',
     recentEmpty: 'Пока ничего не открыто. Открытые проекты появятся здесь.',
+    recentAllPinned: 'Все недавние проекты уже в рабочем пространстве.',
     workspace: 'Рабочее пространство',
     addProject: 'Добавить проект',
     workspaceEmpty: 'Закрепите проекты, с которыми работаете, — переключаться между ними можно в один клик.',
@@ -81,6 +83,8 @@ const page = {
   empty: document.getElementById('recent-empty'),
   count: document.getElementById('recent-count'),
   workspaceList: document.getElementById('workspace-list'),
+  workspace: document.getElementById('workspace'),
+  workspaceHint: document.getElementById('workspace-hint'),
   workspaceEmpty: document.getElementById('workspace-empty'),
   workspaceCount: document.getElementById('workspace-count'),
   workspaceAdd: document.getElementById('workspace-add'),
@@ -158,11 +162,16 @@ function labelThemeToggle() {
 }
 
 function renderRecent() {
-  const { recent } = state;
+  const recent = visibleRecent();
   page.list.replaceChildren(...recent.map(entry => renderRecentItem(entry)));
   page.empty.hidden = recent.length > 0;
+  page.empty.textContent = text(state.recent.length ? 'recentAllPinned' : 'recentEmpty');
   page.count.hidden = recent.length === 0;
   page.count.textContent = String(recent.length);
+}
+
+function visibleRecent() {
+  return state.recent.filter(entry => !state.workspace.some(candidate => samePath(candidate.path, entry.path)));
 }
 
 function samePath(a, b) {
@@ -170,6 +179,8 @@ function samePath(a, b) {
 }
 
 function renderWorkspace() {
+  page.workspace.hidden = state.workspace.length === 0 && state.recent.length === 0;
+  page.workspaceHint.hidden = state.workspace.length === 0;
   page.workspaceList.replaceChildren(...state.workspace.map((entry, index) => renderRecentItem(entry, index)));
   page.workspaceEmpty.hidden = state.workspace.length > 0;
   page.workspaceCount.hidden = state.workspace.length === 0;
@@ -187,23 +198,36 @@ function renderRecentItem(entry, workspaceIndex) {
   const open = document.createElement('button');
   open.type = 'button';
   open.className = 'recent-open';
-  if (workspace) open.title = text('reorderHint');
-  open.addEventListener('click', () => openProject(entry.path));
+  open.addEventListener('click', () => entry.missing ? remove.focus() : openProject(entry.path));
   open.addEventListener('keydown', event => {
     if (workspace && event.altKey && (event.key === 'ArrowUp' || event.key === 'ArrowDown')) {
       event.preventDefault();
       moveWorkspace(entry.path, workspaceIndex + (event.key === 'ArrowUp' ? -1 : 1));
       return;
     }
-    if (workspace) return;
+    if (!event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey && ['ArrowUp', 'ArrowDown', 'Home', 'End'].includes(event.key)) {
+      const rows = [...document.querySelectorAll('.project-sections .recent-open')];
+      const index = rows.indexOf(open);
+      let target = index;
+      if (event.key === 'ArrowUp') target = Math.max(0, index - 1);
+      if (event.key === 'ArrowDown') target = Math.min(rows.length - 1, index + 1);
+      if (event.key === 'Home') target = 0;
+      if (event.key === 'End') target = rows.length - 1;
+      event.preventDefault();
+      rows[target]?.focus();
+      return;
+    }
     if (event.key !== 'Delete' && event.key !== 'Backspace') return;
     event.preventDefault();
-    removeRecent(entry.path, { refocus: true });
+    if (workspace) changeWorkspace(() => bridge.removeFromWorkspace(entry.path), { index: workspaceIndex, refocus: true });
+    else removeRecent(entry.path, { refocus: true });
   });
 
   const tile = document.createElement('span');
   tile.className = 'recent-tile';
   tile.style.setProperty('--tile', tileColor(entry.name || projectName(entry.path)));
+  tile.dataset.initials = (entry.name || projectName(entry.path)).trim().split(/[^\p{L}\p{N}]+/u).filter(Boolean).slice(0, 2).map(word => Array.from(word)[0]).join('').toLocaleUpperCase();
+  tile.setAttribute('aria-hidden', 'true');
 
   const name = document.createElement('span');
   name.className = 'recent-name';
@@ -211,7 +235,12 @@ function renderRecentItem(entry, workspaceIndex) {
 
   const when = document.createElement('span');
   when.className = 'recent-when';
-  when.textContent = workspace ? (workspaceIndex < 9 ? `Ctrl+${workspaceIndex + 1}` : '') : relativeTime(entry.lastOpened);
+  if (workspace && workspaceIndex < 9) {
+    const shortcut = document.createElement('kbd');
+    shortcut.className = 'shortcut';
+    shortcut.textContent = `Ctrl+${workspaceIndex + 1}`;
+    when.append(shortcut);
+  } else if (!workspace) when.textContent = relativeTime(entry.lastOpened);
 
   const path = document.createElement('span');
   path.className = 'recent-path';
@@ -243,17 +272,15 @@ function renderRecentItem(entry, workspaceIndex) {
 
   item.append(open);
   if (!workspace) {
-    const pinned = state.workspace.some(candidate => samePath(candidate.path, entry.path));
     const pin = document.createElement('button');
     pin.type = 'button';
-    pin.className = `recent-remove recent-pin${pinned ? ' is-pinned' : ''}`;
-    pin.setAttribute('aria-label', text(pinned ? 'removeFromWorkspace' : 'addToWorkspace'));
-    pin.setAttribute('aria-pressed', String(pinned));
-    pin.title = text(pinned ? 'removeFromWorkspace' : 'addToWorkspace');
+    pin.className = 'recent-remove recent-pin';
+    pin.setAttribute('aria-label', text('addToWorkspace'));
+    pin.title = text('addToWorkspace');
     pin.innerHTML = '<svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m16 3 5 5-3 1-3 4v4l-2 2-3-5-5-3 2-2h4l4-3z"/><path d="m10 14-6 6"/></svg>';
-    pin.addEventListener('click', event => changeWorkspace(
-      () => pinned ? bridge.removeFromWorkspace(entry.path) : bridge.addToWorkspace(entry.path),
-      { recentPath: event.detail === 0 ? entry.path : null },
+    pin.addEventListener('click', () => changeWorkspace(
+      () => bridge.addToWorkspace(entry.path),
+      { recentIndex: visibleRecent().findIndex(candidate => samePath(candidate.path, entry.path)) },
     ));
     item.append(pin);
   }
@@ -261,7 +288,7 @@ function renderRecentItem(entry, workspaceIndex) {
   return item;
 }
 
-async function changeWorkspace(action, { index = 0, refocus = false, recentPath = null } = {}) {
+async function changeWorkspace(action, { index = 0, refocus = false, recentIndex = null } = {}) {
   if (busy) return;
   setBusy(true);
   try {
@@ -277,11 +304,11 @@ async function changeWorkspace(action, { index = 0, refocus = false, recentPath 
     setBusy(false);
     if (refocus) {
       const rows = page.workspaceList.querySelectorAll('.recent-open');
-      (rows[Math.min(Math.max(index, 0), rows.length - 1)] ?? page.workspaceAdd).focus();
+      (rows[Math.min(Math.max(index, 0), rows.length - 1)] ?? (page.workspace.hidden ? page.openFolder : page.workspaceAdd)).focus();
     }
-    if (recentPath) {
-      const index = state.recent.findIndex(entry => samePath(entry.path, recentPath));
-      page.list.children[index]?.querySelector('.recent-pin')?.focus();
+    if (recentIndex !== null) {
+      const rows = page.list.querySelectorAll('.recent-open');
+      (rows[Math.min(recentIndex, rows.length - 1)] ?? page.openFolder).focus();
     }
   } catch (error) {
     setStatus('error', describeError({ message: error?.message }));
@@ -308,9 +335,10 @@ async function chooseAndAdd() {
 
 async function removeRecent(folder, { refocus = false } = {}) {
   if (busy) return;
-  const index = state.recent.findIndex(candidate => candidate.path === folder);
+  const index = visibleRecent().findIndex(candidate => samePath(candidate.path, folder));
   await bridge.removeRecent(folder);
   state.recent = state.recent.filter(candidate => candidate.path !== folder);
+  renderWorkspace();
   renderRecent();
   if (!refocus) return;
   const rows = page.list.querySelectorAll('.recent-open');
@@ -426,6 +454,7 @@ bridge.onStatus?.(handleStatus);
   page.version.textContent = text('version', state.version || '—', state.deckmateVersion || '—');
   applyTexts();
   page.root.removeAttribute('aria-busy');
+  (document.querySelector('.project-sections .recent-open') ?? page.openFolder).focus();
 })();
 
 function mockBridge() {

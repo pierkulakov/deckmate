@@ -2,6 +2,7 @@ import { defineText, serverText } from './i18n.ts';
 import { createHash, randomUUID } from 'node:crypto';
 import { lstat, readFile, readdir } from 'node:fs/promises';
 import path from 'node:path';
+import { containedFile } from './config.ts';
 import { createManagedMarkdown } from './native-cards.ts';
 import { packagePath } from './package-path.ts';
 import { parse } from 'yaml';
@@ -140,8 +141,25 @@ function stringList(value: unknown, maximum: number): string[] {
   return value as string[];
 }
 
-async function readTemplate(id: string, directory: string, source: JourneyTemplateSource): Promise<CatalogJourneyTemplate> {
-  const index = parseTemplateFile(await readFile(path.join(directory, 'index.md')));
+/**
+ * 2026-11-09: template folders as a root and a directory relative to it. Every read resolves through containedFile,
+ * so a junction or symlink in a cloned project cannot pull outside files into the catalog or its fingerprint.
+ */
+export function journeyTemplateDirectories(bundledDirectory: string, projectRoot: string): Array<{
+  root: string; directory: string; source: JourneyTemplateSource; label: string;
+}> {
+  return [
+    { root: path.dirname(bundledDirectory), directory: path.basename(bundledDirectory), source: 'bundled', label: 'assets/journey-templates' },
+    { root: projectRoot, directory: 'tasks/journey-templates', source: 'project', label: 'tasks/journey-templates' },
+  ];
+}
+
+async function readTemplateFile(root: string, relative: string): Promise<TemplateFile> {
+  return parseTemplateFile(await readFile(await containedFile(root, relative)));
+}
+
+async function readTemplate(id: string, root: string, directory: string, source: JourneyTemplateSource): Promise<CatalogJourneyTemplate> {
+  const index = await readTemplateFile(root, path.posix.join(directory, 'index.md'));
   const metadata = index.metadata;
   if ((metadata.deckmate ?? metadata.freetion) !== 'journey-template' || metadata.schema !== 1 || metadata.id !== id || !templateIdPattern.test(id)) {
     throw new Error(serverText(messages).invalidTemplateHeader);
@@ -170,7 +188,7 @@ async function readTemplate(id: string, directory: string, source: JourneyTempla
   const documents: Array<[string, string]> = [['index.md', index.fileHash]];
   for (const reference of references) {
     const stepId = stepReferencePattern.exec(reference)![1];
-    const file = parseTemplateFile(await readFile(path.join(directory, reference)));
+    const file = await readTemplateFile(root, path.posix.join(directory, reference));
     if (file.metadata.id !== stepId) throw new Error(serverText(messages).stepIdMismatch(reference));
     if (!validText(file.metadata.title, 300) || typeof file.markdown !== 'string' || file.markdown.length > 200000) {
       throw new Error(serverText(messages).invalidTemplateStep(reference));
@@ -205,19 +223,25 @@ async function readTemplate(id: string, directory: string, source: JourneyTempla
     roles, zones, steps, fileHash: digest(Buffer.from(JSON.stringify(documents))) };
 }
 
-async function collectTemplates(directory: string, source: JourneyTemplateSource, label: string,
+async function collectTemplates({ root, directory, source, label }: ReturnType<typeof journeyTemplateDirectories>[number],
   templates: CatalogJourneyTemplate[], warnings: string[]): Promise<void> {
   let entries;
-  try { entries = await readdir(directory, { withFileTypes: true }); }
-  catch (error) { if ((error as NodeJS.ErrnoException).code === 'ENOENT') return; throw error; }
+  try { entries = await readdir(await containedFile(root, directory), { withFileTypes: true }); }
+  catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    if (code === 'ENOENT') return;
+    if (code === 'OUTSIDE_PROJECT') { warnings.push(`${label}: ${(error as Error).message}`); return; }
+    throw error;
+  }
   for (const entry of entries.sort((first, second) => (first.name < second.name ? -1 : first.name > second.name ? 1 : 0))) {
     if (!entry.isDirectory() || entry.isSymbolicLink() || !templateIdPattern.test(entry.name)) continue;
+    const templateDirectory = path.posix.join(directory, entry.name);
     // index.md marks a published template; ignore orphaned step files, as with Journeys.
     try {
-      const indexStat = await lstat(path.join(directory, entry.name, 'index.md'));
+      const indexStat = await lstat(path.join(root, templateDirectory, 'index.md'));
       if (!indexStat.isFile() || indexStat.isSymbolicLink()) continue;
     } catch (error) { if ((error as NodeJS.ErrnoException).code === 'ENOENT') continue; throw error; }
-    try { templates.push(await readTemplate(entry.name, path.join(directory, entry.name), source)); }
+    try { templates.push(await readTemplate(entry.name, root, templateDirectory, source)); }
     catch (error) { warnings.push(`${label}/${entry.name}/index.md: ${error instanceof Error ? error.message : String(error)}`); }
   }
 }
@@ -226,8 +250,7 @@ async function collectTemplates(directory: string, source: JourneyTemplateSource
 export async function readJourneyTemplates(bundledDirectory: string, projectRoot: string): Promise<{ templates: CatalogJourneyTemplate[]; warnings: string[] }> {
   const templates: CatalogJourneyTemplate[] = [];
   const warnings: string[] = [];
-  await collectTemplates(bundledDirectory, 'bundled', 'assets/journey-templates', templates, warnings);
-  await collectTemplates(path.join(projectRoot, 'tasks/journey-templates'), 'project', 'tasks/journey-templates', templates, warnings);
+  for (const location of journeyTemplateDirectories(bundledDirectory, projectRoot)) await collectTemplates(location, templates, warnings);
   return { templates, warnings };
 }
 

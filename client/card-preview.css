@@ -59,6 +59,8 @@
 .card-preview-state-actions .ui-button { width: 32px; height: 30px; color: var(--muted); }
 .card-preview-state-actions .ui-button[aria-pressed="true"] { opacity: 1; border-color: color-mix(in srgb, var(--focus) 45%, var(--line)); background: var(--accent-soft); color: var(--ink); }
 .card-preview-state-actions > .spin { margin-left: auto; }
+.card-preview-hero-mark { display: flex; align-items: center; gap: 8px; }
+.card-preview-hero-mark .ui-button[aria-pressed="true"] { opacity: 1; border-color: color-mix(in srgb, var(--focus) 45%, var(--line)); background: var(--accent-soft); color: var(--ink); }
 /* 2026-11-06: the dependency question keeps the reading inset like the other notices instead of touching the sheet edges. */
 .card-preview-sheet > .dependency-warning { margin: 12px 16px 0; }
 .card-preview-state-notice { margin: 10px 16px; font-size: 11px; line-height: 1.6; color: var(--warning-ink); }

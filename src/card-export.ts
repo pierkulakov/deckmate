@@ -59,6 +59,8 @@ export function exportCardsCsv(cards: readonly CatalogCard[], columns: readonly 
         const reference = shortReference('c', card.id);
         return options.origin ? `${options.origin.replace(/\/$/u, '')}/r/${reference}?source=${options.source ?? 'sandbox'}` : reference;
       }
+      // 2026-11-09: CSV import takes a state only for Tasks; a Hero's done mark stays out so the export imports back.
+      case 'state': return card.kind === 'task' ? card.state : null;
       case 'deck': return card.deckId ? deckTitles.get(card.deckId) ?? card.deckId : '';
       case 'parent': return card.parentId ? cardTitles.get(card.parentId) ?? card.parentId : '';
       case 'tracks': return card.trackIds.map(id => trackTitles.get(id) ?? id).join(', ');

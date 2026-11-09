@@ -96,6 +96,20 @@ it('marks a Hero whose Sub Cards are all accepted with a done medallion instead 
   expect(render([child('done')])).toContain('title="Hero выполнена: все Sub Cards приняты"');
 });
 
+// 2026-11-09: a Hero without Task Sub Cards marked done by hand wears the same done look as a finished family.
+it('marks a Hero without Task Sub Cards done by its own mark', () => {
+  const hero: CatalogCard = { id: 'card:hero', kind: 'hero', title: 'Hero title', path: 'cards/hero.md', version: null, state: 'done', owner: 'Alex',
+    markdown: 'Hero text.', sourceHash: 'hash', range: null, deckId: 'deck', trackIds: [], parentId: null };
+  const noop = () => {};
+  const render = (card: CatalogCard) => renderToStaticMarkup(<CatalogCardTile card={card} lookups={buildCatalogLookups([card])} members={[]}
+    selected={false} checked={false} selectionActive={false} disabled={false} onOpen={noop} onToggle={noop} onFamilyOpen={noop} />);
+  const done = render(hero);
+  expect(done).toContain('is-family-done');
+  expect(done).not.toContain('deck-state-accepted');
+  expect(done).toContain('class="deck-card-owner-medallion deck-card-done-medallion" role="img" title="Hero done"');
+  expect(render({ ...hero, state: null })).not.toContain('is-family-done');
+});
+
 it('does not call a Hero with only live Doc Sub Cards empty or count Docs as Task progress', () => {
   const hero: CatalogCard = { id: 'card:hero', kind: 'hero', title: 'Hero title', path: 'cards/hero.md', version: null, state: null, owner: null,
     markdown: '', sourceHash: 'hash', range: null, deckId: 'deck', trackIds: [], parentId: null };

@@ -69,7 +69,11 @@ const openQuestionTitles = markerWords('openQuestions');
 const decisionPrefixes = markerWords('decision').map(marker => marker + ' ');
 const sameTitle = (left: string, right: string) => left.trim().toLocaleLowerCase('ru-RU') === right.toLocaleLowerCase('ru-RU');
 const isOpenQuestionTitle = (title: string) => openQuestionTitles.some(candidate => sameTitle(title, candidate));
-const isQuestionSectionTitle = (title: string) => isOpenQuestionTitle(title) || sameTitle(title, 'Решено');
+// 2026-11-09: record-decision writes the project's own spelling (`## Decided` in English projects); matching only
+// «Решено» dropped every English answer from the brief (found by the skills run before 0.6.0).
+const decidedTitles = markerWords('decided');
+const isDecidedTitle = (title: string) => decidedTitles.some(candidate => sameTitle(title, candidate));
+const isQuestionSectionTitle = (title: string) => isOpenQuestionTitle(title) || isDecidedTitle(title);
 const isSignificantSection = (title: string) => isQuestionSectionTitle(title) || /^(Что есть|Как сделано)/iu.test(title);
 
 function wordKey(word: string): string {
@@ -282,7 +286,7 @@ async function briefSupplements(catalog: CatalogView, root: string, card: Catalo
     for (const section of ruleSections.filter(section => isQuestionSectionTitle(section.title))) {
       sources.push(sourceReference(readNext, rule.path, ruleBytes, section.from, section.to, section.title));
     }
-    const decided = ruleSections.find(section => /^Решено$/iu.test(section.title.trim()));
+    const decided = ruleSections.find(section => isDecidedTitle(section.title));
     const answers = decided?.lines.slice(1).filter(line => line.text.trim()).map(line => line.text) ?? [];
     // 2026-11-05: record-decision keeps answers without question IDs; never invent a question/answer pairing.
     if (decisions.length) questionLines.push(...decisions.filter(decision => !questions.some(question =>

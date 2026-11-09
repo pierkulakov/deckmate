@@ -4,6 +4,10 @@ schema: 1
 id: simulation-recipes
 title: "Simulation: Production Recipes"
 description: Turn a recipe into a working resource transformation with explicit cancellation rules and checked resource accounting.
+locales:
+  ru:
+    title: "Симуляция: рецепты производства"
+    description: Превратить рецепт в работающее преобразование ресурсов с явными правилами отмены и проверенным учётом ресурсов.
 category: Production
 tags:
   - Simulation

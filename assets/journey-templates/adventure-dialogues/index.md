@@ -4,6 +4,10 @@ schema: 1
 id: adventure-dialogues
 title: "Adventure: Dialogues"
 description: Write and implement a branching conversation with consistent consequences.
+locales:
+  ru:
+    title: "Приключение: диалоги"
+    description: Написать и внедрить ветвящийся диалог с согласованными последствиями.
 category: Production
 tags:
   - Adventure

@@ -52,6 +52,8 @@ Symbolic links are not traversed. Managed writes validate the root, parents, and
 
 `assets/project-templates/<id>.md` is one bundled starter shown by **Start from template**: YAML frontmatter (`deckmate: project-template`, `schema: 1`, `id`, `title`, `description`, `category`, `genre`, `order`, `spaces`, `decks`, `tags`, `samples`) and a Markdown picker body. `category: games | software` selects the shelf — Games or Software — and defaults to `games` when the field is absent; `order` (1–30) sorts the shelf; `genre` is the project profile genre key or null. The picker opens the project's own shelf: a profile genre means Games, otherwise the remembered tab, otherwise Games. Applying through one `apply-project-template` action is additive: same-named spaces, decks and tags are reused, a Journey is skipped when its deck already has one, and optional example Heroes run the bundled Journeys.
 
+Optional `locales: { ru: { title, description } }` immediately after the English `description` localizes the two picker fields (title up to 200 characters, description up to 2000). Values are trimmed, blank values are omitted, and each missing field falls back to English. Other locale keys are ignored for future compatibility.
+
 ### Manifest
 
 `tasks/deckmate.md` contains YAML frontmatter followed by free-form Markdown.
@@ -383,6 +385,8 @@ Steps also accept optional `effort` (finite number ≥ 0), `priority` (`high`/`m
 ### Journey template catalog — 2026-11-04
 
 A template is not bound to decks: each step names a role, and import maps roles to decks. Bundled templates live in `assets/journey-templates/<id>/` in the Deckmate repository; project templates live in `tasks/journey-templates/<uuid>/` in the data project. Both use the same format. `index.md` contains `deckmate: journey-template`, `schema: 1`, id (`[a-z0-9][a-z0-9-]{0,59}`, UUID for project templates), title, description, category, tags, author, updated (`YYYY-MM-DD`), roles, zones, and a list of `steps/<stepId>.md`. Each step has YAML id/title/roleId/dependsOn/effort/priority/zoneId and an instruction. `CatalogView.journeyTemplates` returns both sources (`source: bundled | project`) with an aggregate `fileHash` over index and all steps; a broken template produces a warning rather than failing the catalog.
+
+Optional `locales: { ru: { title, description } }` immediately after the English `description` localizes picker text (title up to 200 characters, description up to 2000), with trimmed values, omitted blank strings, English fallbacks, and unknown locale keys ignored. When import creates a Journey, these fields follow the project's `formatLanguage`; project-made templates saved from a Journey do not write `locales`.
 
 `import-journey-template` accepts `deckId`, `templateId`, `templateSource`, `templateHash`, `mode`, `roleMapping`, and, for an existing Journey, `journeyId` + `journeyHash`. Each role used by steps maps to an existing Task/Mixed deck or to `createDeck { title, spaceId }`; a new Task deck uses the same code as `create-deck`. `mode: add` with `journeyId: null` creates a new Journey in `deckId` using the template title; with `journeyId`, it appends template steps to the existing Journey (ID collisions get `-2`, `-3`… suffixes, dependencies are remapped, zones are merged without duplicate IDs, and version increments by 1). `mode: replace` replaces the selected Journey's steps and zones like `update-journey`. A stale `templateHash` returns `TEMPLATE_CONFLICT` (409).
 

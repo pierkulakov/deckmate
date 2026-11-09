@@ -4,6 +4,10 @@ schema: 1
 id: action-enemies
 title: "Action: Enemies"
 description: Build a readable enemy attack pattern with a clear player counter.
+locales:
+  ru:
+    title: "Экшен: враги"
+    description: Проработать читаемый паттерн атак врага с явным контрдействием игрока.
 category: Production
 tags:
   - Action

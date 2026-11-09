@@ -4,6 +4,10 @@ schema: 1
 id: pet-project
 title: Pet Project
 description: One idea, an honest MVP cut and a short task list for a spare-time build.
+locales:
+  ru:
+    title: Пет-проект
+    description: Одна идея, честное урезание до MVP и короткий список задач для сборки в свободное время.
 category: software
 genre: null
 order: 11

@@ -4,6 +4,10 @@ schema: 1
 id: sports
 title: Sports
 description: Match rules, teams, players, venues and career events for competitive sports games.
+locales:
+  ru:
+    title: Спорт
+    description: Правила матчей, команды, игроки, арены и события карьеры для соревновательных спортивных игр.
 category: games
 genre: sports
 order: 8

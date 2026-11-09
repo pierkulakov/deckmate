@@ -4,6 +4,10 @@ schema: 1
 id: survival
 title: Survival
 description: Resource gathering, crafting, threats, hunger and shelter for a readable survival loop.
+locales:
+  ru:
+    title: Выживание
+    description: Добыча ресурсов, крафт, угрозы, голод и укрытие для читаемого цикла выживания.
 category: games
 genre: survival
 order: 10

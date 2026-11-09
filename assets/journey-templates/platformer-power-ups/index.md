@@ -4,6 +4,10 @@ schema: 1
 id: platformer-power-ups
 title: "Platformer: Power-ups"
 description: Build a power-up whose duration and movement effects stay predictable.
+locales:
+  ru:
+    title: "Платформер: бонусы"
+    description: Сделать бонус, у которого длительность и эффекты на движение остаются предсказуемыми.
 category: Production
 tags:
   - Platformer

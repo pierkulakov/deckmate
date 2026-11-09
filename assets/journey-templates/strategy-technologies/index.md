@@ -4,6 +4,10 @@ schema: 1
 id: strategy-technologies
 title: "Strategy: Technologies"
 description: Create a recognizable research icon, implement its effect and tune the cost against its strategic benefit.
+locales:
+  ru:
+    title: "Стратегия: технологии"
+    description: Создать узнаваемую иконку исследования, внедрить её эффект и согласовать стоимость со стратегической пользой.
 category: Production
 tags:
   - Strategy

@@ -4,6 +4,10 @@ schema: 1
 id: rpg
 title: RPG
 description: Quests, items, creatures and conversations for a party adventure with turn-based combat.
+locales:
+  ru:
+    title: RPG
+    description: Квесты, предметы, существа и разговоры для группового приключения с пошаговым боем.
 category: games
 genre: rpg
 order: 6

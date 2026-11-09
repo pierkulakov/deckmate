@@ -4,6 +4,10 @@ schema: 1
 id: survival-resources
 title: "Survival: Resources"
 description: Create a gatherable resource with clear recognition, finite yields, inventory behavior and renewal checks.
+locales:
+  ru:
+    title: "Выживание: ресурсы"
+    description: Создать добываемый ресурс с ясной узнаваемостью, ограниченной добычей, поведением в инвентаре и проверками возобновления.
 category: Production
 tags:
   - Survival

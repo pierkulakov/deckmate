@@ -4,6 +4,10 @@ schema: 1
 id: puzzle
 title: Puzzle
 description: Puzzle mechanics, reusable elements, levels and difficulty sets with clear rules and recoverable mistakes.
+locales:
+  ru:
+    title: Головоломка
+    description: Механики головоломок, многоразовые элементы, уровни и наборы сложности с ясными правилами и исправимыми ошибками.
 category: games
 genre: puzzle
 order: 4

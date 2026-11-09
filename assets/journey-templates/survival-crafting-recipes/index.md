@@ -4,6 +4,10 @@ schema: 1
 id: survival-crafting-recipes
 title: "Survival: Crafting Recipes"
 description: Bring a survival recipe from ingredients and station rules to a usable output with safe interruption handling.
+locales:
+  ru:
+    title: "Выживание: рецепты крафта"
+    description: Довести рецепт выживания от ингредиентов и правил станций до пригодного результата с безопасной обработкой прерываний.
 category: Production
 tags:
   - Survival

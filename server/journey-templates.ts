@@ -1,4 +1,4 @@
-import { defineText, serverText } from './i18n.ts';
+import { defineText, serverLang, serverText } from './i18n.ts';
 import { createHash, randomUUID } from 'node:crypto';
 import { lstat, readFile, readdir } from 'node:fs/promises';
 import path from 'node:path';
@@ -10,6 +10,8 @@ import type {
   CatalogJourneyTemplateStep, CatalogJourneyZone, CatalogView, JourneyTemplateSource,
 } from '../src/catalog-contracts.ts';
 import type { FormatLanguage } from '../src/format-vocabulary.ts';
+import { parseTemplateLocales } from '../src/template-locales.ts';
+import { templateText } from '../src/template-text.ts';
 import {
   assertManifestHash, orderedDependencies, publishJourney, readJourney, requireSourceDeck, requireTaskDeck,
   stepFileHashes, validateJourneyZones, validateStepZones, validText,
@@ -150,6 +152,7 @@ async function readTemplate(id: string, directory: string, source: JourneyTempla
   if (metadata.description !== undefined && (typeof metadata.description !== 'string' || metadata.description.length > 2000)) {
     throw new Error(serverText(messages).invalidTemplateDescription);
   }
+  const locales = parseTemplateLocales(metadata.locales, serverLang());
   if (!validText(metadata.category, 60)) throw new Error(serverText(messages).invalidTemplateCategory);
   if (!validText(metadata.author, 120)) throw new Error(serverText(messages).invalidTemplateAuthor);
   if (typeof metadata.updated !== 'string' || !datePattern.test(metadata.updated)) throw new Error(serverText(messages).invalidTemplateDate);
@@ -202,7 +205,7 @@ async function readTemplate(id: string, directory: string, source: JourneyTempla
   // As with Journeys, the aggregate revision covers the index, its order, and all instructions.
   return { id, source, title: (metadata.title as string).trim(), description: (metadata.description as string | undefined) ?? '',
     category: (metadata.category as string).trim(), tags, author: (metadata.author as string).trim(), updated: metadata.updated as string,
-    roles, zones, steps, fileHash: digest(Buffer.from(JSON.stringify(documents))) };
+    roles, zones, steps, ...(locales ? { locales } : {}), fileHash: digest(Buffer.from(JSON.stringify(documents))) };
 }
 
 async function collectTemplates(directory: string, source: JourneyTemplateSource, label: string,
@@ -388,8 +391,9 @@ export async function importJourneyTemplate(root: string, catalog: CatalogView, 
     requireSourceDeck(catalog, edit.deckId);
     orderedDependencies(imported);
     validateStepZones(imported, template.zones);
-    return publishJourney(root, verifySources, { id: randomUUID(), version: 1, title: template.title,
-      deckId: edit.deckId, description: template.description, zones: template.zones, steps: imported }, catalog.formatLanguage);
+    const localized = templateText(template, catalog.formatLanguage);
+    return publishJourney(root, verifySources, { id: randomUUID(), version: 1, title: localized.title,
+      deckId: edit.deckId, description: localized.description, zones: template.zones, steps: imported }, catalog.formatLanguage);
   }
   const current = await requireImportTarget(root, edit);
   const existing = { steps: current.journey.steps, hashes: stepFileHashes(current.documents), indexHash: current.documents[0].hash };

@@ -4,6 +4,10 @@ schema: 1
 id: rpg-items
 title: "RPG: Items"
 description: Define an item, make its presentation, implement equipment or use effects and check inventory edge cases.
+locales:
+  ru:
+    title: "RPG: предметы"
+    description: Определить предмет, оформить его подачу, внедрить эффекты экипировки или использования и проверить граничные случаи инвентаря.
 category: Production
 tags:
   - RPG

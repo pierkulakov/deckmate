@@ -4,6 +4,10 @@ schema: 1
 id: survival-threats
 title: "Survival: Threats"
 description: Create a threat with observable warning, avoidance or defense options, behavior, sound and a survival encounter check.
+locales:
+  ru:
+    title: "Выживание: угрозы"
+    description: Создать угрозу с заметным предупреждением, вариантами уклонения или защиты, поведением, звуком и проверкой стычки на выживание.
 category: Production
 tags:
   - Survival

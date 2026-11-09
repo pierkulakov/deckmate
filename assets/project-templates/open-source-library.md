@@ -4,6 +4,10 @@ schema: 1
 id: open-source-library
 title: Open-Source Library
 description: Public API, issues, documentation and releases for a library others depend on.
+locales:
+  ru:
+    title: Open-source-библиотека
+    description: Публичный API, issues, документация и релизы для библиотеки, от которой зависят другие.
 category: software
 genre: null
 order: 14

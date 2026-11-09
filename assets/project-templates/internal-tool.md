@@ -4,6 +4,10 @@ schema: 1
 id: internal-tool
 title: Internal Tool
 description: Team requests, data sources, screens and access rules for an internal dashboard.
+locales:
+  ru:
+    title: Внутренний инструмент
+    description: Заявки команды, источники данных, экраны и правила доступа для внутреннего дашборда.
 category: software
 genre: null
 order: 16

@@ -10,6 +10,7 @@ import { catalogStore } from '../catalog-store.ts';
 import { readStoredValue } from '../storage.ts';
 import { failureMessage } from '../failure-message.ts';
 import { navigateTabs } from '../tab-navigation.ts';
+import { templateText } from '../../src/template-text.ts';
 import { Markdown } from './Markdown.tsx';
 import { Button } from './ui/button.tsx';
 import '../project-templates.css';
@@ -172,6 +173,7 @@ export function ProjectTemplates({ snapshot, refreshKey, onClose, onApplied, tes
   const [applying, setApplying] = useState(false);
   const [applyMessage, setApplyMessage] = useState('');
   const selected = templates.find(template => template.id === selectedId);
+  const selectedText = selected && templateText(selected, lang);
   const details = useMemo(() => markdownParser.parse(selected?.details ?? ''), [selected?.details]);
   const projectShelf = useMemo(() => projectTemplateShelf(catalog.catalog), [catalog.catalog]);
   const shelf = pickedShelf ?? projectShelf ?? rememberedShelf ?? 'games';
@@ -261,18 +263,21 @@ export function ProjectTemplates({ snapshot, refreshKey, onClose, onApplied, tes
           {loadError && <div className="project-template-error" role="alert"><p>{loadError}</p><Button variant="outline" size="sm" onClick={() => setReload(value => value + 1)}>{t.retry}</Button></div>}
           {!loading && !loadError && templates.length === 0 && <p className="project-template-message">{t.empty}</p>}
           {!loading && !loadError && templates.length > 0 && shelfTemplates.length === 0 && <p className="project-template-message">{t.shelfEmpty}</p>}
-          {!loadError && shelfTemplates.length > 0 && <div className="project-template-grid">{shelfTemplates.map(template => <button type="button" key={template.id}
-            className="project-template-option" aria-pressed={selectedId === template.id} disabled={busy || loading}
-            onClick={() => { setSelectedId(template.id); setApplyMessage(''); }}>
-            <span className="project-template-option-title"><strong>{template.title}</strong>{selectedId === template.id && <Check size={17} aria-hidden="true" />}</span>
-            <span className="project-template-description">{template.description}</span>
-            <span className="project-template-counts"><span><Layers size={13} aria-hidden="true" />{t.decks(template.decks.length)}</span>
-              <span><Route size={13} aria-hidden="true" />{t.journeys(template.decks.filter(deck => deck.journey).length)}</span></span>
-          </button>)}</div>}
+          {!loadError && shelfTemplates.length > 0 && <div className="project-template-grid">{shelfTemplates.map(template => {
+            const localized = templateText(template, lang);
+            return <button type="button" key={template.id}
+              className="project-template-option" aria-pressed={selectedId === template.id} disabled={busy || loading}
+              onClick={() => { setSelectedId(template.id); setApplyMessage(''); }}>
+              <span className="project-template-option-title"><strong>{localized.title}</strong>{selectedId === template.id && <Check size={17} aria-hidden="true" />}</span>
+              <span className="project-template-description">{localized.description}</span>
+              <span className="project-template-counts"><span><Layers size={13} aria-hidden="true" />{t.decks(template.decks.length)}</span>
+                <span><Route size={13} aria-hidden="true" />{t.journeys(template.decks.filter(deck => deck.journey).length)}</span></span>
+            </button>;
+          })}</div>}
         </section>
         <aside className="project-template-plan" aria-label={t.plan} aria-busy={planning}>
-          {selected ? <>
-            <h3>{selected.title}</h3>
+          {selected && selectedText ? <>
+            <h3>{selectedText.title}</h3>
             {selected.details && <div className="project-template-details"><Markdown tree={details} source={snapshot.source} path={`assets/project-templates/${selected.id}.md`} /></div>}
             <p className="project-template-note">{t.additive}</p>
             {planning && <p className="project-template-message" role="status"><LoaderCircle size={16} className="spin" />{t.loadingPlan}</p>}

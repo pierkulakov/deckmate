@@ -4,6 +4,23 @@ Notable changes are grouped by version using [Keep a Changelog](https://keepacha
 
 ## [Unreleased]
 
+### Added
+
+- **Templates in Russian.** Bundled Journey and project templates carry Russian titles and descriptions (`locales.ru` in the template header); the pickers show them in the Russian interface, and importing into a Russian-format project names the Journey in Russian.
+- **Accepted Hero foil.** An accepted Hero tile carries a holographic foil and an iridescent rim that follow the pointer; with reduced motion or touch it stays still.
+- **Attachments.** Deleting an attachment that is inserted in the card text offers to remove its links as well.
+
+### Changed
+
+- **Decks home.** The document and card counts moved from a footer under the decks to a quiet line under the project name; source warnings open from that line.
+- **Cards.** Tiles tilt up to 8°.
+
+### Fixed
+
+- The open Hero card's band again uses the Hero gold for its owner medallion and labels, and an accepted Hero band its accepted metal (regressed in 0.3.0).
+- An image in card text whose file is gone shows a "file not found" chip instead of a broken image; pasted images use the same link format as the insert menu.
+- Steadier browser tests on CI (reduced motion on Windows runners, toast animation timing) and test helpers that pass data as arguments instead of building code strings.
+
 ## [0.3.0] - 2026-11-09
 
 ### Added

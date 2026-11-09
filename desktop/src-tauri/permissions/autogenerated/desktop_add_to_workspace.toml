@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-desktop-add-to-workspace"
+description = "Enables the desktop_add_to_workspace command without any pre-configured scope."
+commands.allow = ["desktop_add_to_workspace"]
+
+[[permission]]
+identifier = "deny-desktop-add-to-workspace"
+description = "Denies the desktop_add_to_workspace command without any pre-configured scope."
+commands.deny = ["desktop_add_to_workspace"]

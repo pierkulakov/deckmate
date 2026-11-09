@@ -378,6 +378,10 @@ pub async fn board_script(window: &WebviewWindow, origin: Option<String>) -> Res
           const invoke = window.__TAURI_INTERNALS__.invoke;
           Object.defineProperty(window, 'deckmateBoard', {{ value: Object.freeze({{
             recentProjects: () => invoke('board_recent_projects'),
+            workspaceProjects: () => invoke('board_workspace_projects'),
+            addToWorkspace: source => invoke('board_add_to_workspace', {{ source }}),
+            removeFromWorkspace: folder => invoke('board_remove_from_workspace', {{ folder }}),
+            moveInWorkspace: (folder, index) => invoke('board_move_in_workspace', {{ folder, index }}),
             switchProject: folder => invoke('board_switch_project', {{ folder }}),
             showStartScreen: () => invoke('board_show_start_screen')
           }}) }});

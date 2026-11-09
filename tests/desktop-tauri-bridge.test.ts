@@ -12,6 +12,9 @@ type Bridge = {
   openProject: (folder: string, ...extra: unknown[]) => Promise<unknown>;
   createProject: (options: { folder: string }) => Promise<unknown>;
   removeRecent: (folder: string) => Promise<unknown>;
+  addToWorkspace: (folder: string) => Promise<unknown>;
+  removeFromWorkspace: (folder: string) => Promise<unknown>;
+  moveInWorkspace: (folder: string, index: number) => Promise<unknown>;
   setLanguage: (lang: string) => Promise<unknown>;
   onStatus: (callback: (status: Status) => void) => () => void;
 };
@@ -54,19 +57,27 @@ describe('launcher tauri bridge', () => {
       return { ok: true };
     });
     expect(Object.keys(bridge)).toEqual([
-      'getState', 'chooseFolder', 'openProject', 'createProject', 'removeRecent', 'setLanguage', 'onStatus',
+      'getState', 'chooseFolder', 'openProject', 'createProject', 'removeRecent',
+      'addToWorkspace', 'removeFromWorkspace', 'moveInWorkspace', 'setLanguage', 'onStatus',
     ]);
     await bridge.getState();
     await bridge.chooseFolder();
     await bridge.openProject('C:/demo', true);
     await bridge.createProject({ folder: 'C:/new' });
     await bridge.removeRecent('C:/old');
+    await bridge.addToWorkspace('C:/demo');
+    await bridge.removeFromWorkspace('C:/old');
+    await bridge.moveInWorkspace('C:/demo', -1);
     await bridge.setLanguage('ru');
     expect(calls).toEqual([
       ['desktop_get_state', null], ['desktop_choose_folder', null],
       ['desktop_open_project', { folder: 'C:/demo' }],
       ['desktop_create_project', { options: { folder: 'C:/new' } }],
-      ['desktop_remove_recent', { folder: 'C:/old' }], ['desktop_set_language', { lang: 'ru' }],
+      ['desktop_remove_recent', { folder: 'C:/old' }],
+      ['desktop_add_to_workspace', { folder: 'C:/demo' }],
+      ['desktop_remove_from_workspace', { folder: 'C:/old' }],
+      ['desktop_move_in_workspace', { folder: 'C:/demo', index: -1 }],
+      ['desktop_set_language', { lang: 'ru' }],
     ]);
   });
 

@@ -10,6 +10,13 @@ const texts = {
     createHint: 'Starts a new project in an empty folder.',
     recent: 'Recent projects',
     recentEmpty: 'Nothing opened yet. Projects you open appear here.',
+    workspace: 'Workspace',
+    addProject: 'Add project',
+    workspaceEmpty: 'Pin the projects you work on and switch between them in one click.',
+    addToWorkspace: 'Add to workspace',
+    removeFromWorkspace: 'Remove from workspace',
+    folderMissing: 'Folder not found',
+    reorderHint: 'Move with Alt+Arrow Up or Down',
     remove: 'Remove from the list',
     statusIdle: 'Choose a project to begin.',
     starting: name => `Starting ${name}…`,
@@ -19,6 +26,9 @@ const texts = {
     errorNotEmpty: 'That folder is not empty. Pick an empty or new folder for a project.',
     errorMissing: 'That folder no longer exists.',
     errorInvalidPath: 'That path cannot be opened as a project.',
+    errorNotInWorkspace: 'That project is no longer in the workspace.',
+    errorNotRecent: 'That project is no longer in the recent list.',
+    errorForbidden: 'That operation is not allowed.',
     errorStart: 'Deckmate could not start in that folder.',
     errorGeneric: 'Deckmate could not start.',
     justNow: 'just now',
@@ -35,6 +45,13 @@ const texts = {
     createHint: 'Новый проект в пустой папке.',
     recent: 'Недавние проекты',
     recentEmpty: 'Пока ничего не открыто. Открытые проекты появятся здесь.',
+    workspace: 'Рабочее пространство',
+    addProject: 'Добавить проект',
+    workspaceEmpty: 'Закрепите проекты, с которыми работаете, — переключаться между ними можно в один клик.',
+    addToWorkspace: 'Добавить в пространство',
+    removeFromWorkspace: 'Убрать из пространства',
+    folderMissing: 'Папка не найдена',
+    reorderHint: 'Переместить: Alt+стрелка вверх или вниз',
     remove: 'Убрать из списка',
     statusIdle: 'Выберите проект, чтобы начать.',
     starting: name => `Запускаю ${name}…`,
@@ -44,6 +61,9 @@ const texts = {
     errorNotEmpty: 'Папка не пуста. Для проекта нужна пустая или новая папка.',
     errorMissing: 'Этой папки больше нет.',
     errorInvalidPath: 'Этот путь нельзя открыть как проект.',
+    errorNotInWorkspace: 'Этого проекта больше нет в рабочем пространстве.',
+    errorNotRecent: 'Этого проекта больше нет в списке недавних.',
+    errorForbidden: 'Это действие недоступно.',
     errorStart: 'Deckmate не удалось запустить в этой папке.',
     errorGeneric: 'Deckmate не удалось запустить.',
     justNow: 'только что',
@@ -60,6 +80,10 @@ const page = {
   list: document.getElementById('recent-list'),
   empty: document.getElementById('recent-empty'),
   count: document.getElementById('recent-count'),
+  workspaceList: document.getElementById('workspace-list'),
+  workspaceEmpty: document.getElementById('workspace-empty'),
+  workspaceCount: document.getElementById('workspace-count'),
+  workspaceAdd: document.getElementById('workspace-add'),
   status: document.getElementById('status'),
   statusText: document.getElementById('status-text'),
   retry: document.getElementById('status-retry'),
@@ -71,7 +95,7 @@ const page = {
 };
 
 let lang = readSetting('deckmate-language') === 'ru' ? 'ru' : 'en';
-let state = { recent: [], lastProject: null, version: '', deckmateVersion: '' };
+let state = { recent: [], workspace: [], lastProject: null, version: '', deckmateVersion: '' };
 let lastAction = null;
 let busy = false;
 
@@ -122,6 +146,7 @@ function applyTexts() {
     button.setAttribute('aria-pressed', String(button.dataset.lang === lang));
   }
   labelThemeToggle();
+  renderWorkspace();
   renderRecent();
 }
 
@@ -134,22 +159,43 @@ function labelThemeToggle() {
 
 function renderRecent() {
   const { recent } = state;
-  page.list.replaceChildren(...recent.map(renderRecentItem));
+  page.list.replaceChildren(...recent.map(entry => renderRecentItem(entry)));
   page.empty.hidden = recent.length > 0;
   page.count.hidden = recent.length === 0;
   page.count.textContent = String(recent.length);
 }
 
-function renderRecentItem(entry) {
+function samePath(a, b) {
+  return a.replace(/\//g, '\\').replace(/[\\]+$/u, '').toLowerCase() === b.replace(/\//g, '\\').replace(/[\\]+$/u, '').toLowerCase();
+}
+
+function renderWorkspace() {
+  page.workspaceList.replaceChildren(...state.workspace.map((entry, index) => renderRecentItem(entry, index)));
+  page.workspaceEmpty.hidden = state.workspace.length > 0;
+  page.workspaceCount.hidden = state.workspace.length === 0;
+  page.workspaceCount.textContent = String(state.workspace.length);
+}
+
+function renderRecentItem(entry, workspaceIndex) {
+  const workspace = workspaceIndex !== undefined;
   const item = document.createElement('li');
   item.className = 'recent-item';
+  if (workspace && entry.missing) item.classList.add('is-missing');
+  if (!workspace) item.classList.add('has-pin');
   if (entry.path === state.lastProject) item.classList.add('is-current');
 
   const open = document.createElement('button');
   open.type = 'button';
   open.className = 'recent-open';
+  if (workspace) open.title = text('reorderHint');
   open.addEventListener('click', () => openProject(entry.path));
   open.addEventListener('keydown', event => {
+    if (workspace && event.altKey && (event.key === 'ArrowUp' || event.key === 'ArrowDown')) {
+      event.preventDefault();
+      moveWorkspace(entry.path, workspaceIndex + (event.key === 'ArrowUp' ? -1 : 1));
+      return;
+    }
+    if (workspace) return;
     if (event.key !== 'Delete' && event.key !== 'Backspace') return;
     event.preventDefault();
     removeRecent(entry.path, { refocus: true });
@@ -165,7 +211,7 @@ function renderRecentItem(entry) {
 
   const when = document.createElement('span');
   when.className = 'recent-when';
-  when.textContent = relativeTime(entry.lastOpened);
+  when.textContent = workspace ? (workspaceIndex < 9 ? `Ctrl+${workspaceIndex + 1}` : '') : relativeTime(entry.lastOpened);
 
   const path = document.createElement('span');
   path.className = 'recent-path';
@@ -175,21 +221,89 @@ function renderRecentItem(entry) {
   path.title = entry.path;
 
   open.append(tile, name, when, path);
+  if (workspace && entry.missing) {
+    const missing = document.createElement('span');
+    missing.className = 'recent-missing';
+    missing.textContent = text('folderMissing');
+    open.append(missing);
+  }
 
   const remove = document.createElement('button');
   remove.type = 'button';
   remove.className = 'recent-remove';
-  remove.setAttribute('aria-label', text('remove'));
-  remove.title = text('remove');
+  remove.setAttribute('aria-label', text(workspace ? 'removeFromWorkspace' : 'remove'));
+  remove.title = text(workspace ? 'removeFromWorkspace' : 'remove');
   remove.innerHTML = '<svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>';
   remove.addEventListener('click', event => {
     event.stopPropagation();
     // detail 0 means the button was pressed from the keyboard; focus then follows to the next row.
-    removeRecent(entry.path, { refocus: event.detail === 0 });
+    if (workspace) changeWorkspace(() => bridge.removeFromWorkspace(entry.path), { index: workspaceIndex, refocus: event.detail === 0 });
+    else removeRecent(entry.path, { refocus: event.detail === 0 });
   });
 
-  item.append(open, remove);
+  item.append(open);
+  if (!workspace) {
+    const pinned = state.workspace.some(candidate => samePath(candidate.path, entry.path));
+    const pin = document.createElement('button');
+    pin.type = 'button';
+    pin.className = `recent-remove recent-pin${pinned ? ' is-pinned' : ''}`;
+    pin.setAttribute('aria-label', text(pinned ? 'removeFromWorkspace' : 'addToWorkspace'));
+    pin.setAttribute('aria-pressed', String(pinned));
+    pin.title = text(pinned ? 'removeFromWorkspace' : 'addToWorkspace');
+    pin.innerHTML = '<svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m16 3 5 5-3 1-3 4v4l-2 2-3-5-5-3 2-2h4l4-3z"/><path d="m10 14-6 6"/></svg>';
+    pin.addEventListener('click', event => changeWorkspace(
+      () => pinned ? bridge.removeFromWorkspace(entry.path) : bridge.addToWorkspace(entry.path),
+      { recentPath: event.detail === 0 ? entry.path : null },
+    ));
+    item.append(pin);
+  }
+  item.append(remove);
   return item;
+}
+
+async function changeWorkspace(action, { index = 0, refocus = false, recentPath = null } = {}) {
+  if (busy) return;
+  setBusy(true);
+  try {
+    const result = await action();
+    if (!result?.ok) {
+      if (result?.code !== 'cancelled') setStatus('error', describeError(result));
+      return;
+    }
+    state.workspace = result.workspace;
+    renderWorkspace();
+    renderRecent();
+    setStatus(null);
+    setBusy(false);
+    if (refocus) {
+      const rows = page.workspaceList.querySelectorAll('.recent-open');
+      (rows[Math.min(Math.max(index, 0), rows.length - 1)] ?? page.workspaceAdd).focus();
+    }
+    if (recentPath) {
+      const index = state.recent.findIndex(entry => samePath(entry.path, recentPath));
+      page.list.children[index]?.querySelector('.recent-pin')?.focus();
+    }
+  } catch (error) {
+    setStatus('error', describeError({ message: error?.message }));
+  } finally {
+    setBusy(false);
+  }
+}
+
+function moveWorkspace(folder, index) {
+  const target = Math.min(Math.max(index, 0), state.workspace.length - 1);
+  if (samePath(state.workspace[target].path, folder)) return;
+  return changeWorkspace(() => bridge.moveInWorkspace(folder, target), { index: target, refocus: true });
+}
+
+async function chooseAndAdd() {
+  if (busy) return;
+  try {
+    const folder = await bridge.chooseFolder();
+    if (folder) await changeWorkspace(() => bridge.addToWorkspace(folder));
+  } catch (error) {
+    setStatus('error', describeError({ message: error?.message }));
+  }
 }
 
 async function removeRecent(folder, { refocus = false } = {}) {
@@ -216,10 +330,11 @@ function setBusy(value) {
   busy = value;
   page.openFolder.disabled = value;
   page.createProject.disabled = value;
-  for (const button of page.list.querySelectorAll('button')) button.disabled = value;
+  page.workspaceAdd.disabled = value;
+  for (const button of document.querySelectorAll('.project-sections .recent-list button')) button.disabled = value;
 }
 
-const errorTexts = { 'not-empty': 'errorNotEmpty', missing: 'errorMissing', 'invalid-path': 'errorInvalidPath', 'start-failed': 'errorStart', 'load-failed': 'errorStart', timeout: 'errorStart' };
+const errorTexts = { 'not-empty': 'errorNotEmpty', missing: 'errorMissing', 'invalid-path': 'errorInvalidPath', 'not-in-workspace': 'errorNotInWorkspace', 'not-recent': 'errorNotRecent', forbidden: 'errorForbidden', 'start-failed': 'errorStart', 'load-failed': 'errorStart', timeout: 'errorStart' };
 
 function describeError(result) {
   const key = errorTexts[result?.code];
@@ -281,6 +396,7 @@ function setTheme(theme) {
 
 page.openFolder.addEventListener('click', chooseAndOpen);
 page.createProject.addEventListener('click', chooseAndCreate);
+page.workspaceAdd.addEventListener('click', chooseAndAdd);
 page.retry.addEventListener('click', () => { if (lastAction) lastAction(); });
 page.themeToggle.addEventListener('click', () => setTheme(document.documentElement.classList.contains('dark') ? 'light' : 'dark'));
 for (const button of document.querySelectorAll('[data-lang]')) {
@@ -319,12 +435,20 @@ function mockBridge() {
     { path: 'D:\\Projects\\demo', name: 'demo', lastOpened: new Date(now - 5 * 3600e3).toISOString() },
     { path: 'C:\\Users\\Someone\\Documents\\Долгий путь к релизу', name: 'Долгий путь к релизу', lastOpened: new Date(now - 3 * 86400e3).toISOString() },
   ];
+  let workspace = [
+    { path: recent[0].path, name: recent[0].name, missing: false },
+    { path: recent[2].path, name: recent[2].name, missing: false },
+    { path: 'D:\\Projects\\Old project', name: 'Old project', missing: true },
+  ];
   return {
-    async getState() { return { recent, lastProject: recent[0].path, version: '0.3.0', deckmateVersion: '0.3.0', locale: 'en-US' }; },
+    async getState() { return { recent, workspace, lastProject: recent[0].path, version: '0.3.0', deckmateVersion: '0.3.0', locale: 'en-US' }; },
     async chooseFolder() { return 'D:\\Projects\\New Deck'; },
     async openProject() { await new Promise(resolve => setTimeout(resolve, 1200)); return { ok: false, code: 'missing' }; },
     async createProject() { await new Promise(resolve => setTimeout(resolve, 900)); return { ok: false, code: 'not-empty' }; },
     async removeRecent() { return { ok: true }; },
+    async addToWorkspace(folder) { if (!workspace.some(entry => samePath(entry.path, folder))) workspace = [...workspace, { path: folder, name: projectName(folder), missing: false }]; return { ok: true, workspace }; },
+    async removeFromWorkspace(folder) { workspace = workspace.filter(entry => !samePath(entry.path, folder)); return { ok: true, workspace }; },
+    async moveInWorkspace(folder, index) { const from = workspace.findIndex(entry => samePath(entry.path, folder)); if (from < 0) return { ok: false, code: 'not-in-workspace' }; const [entry] = workspace.splice(from, 1); workspace.splice(Math.max(0, Math.min(index, workspace.length)), 0, entry); return { ok: true, workspace }; },
     async setLanguage() { return { ok: true }; },
     async revealInFolder() { return { ok: true }; },
     onStatus() { return () => {}; },

@@ -1,12 +1,16 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "board",
-  "description": "Loopback board: only recent projects and return to the start screen.",
+  "description": "Loopback board: workspace, recent projects, project switching and return to the start screen.",
   "local": false,
   "remote": { "urls": ["http://127.0.0.1:*"] },
   "windows": ["main"],
   "permissions": [
     "allow-board-recent-projects",
+    "allow-board-workspace-projects",
+    "allow-board-add-to-workspace",
+    "allow-board-remove-from-workspace",
+    "allow-board-move-in-workspace",
     "allow-board-switch-project",
     "allow-board-show-start-screen"
   ]

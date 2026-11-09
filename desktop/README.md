@@ -38,10 +38,11 @@ Rust holds only what needs the OS: window, menu, dialogs, the server process, se
 | `app.rs` | Shell state and project lifecycle: open, create, stop, superseding launches, status events, startup auto-open, quit. |
 | `server.rs` | The server process: environment filtering, the free port, the ready line, stdin shutdown, timeouts, project creation through the CLI. |
 | `paths.rs` | Program resolution (debug/release), the settings folder, Windows path classification (network, device), case-insensitive path comparison. |
-| `bridge.rs` | The nine Tauri commands and their authorization. |
+| `bridge.rs` | The launcher and board Tauri commands and their authorization. |
+| `workspace.rs` | Workspace source trust, page snapshots and shared save/menu refresh. |
 | `webview.rs` | WebView2 handlers: navigation, popups, permissions, zoom keys, the console log; the board-bridge script. |
 | `window.rs` | The main window: creation, hidden-until-loaded, bounds save and restore, zoom, navigation. |
-| `settings.rs` | `desktop.json`: normalization, atomic writes, the recent list, bounds and zoom validation, the system locale. |
+| `settings.rs` | `desktop.json`: normalization, atomic writes, recent and workspace lists, bounds and zoom validation, the system locale. |
 | `menu.rs` | The native menu and its events. |
 | `log.rs` | `server.log` with trimming and token masking. |
 | `job.rs` | The Windows Job Object wrapper. |
@@ -63,7 +64,7 @@ Rust holds only what needs the OS: window, menu, dialogs, the server process, se
 
 Everything lives in `%APPDATA%\Deckmate\` — the same folder Electron used as `userData`, not Tauri's `app_config_dir()` (which would be `%APPDATA%\com.deckmate.desktop`), so an upgrade keeps recent projects, language, zoom, window bounds and the index:
 
-- `desktop.json` — settings: `lastProject`, `recent` (at most 10 entries `{ path, name, lastOpened }`), `language` (`en` or `ru`; a missing, invalid or `null` value falls back to the system locale at load), `zoomFactor` (0.5–2, step 0.1), `windowBounds`, `windowMaximized`. The fields and their normalization match the Electron file; unknown fields are kept on write. Writes go to a temp file in the same folder that is renamed over the original. A file over 1 MiB is left untouched and defaults are used.
+- `desktop.json` — settings: `lastProject`, `recent` (at most 10 entries `{ path, name, lastOpened }`), `workspace` (an ordered list of at most 30 `{ path, name }` entries), `language` (`en` or `ru`; a missing, invalid or `null` value falls back to the system locale at load), `zoomFactor` (0.5–2, step 0.1), `windowBounds`, `windowMaximized`. Workspace entries are added only by an explicit action, never by opening a project; paths must be absolute, duplicates compare case-insensitively with normalized Windows separators, and blank names fall back to the folder name (the path for a drive root). Adding an existing entry keeps its position; a full workspace refuses another entry with `invalid-path`; moves clamp the index to the list. Unknown settings fields, including unknown workspace-entry fields, are kept on write. Writes go to a temp file in the same folder that is renamed over the original. A file over 1 MiB is left untouched and defaults are used.
 - `server.log` — shell events and the server's output.
 - `index\` — the disposable search index; the server rebuilds it from the files.
 
@@ -78,19 +79,28 @@ Two page-side contracts reach the shell. [launcher/tauri-bridge.js](launcher/tau
 | `deckmateDesktop.openProject(folder)` | `desktop_open_project` |
 | `deckmateDesktop.createProject(options)` | `desktop_create_project` |
 | `deckmateDesktop.removeRecent(folder)` | `desktop_remove_recent` |
+| `deckmateDesktop.addToWorkspace(folder)` | `desktop_add_to_workspace` |
+| `deckmateDesktop.removeFromWorkspace(folder)` | `desktop_remove_from_workspace` |
+| `deckmateDesktop.moveInWorkspace(folder, index)` | `desktop_move_in_workspace` |
 | `deckmateDesktop.setLanguage(lang)` | `desktop_set_language` |
 | `deckmateDesktop.onStatus(callback)` | event `desktop://status` |
 | `deckmateBoard.recentProjects()` | `board_recent_projects` |
+| `deckmateBoard.workspaceProjects()` | `board_workspace_projects` |
+| `deckmateBoard.addToWorkspace(source)` | `board_add_to_workspace` |
+| `deckmateBoard.removeFromWorkspace(path)` | `board_remove_from_workspace` |
+| `deckmateBoard.moveInWorkspace(path, index)` | `board_move_in_workspace` |
 | `deckmateBoard.switchProject(path)` | `board_switch_project` |
 | `deckmateBoard.showStartScreen()` | `board_show_start_screen` |
 
-Every command returns `{ ok: true }` or `{ ok: false, code, message }`, with the codes `invalid-path`, `missing`, `not-empty`, `create-failed`, `start-failed`, `timeout`, `load-failed`, `superseded`, `closed`, plus `forbidden` (a command called from the wrong page), `not-recent` and `invalid-language`. `getState()` returns `recent`, `lastProject`, `version`, `deckmateVersion`, `locale` and `language`.
+Actions return `{ ok: true }` or `{ ok: false, code, message }`, with the codes `invalid-path`, `missing`, `not-empty`, `create-failed`, `start-failed`, `timeout`, `load-failed`, `superseded`, `closed`, plus `forbidden` (a command called from the wrong page), `not-recent`, `not-in-workspace`, `cancelled` and `invalid-language`. `getState()` returns `workspace`, `recent`, `lastProject`, `version`, `deckmateVersion`, `locale` and `language`. Its workspace entries are `{ path, name, missing }`; `workspaceProjects()` returns `{ path, name, current, missing }` entries. `missing` is a cheap directory existence check, not a project scan, and neither flag is saved. Workspace mutations return `{ ok: true, workspace }` on the launcher or `{ ok: true, projects }` on the board, with the corresponding snapshot shape.
+
+The launcher may add only the last dialog-selected folder or an entry of `recent`. On the board, `addToWorkspace` accepts `{ kind: 'dialog' }` (native folder picker; cancellation returns `cancelled`), `{ kind: 'current' }` (the open project), or `{ kind: 'recent', path }` (must be in `recent`, otherwise `not-recent`). Neither bridge trusts arbitrary caller-provided folders. Removing or moving an absent entry returns `not-in-workspace`. Every successful mutation saves settings and rebuilds the native menu.
 
 ### Capabilities and Rust-side checks
 
-[capabilities/](src-tauri/capabilities/) splits what each page may call: `launcher` is local-only (the bundled app origin) with the six desktop commands and the status event; `board` is remote `http://127.0.0.1:*` with only the three board commands. No other plugin permissions reach a remote page.
+[capabilities/](src-tauri/capabilities/) splits what each page may call: `launcher` is local-only (the bundled app origin) with the nine desktop commands and the status event; `board` is remote `http://127.0.0.1:*` with exactly the seven board commands above. No other plugin permissions reach a remote page. Command permissions are generated by `build.rs`.
 
-Rust checks again on every command (`bridge.rs`): launcher commands answer only the main window showing the bundled launcher URL; board commands answer only the main window at the current server origin, and `board_switch_project` accepts only a folder already in `recent` (the Windows path comparison ignores case and separator). A new launch supersedes one in flight, so a slow open cannot land on a stale window.
+Rust checks again on every command (`bridge.rs`): launcher commands answer only the main window showing the bundled launcher URL; board commands answer only the main window at the current server origin, and `board_switch_project` accepts only a folder already in `workspace` or `recent`, opening the stored path (the Windows path comparison ignores case and separator). Board authorization is checked again after the native folder picker returns. A new launch supersedes one in flight, so a slow open cannot land on a stale window.
 
 ### Navigation and new windows
 
@@ -98,7 +108,7 @@ The main window may navigate only to the bundled launcher (`http://tauri.localho
 
 ### Network folders
 
-UNC and device paths (`\\server\share`, `\\?\C:\`, `\\.\`), mapped network drives and paths that reach the network through a junction are accepted only when the folder came from the shell's folder dialog: the dialog result is remembered for that one folder, and typing such a path into the start screen is refused with `invalid-path`. Clicking a network folder in the recent list is allowed; the startup auto-open never opens a network `lastProject` by itself.
+UNC and device paths (`\\server\share`, `\\?\C:\`, `\\.\`), mapped network drives and paths that reach the network through a junction are accepted only when the folder came from the shell's folder dialog: the dialog result is remembered for that one folder, and typing such a path into the start screen is refused with `invalid-path`. Clicking a network folder in the recent list or workspace is allowed: workspace entries entered through the dialog, current project or recent list are trusted. The startup auto-open never opens a network `lastProject` by itself.
 
 ### Window
 
@@ -110,7 +120,7 @@ One main window, 1280×820 by default and at least 960×600. Saved bounds are re
 
 ### Menu and texts
 
-The native menu has File (open folder, recent projects, reveal project folder, switch and close project, reload, DevTools in debug builds only, quit), Edit, View (zoom, full screen) and Help (open logs folder, About — which lists the Deckmate, desktop shell, Tauri and bundled Node versions). Recent entries carry the folder path inside their menu id, so a reordered list cannot misroute a queued click. Shell texts are English and Russian side by side under the same keys in `texts.rs` — the Rust counterpart of `defineText(en, ru)`; switching the language rebuilds the menu.
+The native menu has File (open folder, recent projects, Workspace, add current project to workspace, reveal project folder, switch and close project, reload, DevTools in debug builds only, quit), Edit, View (zoom, full screen) and Help (open logs folder, About — which lists the Deckmate, desktop shell, Tauri and bundled Node versions). Switch project opens the start screen with **Ctrl+Shift+P**; Ctrl+Shift+O is no longer assigned. Add current project to workspace is enabled only when a project is open and not already listed. The Workspace submenu follows the saved order, assigns **Ctrl+1…Ctrl+9** to its first nine entries, and disables missing folders. Recent and workspace entries carry the folder path inside their menu id, so a reordered list cannot misroute a queued click. Shell texts are English and Russian side by side under the same keys in `texts.rs` — the Rust counterpart of `defineText(en, ru)`; switching the language rebuilds the menu.
 
 ### Bundled Node
 
@@ -118,7 +128,7 @@ Node 26, the major of `engines` in the root `package.json`. [node-runtime.json](
 
 ## Security notes and known limitations
 
-- **Same-origin iframes can reach the board bridge.** Vision renders project content in same-origin iframes on the board, and such an iframe can invoke the three board commands: WebView2 IPC does not identify the calling frame, so the top-frame check Electron made cannot be repeated on the Rust side. Accepted on 2026-11-09: the bridge is deliberately narrow — list recent projects, switch to one of them, show the start screen — and every command still passes the origin and recent-list checks, so the worst case is a project switch.
+- **Same-origin iframes can reach the board bridge.** Vision renders project content in same-origin iframes on the board, and such an iframe can invoke the seven board commands: WebView2 IPC does not identify the calling frame, so the top-frame check Electron made cannot be repeated on the Rust side. The bridge remains restricted to listing workspace/recent projects, explicit workspace mutations, switching to a listed project and showing the start screen. Every command passes the current-origin check; additions are restricted to the native dialog, current project or recent list. Same-origin content can change workspace membership/order or trigger navigation, but cannot add or open an arbitrary caller-provided path.
 - **DevTools are off in release builds.** The tauri crate is built without the `devtools` feature, and the menu item exists only in debug builds.
 - **Debug-only hooks.** `DECKMATE_DESKTOP_NODE`, `DECKMATE_DESKTOP_SERVER`, `DECKMATE_DESKTOP_CDP_PORT` (the smoke's CDP port), `DECKMATE_DESKTOP_SETTINGS_DIR` (the smoke's throwaway settings folder) and `DECKMATE_DESKTOP_EXTERNAL_LOG` (the smoke records external links in this file instead of opening the user's browser) are honored only by debug builds; release builds never read them.
 - **The builds are not code-signed**, so Windows SmartScreen may warn on first run.
@@ -137,7 +147,7 @@ Versions 0.5.0 and earlier shipped an Electron shell; recent projects, language,
 
 `npm run desktop:smoke` covers the pages and the server: launcher, board, both bridges, the navigation guard, the server lifetime. What it cannot drive stays manual:
 
-- Native menu items in both languages: open, recent, reveal project folder, switch and close project, zoom, full screen, open logs folder, About.
+- Native menu items in both languages: open, recent, workspace ordering and missing-folder disabling, add current project, reveal project folder, switch and close project, zoom, full screen, open logs folder, About; Ctrl+Shift+P and Ctrl+1…9.
 - The folder dialog — opening and creating a project through it.
 - A second launch focuses the running window.
 - Zoom keys and menu items, and the factor surviving a restart.

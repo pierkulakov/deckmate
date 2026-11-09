@@ -11,6 +11,9 @@
       openProject: folder => invoke('desktop_open_project', { folder }),
       createProject: options => invoke('desktop_create_project', { options }),
       removeRecent: folder => invoke('desktop_remove_recent', { folder }),
+      addToWorkspace: folder => invoke('desktop_add_to_workspace', { folder }),
+      removeFromWorkspace: folder => invoke('desktop_remove_from_workspace', { folder }),
+      moveInWorkspace: (folder, index) => invoke('desktop_move_in_workspace', { folder, index }),
       setLanguage: lang => invoke('desktop_set_language', { lang }),
       onStatus(callback) {
         let stopped = false;

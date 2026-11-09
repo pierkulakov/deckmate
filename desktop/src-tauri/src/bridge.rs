@@ -2,7 +2,7 @@ use crate::{
     app::{self, Shell},
     paths,
     server::Failure,
-    window,
+    window, workspace,
 };
 use serde_json::{json, Value};
 use tauri::{AppHandle, WebviewWindow};
@@ -53,7 +53,7 @@ pub fn desktop_get_state(app: AppHandle, window: WebviewWindow) -> Value {
     }
     shell.replay_status(&app);
     let settings = shell.settings.lock().unwrap();
-    json!({"recent":settings.recent,"lastProject":settings.last_project,"version":env!("CARGO_PKG_VERSION"),
+    json!({"recent":settings.recent,"workspace":workspace::projects(&settings, None, false),"lastProject":settings.last_project,"version":env!("CARGO_PKG_VERSION"),
         "deckmateVersion":shell.deckmate_version,"locale":shell.locale,"language":settings.language})
 }
 
@@ -76,18 +76,11 @@ pub async fn desktop_open_project(
         return json!(error);
     }
     let input = folder.unwrap_or(Value::Null);
-    // 2026-11-09: an explicit recent-project click is allowed, but never auto-opens a network folder.
-    let recent = input.as_str().and_then(|folder| {
-        shell
-            .settings
-            .lock()
-            .unwrap()
-            .recent
-            .iter()
-            .find(|entry| paths::same_path(&entry.path, folder))
-            .map(|entry| entry.path.clone())
-    });
-    let folder = match recent.map(Ok).unwrap_or_else(|| shell.check_folder(&input)) {
+    // 2026-11-09: explicit listed-project clicks are trusted; startup still refuses network folders.
+    let listed = input
+        .as_str()
+        .and_then(|folder| shell.settings.lock().unwrap().listed_project(folder));
+    let folder = match listed.map(Ok).unwrap_or_else(|| shell.check_folder(&input)) {
         Ok(folder) => folder,
         Err(error) => return json!(error),
     };
@@ -171,6 +164,139 @@ pub fn board_recent_projects(app: AppHandle, window: WebviewWindow) -> Value {
 }
 
 #[tauri::command]
+pub fn desktop_add_to_workspace(
+    app: AppHandle,
+    window: WebviewWindow,
+    folder: Option<Value>,
+) -> Value {
+    let shell = app::state(&app);
+    if let Err(error) = authorize(&shell, &window, false) {
+        return json!(error);
+    }
+    let dialog = shell.dialog_folder.lock().unwrap().clone();
+    let result = {
+        let mut settings = shell.settings.lock().unwrap();
+        workspace::launcher_addition(&settings, &folder.unwrap_or(Value::Null), dialog.as_deref())
+            .and_then(|folder| settings.add_to_workspace(&folder))
+    };
+    workspace::changed(&app, result, false)
+}
+
+#[tauri::command]
+pub fn desktop_remove_from_workspace(
+    app: AppHandle,
+    window: WebviewWindow,
+    folder: Option<Value>,
+) -> Value {
+    change_workspace(&app, &window, folder, None, false)
+}
+
+#[tauri::command]
+pub fn desktop_move_in_workspace(
+    app: AppHandle,
+    window: WebviewWindow,
+    folder: Option<Value>,
+    index: Option<Value>,
+) -> Value {
+    change_workspace(
+        &app,
+        &window,
+        folder,
+        Some(index.unwrap_or(Value::Null)),
+        false,
+    )
+}
+
+#[tauri::command]
+pub fn board_workspace_projects(app: AppHandle, window: WebviewWindow) -> Value {
+    if let Err(error) = authorize(&app::state(&app), &window, true) {
+        return json!(error);
+    }
+    workspace::snapshot(&app, true)
+}
+
+#[tauri::command]
+pub async fn board_add_to_workspace(
+    app: AppHandle,
+    window: WebviewWindow,
+    source: Option<Value>,
+) -> Value {
+    let shell = app::state(&app);
+    if let Err(error) = authorize(&shell, &window, true) {
+        return json!(error);
+    }
+    let source = source.unwrap_or(Value::Null);
+    if source["kind"] == "current" {
+        return workspace::add_current(&app);
+    }
+    let dialog = if source["kind"] == "dialog" {
+        choose_folder(&app).await
+    } else {
+        None
+    };
+    // 2026-11-09: a native dialog can outlive navigation or a project switch.
+    if let Err(error) = authorize(&shell, &window, true) {
+        return json!(error);
+    }
+    let result = {
+        let mut settings = shell.settings.lock().unwrap();
+        workspace::board_addition(&settings, &source, None, dialog.as_deref())
+            .and_then(|folder| settings.add_to_workspace(&folder))
+    };
+    workspace::changed(&app, result, true)
+}
+
+#[tauri::command]
+pub fn board_remove_from_workspace(
+    app: AppHandle,
+    window: WebviewWindow,
+    folder: Option<Value>,
+) -> Value {
+    change_workspace(&app, &window, folder, None, true)
+}
+
+#[tauri::command]
+pub fn board_move_in_workspace(
+    app: AppHandle,
+    window: WebviewWindow,
+    folder: Option<Value>,
+    index: Option<Value>,
+) -> Value {
+    change_workspace(
+        &app,
+        &window,
+        folder,
+        Some(index.unwrap_or(Value::Null)),
+        true,
+    )
+}
+
+fn change_workspace(
+    app: &AppHandle,
+    window: &WebviewWindow,
+    folder: Option<Value>,
+    index: Option<Value>,
+    board: bool,
+) -> Value {
+    let shell = app::state(app);
+    if let Err(error) = authorize(&shell, window, board) {
+        return json!(error);
+    }
+    let result = {
+        let mut settings = shell.settings.lock().unwrap();
+        let folder = folder.as_ref().and_then(Value::as_str).unwrap_or("");
+        match index {
+            Some(index) => index
+                .as_i64()
+                .ok_or("invalid-path")
+                .and_then(|index| settings.move_in_workspace(folder, index)),
+            None => settings.remove_from_workspace(folder),
+        }
+    };
+    workspace::changed(app, result, board)
+}
+
+#[tauri::command]
 pub async fn board_switch_project(
     app: AppHandle,
     window: WebviewWindow,
@@ -180,29 +306,23 @@ pub async fn board_switch_project(
     if let Err(error) = authorize(&shell, &window, true) {
         return json!(error);
     }
-    let recent = folder.as_ref().and_then(Value::as_str).and_then(|folder| {
-        shell
-            .settings
-            .lock()
-            .unwrap()
-            .recent
-            .iter()
-            .find(|entry| paths::same_path(&entry.path, folder))
-            .cloned()
-    });
-    let Some(entry) = recent else {
-        return json!(shell.failure("not-recent", "notRecent"));
+    let listed = folder
+        .as_ref()
+        .and_then(Value::as_str)
+        .and_then(|folder| shell.settings.lock().unwrap().listed_project(folder));
+    let Some(folder) = listed else {
+        return json!(shell.failure("not-recent", "notListed"));
     };
     if shell
         .current
         .lock()
         .unwrap()
         .as_ref()
-        .is_some_and(|current| paths::same_path(&current.folder, &entry.path))
+        .is_some_and(|current| paths::same_path(&current.folder, &folder))
     {
         return app::ok();
     }
-    app::result(app::open_project(&app, entry.path).await)
+    app::result(app::open_project(&app, folder).await)
 }
 
 #[tauri::command]

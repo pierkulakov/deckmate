@@ -3,6 +3,12 @@ pub fn text(language: &str, key: &str) -> &'static str {
         "file" => ("File", "Файл"),
         "openFolder" => ("Open folder…", "Открыть папку…"),
         "recentProjects" => ("Recent projects", "Недавние проекты"),
+        "workspace" => ("Workspace", "Рабочее пространство"),
+        "noWorkspace" => ("No workspace projects", "В рабочем пространстве нет проектов"),
+        "addCurrentToWorkspace" => (
+            "Add current project to workspace",
+            "Добавить текущий проект в рабочее пространство",
+        ),
         "noRecent" => ("No recent projects", "Нет недавних проектов"),
         "clearRecent" => ("Clear recent", "Очистить список"),
         "revealProject" => ("Reveal project folder", "Показать папку проекта"),
@@ -106,8 +112,21 @@ pub fn text(language: &str, key: &str) -> &'static str {
             "Вызов доступен только основной странице доски текущего проекта.",
         ),
         "notRecent" => (
-            "Only a recent project may be opened from the board.",
-            "С доски можно открыть только недавний проект.",
+            "The project is not in the recent list.",
+            "Проекта нет в списке недавних.",
+        ),
+        "notListed" => (
+            "Only a workspace or recent project may be opened from the board.",
+            "С доски можно открыть только проект рабочего пространства или недавний проект.",
+        ),
+        "notInWorkspace" => (
+            "The project is not in the workspace.",
+            "Проекта нет в рабочем пространстве.",
+        ),
+        "cancelled" => ("Folder selection was cancelled.", "Выбор папки отменён."),
+        "workspacePath" => (
+            "Choose a folder through the dialog, the current project or recent projects. The workspace holds up to 30 projects.",
+            "Выберите папку через диалог, текущий проект или недавние проекты. Рабочее пространство вмещает до 30 проектов.",
         ),
         "serverExit" => (
             "Server exited with code {code}.",

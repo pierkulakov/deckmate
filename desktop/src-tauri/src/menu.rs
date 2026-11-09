@@ -1,7 +1,7 @@
 use crate::{
     app, bridge, paths,
     texts::{self, text},
-    updater, whats_new, window,
+    updater, whats_new, window, workspace,
 };
 use tauri::{
     menu::{CheckMenuItem, Menu, MenuEvent, MenuItem, PredefinedMenuItem, Submenu},
@@ -14,12 +14,20 @@ fn build(app: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
     let shell = app::state(app);
     let settings = shell.settings.lock().unwrap().clone();
     let lang = &settings.language;
-    let project = shell
+    let current = shell
         .current
         .lock()
         .unwrap()
         .as_ref()
-        .is_some_and(|current| current.url.is_some());
+        .filter(|current| current.url.is_some())
+        .map(|current| current.folder.clone());
+    let project = current.is_some();
+    let can_add = current.as_ref().is_some_and(|folder| {
+        !settings
+            .workspace
+            .iter()
+            .any(|entry| paths::same_path(&entry.path, folder))
+    });
     let item = |key: &str, enabled: bool, accelerator: Option<&str>| {
         MenuItem::with_id(app, key, text(lang, key), enabled, accelerator)
     };
@@ -42,6 +50,21 @@ fn build(app: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
         recent.append(&separator()?)?;
         recent.append(&item("clearRecent", true, None)?)?;
     }
+    let workspace_menu = Submenu::new(app, text(lang, "workspace"), true)?;
+    if settings.workspace.is_empty() {
+        workspace_menu.append(&item("noWorkspace", false, None)?)?;
+    }
+    for (index, entry) in settings.workspace.iter().enumerate() {
+        let accelerator = (index < 9).then(|| format!("Ctrl+{}", index + 1));
+        let label = format!("{} — {}", entry.name, entry.path).replace('&', "&&");
+        workspace_menu.append(&MenuItem::with_id(
+            app,
+            format!("workspace:{}", entry.path),
+            label,
+            std::path::Path::new(&entry.path).is_dir(),
+            accelerator.as_deref(),
+        )?)?;
+    }
     let file = Submenu::with_items(
         app,
         text(lang, "file"),
@@ -49,9 +72,11 @@ fn build(app: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
         &[
             &item("openFolder", true, Some("Ctrl+O"))?,
             &recent,
+            &workspace_menu,
+            &item("addCurrentToWorkspace", can_add, None)?,
             &item("revealProject", project, None)?,
             &separator()?,
-            &item("switchProject", true, Some("Ctrl+Shift+O"))?,
+            &item("switchProject", true, Some("Ctrl+Shift+P"))?,
             &item("closeProject", project, None)?,
             &separator()?,
             &item("reload", true, Some("Ctrl+R"))?,
@@ -169,6 +194,17 @@ pub fn handle(app: &AppHandle, event: MenuEvent) {
         "zoomIn" => window::change_zoom(app, 0.1),
         "zoomOut" => window::change_zoom(app, -0.1),
         "actualSize" => window::set_zoom(app, 1.0),
+        "addCurrentToWorkspace" => {
+            let result = workspace::add_current(app);
+            if result["ok"] == false {
+                message(
+                    app,
+                    "workspace",
+                    result["message"].as_str().unwrap_or(""),
+                    MessageDialogKind::Warning,
+                );
+            }
+        }
         "reload" => {
             if let Some(window) = window {
                 let _ = window.reload();
@@ -251,16 +287,24 @@ pub fn handle(app: &AppHandle, event: MenuEvent) {
                     }
                     "switchProject" | "closeProject" => app::show_launcher(&app, None).await,
                     _ => {
-                        let folder = id.strip_prefix("recent:").and_then(|folder| {
-                            shell
-                                .settings
-                                .lock()
-                                .unwrap()
-                                .recent
-                                .iter()
-                                .find(|entry| paths::same_path(&entry.path, folder))
-                                .map(|entry| entry.path.clone())
-                        });
+                        let folder = {
+                            let settings = shell.settings.lock().unwrap();
+                            if let Some(folder) = id.strip_prefix("workspace:") {
+                                settings
+                                    .workspace
+                                    .iter()
+                                    .find(|entry| paths::same_path(&entry.path, folder))
+                                    .map(|entry| entry.path.clone())
+                            } else {
+                                id.strip_prefix("recent:").and_then(|folder| {
+                                    settings
+                                        .recent
+                                        .iter()
+                                        .find(|entry| paths::same_path(&entry.path, folder))
+                                        .map(|entry| entry.path.clone())
+                                })
+                            }
+                        };
                         if let Some(folder) = folder {
                             open(&app, folder).await;
                         }

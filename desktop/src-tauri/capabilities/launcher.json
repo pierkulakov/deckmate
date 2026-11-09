@@ -11,6 +11,9 @@
     "allow-desktop-create-project",
     "allow-desktop-remove-recent",
     "allow-desktop-set-language",
+    "allow-desktop-add-to-workspace",
+    "allow-desktop-remove-from-workspace",
+    "allow-desktop-move-in-workspace",
     "core:event:allow-listen",
     "core:event:allow-unlisten"
   ]

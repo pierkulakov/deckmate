@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-board-add-to-workspace"
+description = "Enables the board_add_to_workspace command without any pre-configured scope."
+commands.allow = ["board_add_to_workspace"]
+
+[[permission]]
+identifier = "deny-board-add-to-workspace"
+description = "Denies the board_add_to_workspace command without any pre-configured scope."
+commands.deny = ["board_add_to_workspace"]

@@ -12,6 +12,7 @@ mod updater;
 mod webview;
 mod whats_new;
 mod window;
+mod workspace;
 
 use std::sync::{atomic::Ordering, Arc};
 use tauri::Manager;
@@ -54,7 +55,14 @@ pub fn run() {
             bridge::desktop_create_project,
             bridge::desktop_remove_recent,
             bridge::desktop_set_language,
+            bridge::desktop_add_to_workspace,
+            bridge::desktop_remove_from_workspace,
+            bridge::desktop_move_in_workspace,
             bridge::board_recent_projects,
+            bridge::board_workspace_projects,
+            bridge::board_add_to_workspace,
+            bridge::board_remove_from_workspace,
+            bridge::board_move_in_workspace,
             bridge::board_switch_project,
             bridge::board_show_start_screen,
             whats_new::whats_new_get

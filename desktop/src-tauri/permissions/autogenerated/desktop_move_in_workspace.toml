@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-desktop-move-in-workspace"
+description = "Enables the desktop_move_in_workspace command without any pre-configured scope."
+commands.allow = ["desktop_move_in_workspace"]
+
+[[permission]]
+identifier = "deny-desktop-move-in-workspace"
+description = "Denies the desktop_move_in_workspace command without any pre-configured scope."
+commands.deny = ["desktop_move_in_workspace"]

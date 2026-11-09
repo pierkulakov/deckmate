@@ -13,6 +13,7 @@ use std::{
 };
 
 const MAX_RECENT: usize = 10;
+const MAX_WORKSPACE: usize = 30;
 const MAX_SETTINGS_BYTES: u64 = 1024 * 1024;
 static TEMP_COUNTER: AtomicU64 = AtomicU64::new(0);
 
@@ -22,6 +23,53 @@ pub struct Recent {
     pub path: String,
     pub name: String,
     pub last_opened: Option<String>,
+}
+
+#[derive(Clone, Debug, Serialize, PartialEq)]
+pub struct WorkspaceProject {
+    pub path: String,
+    pub name: String,
+    #[serde(flatten)]
+    pub extra: Map<String, Value>,
+}
+
+fn workspace_name(path: &str) -> String {
+    let name = project_name(path);
+    if name.is_empty() {
+        path.into()
+    } else {
+        name
+    }
+}
+
+pub fn normalize_workspace(value: &Value) -> Vec<WorkspaceProject> {
+    let mut workspace: Vec<WorkspaceProject> = Vec::new();
+    let Some(entries) = value.as_array() else {
+        return workspace;
+    };
+    for entry in entries {
+        let Some(path) = entry["path"]
+            .as_str()
+            .filter(|path| Path::new(path).is_absolute())
+        else {
+            continue;
+        };
+        if workspace.iter().any(|other| same_path(&other.path, path)) {
+            continue;
+        }
+        let mut extra = entry.as_object().cloned().unwrap_or_default();
+        extra.remove("path");
+        extra.remove("name");
+        workspace.push(WorkspaceProject {
+            path: path.into(),
+            name: nonempty_string(&entry["name"]).unwrap_or_else(|| workspace_name(path)),
+            extra,
+        });
+        if workspace.len() == MAX_WORKSPACE {
+            break;
+        }
+    }
+    workspace
 }
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq)]
@@ -94,6 +142,7 @@ impl Updates {
 pub struct Settings {
     pub last_project: Option<String>,
     pub recent: Vec<Recent>,
+    pub workspace: Vec<WorkspaceProject>,
     pub language: String,
     pub zoom_factor: f64,
     pub window_bounds: Option<Bounds>,
@@ -177,6 +226,7 @@ impl Settings {
         for key in [
             "lastProject",
             "recent",
+            "workspace",
             "language",
             "zoomFactor",
             "windowBounds",
@@ -191,6 +241,7 @@ impl Settings {
                 .filter(|path| is_absolute(path))
                 .map(str::to_owned),
             recent: normalize_recent(&value["recent"]),
+            workspace: normalize_workspace(&value["workspace"]),
             language: match value["language"].as_str() {
                 Some(language @ ("en" | "ru")) => language.into(),
                 _ if locale.to_lowercase().starts_with("ru") => "ru".into(),
@@ -270,6 +321,59 @@ impl Settings {
         {
             self.last_project = None;
         }
+    }
+
+    pub fn listed_project(&self, folder: &str) -> Option<String> {
+        self.workspace
+            .iter()
+            .map(|entry| &entry.path)
+            .chain(self.recent.iter().map(|entry| &entry.path))
+            .find(|path| same_path(path, folder))
+            .cloned()
+    }
+
+    pub fn add_to_workspace(&mut self, folder: &str) -> Result<(), &'static str> {
+        if !Path::new(folder).is_absolute() {
+            return Err("invalid-path");
+        }
+        if self
+            .workspace
+            .iter()
+            .any(|entry| same_path(&entry.path, folder))
+        {
+            return Ok(());
+        }
+        if self.workspace.len() == MAX_WORKSPACE {
+            return Err("invalid-path");
+        }
+        self.workspace.push(WorkspaceProject {
+            path: folder.into(),
+            name: workspace_name(folder),
+            extra: Map::new(),
+        });
+        Ok(())
+    }
+
+    pub fn remove_from_workspace(&mut self, folder: &str) -> Result<(), &'static str> {
+        let index = self
+            .workspace
+            .iter()
+            .position(|entry| same_path(&entry.path, folder))
+            .ok_or("not-in-workspace")?;
+        self.workspace.remove(index);
+        Ok(())
+    }
+
+    pub fn move_in_workspace(&mut self, folder: &str, index: i64) -> Result<(), &'static str> {
+        let from = self
+            .workspace
+            .iter()
+            .position(|entry| same_path(&entry.path, folder))
+            .ok_or("not-in-workspace")?;
+        let to = index.clamp(0, self.workspace.len() as i64 - 1) as usize;
+        let entry = self.workspace.remove(from);
+        self.workspace.insert(to, entry);
+        Ok(())
     }
 }
 
@@ -391,6 +495,73 @@ mod tests {
     }
 
     #[test]
+    fn workspace_normalizes_order_names_limit_and_unknown_fields() {
+        let mut entries = vec![
+            json!({"path":"relative"}),
+            json!({"path":"C:relative"}),
+            json!({"path":"\\root-relative"}),
+            json!({"path":"C:/Demo", "name":" ", "future":{"keep":true}}),
+            json!({"path":"c:\\demo", "name":"duplicate"}),
+            json!({"path":"C:/", "name":""}),
+        ];
+        entries.extend((0..35).map(|i| json!({"path":format!("C:/project-{i}")})));
+        let settings = Settings::normalize(json!({"workspace":entries,"future":42}), "en");
+        assert_eq!(settings.workspace.len(), 30);
+        assert_eq!(settings.workspace[0].name, "Demo");
+        assert_eq!(settings.workspace[1].name, "C:/");
+        assert_eq!(settings.workspace[29].path, "C:/project-27");
+        let value = serde_json::to_value(&settings).unwrap();
+        assert_eq!(value["workspace"][0]["future"], json!({"keep":true}));
+        assert_eq!(value["future"], 42);
+        assert_eq!(
+            serde_json::to_value(Settings::normalize(value.clone(), "en")).unwrap(),
+            value
+        );
+        assert!(Settings::normalize(Value::Null, "en").workspace.is_empty());
+        assert!(normalize_workspace(&json!({})).is_empty());
+    }
+
+    #[test]
+    fn workspace_add_remove_move_are_explicit_deduplicated_and_clamped() {
+        let mut settings = Settings::normalize(Value::Null, "en");
+        settings.remember("C:/Auto");
+        assert!(settings.workspace.is_empty());
+        assert_eq!(settings.add_to_workspace("relative"), Err("invalid-path"));
+        for folder in ["C:/One", "C:/Two", "C:/Three", "c:\\ONE"] {
+            settings.add_to_workspace(folder).unwrap();
+        }
+        assert_eq!(settings.workspace.len(), 3);
+        assert_eq!(settings.workspace[0].path, "C:/One");
+        settings.move_in_workspace("c:/THREE", -20).unwrap();
+        assert_eq!(settings.workspace[0].path, "C:/Three");
+        settings.move_in_workspace("C:/Three", i64::MAX).unwrap();
+        assert_eq!(settings.workspace[2].path, "C:/Three");
+        settings.move_in_workspace("C:/Three", 1).unwrap();
+        assert_eq!(settings.workspace[1].path, "C:/Three");
+        settings.remove_from_workspace("c:/THREE").unwrap();
+        assert_eq!(settings.workspace[1].path, "C:/Two");
+        assert_eq!(
+            settings.remove_from_workspace("C:/nope"),
+            Err("not-in-workspace")
+        );
+        assert_eq!(
+            settings.move_in_workspace("C:/nope", 0),
+            Err("not-in-workspace")
+        );
+        for i in 0..28 {
+            settings.add_to_workspace(&format!("C:/Extra-{i}")).unwrap();
+        }
+        assert_eq!(
+            settings.add_to_workspace("C:/Overflow"),
+            Err("invalid-path")
+        );
+        settings.add_to_workspace("C:/One").unwrap();
+        assert_eq!(settings.workspace.len(), 30);
+        settings.remove_recent("C:/Auto");
+        assert_eq!(settings.workspace.len(), 30);
+    }
+
+    #[test]
     fn reads_bom_and_atomically_replaces_existing_settings() {
         let directory =
             std::env::temp_dir().join(format!("deckmate-settings-test-{}", std::process::id()));
@@ -400,10 +571,12 @@ mod tests {
         let mut settings = Settings::load(&directory, "en", &log);
         settings.save(&directory).unwrap();
         settings.language = "ru".into();
+        settings.add_to_workspace("C:/Workspace").unwrap();
         settings.save(&directory).unwrap();
         let reloaded = Settings::load(&directory, "en", &log);
         assert_eq!(reloaded.extra["future"], 42);
         assert_eq!(reloaded.language, "ru");
+        assert_eq!(reloaded.workspace, settings.workspace);
         assert_eq!(fs::read_dir(&directory).unwrap().count(), 2);
         drop(log);
         fs::remove_dir_all(directory).unwrap();

@@ -15,7 +15,7 @@ const pageUrl = pathToFileURL(path.join(here, '..', 'desktop', 'launcher', 'inde
 const whatsNewUrl = pathToFileURL(path.join(here, '..', 'desktop', 'launcher', 'whats-new.html')).href;
 const output = path.join(here, '..', '.deckmate', 'launcher-shots');
 
-interface Frame { name: string; theme: 'dark' | 'light'; lang: 'en' | 'ru'; size: [number, number]; page?: 'whats-new'; state?: 'empty' | 'error' | 'hover-row' | 'focus-open' | 'focus-row' }
+interface Frame { name: string; theme: 'dark' | 'light'; lang: 'en' | 'ru'; size: [number, number]; page?: 'whats-new'; state?: 'empty' | 'error' | 'hover-row' | 'focus-open' | 'focus-row' | 'focus-workspace' }
 
 const frames: Frame[] = [
   { name: 'dark-en-1280', theme: 'dark', lang: 'en', size: [1280, 820] },
@@ -28,6 +28,7 @@ const frames: Frame[] = [
   { name: 'light-ru-error', theme: 'light', lang: 'ru', size: [1280, 820], state: 'error' },
   { name: 'dark-en-focus-open', theme: 'dark', lang: 'en', size: [1280, 820], state: 'focus-open' },
   { name: 'dark-en-focus-row', theme: 'dark', lang: 'en', size: [1280, 820], state: 'focus-row' },
+  { name: 'light-ru-focus-workspace', theme: 'light', lang: 'ru', size: [960, 600], state: 'focus-workspace' },
   { name: 'light-ru-hover-row', theme: 'light', lang: 'ru', size: [1280, 820], state: 'hover-row' },
   { name: 'whats-new-dark-en', theme: 'dark', lang: 'en', size: [760, 680], page: 'whats-new' },
   { name: 'whats-new-dark-ru', theme: 'dark', lang: 'ru', size: [760, 680], page: 'whats-new' },
@@ -47,6 +48,9 @@ const LANG_SCRIPTS: Record<string, string> = {
 const STATE_SCRIPTS: Record<string, string> = {
   list: `document.getAnimations().forEach(a => a.finish())`,
   empty: `document.getAnimations().forEach(a => a.finish());
+    document.getElementById('workspace-list').replaceChildren();
+    document.getElementById('workspace-empty').hidden = false;
+    document.getElementById('workspace-count').hidden = true;
     document.getElementById('recent-list').replaceChildren();
     document.getElementById('recent-empty').hidden = false;
     document.getElementById('recent-count').hidden = true;`,
@@ -54,12 +58,14 @@ const STATE_SCRIPTS: Record<string, string> = {
   'hover-row': `document.getAnimations().forEach(a => a.finish()); document.querySelectorAll('.recent-item')[1].classList.add('is-hover-demo');`,
   'focus-open': `document.getAnimations().forEach(a => a.finish())`,
   'focus-row': `document.getAnimations().forEach(a => a.finish())`,
+  'focus-workspace': `document.getAnimations().forEach(a => a.finish())`,
 };
 const FOCUS_CHECKS: Record<string, string> = {
   'focus-open': `document.activeElement === document.getElementById('open-folder')`,
-  'focus-row': `document.activeElement === document.querySelector('.recent-open')`,
+  'focus-row': `document.activeElement === document.querySelector('#recent-list .recent-open')`,
+  'focus-workspace': `document.activeElement === document.querySelector('#workspace-list .recent-open')`,
 };
-const MAX_TAB_PRESSES = 12;
+const MAX_TAB_PRESSES = 24;
 
 // The launcher CSP allows inline styles (style-src 'unsafe-inline'), so page-state overrides enter as <style> elements.
 const INJECT_STYLE = 'css => { const style = document.createElement("style"); style.textContent = css; document.head.append(style); return true; }';
@@ -160,8 +166,13 @@ export async function captureLauncherReadme(destination: string): Promise<Shot> 
         { path: 'D:\\Projects\\demo', name: 'demo', lastOpened: new Date(now - 5 * 3600e3).toISOString() },
         { path: 'C:\\Users\\Someone\\Documents\\Долгий путь к релизу', name: 'Долгий путь к релизу', lastOpened: new Date(now - 3 * 86400e3).toISOString() },
       ];
+      const workspace = [
+        { path: recent[0].path, name: recent[0].name, missing: false },
+        { path: recent[2].path, name: recent[2].name, missing: false },
+        { path: 'D:\\Projects\\Old project', name: 'Old project', missing: true },
+      ];
       window.deckmateDesktop = {
-        async getState() { return { recent, lastProject: recent[0].path, version: ${JSON.stringify(desktop.version)}, deckmateVersion: ${JSON.stringify(deckmate.version)}, locale: 'en-US' }; },
+        async getState() { return { recent, workspace, lastProject: recent[0].path, version: ${JSON.stringify(desktop.version)}, deckmateVersion: ${JSON.stringify(deckmate.version)}, locale: 'en-US' }; },
         async chooseFolder() { return 'D:\\Projects\\New Deck'; },
         async openProject() { return { ok: false, code: 'missing' }; },
         async createProject() { return { ok: false, code: 'not-empty' }; },

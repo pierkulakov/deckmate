@@ -168,7 +168,8 @@ async function main(): Promise<number> {
       'the launcher page to load', 20000);
     const launcher = await page!.callFunction(`async () => {
       const bridge = window.deckmateDesktop;
-      const wanted = ['getState', 'chooseFolder', 'openProject', 'createProject', 'removeRecent', 'setLanguage', 'onStatus'];
+      const wanted = ['getState', 'chooseFolder', 'openProject', 'createProject', 'removeRecent',
+        'addToWorkspace', 'removeFromWorkspace', 'moveInWorkspace', 'setLanguage', 'onStatus'];
       return {
         missing: wanted.filter(name => !bridge || typeof bridge[name] !== 'function'),
         state: bridge ? await bridge.getState() : null,
@@ -176,13 +177,17 @@ async function main(): Promise<number> {
     }`);
     if (launcher.missing.length) throw new SmokeFailure(`window.deckmateDesktop is missing methods: ${launcher.missing.join(', ')}`);
     const state = launcher.state;
-    if (!state || !Array.isArray(state.recent)
+    if (!state || !Array.isArray(state.recent) || !Array.isArray(state.workspace) || state.workspace.length !== 0
       || (state.lastProject !== null && typeof state.lastProject !== 'string')
       || typeof state.version !== 'string' || typeof state.deckmateVersion !== 'string'
       || typeof state.locale !== 'string' || typeof state.language !== 'string') {
       throw new SmokeFailure(`getState() has an unexpected shape: ${JSON.stringify(state)}`);
     }
-    pass('a', `launcher loaded; deckmateDesktop has the 7 preload methods; getState has recent/lastProject/version/deckmateVersion/locale/language`);
+    pass('a', 'launcher loaded; deckmateDesktop has the 10 preload methods; getState has workspace/recent/lastProject/version/deckmateVersion/locale/language');
+    const untrustedAddition = await page!.callFunction(`() => window.deckmateDesktop.addToWorkspace('C:\\\\not-trusted')`);
+    if (untrustedAddition.ok !== false || untrustedAddition.code !== 'invalid-path') {
+      throw new SmokeFailure(`launcher accepted an untrusted workspace path: ${JSON.stringify(untrustedAddition)}`);
+    }
     // 2026-11-09: CDP attaches after the first load, so current window bounds cannot detect an
     // earlier flash. The debug initialization script samples visibility before page scripts and
     // in the load event, before native PageLoadEvent::Finished shows the window.
@@ -296,6 +301,24 @@ async function main(): Promise<number> {
       'the demo server process to exit', 15000);
     pass('e', 'back on the launcher; no node.exe for the demo or the server entry remains');
 
+    currentStep = 'e-workspace';
+    const launcherWorkspace = await page!.callFunction(`async folder => {
+      const bridge = window.deckmateDesktop;
+      const added = await bridge.addToWorkspace(folder);
+      const moved = await bridge.moveInWorkspace(folder, 99);
+      const state = await bridge.getState();
+      const removed = await bridge.removeFromWorkspace(folder);
+      return { added, moved, state, removed };
+    }`, demo);
+    if (launcherWorkspace.added.ok !== true || launcherWorkspace.moved.ok !== true
+      || launcherWorkspace.state.workspace.length !== 1
+      || norm(launcherWorkspace.state.workspace[0].path) !== norm(demo)
+      || launcherWorkspace.state.workspace[0].missing !== false
+      || launcherWorkspace.removed.ok !== true || launcherWorkspace.removed.workspace.length !== 0) {
+      throw new SmokeFailure(`launcher workspace contract failed: ${JSON.stringify(launcherWorkspace)}`);
+    }
+    pass('e-workspace', 'launcher added a recent folder, moved it, returned workspace state and removed it');
+
     // f. createProject initializes and opens a project; killing the shell must reap its server
     // through the Job Object, and the isolated settings must list both projects.
     currentStep = 'f';
@@ -308,11 +331,62 @@ async function main(): Promise<number> {
     } catch (error) {
       throw new SmokeFailure(`${(error as SmokeFailure).message} (${await diagnose(settings)})`);
     }
+    currentStep = 'f-workspace';
+    const workspace = await page!.callFunction(`async recentPath => {
+      const bridge = window.deckmateBoard;
+      const before = await bridge.workspaceProjects();
+      const current = await bridge.addToWorkspace({ kind: 'current' });
+      const recent = await bridge.addToWorkspace({ kind: 'recent', path: recentPath });
+      const listed = await bridge.workspaceProjects();
+      const moved = await bridge.moveInWorkspace(recentPath, -10);
+      const removed = await bridge.removeFromWorkspace(current.projects[0].path);
+      const restored = await bridge.addToWorkspace({ kind: 'current' });
+      const notRecent = await bridge.addToWorkspace({ kind: 'recent', path: 'C:\\\\not-recent' });
+      const notWorkspace = await bridge.removeFromWorkspace('C:\\\\nope');
+      return { before, current, recent, listed, moved, removed, restored, notRecent, notWorkspace };
+    }`, demo);
+    const workspaceOrder = (projects: { path: string }[]) => projects.map(project => norm(project.path));
+    const equalOrder = (projects: { path: string }[], expected: string[]) =>
+      JSON.stringify(workspaceOrder(projects)) === JSON.stringify(expected.map(norm));
+    if (workspace.before.length !== 0 || workspace.current.ok !== true || workspace.recent.ok !== true
+      || !equalOrder(workspace.listed, [created, demo])
+      || workspace.listed[0].current !== true || workspace.listed[1].current !== false
+      || workspace.listed.some((project: { missing: boolean }) => project.missing !== false)
+      || workspace.moved.ok !== true || !equalOrder(workspace.moved.projects, [demo, created])
+      || workspace.removed.ok !== true || !equalOrder(workspace.removed.projects, [demo])
+      || workspace.restored.ok !== true || !equalOrder(workspace.restored.projects, [demo, created])
+      || workspace.notRecent.ok !== false || workspace.notRecent.code !== 'not-recent'
+      || workspace.notWorkspace.ok !== false || workspace.notWorkspace.code !== 'not-in-workspace') {
+      throw new SmokeFailure(`board workspace contract failed: ${JSON.stringify(workspace)}`);
+    }
+    pass('f-workspace', 'board added current + recent in order; moved, removed and restored; unlisted recent and workspace removals refused');
+
+    // Remove demo from recent so the following board switch can succeed only through workspace trust.
+    await page!.callFunction(`() => { void window.deckmateBoard.showStartScreen(); }`);
+    await poll(async () => String(await page!.evaluate('location.href')).includes('tauri.localhost'),
+      'workspace test to return to the launcher', 20000);
+    const removedRecent = await page!.callFunction(`folder => window.deckmateDesktop.removeRecent(folder)`, demo);
+    if (removedRecent.ok !== true) throw new SmokeFailure('could not remove the workspace target from recent');
+    await page!.callFunction(`folder => { void window.deckmateDesktop.openProject(folder); }`, created);
+    await poll(async () => (await page!.evaluate(`typeof window.deckmateBoard === 'object' && !!document.querySelector('${boardSelector}')`)) === true,
+      'workspace test to reopen the board', 30000);
+    const switchOrigin = String(await page!.evaluate('location.origin'));
+    await page!.callFunction(`folder => { void window.deckmateBoard.switchProject(folder); }`, demo);
+    await poll(async () => {
+      if (String(await page!.evaluate('location.origin')) === switchOrigin) return false;
+      return (await page!.callFunction(`async folder => {
+        if (!window.deckmateBoard || !document.querySelector('${boardSelector}')) return false;
+        const projects = await window.deckmateBoard.workspaceProjects();
+        return projects.some(project => project.path.replace(/\\\\/g, '/').toLowerCase() === folder && project.current);
+      }`, norm(demo))) === true;
+    }, 'switchProject to the workspace-only project', 30000);
+    pass('f-workspace-switch', 'switchProject opened a workspace entry absent from recent');
     shell.kill();
     await poll(async () => serverProcesses(needles).length === 0,
       'the Job Object to reap the server after killing the shell', 15000);
     const saved = JSON.parse(readFileSync(path.join(settings, 'desktop.json'), 'utf8')) as {
       recent?: { path: string }[];
+      workspace?: { path: string; name: string }[];
       updates?: { autoCheck: boolean; lastCheck: string | null; skippedVersion: string | null; pending: unknown };
     };
     const recentPaths = (saved.recent ?? []).map(entry => norm(String(entry.path)));
@@ -322,6 +396,11 @@ async function main(): Promise<number> {
       }
     }
     pass('f', `createProject opened new-project; killing the shell reaped the server (Job Object); desktop.json lists ${saved.recent!.length} projects`);
+    if (!saved.workspace || !equalOrder(saved.workspace, [demo, created])
+      || saved.workspace[0].name !== 'demo' || saved.workspace[1].name !== 'new-project') {
+      throw new SmokeFailure(`desktop.json workspace did not persist: ${JSON.stringify(saved.workspace)}`);
+    }
+    pass('f-workspace-save', 'desktop.json preserves the ordered workspace with folder names');
 
     // 2026-11-09: debug smoke must exercise the new settings without contacting the update service.
     currentStep = 'updates';

@@ -115,7 +115,7 @@ describe('shared browser session', () => {
 
   it('retains readiness retry budgets and cleans up on readiness failure', async () => {
     vi.useFakeTimers();
-    const session = createBrowserSession({ attempts: 2, intervalMs: 25 });
+    const session = createBrowserSession({ attempts: 2, intervalMs: 25, navigationMs: 50 });
     await session.open('browser');
     const ready = vi.fn().mockResolvedValue(false);
     const failure = expect(session.until(ready)).rejects.toThrow('Timed out');
@@ -127,6 +127,21 @@ describe('shared browser session', () => {
     await vi.advanceTimersByTimeAsync(50);
     await navigation;
     expect(rm).toHaveBeenCalled();
+  });
+
+  it('gives a fixture load its own time budget beyond the in-page attempts', async () => {
+    vi.useFakeTimers();
+    const session = createBrowserSession({ attempts: 2, intervalMs: 25 });
+    await session.open('browser');
+    PageSocket.latest.runtimeValue = false;
+    let settled = false;
+    const navigation = session.navigate('attachments-panel', 'window.ready').finally(() => { settled = true; });
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(settled).toBe(false);
+    PageSocket.latest.runtimeValue = true;
+    await vi.advanceTimersByTimeAsync(25);
+    await navigation;
+    await session.close();
   });
 
   it('rejects early browser exit without waiting for the target deadline and removes its profile', async () => {

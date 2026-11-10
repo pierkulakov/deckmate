@@ -38,7 +38,10 @@ jobs:
       - run: npm pack --ignore-scripts --dry-run
 
   # The browser project runs one file at a time, so it is split into shards that
-  # run in parallel; together they cover every browser file (2026-11-10).
+  # run in parallel; together they cover every browser file (2026-11-10). It runs
+  # on Windows with Edge, the engine of the desktop app's WebView2; a second
+  # system added only runner differences (pointer, fonts), while file, path and
+  # process behaviour stays covered on both systems by the unit job.
   browser:
     name: browser (${{ matrix.os }}, ${{ matrix.shard }}/3)
     runs-on: ${{ matrix.os }}
@@ -46,11 +49,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest]
+        os: [windows-latest]
         shard: [1, 2, 3]
         include:
-          - os: ubuntu-latest
-            browser: /usr/bin/google-chrome
           - os: windows-latest
             browser: C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe
     # 2026-11-10: runner-images documents both browsers as installed; a missing executable must fail, never skip UI coverage.

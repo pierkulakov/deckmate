@@ -4,6 +4,10 @@ Notable changes are grouped by version using [Keep a Changelog](https://keepacha
 
 ## [Unreleased]
 
+### Changed
+
+- **Release checks.** Browser tests run on Windows with Edge, the engine of the desktop app, and a fixture gets a longer first load on slow runners; unit tests still run on Ubuntu and Windows.
+
 ## [0.6.0] - 2026-11-10
 
 ### Added

@@ -2,7 +2,11 @@ import { openHeadlessBrowser, type HeadlessPage } from '../tools/layout-capture.
 import type { BrowserFixture } from './browser-files.ts';
 import { browserFixtureUrl } from './browser-fixture.ts';
 
-export function createBrowserSession(wait: { attempts?: number; intervalMs?: number } = {}) {
+// 2026-11-10: a fixture's first load (document, scripts and its first requests) took over 10 s on a CI runner, while
+// in-page waits settle in milliseconds; navigation readiness gets its own time budget instead of the in-page attempts.
+const NAVIGATION_READY_MS = 30_000;
+
+export function createBrowserSession(wait: { attempts?: number; intervalMs?: number; navigationMs?: number } = {}) {
   let page: HeadlessPage | undefined;
   const errors = () => page?.consoleErrors ?? [];
   // 2026-11-10: legacy suites consume CDP result bodies, while capture tools consume the full envelope.
@@ -24,7 +28,8 @@ export function createBrowserSession(wait: { attempts?: number; intervalMs?: num
   } = {}) => {
     page = await openHeadlessBrowser(options.viewport, undefined, { browserPath, extraArgs: options.extraArgs });
   };
-  const navigate = async (fixture: BrowserFixture, ready: string, attempts = wait.attempts ?? 100) => {
+  const navigate = async (fixture: BrowserFixture, ready: string,
+    attempts = Math.ceil((wait.navigationMs ?? NAVIGATION_READY_MS) / (wait.intervalMs ?? 50))) => {
     try {
       await send('Page.navigate', { url: browserFixtureUrl(fixture) });
       await until(ready, attempts);

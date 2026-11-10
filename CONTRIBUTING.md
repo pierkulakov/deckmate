@@ -54,7 +54,7 @@ npm run agents -- run <workflow> <area> --project <project> --dry # = npx deckma
 
 - `npm test` includes regressions for byte preservation, hash conflicts, sandbox restrictions and idempotent card creation. Changes to the parser or the write path must come with tests.
 - Tests run in two Vitest projects: `npx vitest run --project unit` (at most four workers), then `npx vitest run --project browser` (one isolated file at a time). Vitest 5 schedules different worker budgets in separate groups. A file filter still works across both projects. Avoid overriding worker limits on busy machines.
-- CI runs both projects on Ubuntu and Windows for every pull request, with the browser project in three parallel shards (`npx vitest run --project browser --shard=1/3` repeats one locally). The required `checks (ubuntu-latest)` and `checks (windows-latest)` pass only when every job passed, and a release tag publishes only a commit with both green.
+- CI runs the unit project on Ubuntu and Windows for every pull request, and the browser project on Windows with Edge in three parallel shards (`npx vitest run --project browser --shard=1/3` repeats one locally). The required `checks (ubuntu-latest)` and `checks (windows-latest)` pass only when every job passed, and a release tag publishes only a commit with both green.
 - Browser fixtures are built together once into a private temporary folder and served by one preview server; they do not use `dist/`, HMR or the shared `node_modules/.vite` cache. Each browser file keeps its own profile and any temporary project data. Concurrent Vitest invocations use independent builds and ports.
 - Install Chrome, Edge or Chromium, or set `DECKMATE_BROWSER` to an executable path (`BROWSER` is a fallback). An explicit missing path does not fall back to discovery. Without a browser, local runs print one final line counting skipped browser cases; `CI=true` or `DECKMATE_REQUIRE_BROWSER=1` makes absence an error. CI sets the preinstalled browser path explicitly.
 - `npm run check` is for the legacy section format (`features/**/*.md` with `### X.Y` slices): it compares the TypeScript parser with a project's own `Tools/board.py` on every file, verifies byte boundaries and write-back, and never modifies the project. It needs that project and Python, so it is not part of CI or the pull request checklist.
@@ -73,7 +73,7 @@ Why a CLA: it lets the maintainer offer a paid hosted version of Deckmate and co
 
 1. Open or find an issue first (see the issue templates). Small, single-topic PRs merge fastest.
 2. Branch from `main` and keep the diff focused; do not mix refactors with features.
-3. Before submitting, run `npm run typecheck`, `npm run build` and the tests that cover your change — all green; CI then runs the full suite on both systems. Run the full `npm test` locally when you change shared helpers or test infrastructure. The PR template lists the checks.
+3. Before submitting, run `npm run typecheck`, `npm run build` and the tests that cover your change — all green; CI then runs the full suite. Run the full `npm test` locally when you change shared helpers or test infrastructure. The PR template lists the checks.
 4. For UI changes, attach screenshots (light and dark theme where relevant).
 5. If your change writes project data files, explain in the PR which bytes change and which are preserved.
 6. Every release section is written in both `CHANGELOG.md` and `CHANGELOG.ru.md` with the same version heading.

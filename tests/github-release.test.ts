@@ -616,14 +616,15 @@ describe('CI workflow required checks', () => {
     expect(checks.strategy.matrix.os.map(os => `checks (${os})`)).toEqual(REQUIRED_CHECKS);
   });
 
-  it('splits the browser project into shards that together cover it on both systems', () => {
+  it('splits the browser project into Windows shards and keeps unit tests on both systems', () => {
     const { browser, unit } = ci.jobs;
     const shards = browser.strategy.matrix.shard!;
     expect(shards).toEqual(Array.from({ length: shards.length }, (_, index) => index + 1));
     expect(browser.name).toBe(`browser (\${{ matrix.os }}, \${{ matrix.shard }}/${shards.length})`);
     expect(browser.env?.SHARD).toBe(`\${{ matrix.shard }}/${shards.length}`);
     expect(browser.steps.at(-1)?.run).toBe('npx vitest run --project browser --shard="$SHARD"');
-    expect(browser.strategy.matrix.os).toEqual(unit.strategy.matrix.os);
+    expect(browser.strategy.matrix.os).toEqual(['windows-latest']);
+    expect(unit.strategy.matrix.os).toEqual(['ubuntu-latest', 'windows-latest']);
     expect(unit.steps.map(step => step.run)).toEqual(expect.arrayContaining(['npm run typecheck', 'npx vitest run --project unit']));
   });
 });

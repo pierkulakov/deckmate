@@ -1092,10 +1092,13 @@ export function CardPreview({ card, catalog, snapshot, writable, pending, onClos
       <Dialog.Overlay ref={prepareEntrance} className="card-journey-overlay" />
       <Dialog.Content className="card-removal-dialog card-review-return-dialog" aria-busy={saving} onCloseAutoFocus={event => {
         event.preventDefault();
-        if (returnSaved.current) focusStateButton();
-        else if (returnOpener.current?.isConnected && !returnOpener.current.matches(':disabled')) moveFocus(returnOpener.current, { preventScroll: true });
-        else moveFocus(heading.current, { preventScroll: true });
+        const opener = returnOpener.current;
         returnOpener.current = null;
+        // 2026-11-10: deferred dialog cleanup must not steal focus from a Review menu opened by a newer interaction.
+        if (reviewMenu.current?.contains(document.activeElement)) return;
+        if (returnSaved.current) focusStateButton();
+        else if (opener?.isConnected && !opener.matches(':disabled')) moveFocus(opener, { preventScroll: true });
+        else moveFocus(heading.current, { preventScroll: true });
       }} onEscapeKeyDown={event => { if (saving) event.preventDefault(); }} onPointerDownOutside={event => { if (saving) event.preventDefault(); }}>
         <Dialog.Title>{t.returnReview}</Dialog.Title><Dialog.Description>{t.returnDescription}</Dialog.Description>
         {returnRevision !== revision && <><p role="alert">{t.returnStale}</p><Button type="button" disabled={saving} onClick={() => {

@@ -169,6 +169,47 @@ describe.skipIf(!browserPath)('open card first UX batch (real browser)', () => {
     await until(`document.activeElement === document.querySelector('.card-state-play')`);
   });
 
+  it.each([false, true])('keeps a reopened Review menu focused after delayed dialog cleanup (%s Journey)', async journey => {
+    await render({ journey });
+    await requestChanges();
+    await until(`document.activeElement === document.querySelector('.journey-return-reason input') && document.body.style.pointerEvents === 'none'`);
+    // 2026-11-10: hold the close tasks so the next pointer action precedes focus restoration on every runner.
+    await page.evaluate(`(() => {
+      const schedule = window.setTimeout, cancel = window.clearTimeout, tasks = new Map();
+      window.setTimeout = (callback, timeout, ...args) => {
+        if (timeout !== 0 || typeof callback !== 'function') return schedule(callback, timeout, ...args);
+        const id = schedule(() => {}, 0);
+        tasks.set(id, () => callback(...args));
+        return id;
+      };
+      window.clearTimeout = id => { tasks.delete(id); cancel(id); };
+      window.finishReturnClose = () => {
+        window.setTimeout = schedule; window.clearTimeout = cancel;
+        delete window.finishReturnClose;
+        for (const task of tasks.values()) task();
+      };
+    })()`);
+    try {
+      for (const type of ['mousePressed', 'mouseReleased']) await page.send('Input.dispatchMouseEvent', { type, x: 5, y: 5, button: 'left', clickCount: 1 });
+      await until(`!document.querySelector('.journey-return')`);
+      await openReview();
+      await until(`document.activeElement === document.querySelector('.card-review-menu')`);
+      await page.evaluate(`(() => {
+        window.finishReturnClose();
+        return new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+      })()`);
+      expect(await page.evaluate(`document.activeElement === document.querySelector('.card-review-menu')`)).toBe(true);
+      expect(await page.evaluate(`document.querySelector('.card-state-review').getAttribute('aria-expanded')`)).toBe('true');
+      expect(await page.evaluate('window.firstBatch.requests')).toEqual([]);
+      await click('.card-review-return');
+      await until(`document.activeElement === document.querySelector('.journey-return-reason input')`);
+      await key('Escape');
+      await until(`document.activeElement === document.querySelector('.card-state-review')`);
+    } finally {
+      await page.evaluate('window.finishReturnClose?.()');
+    }
+  });
+
   it.each([
     { lang: 'en', state: 'State: Review', play: 'Review in progress · decide with the review button', accept: 'Accept review', changes: 'Request changes…', why: 'What needs changing?', dependencies: 'Dependencies and blockers' },
     { lang: 'ru', state: 'Состояние: Приёмка', play: 'Идёт приёмка · решение — в кнопке приёмки', accept: 'Принять результат', changes: 'Вернуть на доработку…', why: 'Что нужно исправить?', dependencies: 'Зависимости и препятствия' },

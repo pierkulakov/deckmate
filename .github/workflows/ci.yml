@@ -14,22 +14,14 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  checks:
+  unit:
+    name: unit (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 20
+    timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest]
-        include:
-          - os: ubuntu-latest
-            browser: /usr/bin/google-chrome
-          - os: windows-latest
-            browser: C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe
-    # 2026-11-10: runner-images documents both browsers as installed; a missing executable must fail, never skip UI coverage.
-    env:
-      DECKMATE_BROWSER: ${{ matrix.browser }}
-      DECKMATE_REQUIRE_BROWSER: '1'
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -41,9 +33,67 @@ jobs:
           cache-dependency-path: package-lock.json
       - run: npm ci
       - run: npm run typecheck
-      - run: npm test
+      - run: npx vitest run --project unit
       - run: npm run build
       - run: npm pack --ignore-scripts --dry-run
+
+  # The browser project runs one file at a time, so it is split into shards that
+  # run in parallel; together they cover every browser file (2026-11-10).
+  browser:
+    name: browser (${{ matrix.os }}, ${{ matrix.shard }}/3)
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        shard: [1, 2, 3]
+        include:
+          - os: ubuntu-latest
+            browser: /usr/bin/google-chrome
+          - os: windows-latest
+            browser: C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe
+    # 2026-11-10: runner-images documents both browsers as installed; a missing executable must fail, never skip UI coverage.
+    env:
+      DECKMATE_BROWSER: ${{ matrix.browser }}
+      DECKMATE_REQUIRE_BROWSER: '1'
+      SHARD: ${{ matrix.shard }}/3
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: package.json
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - run: npm ci
+      - run: npx vitest run --project browser --shard="$SHARD"
+
+  # The main ruleset requires the `checks (ubuntu-latest)` and `checks (windows-latest)`
+  # contexts, and the release workflow waits for them. Each one passes only when
+  # every unit and browser job above passed, so a skipped or cancelled shard fails it.
+  checks:
+    if: always()
+    needs: [unit, browser]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - name: Require every unit and browser job
+        env:
+          RESULTS: ${{ toJSON(needs) }}
+        run: |
+          node --input-type=module <<'NODE'
+          const failed = Object.entries(JSON.parse(process.env.RESULTS)).filter(([, job]) => job.result !== 'success');
+          for (const [name, job] of failed) console.log(`::error::${name} finished with ${job.result}.`);
+          process.exitCode = failed.length ? 1 : 0;
+          NODE
   docker:
     runs-on: ubuntu-latest
     timeout-minutes: 20

@@ -19,9 +19,12 @@ type Client = {
   publish: (id: number, plan: Plan, inputs: Inputs, options?: { commit: string; verifiedAssets: VerifiedAsset[] }) => Promise<void>;
   verifyPublished: (id: number, plan: Plan, inputs: Inputs) => Promise<void>;
   cleanup: (id: number | string | undefined, plan: Plan) => Promise<void>;
+  requireGreenChecks: (commit: string, options?: { wait?: (ms: number) => Promise<void>; now?: () => number;
+    intervalMs?: number; timeoutMs?: number }) => Promise<void>;
 };
 const require = createRequire(import.meta.url);
-const { GitHubRelease, releasePlan, verifyDesktopManifest, verifyPublicRelease } = require('../desktop/scripts/github-release.mjs') as {
+const { GitHubRelease, REQUIRED_CHECKS, releasePlan, verifyDesktopManifest, verifyPublicRelease } = require('../desktop/scripts/github-release.mjs') as {
+  REQUIRED_CHECKS: string[];
   GitHubRelease: new (options: { repository: string; token: string; request: (url: string, init?: RequestInit) => Promise<Response> }) => Client;
   releasePlan: (options: { eventName: string; dryRun: string; refType: string; refName: string; version: string; runId: string }) => Plan;
   verifyDesktopManifest: (options: { directory: string; version: string; url: string; publicKey: string;
@@ -549,11 +552,97 @@ describe('anonymous release endpoints after publication', () => {
   });
 });
 
+describe('release CI gate', () => {
+  const commit = releaseOptions.commit;
+  const [ubuntu, windows] = REQUIRED_CHECKS;
+  const run = (name: string, status = 'completed', conclusion: string | null = 'success', slug = 'github-actions') =>
+    ({ name, status, conclusion, app: { slug } });
+  function gate(rounds: Array<Record<string, unknown[]>>) {
+    let round = 0;
+    let clock = 0;
+    const request = vi.fn(async (url: string) => {
+      const name = new URL(url).searchParams.get('check_name')!;
+      return json({ check_runs: rounds[Math.min(round, rounds.length - 1)][name] ?? [] });
+    });
+    const wait = vi.fn(async (ms: number) => { round += 1; clock += ms; });
+    const client = new GitHubRelease({ repository, token: 'test', request });
+    const check = () => client.requireGreenChecks(commit, { wait, now: () => clock, intervalMs: 30000, timeoutMs: 120000 });
+    return { request, wait, check };
+  }
+
+  it('passes when both required checks are green on the exact commit, counting a green rerun', async () => {
+    const { request, wait, check } = gate([{ [ubuntu]: [run(ubuntu, 'completed', 'failure'), run(ubuntu)], [windows]: [run(windows)] }]);
+    await check();
+    expect(wait).not.toHaveBeenCalled();
+    expect(request.mock.calls.map(([url]) => url)).toEqual(REQUIRED_CHECKS.map(name =>
+      `https://api.github.com/repos/${repository}/commits/${commit}/check-runs?check_name=${encodeURIComponent(name)}&per_page=100`));
+  });
+
+  it('waits while CI has not started or is still running, then passes', async () => {
+    const { wait, check } = gate([{}, { [ubuntu]: [run(ubuntu, 'in_progress', null)], [windows]: [run(windows)] },
+      { [ubuntu]: [run(ubuntu)], [windows]: [run(windows)] }]);
+    await check();
+    expect(wait).toHaveBeenCalledTimes(2);
+  });
+
+  it('stops on a failed check without waiting', async () => {
+    const { wait, check } = gate([{ [ubuntu]: [run(ubuntu, 'completed', 'cancelled')], [windows]: [run(windows)] }]);
+    await expect(check()).rejects.toThrow(`CI check "${ubuntu}" finished with cancelled`);
+    expect(wait).not.toHaveBeenCalled();
+  });
+
+  it('ignores same-named checks from other apps and gives up at the deadline', async () => {
+    const { wait, check } = gate([{ [ubuntu]: [run(ubuntu)], [windows]: [run(windows, 'completed', 'success', 'another-app')] }]);
+    await expect(check()).rejects.toThrow(`CI did not report ${windows} on ${commit} in time`);
+    expect(wait).toHaveBeenCalledTimes(4);
+  });
+
+  it('requires a full commit SHA', async () => {
+    const client = new GitHubRelease({ repository, token: 'test', request: vi.fn() });
+    await expect(client.requireGreenChecks('0123456')).rejects.toThrow('full commit SHA');
+  });
+});
+
+describe('CI workflow required checks', () => {
+  type Job = { name?: string; if?: string; needs?: string[]; env?: Record<string, string>;
+    strategy: { matrix: { os: string[]; shard?: number[] } }; steps: Array<{ run?: string }> };
+  const ci = parse(readFileSync(new URL('../.github/workflows/ci.yml', import.meta.url), 'utf8')) as { jobs: Record<string, Job> };
+
+  it('summarizes every unit and browser job in the contexts the ruleset and the release require', () => {
+    const checks = ci.jobs.checks;
+    expect(checks.needs).toEqual(['unit', 'browser']);
+    expect(checks.if).toBe('always()');
+    expect(checks.name).toBeUndefined();
+    expect(checks.strategy.matrix.os.map(os => `checks (${os})`)).toEqual(REQUIRED_CHECKS);
+  });
+
+  it('splits the browser project into shards that together cover it on both systems', () => {
+    const { browser, unit } = ci.jobs;
+    const shards = browser.strategy.matrix.shard!;
+    expect(shards).toEqual(Array.from({ length: shards.length }, (_, index) => index + 1));
+    expect(browser.name).toBe(`browser (\${{ matrix.os }}, \${{ matrix.shard }}/${shards.length})`);
+    expect(browser.env?.SHARD).toBe(`\${{ matrix.shard }}/${shards.length}`);
+    expect(browser.steps.at(-1)?.run).toBe('npx vitest run --project browser --shard="$SHARD"');
+    expect(browser.strategy.matrix.os).toEqual(unit.strategy.matrix.os);
+    expect(unit.steps.map(step => step.run)).toEqual(expect.arrayContaining(['npm run typecheck', 'npx vitest run --project unit']));
+  });
+});
+
 describe('release workflow publication boundary', () => {
   type Step = { name?: string; id?: string; if?: string; run?: string; env?: Record<string, string> };
   const workflow = parse(readFileSync(new URL('../.github/workflows/release.yml', import.meta.url), 'utf8')) as {
-    jobs: Record<string, { needs?: string | string[]; steps: Step[] }>;
+    jobs: Record<string, { needs?: string | string[]; permissions?: Record<string, string>; steps: Step[] }>;
   };
+
+  it('publishes only a commit with green CI and does not run the suite again', () => {
+    const preflight = workflow.jobs.preflight.steps;
+    const gate = preflight.findIndex(step => step.run === 'node desktop/scripts/github-release.mjs require-ci');
+    expect(gate).toBeGreaterThan(-1);
+    expect(preflight[gate].if).toBe("github.event_name == 'push'");
+    expect(gate).toBeLessThan(preflight.findIndex(step => step.run === 'npm ci'));
+    expect(preflight.some(step => step.run === 'npm test' || step.run === 'npm run typecheck')).toBe(false);
+    expect(workflow.jobs.preflight.permissions).toEqual({ contents: 'read', checks: 'read' });
+  });
   const steps = workflow.jobs.release.steps;
   const action = (name: string) => steps.find(step => step.run === `node desktop/scripts/github-release.mjs ${name}`)!;
 

@@ -20,9 +20,14 @@ concurrency:
 jobs:
   # Nothing in this job publishes. All version sources and both dated changelogs
   # are checked before either the desktop build or any publication can start.
+  # A tag publishes only a commit whose required CI checks are green; the suite
+  # itself runs in CI, not again here (2026-11-10).
   preflight:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      checks: read
     outputs:
       version: ${{ steps.release.outputs.version }}
       dry_run: ${{ steps.release.outputs.dry_run }}
@@ -92,9 +97,15 @@ jobs:
           extractReleaseNotes(readFileSync('CHANGELOG.ru.md', 'utf8'), version, 'CHANGELOG.ru.md');
           appendFileSync(env.GITHUB_OUTPUT, `version=${version}\ndry_run=${plan.dryRun}\nrelease_tag=${plan.tag}\npub_date=${pubDate}\n`);
           NODE
+      - name: Require green CI on the release commit
+        if: github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.release.outputs.version }}
+          DRY_RUN: ${{ steps.release.outputs.dry_run }}
+          RELEASE_TAG: ${{ steps.release.outputs.release_tag }}
+        run: node desktop/scripts/github-release.mjs require-ci
       - run: npm ci
-      - run: npm run typecheck
-      - run: npm test
       - run: npm run build
       - name: Pack release
         id: package

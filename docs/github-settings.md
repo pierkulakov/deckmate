@@ -76,10 +76,11 @@ Use Node.js 26 or newer and install from the lockfile:
 ```sh
 npm run quiet -- npm ci
 npm run quiet -- npm run typecheck
-npm run quiet -- npm test
 npm run quiet -- npm run build
 npm run quiet -- npm pack --ignore-scripts --dry-run
 ```
+
+The full suite runs in CI rather than here: the release commit must have green `checks (ubuntu-latest)` and `checks (windows-latest)`, which `preflight` verifies.
 
 The package contains the compiled client in `dist/client/`, server and CLI tools in `dist/`, templates, public skills and required license notices. Install the actual tarball into a fresh directory and check `deckmate --version`, `deckmate init`, the project/skills/agents commands, and the HTTP application before publishing. A source-checkout run alone does not verify the package contents.
 
@@ -96,7 +97,7 @@ git push origin v0.6.0
 
 [release.yml](../.github/workflows/release.yml) runs `preflight → desktop → release`:
 
-1. `preflight` checks public visibility and npm authentication, every version source and both dated changelogs, then runs checks and packs npm. It records the tag commit's timestamp for the updater `pub_date`.
+1. `preflight` checks public visibility and npm authentication, every version source and both dated changelogs, then requires green `checks (ubuntu-latest)` and `checks (windows-latest)` from GitHub Actions on the tagged commit (it waits up to 30 minutes while CI on `main` is still running and stops on a failed check), builds and packs npm. It does not run the test suite again. It records the tag commit's timestamp for the updater `pub_date`.
 2. `desktop` builds on the pinned Rust toolchain, signs and self-tests the Windows installer and portable zip, and generates `latest.json` **once** with a canonical base64 signature and both languages' notes. All files, including the `.sig` and manifest, travel together in the `desktop-release` artifact (seven-day retention). Repeating manifest generation with the same inputs and commit date produces identical bytes.
 3. `release` downloads the artifacts and verifies the installer signature again against the checked-in public key, the signed version and the unchanged manifest. Its publication order is **prepare → upload and fully verify the draft → npm → GHCR → publish (PATCH) → verify-public**. Prepare uses the paginated REST release list and numeric REST `id`. Upload sends the npm tarball, installer and zip, then `latest.json` **last**, checking API names, `state=uploaded`, sizes, SHA-256 `digest` when supplied and downloaded bytes. Unexpected or duplicate assets stop the job before npm/GHCR. Upload content types are `application/gzip` for `.tgz`, `application/zip` for `.zip`, `application/json` for `.json` and `application/octet-stream` for installers and other files.
 4. Draft `browser_download_url` values use temporary `untagged-<hash>` paths. Both Windows platform entries in `latest.json` must instead match `https://github.com/<owner>/<repo>/releases/download/<tag>/<encoded API asset name>`. The workflow never rewrites the manifest or expects a draft URL to be public. The completed upload records verified asset IDs and SHA-256 values; only then does the job check npm integrity, build the container, publish npm with provenance and push GHCR.
@@ -111,7 +112,7 @@ After success, verify the npm version/provenance, installation from npm, the Git
 
 ### Signed dry run before a real tag
 
-In Actions → **Release → Run workflow**, select the reviewed candidate ref and leave `dry_run=true` (the default). Version sources and both dated changelogs must already agree. `preflight` and `desktop` run normally, including npm access validation, real signing secrets and self-tests. The release job follows **prepare → upload tarball, installer, zip and latest.json last → full draft verification → cleanup**, using `v<version>-dryrun.<run_id>`. Its temporary draft URLs are expected; both manifest entries are checked against the planned public URL even though that tag does not exist. The draft targets the checked-out commit; no Git tag is created because it is never published. There is no npm publication, container build/push, release publication or public updater endpoint in this mode. `workflow_dispatch` with `dry_run=false` is rejected; real publication requires a matching tag push.
+In Actions → **Release → Run workflow**, select the reviewed candidate ref and leave `dry_run=true` (the default). Version sources and both dated changelogs must already agree. `preflight` (without the CI gate, which applies to tag pushes) and `desktop` run normally, including npm access validation, real signing secrets and self-tests. The release job follows **prepare → upload tarball, installer, zip and latest.json last → full draft verification → cleanup**, using `v<version>-dryrun.<run_id>`. Its temporary draft URLs are expected; both manifest entries are checked against the planned public URL even though that tag does not exist. The draft targets the checked-out commit; no Git tag is created because it is never published. There is no npm publication, container build/push, release publication or public updater endpoint in this mode. `workflow_dispatch` with `dry_run=false` is rejected; real publication requires a matching tag push.
 
 Cleanup runs even after prepare or an asset check fails. If creation succeeded but no `release_id` was saved, cleanup searches the paginated release list for the plan's exact dry-run tag and deletes only its draft; an absent draft is a no-op, while duplicate matches or a public release cause refusal. If the runner is forcibly terminated or GitHub is unavailable during cleanup, inspect and remove the leftover dry-run **draft** by its numeric ID, or rerun the same run to resume and clean it up. Never publish a dry-run draft in the UI.
 

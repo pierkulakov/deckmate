@@ -37,6 +37,9 @@ function verifiedAsset(asset, file) {
   return { id: asset.id, name: file.name, sha256: digest(file.bytes) };
 }
 
+// The status checks the main ruleset requires. Each summarizes every unit and browser job of CI on both systems.
+export const REQUIRED_CHECKS = ['checks (ubuntu-latest)', 'checks (windows-latest)'];
+
 export class GitHubRelease {
   constructor({ repository, token, request = fetch }) {
     if (!/^[\w.-]+\/[\w.-]+$/u.test(repository) || !token) throw new Error('GitHub repository and token are required.');
@@ -64,6 +67,36 @@ export class GitHubRelease {
     if (response.status === 204) return null;
     if (binary) return Buffer.from(await response.arrayBuffer());
     return response.json();
+  }
+
+  // The release workflow does not run the test suite again (2026-11-10): it ships a commit only after GitHub Actions
+  // reported every required check green on that exact commit. A tag pushed right after the merge waits for CI on main.
+  async requireGreenChecks(commit, { names = REQUIRED_CHECKS, wait = delay, now = Date.now,
+    intervalMs = 30000, timeoutMs = 30 * 60000 } = {}) {
+    if (!/^[0-9a-f]{40}$/u.test(commit)) throw new Error('A full commit SHA is required to check CI.');
+    const deadline = now() + timeoutMs;
+    for (;;) {
+      const waiting = [];
+      for (const name of names) {
+        const { check_runs: runs } = await this.api(`commits/${commit}/check-runs?check_name=${encodeURIComponent(name)}&per_page=100`);
+        const own = runs.filter(run => run.name === name && run.app?.slug === 'github-actions');
+        if (own.some(run => run.status === 'completed' && run.conclusion === 'success')) continue;
+        const finished = own.filter(run => run.status === 'completed');
+        if (own.length && finished.length === own.length) {
+          throw new Error(`CI check "${name}" finished with ${finished.map(run => run.conclusion).join(', ')} on ${commit}; release only a commit with green CI.`);
+        }
+        waiting.push(name);
+      }
+      if (!waiting.length) {
+        console.log(`CI is green on ${commit}: ${names.join(', ')}.`);
+        return;
+      }
+      if (now() >= deadline) {
+        throw new Error(`CI did not report ${waiting.join(', ')} on ${commit} in time; push the commit to main and wait for CI.`);
+      }
+      console.log(`Waiting for CI on ${commit}: ${waiting.join(', ')}.`);
+      await wait(intervalMs);
+    }
   }
 
   async list(endpoint) {
@@ -316,6 +349,10 @@ async function main() {
     refName: env.GITHUB_REF_NAME, version: env.VERSION, runId: env.GITHUB_RUN_ID });
   if (env.RELEASE_TAG !== plan.tag) throw new Error('Release tag does not match the validated release plan.');
   const action = process.argv[2];
+  if (action === 'require-ci') {
+    await new GitHubRelease({ repository: env.GITHUB_REPOSITORY, token: env.GH_TOKEN }).requireGreenChecks(env.GITHUB_SHA);
+    return;
+  }
   if (action === 'cleanup') {
     const client = new GitHubRelease({ repository: env.GITHUB_REPOSITORY, token: env.GH_TOKEN });
     await client.cleanup(env.RELEASE_ID, plan);

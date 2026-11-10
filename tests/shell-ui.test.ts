@@ -18,7 +18,7 @@ describe.skipIf(!browserPath)('application shell (browser)', () => {
   async function openBrowser() {
     await session.open(browserPath!, { extraArgs: ['--disable-features=OverlayScrollbar'] });
     browserErrors.push(session.errors);
-    await session.navigate('shell-ui', `Boolean(window.shellTest && document.querySelector('.global-tabs'))`, 600);
+    await session.navigate('shell-ui', `Boolean(window.shellTest && document.querySelector('.global-tabs'))`);
     expect(await evaluate(`({ hover: matchMedia('(hover: hover)').matches, fine: matchMedia('(pointer: fine)').matches })`))
       .toEqual({ hover: true, fine: true });
   }

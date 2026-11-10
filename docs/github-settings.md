@@ -9,7 +9,7 @@ Maintainer notes for [pierkulakov/deckmate](https://github.com/pierkulakov/deckm
 - Enable Issues and Discussions; disable the Wiki.
 - Enable automatic deletion of merged branches.
 - Set Actions workflow permissions to **Read repository contents and packages**. Disable **Allow GitHub Actions to create and approve pull requests**. Individual workflows declare the additional permissions they need.
-- Enable Dependabot alerts and security updates. [dependabot.yml](../.github/dependabot.yml) also checks npm packages and Actions weekly.
+- Enable Dependabot alerts and security updates. [dependabot.yml](../.github/dependabot.yml) also checks npm packages, Cargo crates and Actions weekly: each ecosystem sends one grouped pull request for minor and patch updates, and every major update arrives on its own.
 - Keep the repository **Description** consistent with the description in [package.json](../package.json). Use its keywords as **Topics** in the repository's About panel so GitHub and npm describe the same product.
 - Review [social-preview.png](social-preview.png) now; upload it under **Settings → General → Social preview** right after the repository is public, because GitHub shows that section only for public repositories (2026-11-07). It must be 1280×640 and smaller than 1 MiB. Regenerate the demo screenshots and preview with `npm run build`, then `npm run shots`; review all six screenshots and the preview at full size and at 320×160 before uploading.
 - Keep the website field empty until the npm package exists; then use `https://www.npmjs.com/package/deckmate`.

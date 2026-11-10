@@ -1,22 +1,41 @@
 version: 2
+# Each ecosystem sends one weekly pull request for its minor and patch updates,
+# so related packages land with one lockfile change and one CI run. A major
+# update matches no group and keeps a pull request of its own for review.
 updates:
   - package-ecosystem: npm
     directory: /
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
+    groups:
+      npm-minor-patch:
+        patterns: ['*']
+        update-types: [minor, patch]
   - package-ecosystem: npm
     directory: /desktop
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
+    groups:
+      desktop-npm-minor-patch:
+        patterns: ['*']
+        update-types: [minor, patch]
   - package-ecosystem: cargo
     directory: /desktop/src-tauri
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
+    groups:
+      cargo-minor-patch:
+        patterns: ['*']
+        update-types: [minor, patch]
   - package-ecosystem: github-actions
     directory: /
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
+    groups:
+      actions-minor-patch:
+        patterns: ['*']
+        update-types: [minor, patch]

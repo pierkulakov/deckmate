@@ -4,11 +4,12 @@ import { fileURLToPath } from 'node:url';
 import { Children, isValidElement, type ReactElement, type ReactNode } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { setLang } from '../client/i18n.ts';
-import { tileColor, tilePalette } from '../client/project-tile.ts';
+import { tileColor, tileInitials, tilePalette } from '../client/project-tile.ts';
 import {
-  RecentProjects, RecentProjectsList, attemptSwitch, compactPath, otherProjects, switchFailureText, type RecentProjectsLabels,
+  OpenStartScreen, RecentProjects, RecentProjectsList, attemptSwitch, compactPath, otherProjects, switchFailureText, type RecentProjectsLabels,
 } from '../client/RecentProjects.tsx';
-import type { DesktopBoardBridge, DesktopRecentProject, DesktopResult } from '../client/desktop-bridge.ts';
+import { hasWorkspace, type DesktopBoardBridge, type DesktopRecentProject, type DesktopResult } from '../client/desktop-bridge.ts';
+import { WorkspaceProjects } from '../client/WorkspaceProjects.tsx';
 
 // 2026-11-08: the project menu lists the shell's recent projects when the Desktop bridge is present
 // (a fake window.deckmateBoard), keeps the current one out of the list, switches by path and shows
@@ -28,7 +29,7 @@ beforeEach(() => {
 afterEach(() => vi.unstubAllGlobals());
 
 const labels: RecentProjectsLabels = {
-  openAnotherFolder: 'Open another folder…',
+  openAnotherFolder: 'Open start screen',
   recentFailed: 'Could not load recent projects.',
   switchNotRecent: 'This folder is no longer in the recent list.',
   switchMissing: 'That folder was not found on this computer.',
@@ -56,7 +57,7 @@ function fakeBoard(result: DesktopResult | Error): { board: DesktopBoardBridge; 
 function renderList(overrides: Partial<Parameters<typeof RecentProjectsList>[0]> = {}): string {
   const props: Parameters<typeof RecentProjectsList>[0] = {
     projects: otherProjects(projects), switching: null, failureText: null, disabled: false,
-    labels, lang: 'en', onSwitch: () => {}, onOpenStart: () => {}, ...overrides,
+    lang: 'en', onSwitch: () => {}, onOpenStart: () => {}, ...overrides,
   };
   return renderToStaticMarkup(<RecentProjectsList {...props} />);
 }
@@ -107,6 +108,14 @@ describe('recent projects list', () => {
     expect(tileColor('Проект альфа')).not.toBe(tileColor('tower-defence'));
   });
 
+  it('writes the launcher tile initials into the tile window of every row', () => {
+    const html = renderList();
+    expect(html).toContain('data-initials="ПА"');
+    expect(html).toContain('data-initials="TD"');
+    expect(renderList({ projects: [projects[0]] })).toContain('data-initials="D"');
+    expect(renderList({ projects: [{ ...projects[1], name: '' }] })).toContain('data-initials=""');
+  });
+
   it('middle-truncates long paths while short ones stay whole', () => {
     const compact = compactPath(longPath);
     expect(compact).toContain('…');
@@ -116,10 +125,10 @@ describe('recent projects list', () => {
     expect(compactPath('C:\\Work', 30)).toBe('C:\\Work');
   });
 
-  it('keeps the shortened folder suffix and places time below the path in the same text column', () => {
+  it('keeps the shortened folder suffix and places time beside the name', () => {
     const path = 'D:\\Work\\Shared\\Игровая-команда\\Подготовка-первого-релиза';
     const html = renderList({ projects: [{ ...projects[1], path }] });
-    expect(html).toMatch(/mission-control-recent-path[^>]*>[^<]*первого-релиза<\/span><time[^>]*>[^<]*<\/time><\/div>/u);
+    expect(html).toMatch(/<strong>[^<]*<\/strong><time[^>]*>[^<]*<\/time><\/div><span class="mission-control-recent-path">[^<]*первого-релиза<\/span>/u);
     expect(html).toContain(`title="${path}"`);
     expect(compactPath(path).match(/…/gu)).toHaveLength(1);
   });
@@ -146,15 +155,15 @@ describe('recent projects list', () => {
     const { board, calls } = fakeBoard({ ok: true });
     const opened: string[] = [];
     const tree = RecentProjectsList({
-      projects: otherProjects(projects), switching: null, failureText: null, disabled: false, labels, lang: 'en',
+      projects: otherProjects(projects), switching: null, failureText: null, disabled: false, lang: 'en',
       onSwitch: path => void attemptSwitch(board, path), onOpenStart: () => opened.push('start'),
     });
     const row = buttonsOf(tree).find(button => (button.props as { title?: string }).title === longPath);
     (row?.props as { onClick: () => void }).onClick();
     await Promise.resolve();
     expect(calls).toEqual([longPath]);
-    const openLink = buttonsOf(tree).find(button => String((button.props as { className?: string }).className).includes('mission-control-recent-open'));
-    (openLink?.props as { onClick: () => void }).onClick();
+    const open = (tree.props.children as ReactElement[]).find(child => isValidElement(child) && child.type === OpenStartScreen);
+    (open?.props as { onOpen: () => void }).onOpen();
     expect(opened).toEqual(['start']);
   });
 });
@@ -183,7 +192,19 @@ describe('recent projects switching', () => {
 
 describe('recent projects without the bridge', () => {
   it('renders nothing, so the project section keeps its single current-project row', () => {
-    expect(renderToStaticMarkup(<RecentProjects open disabled={false} labels={labels} />)).toBe('');
+    expect(renderToStaticMarkup(<RecentProjects open disabled={false} />)).toBe('');
+    expect(renderToStaticMarkup(<WorkspaceProjects open disabled={false} />)).toBe('');
+  });
+
+  it('requires the complete workspace capability and keeps older or partial bridges usable', () => {
+    const { board } = fakeBoard({ ok: true });
+    expect(hasWorkspace(board)).toBe(false);
+    board.workspaceProjects = async () => [];
+    expect(hasWorkspace(board)).toBe(false);
+    board.addToWorkspace = async () => ({ ok: true, projects: [] });
+    board.removeFromWorkspace = async () => ({ ok: true, projects: [] });
+    board.moveInWorkspace = async () => ({ ok: true, projects: [] });
+    expect(hasWorkspace(board)).toBe(true);
   });
 });
 
@@ -205,5 +226,24 @@ describe('project tile palette mirror', () => {
     for (const name of ['deckmate', 'Проект альфа', 'tower-defence', 'Hollow Signal', '举动📈 mixed', '']) {
       expect(tileColor(name)).toBe(launcherColor(name));
     }
+  });
+});
+
+describe('project tile initials mirror', () => {
+  // 2026-11-09: tileInitials mirrors the tile.dataset.initials expression of desktop/launcher/launcher.js by hand,
+  // like tileColor above. The exact launcher rule stays pinned here as text, so changing it there fails this test
+  // until client/project-tile.ts is changed in the same commit; the expected values pin the client side.
+  it('derives the same initials as the launcher for the same names', () => {
+    const source = readFileSync(fileURLToPath(new URL('../desktop/launcher/launcher.js', import.meta.url)), 'utf8');
+    expect(source).toContain(".trim().split(/[^\\p{L}\\p{N}]+/u).filter(Boolean).slice(0, 2)"
+      + ".map(word => Array.from(word)[0]).join('').toLocaleUpperCase()");
+    expect(tileInitials('deckmate')).toBe('D');
+    expect(tileInitials('Проект альфа')).toBe('ПА');
+    expect(tileInitials('tower-defence')).toBe('TD');
+    expect(tileInitials('Hollow Signal')).toBe('HS');
+    expect(tileInitials('举动📈 mixed')).toBe('举M');
+    expect(tileInitials('Подготовка-первого-релиза')).toBe('ПП');
+    expect(tileInitials('  Wide  glyphs  ')).toBe('WG');
+    expect(tileInitials('')).toBe('');
   });
 });

@@ -6,20 +6,22 @@
 .catalog-zone-tools { display: inline-flex; align-items: center; gap: 2px; margin-left: auto; opacity: 0; transition: opacity var(--motion-feedback); }
 .catalog-card-group-heading:hover .catalog-zone-tools, .catalog-zone-tools:focus-within { opacity: 1; }
 @media (hover: none) { .catalog-zone-tools { opacity: 1; } }
-.catalog-zone-tools .ui-button { width: 24px; height: 24px; min-height: 24px; padding: 0; border: 1px solid var(--line); border-radius: 4px; color: var(--muted); background: transparent; }
-.catalog-zone-tools .ui-button:hover:not(:disabled) { background: var(--hover); color: var(--ink); }
-.catalog-zone-tools .ui-button.is-danger:hover:not(:disabled) { border-color: var(--danger); color: var(--danger); }
+.catalog-zone-tools .ui-button { width: 24px; height: 24px; min-height: 24px; padding: 0; border: 1px solid var(--control-line); border-radius: var(--control-radius); color: var(--muted); background: transparent; }
+@media (hover: hover) {
+  .catalog-zone-tools .ui-button:hover:not(:disabled) { border-color: var(--button-line); background: var(--hover); color: var(--ink); }
+  .catalog-zone-tools .ui-button.is-danger:hover:not(:disabled) { border-color: var(--danger); color: var(--danger); }
+}
 /* The delete confirmation strip stands in the heading row, in place of the delete button itself (2026-11-05);
    it must not inherit the 24 px icon shape or the muted ink from the tools around it. */
 .catalog-zone-tools .confirm-strip { min-height: 0; padding: 2px 6px; }
 .catalog-zone-tools .confirm-strip .ui-button { width: auto; height: 24px; padding: 0 9px; font-size: 11px; }
-.catalog-zone-tools .confirm-strip .ui-button.confirm-strip-keep { background: var(--violet-fill, var(--accent)); color: var(--violet-fill-ink, var(--surface)); }
-.catalog-zone-tools .confirm-strip .ui-button.confirm-strip-keep:hover:not(:disabled) { background: var(--violet-fill, var(--accent)); opacity: .9; }
+.catalog-zone-tools .confirm-strip .ui-button.confirm-strip-keep { border-color: transparent; background: var(--violet-fill, var(--accent)); color: var(--violet-fill-ink, var(--surface)); }
+@media (hover: hover) { .catalog-zone-tools .confirm-strip .ui-button.confirm-strip-keep:hover:not(:disabled) { border-color: transparent; background: var(--violet-fill, var(--accent)); opacity: .9; } }
 .catalog-zone-tools .confirm-strip .ui-button.confirm-strip-confirm.is-danger { border-color: var(--danger); color: var(--danger); }
-.catalog-zone-handle { border: 0; background: transparent; color: var(--muted); cursor: grab; touch-action: none; }
+.catalog-zone-handle { border: 0; border-radius: var(--control-radius); background: transparent; color: var(--muted); cursor: grab; touch-action: none; }
 .catalog-zone-handle:disabled { cursor: default; opacity: .4; }
 .catalog-zone-handle svg { pointer-events: none; }
-.catalog-zone-title-input { min-width: 80px; max-width: 260px; height: 24px; padding: 2px 7px; border: 1px solid var(--focus); border-radius: 4px; background: var(--surface); color: var(--ink); font: inherit; font-size: 12px; }
+.catalog-zone-title-input { min-width: 80px; max-width: 260px; height: 24px; padding: 2px 7px; border: 1px solid var(--control-field-line); border-radius: var(--control-radius); background: var(--control-field); color: var(--ink); font: inherit; font-size: 12px; }
 .catalog-card-group.is-zone-over { box-shadow: inset 0 3px 0 var(--accent); }
 
 /* Manual order drop affordance: the tile the pointer marks receives the cards before itself. Its row opens a 20 px gap there
@@ -30,10 +32,12 @@
 .deck-card-order-slot[data-order-shift="after"] > * { translate: 10px 0; }
 .deck-card-order-slot.is-card-order-target::before { content: ''; position: absolute; inset: 0 auto 0 -8.5px; width: 1px; background: var(--line); pointer-events: none; }
 
-/* Add Zone uses a dashed strip below the last zone. */
-.catalog-add-zone { display: flex; align-items: center; gap: 8px; width: 100%; max-width: 420px; margin-top: 14px; padding: 9px 12px; border: 1px dashed var(--line); border-radius: 6px; background: transparent; color: var(--muted); font: inherit; font-size: 12px; cursor: pointer; }
-.catalog-add-zone:hover:not(:disabled) { border-color: var(--focus); color: var(--ink); background: var(--hover); }
+/* 2026-11-10: Add Zone uses the same quiet solid edge as the other creating slots. */
+.catalog-add-zone { display: flex; align-items: center; gap: 8px; width: 100%; max-width: 420px; margin-top: 14px; padding: 9px 12px; border: 1px solid var(--control-line); border-radius: var(--control-radius); background: transparent; color: var(--muted); font: inherit; font-size: 12px; font-weight: 500; letter-spacing: .01em; cursor: pointer; }
+@media (hover: hover) { .catalog-add-zone:hover:not(:disabled) { border-color: var(--button-line); color: var(--ink); background: var(--hover); } }
 .catalog-add-zone-form { display: flex; gap: 8px; width: 100%; max-width: 420px; margin-top: 14px; }
-.catalog-add-zone-form input { flex: 1; min-width: 0; height: 32px; padding: 4px 10px; border: 1px solid var(--focus); border-radius: 5px; background: var(--surface); color: var(--ink); font: inherit; font-size: 13px; }
+.catalog-add-zone-form input { flex: 1; min-width: 0; height: 32px; padding: 4px 10px; border: 1px solid var(--control-field-line); border-radius: var(--control-radius); background: var(--control-field); color: var(--ink); font: inherit; font-size: 13px; }
+@media (hover: hover) { :is(.catalog-zone-title-input, .catalog-add-zone-form input):hover:not(:disabled, :focus) { border-color: var(--button-line); } }
+:is(.catalog-zone-title-input, .catalog-add-zone-form input):focus { border-color: var(--focus); box-shadow: inset 0 0 0 1px var(--focus); }
 
 /* Inbox assignment in deck settings. */

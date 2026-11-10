@@ -5,13 +5,15 @@ import type { CatalogDeck, CatalogMember, CardPriority } from '../../src/catalog
 import { DeckHeaderHint } from './Deck.tsx';
 import { Button } from './ui/button.tsx';
 import { defineText, useText } from '../i18n.ts';
+import { AgentQueueHint } from './AgentQueueHint.tsx';
 
 const text = defineText({
-  hint: (tag: string | null | undefined, template: boolean) => 'Deck automation' + (tag ? ' · auto-tag “' + tag + '”' : ' · no auto-tag') + (template ? ' · card template set' : ''),
-  label: (tag: string | null | undefined) => 'Deck automation' + (tag ? ': auto-tag “' + tag + '”' : ''),
+  hint: (tag: string | null | undefined, template: boolean) => 'Deck tags and template. These rules do not start agents' + (tag ? ' · auto-tag “' + tag + '”' : ' · no auto-tag') + (template ? ' · card template set' : ''),
+  label: (tag: string | null | undefined) => 'Deck tags and template' + (tag ? ': auto-tag “' + tag + '”' : ''),
+  noLaunch: 'These rules do not start agents.',
   invalidEffort: 'Template Effort must be a number greater than or equal to zero.',
   saveFailed: 'Automation was not saved. Check the catalog message and try again.',
-  heading: 'Automations', autoTagging: 'Auto-tagging', deckTag: 'Deck tag', tagPlaceholder: 'tag name',
+  heading: 'Deck tags and template', autoTagging: 'Auto-tagging', deckTag: 'Deck tag', tagPlaceholder: 'tag name',
   keepTag: 'Keep the tag when a card leaves the deck',
   tagNote: 'The tag is added when a card is created or moved into the deck, and removed when it leaves. Turning off auto-tagging does not remove tags from cards.',
   template: 'Template card', content: 'New card content', markdownPlaceholder: 'Markdown template for the new card body',
@@ -19,11 +21,12 @@ const text = defineText({
   templateNote: 'The template fills the empty body and unset properties of new cards in this deck.',
   sandboxOnly: 'Automation can only be changed in the test copy.', saving: 'Saving…', save: 'Save',
 }, {
-  hint: (tag: string | null | undefined, template: boolean) => 'Автоматизация колоды' + (tag ? ' · автотег «' + tag + '»' : ' · автотега нет') + (template ? ' · шаблон карточки задан' : ''),
-  label: (tag: string | null | undefined) => 'Автоматизация колоды' + (tag ? ': автотег «' + tag + '»' : ''),
+  hint: (tag: string | null | undefined, template: boolean) => 'Теги и шаблон колоды. Эти правила не запускают агентов' + (tag ? ' · автотег «' + tag + '»' : ' · автотега нет') + (template ? ' · шаблон карточки задан' : ''),
+  label: (tag: string | null | undefined) => 'Теги и шаблон колоды' + (tag ? ': автотег «' + tag + '»' : ''),
+  noLaunch: 'Эти правила не запускают агентов.',
   invalidEffort: 'Оценка шаблона — число не меньше нуля.',
   saveFailed: 'Автоматизация не сохранена. Проверьте сообщение каталога и повторите.',
-  heading: 'Автоматизации', autoTagging: 'Автотег', deckTag: 'Тег колоды', tagPlaceholder: 'имя тега',
+  heading: 'Теги и шаблон колоды', autoTagging: 'Автотег', deckTag: 'Тег колоды', tagPlaceholder: 'имя тега',
   keepTag: 'Оставлять тег при выносе из колоды',
   tagNote: 'Тег ставится карточкам при создании и переносе в колоду, при выносе снимается. Выключение автотега не снимает тег с карточек.',
   template: 'Шаблон карточки', content: 'Содержимое новых карточек', markdownPlaceholder: 'Markdown-шаблон тела новой карточки',
@@ -111,6 +114,7 @@ export function DeckAutomation({ deck, members, tagNames, manifestHash, pending,
     <DropdownMenu.Portal>
       <DropdownMenu.Content className="deck-settings-menu deck-automation-menu" align="start" sideOffset={8} collisionPadding={12} aria-busy={saving}>
         <DropdownMenu.Label className="deck-settings-heading">{t.heading}</DropdownMenu.Label>
+        <p className="deck-settings-note">{t.noLaunch}</p>
         <div className="deck-settings-section">
           <span className="deck-settings-section-title">{t.autoTagging}</span>
           <label className="deck-settings-field">{t.deckTag}
@@ -151,6 +155,7 @@ export function DeckAutomation({ deck, members, tagNames, manifestHash, pending,
             </label>
           </div>
           <p className="deck-settings-note">{t.templateNote}</p>
+          {members.find(member => member.label === templateOwner)?.kind === 'agent' && <AgentQueueHint />}
         </div>
         {error && <p className="deck-settings-error" role="alert">{t[error]}</p>}
         {!writable && <p className="deck-settings-note">{t.sandboxOnly}</p>}

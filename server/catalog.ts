@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { lstat, readFile, readdir, realpath, stat, writeFile, rename, unlink } from 'node:fs/promises';
+import { lstat, readFile, readdir, realpath, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { isDeepStrictEqual } from 'node:util';
 import { isMap, isScalar, isSeq, parse, parseDocument as parseYamlDocument, stringify, type YAMLMap, type YAMLSeq } from 'yaml';
@@ -13,10 +13,11 @@ import { resolveReference, shortReference } from '../src/references.ts';
 import { containedFile } from './config.ts';
 import { parseCached } from './parse-cache.ts';
 import { assertCatalogCoverFile, isCatalogCoverPath, storeCatalogCover, type StoredCatalogCover } from './catalog-covers.ts';
-import { createManagedMarkdown, editNativeCard, ensureManagedDirectory, editNativeCardParent, editNativeCardContent, editNativeCardProperties, nativeCardPath, readNativeCard, readNativeCards, readProjectMarkdown, replaceProjectMarkdown, validateNativeCardMetadata, type NativeCardFile, type NativeCardMetadata } from './native-cards.ts';
+import { createManagedMarkdown, editNativeCard, editNativeCardParent, editNativeCardContent, editNativeCardProperties, nativeCardPath, readNativeCard, readNativeCards, readProjectMarkdown, replaceProjectMarkdown, validateNativeCardMetadata, type NativeCardFile, type NativeCardMetadata } from './native-cards.ts';
 import { applyJourney, createJourney, readJourneys } from './journeys.ts';
 import { bundledJourneyTemplatesDirectory, journeyTemplateDirectories, readJourneyTemplates } from './journey-templates.ts';
 import { updateLegacyCardState } from './card-properties.ts';
+import { validateOwner, validateEffort, validatePriority } from './card-property-validation.ts';
 import type { CardOptions } from '../src/bulk-contracts.ts';
 import { cardOptionsPath, prepareCardOptionsPatch, readCardOptions, sourceComments, type CardOptionsPatch } from './card-options.ts';
 import { getCatalogHands, localIsoDate, selectCatalogHand } from '../src/catalog-hand.ts';
@@ -24,7 +25,6 @@ import { appendCardsToDeckOrder, completeDeckManualOrder } from '../src/catalog-
 import { prepareProjectTag, projectTagsPath, readProjectTags } from './project-tags.ts';
 import { milestonesPath, planningHistoryPath, runsPath } from '../src/planning-files.ts';
 import { canonicalDataPath } from '../src/brand-compat.ts';
-import { resolveDataPath } from './data-paths.ts';
 import { validateCardFamily } from './card-family.ts';
 import { heroCountedTasks } from '../src/hero-done.ts';
 import { deckTypeChangeIssue } from '../src/deck-type-policy.ts';
@@ -41,7 +41,7 @@ const catalogText = defineText({
   reportRollbackFailed: "The report may have been saved, but the state failed and the original card could not be restored safely. Read the card before retrying.",
   autoTag: "Deck auto-tag must be a nonempty string of up to 80 characters.",
   autoTagFlag: "The auto-tag flag must be a boolean.",
-  deckYaml: "A deck must be an explicit YAML map without aliases to be moved to or from the pile in place.",
+  deckYaml: "A deck must be an explicit YAML map without aliases to be edited in place.",
   templateText: "Deck card template must contain up to 50000 characters.",
   templateOwner: "Template Owner must be one line of up to 120 characters.",
   defaultOrder: "Default deck order must be a string such as order=state&direction=asc, up to 200 characters.",
@@ -62,6 +62,7 @@ const catalogText = defineText({
   linkedScanRoot: "Skipped linked scan root (symlink or junction).",
   deckMissing: "Deck not found.",
   spaceMissing: "Space not found.",
+  spaceNotEmpty: "Move or delete this space's decks first",
   selfDeckOrder: "A deck cannot be placed before itself.",
   selfSpaceOrder: "A Space cannot be placed before itself.",
   deckInsertion: "The insertion deck must be in the target Space.",
@@ -101,9 +102,6 @@ const catalogText = defineText({
   zoneMissing: "Zone not found in this deck.",
   noZones: "This deck has no zones: cards use a single flat order.",
   cardInsertion: "The insertion card must be in the target zone.",
-  owner: "Owner must be one line of up to 120 characters or null.",
-  effort: "Card Effort must be a finite nonnegative number or null.",
-  priority: "Card Priority must be high, medium, low or null.",
   cardSourceHash: "The edit needs the card's current version. Refresh the catalog and try again.",
   stateTaskOnly: "Only Task cards can change state; a Hero can only be marked done.",
   heroMarkStates: "A Hero can only be marked done or have that mark removed.",
@@ -111,6 +109,7 @@ const catalogText = defineText({
   heroHasTasks: (accepted: number, total: number) => `A Hero with Task Sub Cards is done when all of them are accepted: ${accepted} of ${total} so far.`,
   invalidState: `Invalid Task state. Use one of: ${cardStates.flatMap(cardStateWords).join(', ')}.`,
   returnReason: "The return reason must be one line of up to 500 characters.",
+  returnReasonRequired: "Returning a card from review requires a nonempty reason.",
   returnFromReview: "A reason can only be recorded when returning a card from review.",
   stateStage: "state",
   ownerStage: "Owner on start",
@@ -123,8 +122,6 @@ const catalogText = defineText({
   newCardTitle: "Card title must be one line of 1 to 1000 characters.",
   newCardText: "Card text must be a string of up to 200000 characters.",
   newCardTracks: "Invalid Tracks for the new card.",
-  newCardEffort: "Card Effort must be a nonnegative number.",
-  newCardPriority: "Card Priority must be high, medium or low.",
   newCardZone: "Invalid zone for the new card.",
   questionDoc: "An open question belongs to a rule Doc card.",
   humanDecision: "A human must make the decision: the member must have kind: human.",
@@ -156,7 +153,6 @@ const catalogText = defineText({
   duplicateOrderCard: (id: string, deckId: string) => `Card ${id} appears twice in the order for deck ${deckId}.`,
   invalidSpace: (space: { id: string }) => `Invalid Space: ${space.id}`,
   invalidDeck: (deck: { id: string }) => `Invalid deck: ${deck.id}`,
-  pileFlag: (deckId: string) => `Deck ${deckId}: piled must be true or false.`,
   invalidTrack: (track: { id: string }) => `Invalid Track: ${track.id}`,
   invalidParent: (entry: { card: string }) => `Invalid Hero parent for ${entry.card}`,
   unknownMembershipDeck: (entry: { card: string }) => `Unknown deck for ${entry.card}`,
@@ -193,7 +189,7 @@ const catalogText = defineText({
   reportRollbackFailed: "Отчёт мог сохраниться, но запись состояния и безопасное восстановление исходной карточки не удались. Прочитайте карточку перед повтором.",
   autoTag: "Автотег колоды — непустая строка до 80 символов.",
   autoTagFlag: "Флаг автотега должен быть boolean.",
-  deckYaml: "Колоду можно убрать в стопку или вернуть на полку точечно, только если она — явная YAML-карта без alias.",
+  deckYaml: "Колода должна быть явной YAML-картой без alias для точечной правки.",
   templateText: "Шаблон карточки колоды — текст до 50000 символов.",
   templateOwner: "Владелец шаблона — одна строка до 120 символов.",
   defaultOrder: "Порядок колоды по умолчанию — строка вида order=state&direction=asc до 200 символов.",
@@ -214,6 +210,7 @@ const catalogText = defineText({
   linkedScanRoot: "Пропущен корневой каталог сканирования: символическая ссылка или junction.",
   deckMissing: "Колода не найдена.",
   spaceMissing: "Пространство не найдено.",
+  spaceNotEmpty: "Сначала перенесите или удалите колоды этого пространства",
   selfDeckOrder: "Нельзя поставить колоду перед самой собой.",
   selfSpaceOrder: "Нельзя поставить Space перед самим собой.",
   deckInsertion: "Колода для вставки должна находиться в целевом пространстве.",
@@ -253,9 +250,6 @@ const catalogText = defineText({
   zoneMissing: "Зона не найдена в этой колоде.",
   noZones: "У колоды ещё нет зон: порядок задаётся одним плоским списком.",
   cardInsertion: "Карточка вставки должна находиться в целевой зоне.",
-  owner: "Исполнитель — одна строка до 120 символов или null.",
-  effort: "Цена карточки — конечное число не меньше нуля или null.",
-  priority: "Приоритет карточки — high, medium, low или null.",
   cardSourceHash: "Нужна актуальная версия карточки. Обновите каталог и повторите действие.",
   stateTaskOnly: "Состояние можно менять только у Task; Hero можно только отметить выполненной.",
   heroMarkStates: "Hero можно только отметить выполненной или снять эту отметку.",
@@ -263,6 +257,7 @@ const catalogText = defineText({
   heroHasTasks: (accepted: number, total: number) => `Hero с Task Sub Cards становится выполненной, когда приняты все они: пока принято ${accepted} из ${total}.`,
   invalidState: `Недопустимое состояние Task. Допустимо: ${cardStates.flatMap(cardStateWords).join(', ')}.`,
   returnReason: "Причина возврата — одна строка до 500 символов.",
+  returnReasonRequired: "Для возврата карточки с приёмки нужна непустая причина.",
   returnFromReview: "Причина пишется только при возврате карточки с приёмки.",
   stateStage: "статус",
   ownerStage: "исполнитель по старту",
@@ -275,8 +270,6 @@ const catalogText = defineText({
   newCardTitle: "Название карточки — одна строка от 1 до 1000 символов.",
   newCardText: "Текст карточки — строка до 200000 символов.",
   newCardTracks: "Некорректные треки новой карточки.",
-  newCardEffort: "Цена карточки — число не меньше нуля.",
-  newCardPriority: "Приоритет карточки — high, medium или low.",
   newCardZone: "Некорректная зона новой карточки.",
   questionDoc: "Открытый вопрос живёт в Doc-карточке правила.",
   humanDecision: "Решение принимает человек: участник должен быть kind: human.",
@@ -308,7 +301,6 @@ const catalogText = defineText({
   duplicateOrderCard: (id: string, deckId: string) => `Карточка ${id} встречается в порядке колоды ${deckId} дважды.`,
   invalidSpace: (space: { id: string }) => `Некорректное пространство: ${space.id}`,
   invalidDeck: (deck: { id: string }) => `Некорректная колода: ${deck.id}`,
-  pileFlag: (deckId: string) => `Колода ${deckId}: piled — только true или false.`,
   invalidTrack: (track: { id: string }) => `Некорректный трек: ${track.id}`,
   invalidParent: (entry: { card: string }) => `Некорректный Hero-родитель у ${entry.card}`,
   unknownMembershipDeck: (entry: { card: string }) => `Неизвестная колода у ${entry.card}`,
@@ -481,7 +473,7 @@ function validateManifest(value: unknown): CatalogManifest {
       || (deck.style !== undefined && !deckStyles.includes(deck.style))
       || (deck.cover != null && !isCatalogCoverPath(deck.cover))
       || (deck.coverPosition !== undefined && (typeof deck.coverPosition !== 'number' || !Number.isFinite(deck.coverPosition) || deck.coverPosition < 0 || deck.coverPosition > 100))) throw new Error(serverText(catalogText).invalidDeck(deck));
-    if (deck.piled !== undefined && typeof deck.piled !== 'boolean') throw new Error(serverText(catalogText).pileFlag(deck.id));
+    // 2026-11-10: legacy `piled` keys are ignored; in-place edits leave their bytes untouched.
     validateDeckParticipants(deck.watcherIds, manifest.members);
     validateDeckParticipants(deck.guardianIds, manifest.members);
     validateDeckAutomation(deck);
@@ -1046,24 +1038,16 @@ async function setDeckParticipants(root: string, source: ManifestSource, edit: D
   return [catalogPath];
 }
 
-/**
- * 2026-11-06: the pile is a hand-set place on the Decks home screen, not a deck property worth reserializing the manifest for:
- * only this deck's `piled` key changes, the deck list order, deckOrder and cards stay as they are, and a repeat does not write.
- */
-async function setDeckPile(root: string, source: ManifestSource, edit: Extract<CatalogEdit, { action: 'set-deck-pile' }>): Promise<string[]> {
-  if (typeof edit.piled !== 'boolean') throw new Error(serverText(catalogText).pileFlag(edit.deckId));
-  const deck = requiredDeck(source.manifest, edit.deckId);
-  if (Boolean(deck.piled) === edit.piled) return [];
-  await replaceProjectMarkdown(root, catalogPath, edit.manifestHash, patchDeckPile(source, deck.id, edit.piled),
-    () => verifyManifestHash(root, edit.manifestHash));
-  return [catalogPath];
-}
-
 async function applyCatalogEdit(root: string, manifest: CatalogManifest, edit: CatalogEdit): Promise<StoredCatalogCover | null> {
   if ('title' in edit && (typeof edit.title !== 'string' || !edit.title.trim() || edit.title.length > 120)) throw new Error(serverText(catalogText).titleLength);
   if (edit.action === 'configure-members') manifest.members = edit.members;
   if (edit.action === 'create-space') manifest.spaces.push({ id: randomUUID(), title: edit.title.trim(), kind: edit.kind ?? 'custom', icon: edit.icon ?? '' });
   if (edit.action === 'update-space') Object.assign(requiredSpace(manifest, edit.spaceId), { title: edit.title.trim(), kind: edit.kind, icon: edit.icon });
+  if (edit.action === 'delete-space') {
+    const space = requiredSpace(manifest, edit.spaceId);
+    if (manifest.decks.some(deck => deck.spaceId === space.id)) throw new Error(serverText(catalogText).spaceNotEmpty);
+    manifest.spaces.splice(manifest.spaces.indexOf(space), 1);
+  }
   if (edit.action === 'create-deck') {
     // A client-chosen UUID lets New Deck upload its cover next; the same UUID again is the same deck, never a twin.
     const requestedId = typeof edit.deckId === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/u.test(edit.deckId) ? edit.deckId : null;
@@ -1125,44 +1109,19 @@ async function setDeckKind(root: string, source: ManifestSource, edit: Extract<C
 type ManifestSource = Awaited<ReturnType<typeof readManifest>>;
 
 async function writeManifest(root: string, source: ManifestSource, manifestHash: string, beforeCommit?: () => Promise<void>): Promise<string> {
-  let manifestSaved = false;
-  if (!source.bytes) source.manifest.formatLanguage ??= 'en';
-  const candidate = source.bytes ? patchManifest(source)
-    : Buffer.from(`---\n${stringify(source.manifest, { lineWidth: 0 }).trimEnd()}\n---\n${workspaceHeader(manifestLanguage(source))}`);
-  let directory: string;
-  try { directory = await containedFile(root, 'tasks'); }
-  catch (error) {
-    // 2026-11-05: the first write to an empty project creates its managed-data directory.
-    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
-    await ensureManagedDirectory(root, 'tasks');
-    directory = await containedFile(root, 'tasks');
-  }
-  const filename = path.join(directory, path.posix.basename(await resolveDataPath(root, catalogPath)));
-  const temporary = `${filename}.${randomUUID()}.tmp`;
-  let temporaryCreated = false;
-  try {
-    await writeFile(temporary, candidate, { flag: 'wx' });
-    temporaryCreated = true;
-    for (let attempt = 0; ; attempt += 1) {
+  if (!source.bytes) {
+    source.manifest.formatLanguage ??= 'en';
+    const created = await createManagedMarkdown(root, catalogPath, source.manifest, workspaceHeader(manifestLanguage(source)), async () => {
       await beforeCommit?.();
-      let current: Buffer | null = null;
-      try { current = await readFile(filename); } catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; }
-      if ((current ? digest(current) : '') !== manifestHash) throw new Error('CATALOG_CONFLICT');
-      try {
-        await rename(temporary, filename);
-        break;
-      } catch (error) {
-        const code = (error as NodeJS.ErrnoException).code;
-        if (process.platform !== 'win32' || !['EPERM', 'EBUSY', 'EACCES'].includes(code ?? '') || attempt >= 4) throw error;
-        // 2026-11-05: Windows readers may briefly hold the manifest; recheck hashes after every bounded wait.
-        await new Promise(resolve => setTimeout(resolve, 25 * (attempt + 1)));
-      }
-    }
-    manifestSaved = true;
-    catalogFileChanged(root, catalogPath);
-  } finally {
-    if (temporaryCreated && !manifestSaved) await unlink(temporary).catch((error: NodeJS.ErrnoException) => { if (error.code !== 'ENOENT') throw error; });
+      await verifyManifestHash(root, manifestHash);
+    });
+    if (!created) throw new Error('CATALOG_CONFLICT');
+    return digest(Buffer.from(renderCatalogManifest(source.manifest)));
   }
+  const candidate = patchManifest(source);
+  await replaceProjectMarkdown(root, catalogPath, manifestHash, candidate, beforeCommit, {
+    conflict: 'CATALOG_CONFLICT', retryWindowsRename: true,
+  });
   return digest(candidate);
 }
 
@@ -1712,29 +1671,6 @@ function patchManifestPreference(source: ManifestSource, key: 'inboxDeckId' | 'p
   return applyManifestEdits(source, yaml, edits.sort((first, second) => second.start - first.start), desired);
 }
 
-/**
- * 2026-11-06: a piled deck stores `piled: true`; putting it back on the shelf removes the key instead of writing false,
- * so a deck that was never piled has no trace of the feature. Only that key's bytes change.
- */
-function patchDeckPile(source: ManifestSource, deckId: string, piled: boolean): Buffer {
-  if (!source.bytes) throw new Error(serverText(catalogText).manifestMissing);
-  const yaml = source.bytes.subarray(source.yamlStart, source.yamlEnd).toString('utf8');
-  const document = parseYamlDocument(yaml, { keepSourceTokens: true });
-  if (document.errors.length || !isMap(document.contents)) throw new Error(serverText(catalogText).yamlInvalid);
-  const decks = document.get('decks', true);
-  const entry = isSeq(decks) ? decks.items[source.manifest.decks.findIndex(deck => deck.id === deckId)] : undefined;
-  if (!isMap(entry) || !entry.range) throw new Error(serverText(catalogText).deckYaml);
-  const pairIndex = entry.items.findIndex(pair => isScalar(pair.key) && pair.key.value === 'piled');
-  const desired = { ...source.manifest, decks: source.manifest.decks.map(deck => {
-    if (deck.id !== deckId) return deck;
-    const next: CatalogDeck = { ...deck, piled: true };
-    if (!piled) delete next.piled;
-    return next;
-  }) };
-  const edits = piled ? [pileInsertion(yaml, entry, pairIndex)] : removeManifestPair(yaml, entry, pairIndex);
-  return applyManifestEdits(source, yaml, edits.sort((first, second) => second.start - first.start), desired);
-}
-
 function rangeOf(node: unknown): [number, number, number] {
   const range = (node as { range?: [number, number, number] } | null)?.range;
   if (!range) throw new Error(serverText(catalogText).deckYaml);
@@ -1745,25 +1681,6 @@ function rangeOf(node: unknown): [number, number, number] {
 function manifestContentEnd(node: unknown): number {
   const [, end, fullEnd] = rangeOf(node);
   return (isMap(node) || isSeq(node)) && !node.flow ? end : fullEnd;
-}
-
-/** Writes `piled: true` after the deck's last key, or turns an explicit `piled: false` into true. */
-function pileInsertion(yaml: string, entry: YAMLMap, pairIndex: number): ManifestTextEdit {
-  if (pairIndex >= 0) {
-    const [start, end] = rangeOf(entry.items[pairIndex].value);
-    return { start, end, text: 'true' };
-  }
-  const last = entry.items.at(-1)!;
-  if (entry.flow) {
-    const end = rangeOf(last.value ?? last.key)[1];
-    return { start: end, end, text: ', piled: true' };
-  }
-  const newline = yaml.includes('\r\n') ? '\r\n' : '\n';
-  const [entryStart, entryEnd] = rangeOf(entry);
-  const indent = ' '.repeat(entryStart - (yaml.lastIndexOf('\n', entryStart - 1) + 1));
-  // A block map's range ends after its last line break, except at the very end of the YAML block.
-  const text = yaml[entryEnd - 1] === '\n' ? `${indent}piled: true${newline}` : `${newline}${indent}piled: true`;
-  return { start: entryEnd, end: entryEnd, text };
 }
 
 /** Deletes a pair with its own line, leaving the neighbouring keys and their comments in place. */
@@ -1985,18 +1902,6 @@ async function setInboxDeck(root: string, source: ManifestSource, edit: Extract<
   return [catalogPath];
 }
 
-function validateOwner(owner: unknown): asserts owner is string | null {
-  if (owner !== null && (typeof owner !== 'string' || !owner.trim() || owner.length > 120 || /[\r\n\u0000]/u.test(owner))) throw new Error(serverText(catalogText).owner);
-}
-
-function validateEffort(effort: unknown): asserts effort is number | null {
-  if (effort !== null && (typeof effort !== 'number' || !Number.isFinite(effort) || effort < 0)) throw new Error(serverText(catalogText).effort);
-}
-
-function validatePriority(priority: unknown): asserts priority is 'high' | 'medium' | 'low' | null {
-  if (priority !== null && !['high', 'medium', 'low'].includes(priority as string)) throw new Error(serverText(catalogText).priority);
-}
-
 /**
  * 2026-11-04: only a deck guardian, human or agent, may accept its cards.
  * If x-deckmate-actor identifies the requester, check only that member's guardian rights.
@@ -2038,7 +1943,7 @@ function validateHeroMark(catalog: CatalogView, hero: CatalogCard, state: CardSt
   if (tasks.length) throw new Error(serverText(catalogText).heroHasTasks(tasks.filter(task => task.state === 'done').length, tasks.length));
 }
 
-function validateCardState(catalog: CatalogView, card: CatalogCard, edit: CardStateEdit, actorMemberId: string | null): boolean {
+export function validateCardState(catalog: CatalogView, card: CatalogCard, edit: CardStateEdit, actorMemberId: string | null): void {
   if (card.kind === 'hero') validateHeroMark(catalog, card, edit.state);
   else if (card.kind !== 'task') throw new Error(serverText(catalogText).stateTaskOnly);
   // A Hero without its done mark stores null; for the request it reads as not started.
@@ -2051,9 +1956,9 @@ function validateCardState(catalog: CatalogView, card: CatalogCard, edit: CardSt
   if (returnReason !== null && (typeof returnReason !== 'string' || returnReason.length > 500 || /[\r\n]/u.test(returnReason))) {
     throw new Error(serverText(catalogText).returnReason);
   }
-  if (current === edit.state) return card.id.startsWith('task:') && edit.state === 'not-started';
+  if (current === edit.state) return;
+  if (current === 'review' && edit.state !== 'done' && !returnReason?.trim()) throw new Error(serverText(catalogText).returnReasonRequired);
   if (returnReason?.trim() && (current !== 'review' || edit.state === 'done')) throw new Error(serverText(catalogText).returnFromReview);
-  return true;
 }
 
 async function setCardAttributes(root: string, source: ManifestSource, edit: Extract<CatalogEdit, { action: 'set-card-state' | 'set-card-properties' }>, actorMemberId: string | null = null): Promise<string[]> {
@@ -2073,7 +1978,7 @@ async function setCardAttributes(root: string, source: ManifestSource, edit: Ext
     const stateEdit: CardStateEdit = { ...edit, state: requiredCardState(edit.state) };
     const state = stateEdit.state;
     const formatLanguage = manifestLanguage(source);
-    if (!validateCardState(catalog, card, stateEdit, actorMemberId)) return [];
+    validateCardState(catalog, card, stateEdit, actorMemberId);
     // 2026-11-04: starting and accepting cards changes more than state; apply stages sequentially as for question decisions.
     const members = catalog.members ?? [];
     // Starting an unowned card assigns it to the requester identified by x-deckmate-actor;
@@ -2082,23 +1987,27 @@ async function setCardAttributes(root: string, source: ManifestSource, edit: Ext
     const started = state === 'started';
     const startOwner = started && starter && !card.owner ? starter.label : null;
     const startHandMemberId = started && starter ? starter.id : null;
+    let persistedManifestHash = edit.manifestHash;
     // The state write changes sourceHash; later stages check the manifest and persisted state instead.
     const verifyStateSaved = async () => {
-      await verifyManifestHash(root, edit.manifestHash);
+      await verifyManifestHash(root, persistedManifestHash);
       const current = (await refreshProjectCatalog(root, await readProjectCatalog(root), [card.path, cardOptionsPath])).cards.find(candidate => candidate.id === card.id);
-      if (!current || current.state !== state) throw new Error('CARD_CONFLICT');
+      if (!current || (current.state ?? 'not-started') !== state) throw new Error('CARD_CONFLICT');
     };
     const writeOptions = async (changes: Record<string, CardOptionsPatch>): Promise<string[]> => {
       const options = await readCardOptions(root);
       const plan = await prepareCardOptionsPatch(root, options.hash, changes);
       if (!plan.changed) return [];
-      await plan.publish();
+      await plan.publish(verifyStateSaved);
       return [cardOptionsPath];
     };
     const stages: Array<{ title: string; run: () => Promise<string[]> }> = [
       {
         title: serverText(catalogText).stateStage,
         run: async () => {
+          // 2026-11-09: a saved state does not prove that Owner, Hand and acceptance date were saved too.
+          const normalizeLegacyPlan = card.id.startsWith('task:') && state === 'not-started';
+          if ((card.state ?? 'not-started') === state && !normalizeLegacyPlan) return [];
           const changed = card.id.startsWith('card:')
             ? await editNativeCardProperties(root, card.id, edit.sourceHash, { state: card.kind === 'hero' && state !== 'done' ? null : state }, verify, formatLanguage)
             : await updateLegacyCardState(root, card, state, verify, formatLanguage);
@@ -2117,12 +2026,15 @@ async function setCardAttributes(root: string, source: ManifestSource, edit: Ext
         }
         const bytes = patchLegacyScalar(source, card.id, 'owner', startOwner);
         await replaceProjectMarkdown(root, catalogPath, edit.manifestHash, bytes, verifyStateSaved);
+        persistedManifestHash = digest(bytes);
         return [catalogPath];
       },
     });
     if (startHandMemberId !== null) stages.push({
       title: serverText(catalogText).handStage,
       run: async () => {
+        // 2026-11-09: a repeated start must not reshuffle a hand the card is already in; only a missing membership is completed.
+        if ((card.state ?? 'not-started') === state && (card.handMemberIds ?? []).includes(startHandMemberId)) return [];
         const fresh = await readProjectCatalog(root);
         const hand = selectCatalogHand(getCatalogHands(fresh), startHandMemberId, serverLang());
         // Starting a card puts it first in the hand, even when full, without changing other hand members.
@@ -2139,12 +2051,15 @@ async function setCardAttributes(root: string, source: ManifestSource, edit: Ext
         return writeOptions(changes);
       },
     });
-    if (card.state === 'done' || state === 'done') stages.push({
+    if (card.state === 'done' || state === 'done' || card.doneAt != null) stages.push({
       // The acceptance date drives the done pile's weekly badge and auto-archiving.
       title: serverText(catalogText).acceptedDateStage,
       run: async () => {
         const current = (await readProjectCatalog(root)).cards.find(item => item.id === card.id);
-        const doneAt = state === 'done' ? localIsoDate() : null;
+        // 2026-11-09: retries must keep the original acceptance date, including after midnight.
+        let doneAt: string | null = null;
+        if (state === 'done') doneAt = localIsoDate();
+        if (state === 'done' && card.state === 'done' && current?.doneAt) doneAt = current.doneAt;
         if ((current?.doneAt ?? null) === doneAt) return [];
         return writeOptions({ [card.id]: { doneAt } });
       },
@@ -2226,10 +2141,8 @@ async function createCard(root: string, edit: CreateCardEdit, source?: ManifestS
   const owner = requestedOwner === null ? null : resolveMember(requestedOwner.trim(), catalog.members ?? []) ?? requestedOwner.trim();
   const effort = edit.effort ?? deck?.templateEffort ?? null;
   const priority = edit.priority ?? deck?.templatePriority ?? null;
-  if (effort !== null && (typeof effort !== 'number' || !Number.isFinite(effort) || effort < 0)) {
-    throw new Error(serverText(catalogText).newCardEffort);
-  }
-  if (priority !== null && !['high', 'medium', 'low'].includes(priority)) throw new Error(serverText(catalogText).newCardPriority);
+  validateEffort(effort, 'create');
+  validatePriority(priority, 'create');
   if (edit.zoneId != null && (typeof edit.zoneId !== 'string' || !zoneIdPattern.test(edit.zoneId))) throw new Error(serverText(catalogText).newCardZone);
 
   // A Zone's add button selects that lane; other new cards go to the end of the topmost lane.
@@ -2516,7 +2429,6 @@ export async function editProjectCatalog(root: string, edit: CatalogEdit, actorM
   if (edit.action === 'set-deck-watchers' || edit.action === 'set-deck-guardians') return setDeckParticipants(root, source, edit);
   if (edit.action === 'set-deck-automation') return setDeckAutomation(root, source, edit);
   if (edit.action === 'set-deck-default-order') return setDeckDefaultOrder(root, source, edit);
-  if (edit.action === 'set-deck-pile') return setDeckPile(root, source, edit);
   if (edit.action === 'delete-deck') return deleteDeck(root, source, edit);
   if (edit.action === 'set-deck-kind') return setDeckKind(root, source, edit);
   if (edit.action === 'set-card-parent') return setCardParent(root, source, edit);
@@ -2541,21 +2453,27 @@ export async function editProjectCatalog(root: string, edit: CatalogEdit, actorM
   let asset: StoredCatalogCover | null = null;
   let manifestSaved = false;
   try {
+    const optionsHash = edit.action === 'delete-space' ? edit.optionsHash : undefined;
+    const beforeCommit = optionsHash === undefined ? undefined : async () => {
+      if ((await readCardOptions(root)).hash !== optionsHash) throw new Error('CARD_OPTIONS_CONFLICT');
+    };
+    await beforeCommit?.();
     const previousSpaces = edit.action === 'move-space' ? [...source.manifest.spaces] : null;
     asset = await applyCatalogEdit(root, source.manifest, edit);
     if (previousSpaces?.every((space, index) => space === source.manifest.spaces[index])) return [];
     validateManifest(source.manifest);
-    await writeManifest(root, source, edit.manifestHash);
+    await writeManifest(root, source, edit.manifestHash, beforeCommit);
     manifestSaved = true;
   } catch (error) {
-    // 2026-11-03: after rename the image is referenced primary data, even if later cleanup fails.
+    // 2026-11-10: a failed post-rename check still leaves primary data referencing the image.
+    if (error && typeof error === 'object' && 'saved' in error && error.saved === true) throw error;
     if (asset && !manifestSaved) {
       try { await asset.remove(); }
       catch (cleanupError) { throw new AggregateError([error, cleanupError], serverText(catalogText).coverCleanup); }
     }
     throw error;
   }
-  return edit.action === 'move-space' ? [catalogPath] : [];
+  return edit.action === 'move-space' || edit.action === 'delete-space' ? [catalogPath] : [];
 }
 async function verifyManifestHash(root: string, expected: string): Promise<void> {
   const fresh = await readManifest(root);

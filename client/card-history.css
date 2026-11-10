@@ -1,8 +1,8 @@
 /* History panel for the open card. */
-.card-history { margin-top: 12px; padding: 12px; border: 1px solid var(--line); border-radius: 5px; background: var(--canvas); animation: family-reveal 150ms ease-out; }
+.card-history { margin-top: 12px; padding: 12px; border: 1px solid var(--line); border-radius: var(--glass-radius); background: var(--canvas); animation: family-reveal 150ms ease-out; }
 .card-history-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 10px; }
-.card-history-heading h3 { margin: 0; font-size: 12px; font-weight: 700; line-height: 18px; }
-.card-history-created { display: flex; align-items: baseline; gap: 8px; margin: 0 0 12px; padding: 7px 9px; border: 1px solid var(--line); border-radius: 4px; background: var(--surface); color: var(--muted); font-size: 11px; line-height: 1.5; }
+.card-history-heading h3 { min-width: 0; margin: 0; font-size: 12px; font-weight: 600; line-height: 18px; overflow-wrap: anywhere; }
+.card-history-created { display: flex; align-items: baseline; gap: 8px; margin: 0 0 12px; padding: 7px 9px; border: 1px solid var(--line); border-radius: var(--control-radius); background: var(--surface); color: var(--muted); font-size: 11px; line-height: 1.5; }
 .card-history-created strong { color: var(--ink); font-weight: 500; }
 .card-history-created time { font-variant-numeric: tabular-nums; }
 .card-history-feed { display: grid; gap: 0; }
@@ -22,6 +22,8 @@
 .card-history-empty, .card-history-loading, .card-history-error { margin: 4px 0 0; color: var(--muted); font-size: 11px; line-height: 1.6; }
 .card-history-loading { display: flex; align-items: center; gap: 7px; }
 .card-history-error { color: var(--danger); }
+.card-history-error p { margin: 0 0 var(--space-2); overflow-wrap: anywhere; }
+.card-history-error .ui-button { min-height: var(--space-10); height: auto; white-space: normal; }
 .card-history-warning { margin: 8px 0 0; color: var(--warning-ink); font-size: 11px; line-height: 1.5; }
 
 @media (prefers-reduced-motion: reduce) { .card-history { animation: none; } }

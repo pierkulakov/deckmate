@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-desktop-create-project"
+description = "Enables the desktop_create_project command without any pre-configured scope."
+commands.allow = ["desktop_create_project"]
+
+[[permission]]
+identifier = "deny-desktop-create-project"
+description = "Denies the desktop_create_project command without any pre-configured scope."
+commands.deny = ["desktop_create_project"]

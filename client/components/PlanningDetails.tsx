@@ -6,6 +6,7 @@ import { markdownParser } from '../../src/markdown-model.ts';
 import { validPlanningCover } from '../../src/planning-cover.ts';
 import { attachmentFileUrl } from '../attachments.ts';
 import { defineText, useText } from '../i18n.ts';
+import { useDesktopDirty } from '../desktop-bridge.ts';
 import { Button } from './ui/button.tsx';
 import { Markdown } from './Markdown.tsx';
 import type { SavePlanning } from './TimelineView.tsx';
@@ -78,6 +79,7 @@ export function PlanningDetails({ plan, catalog, source, writable, pending, onSa
   useEffect(() => { onDirtyChange(dirty); }, [dirty, onDirtyChange]);
   useEffect(() => () => onDirtyChange(false), [onDirtyChange]);
   useEffect(() => { setImageFailed(false); }, [image]);
+  useDesktopDirty(dirty);
   useEffect(() => {
     if (!dirty) return;
     const warnBeforeLeaving = (event: BeforeUnloadEvent) => { event.preventDefault(); event.returnValue = ''; };

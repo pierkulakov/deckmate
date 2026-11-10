@@ -113,6 +113,31 @@ async function run(fixture: Fixture, args: string[]): Promise<{ value: any; prob
   return { value: JSON.parse(result.stdout), probe: JSON.parse(await readFile(probeFile, 'utf8')) as Probe };
 }
 
+it.each(['pending', 'conflict', 'invalid'])('exposes the %s Journey operation in pipelines, pipeline and step without writing', async state => {
+  const project = await fixture();
+  const directory = `tasks/journeys/${journeyId}`;
+  const journalPath = `${directory}/.deckmate-operation.json`;
+  const operationFiles = [];
+  for (const relative of ['steps/step-01.md', 'index.md']) {
+    const bytes = await readFile(path.join(project.root, directory, relative));
+    const after = relative === 'index.md' ? bytes.toString('utf8').replace('version: 1', 'version: 2') : bytes.toString('utf8') + '\nPrepared instruction.\n';
+    operationFiles.push({ path: relative, before: { hash: sha256(bytes), text: bytes.toString('utf8') }, after: { hash: sha256(Buffer.from(after)), text: after } });
+  }
+  const journal = { deckmate: 'journey-operation', schema: 1, id: randomUUID(), journeyId, files: operationFiles };
+  await writeFile(path.join(project.root, journalPath), state === 'invalid' ? '{broken' : JSON.stringify(journal));
+  if (state === 'conflict') await writeFile(path.join(project.root, directory, 'steps/step-01.md'), operationFiles[0].before.text + '\nForeign edit.\n');
+  const before = await files(project.root);
+  for (const args of [['pipelines'], ['pipeline', journeyId], ['step', journeyId, 'step-01']]) {
+    const { value } = await run(project, args);
+    const output = Array.isArray(value) ? value[0] : value;
+    expect(output.pendingOperation).toMatchObject({ state, journalPath, journalHash: before[path.normalize(journalPath)] });
+    if (state === 'conflict') expect(output.pendingOperation.file).toBe('steps/step-01.md');
+    expect(output.warnings.some((warning: string) => warning.includes(journalPath) && warning.includes(state))).toBe(true);
+    if (state === 'pending') expect(output.warnings.join('\n')).toMatch(/snapshot|снимок/u);
+  }
+  expect(await files(project.root)).toEqual(before);
+}, 30000);
+
 async function files(root: string): Promise<Record<string, string>> {
   const result: Record<string, string> = {};
   async function visit(directory: string) {

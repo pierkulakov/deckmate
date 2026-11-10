@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-board-recent-projects"
+description = "Enables the board_recent_projects command without any pre-configured scope."
+commands.allow = ["board_recent_projects"]
+
+[[permission]]
+identifier = "deny-board-recent-projects"
+description = "Denies the board_recent_projects command without any pre-configured scope."
+commands.deny = ["board_recent_projects"]

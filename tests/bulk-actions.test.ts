@@ -179,11 +179,13 @@ it('preflights every revision and rejects incompatible actions before any writes
 it('returns precise partial outcome and retries remaining cards with fresh hashes', async () => {
   const root = await fixture();
   const original = vi.mocked(native.replaceProjectMarkdown).getMockImplementation()!;
+  let injected = false;
   vi.mocked(native.replaceProjectMarkdown).mockImplementation(async (...args) => {
-    if (args[1].includes(nativeB.slice(5))) throw new Error('Injected IO failure');
+    if (args[1].includes(nativeB.slice(5))) { injected = true; throw new Error('Injected IO failure'); }
     return original(...args);
   });
   const result = await editCatalogBulk(root, await request(root, [nativeA, nativeB], { kind: 'properties', effort: 8 }));
+  expect(injected).toBe(true);
   expect(result.outcome).toMatchObject({ applied: [nativeA], pending: [nativeB] });
   expect(result.outcome.warnings[0]).toContain('Injected IO failure');
   vi.mocked(native.replaceProjectMarkdown).mockImplementation(original);
@@ -194,11 +196,14 @@ it('returns precise partial outcome and retries remaining cards with fresh hashe
 it('guards external edits before publication without overwriting them', async () => {
   const root = await fixture(); const before = await snapshots(root);
   const original = vi.mocked(native.replaceProjectMarkdown).getMockImplementation()!;
+  let injected = false;
   vi.mocked(native.replaceProjectMarkdown).mockImplementationOnce(async (...args) => {
+    injected = true;
     await writeFile(path.join(root, 'tasks/deckmate.md'), Buffer.concat([before[1], Buffer.from('\nExternal edit\n')]));
     return original(...args);
   });
   await expect(editCatalogBulk(root, await request(root, [nativeA], { kind: 'properties', effort: 7 }))).rejects.toThrow('CATALOG_CONFLICT');
+  expect(injected).toBe(true);
   expect((await snapshots(root))[2]).toEqual(before[2]);
   expect((await snapshots(root))[1].toString()).toContain('External edit');
 });
@@ -362,11 +367,13 @@ it.each([taskA, 'doc:docs/guide.md'])('promotes legacy %s with the same ID and s
 it.each([nativeA, taskA])('keeps unfinished promotion children pending and resumes after partial IO for %s', async candidateId => {
   const root = await fixture();
   const original = vi.mocked(native.replaceProjectMarkdown).getMockImplementation()!;
+  let injected = false;
   vi.mocked(native.replaceProjectMarkdown).mockImplementation(async (...args) => {
-    if (args[1].includes(nativeB.slice(5))) throw new Error('Promotion child IO failure');
+    if (args[1].includes(nativeB.slice(5))) { injected = true; throw new Error('Promotion child IO failure'); }
     return original(...args);
   });
   const result = await editCatalogBulk(root, await promotionRequest(root, [nativeB], candidateId));
+  expect(injected).toBe(true);
   expect(result.outcome).toMatchObject({ applied: [], pending: [nativeB], created: [] });
   expect(result.outcome.warnings[0]).toContain('Promotion child IO failure');
   const catalog = await readProjectCatalog(root);
@@ -385,11 +392,13 @@ it.each([nativeA, taskA, 'doc:docs/guide.md'])('resumes %s promotion with legacy
   const sourceBefore = await readFile(path.join(root, 'features/match.md'));
   const docBefore = await readFile(path.join(root, 'docs/guide.md'));
   const original = vi.mocked(native.replaceProjectMarkdown).getMockImplementation()!;
+  let injected = false;
   vi.mocked(native.replaceProjectMarkdown).mockImplementation(async (...args) => {
-    if (args[1] === 'tasks/deckmate.md') throw new Error('Membership publication failed');
+    if (args[1] === 'tasks/deckmate.md') { injected = true; throw new Error('Membership publication failed'); }
     return original(...args);
   });
   const partial = await editCatalogBulk(root, await promotionRequest(root, [taskB, nativeB], candidateId, 'mixed'));
+  expect(injected).toBe(true);
   expect(partial.outcome).toMatchObject({ applied: [], pending: [taskB, nativeB] });
   const interrupted = await readProjectCatalog(root);
   expect(interrupted.cards.find(card => card.id === candidateId)?.kind).toBe('hero');
@@ -416,11 +425,13 @@ it('preserves a concurrent child edit and reports only published child links aft
   const child = (await native.readNativeCard(root, nativeB))!;
   const concurrentBytes = Buffer.concat([child.bytes, Buffer.from('\r\nConcurrent child edit.\r\n')]);
   const original = vi.mocked(native.replaceProjectMarkdown).getMockImplementation()!;
+  let injected = false;
   vi.mocked(native.replaceProjectMarkdown).mockImplementation(async (...args) => {
-    if (args[1] === child.card.path) await writeFile(path.join(root, child.card.path), concurrentBytes);
+    if (args[1] === child.card.path) { injected = true; await writeFile(path.join(root, child.card.path), concurrentBytes); }
     return original(...args);
   });
   const partial = await editCatalogBulk(root, await promotionRequest(root, [taskB, nativeB], nativeA));
+  expect(injected).toBe(true);
   expect(partial.outcome).toMatchObject({ applied: [taskB], pending: [nativeB] });
   expect(partial.outcome.warnings[0]).toContain('CARD_CONFLICT');
   expect(await readFile(path.join(root, child.card.path))).toEqual(concurrentBytes);
@@ -458,11 +469,13 @@ it('resumes legacy promotion after the role sidecar was saved but membership pub
   const root = await fixture();
   const sourceBefore = await readFile(path.join(root, 'features/match.md'));
   const original = vi.mocked(native.replaceProjectMarkdown).getMockImplementation()!;
+  let injected = false;
   vi.mocked(native.replaceProjectMarkdown).mockImplementation(async (...args) => {
-    if (args[1] === 'tasks/deckmate.md') throw new Error('Membership publication failed');
+    if (args[1] === 'tasks/deckmate.md') { injected = true; throw new Error('Membership publication failed'); }
     return original(...args);
   });
   const partial = await editCatalogBulk(root, await promotionRequest(root, [nativeB], taskA));
+  expect(injected).toBe(true);
   expect(partial.outcome).toMatchObject({ applied: [], pending: [nativeB] });
   expect((await readProjectCatalog(root)).cards.find(card => card.id === taskA)).toMatchObject({ kind: 'hero', parentId: null, range: null });
   vi.mocked(native.replaceProjectMarkdown).mockImplementation(original);
@@ -510,11 +523,14 @@ it('rejects promotion or reparenting of Journey steps and does not overwrite con
   await expect(editCatalogBulk(root, await promotionRequest(root, [copyA], nativeA))).rejects.toThrow('Journey');
   expect(await snapshots(root)).toEqual(before);
   const original = vi.mocked(native.replaceProjectMarkdown).getMockImplementation()!;
+  let injected = false;
   vi.mocked(native.replaceProjectMarkdown).mockImplementationOnce(async (...args) => {
+    injected = true;
     await writeFile(path.join(root, candidate.card.path), Buffer.concat([candidate.bytes, Buffer.from('\r\nExternal candidate edit.\r\n')]));
     return original(...args);
   });
   await expect(editCatalogBulk(root, await promotionRequest(root, [nativeB], nativeA))).rejects.toThrow('CARD_CONFLICT');
+  expect(injected).toBe(true);
   expect((await native.readNativeCard(root, nativeA))!.markdown).toContain('External candidate edit.');
   expect((await readProjectCatalog(root)).cards.find(card => card.id === nativeB)?.parentId).toBe(hero);
 });

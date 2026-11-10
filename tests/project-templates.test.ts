@@ -113,6 +113,18 @@ async function open(root: string, readOnly = false) {
   return { application, authorized: { ...headers, 'x-deckmate-token': snapshotResponse.json().token } };
 }
 
+it('recreates template Spaces after the last empty Space was deleted', async () => {
+  const { root } = await fixture();
+  await editProjectCatalog(root, { action: 'create-space', title: 'Removed', manifestHash: (await readProjectCatalog(root)).manifestHash });
+  const before = await readProjectCatalog(root);
+  await editProjectCatalog(root, { action: 'delete-space', spaceId: before.spaces[0].id, manifestHash: before.manifestHash });
+  expect((await readProjectCatalog(root)).spaces).toEqual([]);
+  await applyProjectTemplate(root, await editFor(root, false), null, fixturePaths);
+  const after = await readProjectCatalog(root);
+  expect(after.spaces.length).toBeGreaterThan(0);
+  expect(after.decks.every(deck => after.spaces.some(space => space.id === deck.spaceId))).toBe(true);
+});
+
 it('creates the declared decks, artwork, mapped Journey, tags and optional Hero families on an empty copy', async () => {
   const { root } = await fixture();
   const existing = await readFile(path.join(root, 'docs/existing.md'));
@@ -357,7 +369,7 @@ it('journals a partial template with its reason and gives init a nonzero exit co
   const result = await application.inject({ method: 'POST', url: '/api/catalog', headers: authorized,
     payload: { ...await editFor(root), source: 'sandbox' } });
   expect(result.statusCode, result.body).toBe(200);
-  expect(result.json().warnings.some((message: string) => message.includes('not fully applied'))).toBe(true);
+  expect(result.json().savedWarning).toContain('not fully applied');
   const events = (await readWholeActivity(root)).events;
   expect(events).toHaveLength(1);
   // 2026-11-06: the summary follows the project language (this legacy manifest is Russian); the reason is the request's error text.
@@ -391,6 +403,8 @@ it.skipIf(process.platform !== 'win32')('retries transient manifest renames and 
   renameFault.codes = ['EBUSY'];
   await expect(editProjectCatalog(root, { action: 'create-space', manifestHash: catalog.manifestHash,
     title: 'Notes', kind: 'knowledge' })).rejects.toThrow('CATALOG_CONFLICT');
+  expect(renameFault.calls).toBe(4);
+  expect(renameFault.codes).toEqual([]);
   expect(await readFile(path.join(root, 'tasks/deckmate.md'), 'utf8')).toBe(renameFault.external);
   expect((await readdir(path.join(root, 'tasks'))).filter(name => name.endsWith('.tmp'))).toEqual([]);
 });

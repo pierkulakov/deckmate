@@ -1,40 +1,37 @@
-/* Set Deck Type uses a badge in the deck header and four tiles; mint marks the saved type. */
-.deck-type-trigger.ui-button { width: 30px; height: 30px; padding: 0; border: 1px solid color-mix(in srgb, var(--accent) 38%, var(--line)); border-radius: 6px; background: var(--accent-soft); color: var(--accent); }
-/* Dark accent on accent-soft is 2.71:1; the focus violet keeps the type icon at 5.17:1. */
-.dark .deck-type-trigger.ui-button { color: var(--focus); }
-.deck-type-trigger.ui-button:hover:not(:disabled) { background: color-mix(in srgb, var(--accent-soft) 82%, var(--accent)); }
-.deck-type-trigger.ui-button[data-state="open"] { border-color: var(--focus); box-shadow: 0 0 0 2px color-mix(in srgb, var(--focus) 28%, transparent); }
+/* 2026-11-10: the saved deck type keeps its mint identity with a flat mark instead of a glowing control. */
+.deck-type-trigger.ui-button { width: 30px; height: 30px; padding: 0; }
 
 /* Light theme needs a darker mint for 3:1 against the tile; dark theme keeps the card highlight #63e6cf. */
-.deck-type-menu { --deck-type-selected: #1f9d7a; z-index: 150; width: min(640px, calc(100vw - 24px)); max-height: min(640px, var(--radix-dropdown-menu-content-available-height)); padding: 0 0 18px; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; border: 1px solid var(--line); border-radius: 10px; color: var(--ink); background: var(--surface); box-shadow: 0 16px 44px #0b112938, 0 2px 8px #0b112918; transform-origin: var(--radix-dropdown-menu-content-transform-origin); animation: overlay-pop var(--motion-spring-quick) var(--ease-spring-quick); }
+.deck-type-menu { --deck-type-selected: #1f9d7a; z-index: 150; width: min(640px, calc(100vw - 24px)); max-height: min(640px, var(--radix-dropdown-menu-content-available-height)); padding: 0 0 18px; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; transform-origin: var(--radix-dropdown-menu-content-transform-origin); animation: overlay-pop var(--motion-spring-quick) var(--ease-spring-quick); }
 .dark .deck-type-menu { --deck-type-selected: #63e6cf; }
-.deck-type-heading { margin: 0; padding: 16px 20px 14px; border-bottom: 1px solid var(--line); font-size: 15px; font-weight: 600; letter-spacing: -.2px; }
+.deck-type-heading { padding: 12px 20px; }
 .deck-type-options { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; padding: 18px 20px 0; }
 /* 2026-11-06: tiles share their rows (title, description, accepts, warning) through subgrid, so "Accepts …" and the warnings
    start on one line across a row; before, margin-top: auto pushed "Accepts" down by the height of the neighbour's warning.
    Spacing is a top margin, not a row gap, so a row where no tile has a warning adds no empty band at the bottom. */
-.deck-type-option { display: grid; grid-row: span 4; grid-template-rows: subgrid; row-gap: 0; align-content: start; min-width: 0; padding: 14px 16px 16px; border: 1px solid var(--line); border-radius: 8px; outline: none; background: color-mix(in srgb, var(--surface) 90%, var(--ground)); color: var(--ink); cursor: pointer; user-select: none; transition: border-color var(--motion-feedback), box-shadow var(--motion-feedback), background-color var(--motion-feedback); }
-.deck-type-option[data-highlighted] { border-color: color-mix(in srgb, var(--focus) 65%, var(--line)); background: var(--hover); }
+.deck-type-option { display: grid; grid-row: span 4; grid-template-rows: subgrid; row-gap: 0; align-content: start; min-width: 0; padding: 14px 16px 16px; border: 1px solid var(--control-line); border-radius: var(--control-radius); outline: none; background: transparent; color: var(--ink); font-weight: 500; cursor: pointer; user-select: none; transition: border-color var(--motion-feedback), color var(--motion-feedback), background-color var(--motion-feedback); }
+.deck-type-option[data-highlighted]:not([aria-disabled="true"]) { border-color: var(--button-line); background: var(--hover); }
 .deck-type-option:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
-.deck-type-option[data-state="checked"] { border-color: var(--deck-type-selected); box-shadow: 0 0 0 1px var(--deck-type-selected), 0 0 16px color-mix(in srgb, var(--deck-type-selected) 26%, transparent); }
+.deck-type-option[data-state="checked"] { border-color: var(--deck-type-selected); background: color-mix(in srgb, var(--deck-type-selected) 9%, transparent); }
+.deck-type-option[data-state="checked"][data-highlighted]:not([aria-disabled="true"]) { border-color: var(--deck-type-selected); background: color-mix(in srgb, var(--deck-type-selected) 16%, transparent); }
 .deck-type-option[aria-disabled="true"] { cursor: not-allowed; }
 .deck-type-option[aria-disabled="true"] > .deck-type-option-heading, .deck-type-option[aria-disabled="true"] > .deck-type-option-description, .deck-type-option[aria-disabled="true"] > .deck-type-option-accepts { opacity: .6; }
 .deck-type-option.is-blocked { border-style: dashed; }
 .deck-type-option > * + * { margin-top: 8px; }
 .deck-type-option-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-.deck-type-option-title { display: inline-flex; align-items: center; gap: 7px; min-width: 0; font-size: 16px; font-weight: 600; letter-spacing: -.2px; }
+.deck-type-option-title { display: inline-flex; align-items: center; gap: 7px; min-width: 0; font-size: 16px; font-weight: 500; letter-spacing: .01em; }
 .deck-type-option-title > svg { flex-shrink: 0; color: var(--muted); }
-.deck-type-radio { position: relative; display: grid; place-items: center; flex-shrink: 0; width: 20px; height: 20px; border: 2px solid color-mix(in srgb, var(--muted) 70%, transparent); border-radius: 50%; color: var(--muted); }
-.deck-type-option[data-state="checked"] .deck-type-radio { border-color: var(--deck-type-selected); background: var(--deck-type-selected); }
-.deck-type-option[data-state="checked"] .deck-type-radio::after { content: ''; width: 6px; height: 6px; border-radius: 50%; background: var(--surface); }
+.deck-type-radio { position: relative; display: grid; place-items: center; flex-shrink: 0; width: 20px; height: 20px; border: 2px solid var(--control-line); border-radius: var(--control-radius); color: var(--muted); }
+.deck-type-option[data-state="checked"] .deck-type-radio { border-color: var(--deck-type-selected); background: transparent; }
+.deck-type-option[data-state="checked"] .deck-type-radio::after { content: ''; width: 6px; height: 6px; border-radius: var(--control-radius); background: var(--deck-type-selected); }
 .deck-type-option-description { color: var(--muted); font-size: 12px; line-height: 1.6; }
 .deck-type-option-accepts { color: var(--ink); font-size: 11px; font-weight: 500; }
-.deck-type-option-issue { display: flex; align-self: start; align-items: flex-start; gap: 6px; padding: 8px 9px; border-radius: 6px; background: var(--warning-bg); color: var(--warning-ink); font-size: 11px; line-height: 1.5; overflow-wrap: anywhere; }
+.deck-type-option-issue { display: flex; align-self: start; align-items: flex-start; gap: 6px; padding: 8px 9px; border-radius: var(--glass-radius); background: var(--warning-bg); color: var(--warning-ink); font-size: 11px; line-height: 1.5; overflow-wrap: anywhere; }
 .deck-type-option-issue > svg { flex-shrink: 0; margin-top: 2px; }
 .deck-type-status, .deck-type-error, .deck-type-note { margin: 14px 20px 0; font-size: 12px; line-height: 1.6; overflow-wrap: anywhere; }
 .deck-type-status { color: var(--muted); }
 .deck-type-status:empty { display: none; }
-.deck-type-error { padding: 9px 11px; border-radius: 6px; background: var(--warning-bg); color: var(--danger); }
+.deck-type-error { padding: 9px 11px; border-radius: var(--glass-radius); background: var(--warning-bg); color: var(--danger); }
 .deck-type-note { color: var(--muted); }
 @media (max-width: 600px) { .deck-type-options { grid-template-columns: minmax(0, 1fr); padding-inline: 14px; } .deck-type-heading { padding-inline: 14px; } .deck-type-status, .deck-type-error, .deck-type-note { margin-inline: 14px; } }
 @media (prefers-reduced-motion: reduce) { .deck-type-menu { animation: none; } .deck-type-option { transition: none; } }

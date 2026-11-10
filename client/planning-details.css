@@ -10,7 +10,7 @@
 .planning-detail-form { margin-bottom: 28px; }
 .planning-detail-form fieldset { display: flex; flex-direction: column; gap: 14px; min-width: 0; padding: 0; margin: 0; border: 0; }
 .planning-detail-form label:not(.planning-checkbox) { display: flex; flex-direction: column; gap: 6px; min-width: 0; color: var(--ink); font-size: 12px; }
-.planning-detail-form input:not([type='checkbox']), .planning-detail-form textarea { width: 100%; min-width: 0; padding: 7px 9px; border: 1px solid var(--line); border-radius: 4px; background: var(--canvas); color: var(--ink); font: inherit; }
+.planning-detail-form input:not([type='checkbox']), .planning-detail-form textarea { width: 100%; min-width: 0; padding: 7px 9px; border: 1px solid var(--control-line); border-radius: var(--control-radius); background: var(--canvas); color: var(--ink); font: inherit; }
 .planning-detail-form textarea { resize: vertical; line-height: 1.5; }
 .planning-detail-form small { color: var(--muted); line-height: 1.5; }
 .planning-detail-form :is(input:not([type='checkbox']), textarea, button):focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }

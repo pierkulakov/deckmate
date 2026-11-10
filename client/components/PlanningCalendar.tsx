@@ -211,11 +211,11 @@ export function PlanningCalendar({ open, onClose, draft, onDraftChange, onDirtyC
   if (draft?.kind === 'milestone') popoverTitle = t.createTitle;
   else if (draft?.kind === 'edit') popoverTitle = t.editTitle;
   else if (draft?.kind === 'configuration' && draft.configuration) popoverTitle = t.scheduleTitle;
-  return <Tooltip.Provider delayDuration={250}><aside ref={panelRef} className="planning-calendar-panel" aria-labelledby="planning-calendar-title">
-    <header className="planning-calendar-panel-header">
-      <h2 id="planning-calendar-title">{writable ? t.clickToAdd : t.calendar}</h2>
-      {writable && <button ref={setupRef} type="button" className="planning-calendar-setup" disabled={pending} aria-pressed={draft?.kind === 'configuration'} onClick={() => requestDraft(draft?.kind === 'configuration' ? null : { kind: 'configuration' })}><CalendarSync size={16} aria-hidden="true" /><span>{t.setupRuns}</span></button>}
-      <button type="button" className="planning-calendar-close" disabled={pending} aria-label={t.close} title={t.close} onClick={close}><X size={16} /></button>
+  return <Tooltip.Provider delayDuration={250}><aside ref={panelRef} className="planning-calendar-panel dialog-panel" aria-labelledby="planning-calendar-title">
+    <header className="planning-calendar-panel-header dialog-head">
+      <h2 id="planning-calendar-title" className="dialog-title">{writable ? t.clickToAdd : t.calendar}</h2>
+      {writable && <button ref={setupRef} type="button" className="planning-calendar-setup control" disabled={pending} aria-pressed={draft?.kind === 'configuration'} onClick={() => requestDraft(draft?.kind === 'configuration' ? null : { kind: 'configuration' })}><CalendarSync size={16} aria-hidden="true" /><span>{t.setupRuns}</span></button>}
+      <button type="button" className="planning-calendar-close control control-ghost" disabled={pending} aria-label={t.close} title={t.close} onClick={close}><X size={16} /></button>
     </header>
     {error && <p className="error-banner" role="alert">{error}</p>}
     <div className="planning-calendar-years" ref={scrollRef}>

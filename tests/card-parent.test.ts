@@ -195,6 +195,7 @@ it('rechecks the manifest before publishing a native parent and refuses aliased 
     return actual.open(target, flags, mode);
   });
   await expect(editProjectCatalog(root, edit)).rejects.toThrow('CATALOG_CONFLICT');
+  expect(changed).toBe(true);
   expect(await readFile(child.filename)).toEqual(before);
   vi.mocked(filesystem.open).mockImplementation(actual.open);
   const alias = await fixture(`membership: [&child { card: '${taskId}' }]\ncustom: *child\n`);

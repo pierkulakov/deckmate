@@ -17,14 +17,13 @@
    2026-11-06: week numbers fade only as far as 4.5:1 allows: .72 in the dark theme (half opacity gave 3.19:1); light muted
    needs its full color on the light months. */
 :root.dark { --calendar-month: var(--canvas); --calendar-week-number-fade: .72; }
-.planning-calendar-panel { position: fixed; z-index: 90; top: 52px; right: 0; bottom: 0; display: flex; flex-direction: column; width: min(660px, 100vw); background: var(--calendar-panel); box-shadow: var(--shadow); animation: planning-calendar-in var(--motion-material, 220ms) var(--ease-out, ease-out); }
+.planning-calendar-panel { position: fixed; z-index: 90; top: 52px; right: 0; bottom: 0; display: flex; flex-direction: column; width: min(660px, 100vw); overflow: hidden; background: var(--calendar-panel); box-shadow: var(--shadow); animation: planning-calendar-in var(--motion-material, 220ms) var(--ease-out, ease-out); }
 @keyframes planning-calendar-in { from { transform: translateX(100%); } }
 @media (prefers-reduced-motion: reduce) { .planning-calendar-panel { animation: none; } }
-.planning-calendar-panel-header { display: flex; flex: 0 0 auto; align-items: center; gap: 8px; height: 40px; padding: 8px 12px; border-bottom: .67px solid var(--line); }
-.planning-calendar-panel-header h2 { flex: 1; min-width: 0; margin: 0; overflow: hidden; color: var(--calendar-header-ink); font-size: 14px; font-weight: 700; line-height: 16px; text-overflow: ellipsis; white-space: nowrap; }
-.planning-calendar-setup { display: inline-flex; align-items: center; gap: 4px; height: 24px; padding: 0 7px 0 3px; border: .67px solid var(--button-line, var(--accent)); border-radius: 4px; background: transparent; color: var(--button-ink, var(--accent)); font-size: 12px; font-weight: 700; line-height: 14px; cursor: pointer; }
-.planning-calendar-setup[aria-pressed='true'], .planning-calendar-setup:hover:not(:disabled) { background: var(--hover); }
-.planning-calendar-close { display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; width: 24px; height: 24px; padding: 0; border: 0; border-radius: 4px; background: transparent; color: var(--button-ink, var(--accent)); cursor: pointer; }
+.planning-calendar-panel-header { flex: 0 0 auto; gap: 8px; }
+.planning-calendar-panel-header h2 { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.planning-calendar-setup { min-height: 24px; display: inline-flex; align-items: center; gap: 4px; height: 24px; padding: 0 8px; font-size: 12px; line-height: 16px; cursor: pointer; }
+.planning-calendar-close { display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; width: 24px; height: 24px; min-height: 24px; padding: 0; cursor: pointer; }
 .planning-calendar-close:hover:not(:disabled) { background: var(--hover); }
 /* 2026-11-06: plain header buttons press 1px like the shared .ui-button; translate leaves any transform alone. */
 .planning-calendar-setup:active:not(:disabled), .planning-calendar-close:active:not(:disabled) { translate: 0 1px; }
@@ -70,7 +69,6 @@ button.planning-calendar-day:disabled { cursor: wait; }
 :root.is-carrying-milestone, :root.is-carrying-milestone * { cursor: grabbing !important; user-select: none; }
 /* While a tile is carried, the day under the pointer shows only the drop outline: no add tile, no hover card of another Milestone. */
 :root.is-carrying-milestone .planning-calendar-add, :root.is-carrying-milestone .planning-milestone-card { visibility: hidden; }
-.planning-calendar-panel button:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 /* Hover card of a Milestone date: title and past tag, due date with workdays, progress, cards, then the click/drag hint. */
 .planning-milestone-card { z-index: 130; display: flex; flex-direction: column; gap: 12px; width: 340px; max-width: calc(100vw - 24px); padding: 12px 0 0; border-radius: 4px; background: var(--planning-popover); color: var(--ink); box-shadow: var(--deck-settings-shadow, var(--shadow)); font-size: 12px; }
 .planning-milestone-card > section { display: flex; flex-direction: column; gap: 8px; padding: 0 12px; }
@@ -89,6 +87,6 @@ button.planning-calendar-day:disabled { cursor: wait; }
   .planning-calendar-months { grid-template-columns: minmax(0, 1fr); }
   .planning-calendar-panel-header { display: grid; grid-template-columns: minmax(0, 1fr) 32px; height: auto; min-height: 40px; }
   .planning-calendar-panel-header h2 { grid-column: 1; white-space: normal; }
-  .planning-calendar-setup { grid-column: 1; grid-row: 2; justify-self: start; height: 32px; }
+  .planning-calendar-setup { grid-column: 1; grid-row: 2; justify-self: start; min-height: 32px; }
   .planning-calendar-close { grid-column: 2; grid-row: 1; width: 32px; height: 32px; }
 }

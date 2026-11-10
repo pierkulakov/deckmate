@@ -11,6 +11,7 @@ import { Switch } from './CardOrdering.tsx';
 import { DeckPicker } from './DeckPicker.tsx';
 import { Button } from './ui/button.tsx';
 import { defineText, useLang, useText } from '../i18n.ts';
+import { moveFocus } from '../focus.ts';
 import { kindLabel, priorityLabel } from '../locales/common.ts';
 import '../card-composer.css';
 
@@ -140,7 +141,7 @@ export function CardComposer({ catalog, snapshot, initialDeckId, initialParentId
   useLayoutEffect(() => () => {
     const panel = composer.current;
     const target = opener.current;
-    if (panel?.contains(document.activeElement) && target?.isConnected && !panel.contains(target)) target.focus({ preventScroll: true });
+    if (panel?.contains(document.activeElement) && target?.isConnected && !panel.contains(target)) moveFocus(target, { preventScroll: true });
   }, [composer]);
   const t = useText(text);
   const lang = useLang();
@@ -207,7 +208,7 @@ export function CardComposer({ catalog, snapshot, initialDeckId, initialParentId
   useEffect(() => {
     // «Create another»: the fresh text box mounts while the save is still in flight (disabled), so its autofocus misses.
     if (focusNewDraft.current && !busy) {
-      composer.current?.querySelector<HTMLTextAreaElement>('.card-edit-text')?.focus();
+      moveFocus(composer.current?.querySelector<HTMLTextAreaElement>('.card-edit-text'));
       focusNewDraft.current = false;
     }
   }, [draftId, busy, composer]);
@@ -215,7 +216,7 @@ export function CardComposer({ catalog, snapshot, initialDeckId, initialParentId
   useEffect(() => {
     if (panel !== 'properties' || !focusProperty.current) return;
     const input = focusProperty.current === 'effort' ? effortInput.current : priorityInput.current;
-    input?.focus({ preventScroll: true });
+    moveFocus(input, { preventScroll: true });
     focusProperty.current = null;
   }, [panel]);
 
@@ -239,7 +240,7 @@ export function CardComposer({ catalog, snapshot, initialDeckId, initialParentId
   // Properties swaps with the text and back, as the card's Properties rail button does.
   function toggleProperties(field?: 'effort' | 'priority') {
     if (busy) return;
-    if (panel === 'properties' && field) (field === 'effort' ? effortInput.current : priorityInput.current)?.focus({ preventScroll: true });
+    if (panel === 'properties' && field) moveFocus(field === 'effort' ? effortInput.current : priorityInput.current, { preventScroll: true });
     else if (panel === 'properties') setPanel('content');
     else { focusProperty.current = field ?? null; setPanel('properties'); }
   }

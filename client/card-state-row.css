@@ -1,0 +1,15 @@
+/* 2026-11-10: the four workflow marks stay compact; the current state uses its own colour, not the panel-toggle violet. */
+.card-state-buttons { display: flex; align-items: center; gap: var(--space-1); }
+.card-preview-state-actions > .card-preview-subcards-actions { margin-inline-start: auto; gap: var(--space-1); }
+.card-state-play { --state-fill: var(--status-working); }
+.card-state-blockers { --state-fill: var(--danger); }
+.card-state-review { --state-fill: var(--status-review); }
+.card-state-done { --state-fill: var(--status-accepted); }
+/* 2026-11-10: both themes' state tokens invert with their sheet; the opposite sheet ink stays readable on a solid fill. */
+.card-preview .card-preview-state-actions .card-state-button[data-filled="true"],
+.card-preview .card-preview-state-actions .card-state-button[data-filled="true"]:hover:not(:disabled) {
+  border-color: var(--state-fill); background: var(--state-fill); color: var(--surface); opacity: 1;
+}
+:root.dark .card-preview .card-preview-state-actions .card-state-button[data-filled="true"] { color: var(--ground); }
+.card-review-menu { min-width: 220px; }
+.card-review-menu:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }

@@ -1,41 +1,42 @@
-/* Quick Capture opens from the top-bar add button and saves a new Task to Inbox. Use theme tokens so the light theme stays usable. */
+/* 2026-11-10: quick capture joins the shared dialog grammar (client/surface.css): the frame, head, body and foot are
+   dialog-panel/dialog-head/dialog-body/dialog-foot and the fields are the shared hairline fields (.control-field).
+   The panel stays anchored under the top-bar “+”, so only position, the saved state and the notes live here. */
 
-.quick-capture-trigger.ui-button { width: 44px; height: 44px; border-radius: 8px; color: var(--ink); }
+.quick-capture-trigger.ui-button { width: 44px; height: 44px; color: var(--ink); }
 .quick-capture-trigger.ui-button:hover:not(:disabled) { background: var(--hover); }
-.quick-capture-trigger.ui-button:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 
-.quick-capture-panel { position: fixed; top: 60px; right: 12px; z-index: 60; display: flex; flex-direction: column; gap: 10px;
-  width: min(360px, calc(100vw - 24px)); padding: 12px; border: 1px solid var(--line); border-radius: 8px;
-  background: var(--surface); color: var(--ink); box-shadow: var(--shadow);
-  animation: overlay-pop var(--motion-spring-quick) var(--ease-spring-quick); transform-origin: top right; }
+/* The width matches the Create space popover (380px, 12px gutters); the entrance is the popover slide from its anchor. */
+.quick-capture-panel { position: fixed; top: 60px; right: 12px; z-index: 60; display: flex; flex-direction: column;
+  width: min(380px, calc(100vw - 24px)); max-height: calc(100dvh - 72px); overflow-y: auto; overscroll-behavior: contain;
+  scrollbar-width: thin; animation: overlay-pop var(--motion-spring-quick) var(--ease-spring-quick); transform-origin: top right; }
 
-.quick-capture-header { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-.quick-capture-heading { margin: 0; font-size: 14px; font-weight: 700; }
-.quick-capture-close.ui-button { width: 24px; height: 24px; }
-.quick-capture-caption { margin: 0; color: var(--muted); font-size: 11px; line-height: 1.5; }
+.quick-capture-close.ui-button { flex-shrink: 0; width: 32px; height: 32px; }
+.quick-capture-body { display: flex; flex-direction: column; gap: var(--space-2); }
+.quick-capture-caption { margin: 0; color: var(--muted); font-size: 12px; line-height: 16px; }
 
-.quick-capture-form { display: flex; flex-direction: column; gap: 10px; }
+.quick-capture-form { display: flex; flex-direction: column; gap: var(--space-2); }
 .quick-capture-field { display: grid; gap: 4px; }
 .quick-capture-field > span { font-size: 10px; font-weight: 600; letter-spacing: .3px; text-transform: uppercase; color: var(--muted); }
-.quick-capture-input, .quick-capture-text { width: 100%; border: 1px solid var(--line); border-radius: 5px;
-  background: var(--surface); color: var(--ink); caret-color: var(--ink); font: inherit; font-size: 12px; padding: 8px 10px; }
+.quick-capture-input { padding: 0 10px; font: inherit; font-size: 12px; }
+.quick-capture-text { min-height: 84px; padding: 8px 10px; font: inherit; font-size: 12px; resize: vertical; }
 .quick-capture-input::placeholder, .quick-capture-text::placeholder { color: var(--muted); }
-.quick-capture-input:focus-visible, .quick-capture-text:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; border-color: var(--focus); }
-.quick-capture-text { min-height: 84px; resize: vertical; }
 .quick-capture-input:disabled, .quick-capture-text:disabled { opacity: .55; }
 
-.quick-capture-error { margin: 0; padding: 8px 10px; border-radius: 6px; background: var(--warning-bg); color: var(--danger); font-size: 11px; line-height: 1.5; overflow-wrap: anywhere; }
+.quick-capture-error { margin: 0; padding: 8px 10px; border-radius: var(--glass-radius); background: var(--warning-bg); color: var(--danger); font-size: 11px; line-height: 1.5; overflow-wrap: anywhere; }
+.quick-capture-warning { margin: 0; padding: 8px 10px; border-radius: var(--glass-radius); background: var(--warning-bg); color: var(--warning-ink); font-size: 11px; line-height: 1.5; overflow-wrap: anywhere; }
+.quick-capture-warning p { margin: 4px 0 8px; }
+.quick-capture-warning .ui-button { max-width: 100%; white-space: normal; }
+.quick-capture-warning .ui-button[aria-disabled="true"] { opacity: .55; cursor: wait; }
 .quick-capture-note { margin: 0; color: var(--muted); font-size: 11px; line-height: 1.5; overflow-wrap: anywhere; }
 .quick-capture-note > .spin { vertical-align: -2px; margin-right: 4px; }
 .quick-capture-missing { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; }
 
-.quick-capture-footer { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-.quick-capture-hint { color: var(--muted); font-size: 10px; white-space: nowrap; }
+/* dialog-foot pushes the save action to the end; the keyboard hint keeps its place at the start of the row. */
+.quick-capture-hint { margin-inline-end: auto; color: var(--muted); font-size: 10px; line-height: 16px; white-space: nowrap; }
 
 .quick-capture-saved { display: flex; align-items: center; gap: 10px; }
 .quick-capture-saved-mark { display: grid; place-items: center; flex-shrink: 0; width: 26px; height: 26px; border-radius: 50%; background: var(--accent-soft); color: var(--link-ink); }
 .quick-capture-saved-text { display: grid; gap: 2px; min-width: 0; font-size: 12px; color: var(--muted); overflow-wrap: anywhere; }
 .quick-capture-saved-text > strong { color: var(--ink); font-size: 13px; }
-.quick-capture-saved-actions { display: flex; align-items: center; gap: 6px; margin-left: auto; flex-shrink: 0; }
 
 @media (prefers-reduced-motion: reduce) { .quick-capture-panel { animation: none; } }

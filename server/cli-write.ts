@@ -45,7 +45,8 @@ export async function writeCatalog(config: ServerConfig, source: DataSource, edi
   const service = new CatalogService(config, ':memory:');
   try {
     const result = await service.edit(edit, source, actor);
-    return { warnings: result.warnings, via: 'files' };
+    // 2026-11-10: the partial-save notice moved to its own field; CLI callers still decide retries from warnings.
+    return { warnings: [...result.warnings, ...(result.savedWarning ? [result.savedWarning] : [])], via: 'files' };
   } finally { await service.close(); }
 }
 
@@ -55,7 +56,7 @@ function readWarnings(body: ResponseBody): string[] {
   if (!Array.isArray(body.warnings) || !body.warnings.every(value => typeof value === 'string')) {
     throw new CatalogError(502, 'The server returned an invalid write response. Check the card before retrying.', true);
   }
-  return body.warnings;
+  return typeof body.savedWarning === 'string' && body.savedWarning ? [...body.warnings, body.savedWarning] : body.warnings;
 }
 
 async function responseBody(response: Response, write = false): Promise<ResponseBody> {

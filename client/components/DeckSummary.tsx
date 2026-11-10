@@ -9,15 +9,16 @@ import { DeckActivity } from './DeckActivity.tsx';
 import { JourneyPriorityIcon } from './JourneyMiniCard.tsx';
 import { statusClass } from './StatusMenu.tsx';
 import { Button } from './ui/button.tsx';
+import { EmptyState } from './EmptyState.tsx';
 import '../deck-summary.css';
-import { defineText, locale, useLang, useText } from '../i18n.ts';
+import { defineText, formatNumber, useLang, useText } from '../i18n.ts';
 import { priorityLabel, stateLabel } from '../locales/common.ts';
 
 const text = defineText({
-  summary: (title: string) => `Deck summary: ${title}`, collapse: 'Collapse summary', metrics: 'Deck metrics',
+  summary: (title: string) => `Deck summary: ${title}`, heading: 'Overview', collapse: 'Collapse summary', metrics: 'Deck metrics',
   tasks: (count: number): string => new Intl.PluralRules('en-US').select(count) === 'one' ? 'task' : 'tasks',
   documents: (count: number): string => new Intl.PluralRules('en-US').select(count) === 'one' ? 'document' : 'documents',
-  cards: 'Cards', subCards: 'Sub Cards', noState: 'No state',
+  cards: 'Cards', subCards: 'Sub Cards', noState: 'No state', emptyStats: 'Statistics appear after the first card.',
   states: (kind: string) => `${kind} states`,
   effort: 'Effort',
   effortHint: (estimated: string, total: string, kind: string) => `Effort set for ${estimated} of ${total} ${kind}`,
@@ -27,9 +28,9 @@ const text = defineText({
   priorities: 'Priorities', noPriority: 'No priority', owners: 'Owners', unassigned: 'Unassigned',
   priorityShare: (label: string, done: string, total: string) => `${label}: ${done} of ${total} done`,
 }, {
-  summary: (title: string) => `Сводка колоды ${title}`, collapse: 'Свернуть сводку', metrics: 'Показатели колоды',
+  summary: (title: string) => `Сводка колоды ${title}`, heading: 'Сводка', collapse: 'Свернуть сводку', metrics: 'Показатели колоды',
   tasks: (_count: number) => 'задач', documents: (_count: number) => 'документов',
-  cards: 'Карточки', subCards: 'Sub Cards', noState: 'Без состояния',
+  cards: 'Карточки', subCards: 'Sub Cards', noState: 'Без состояния', emptyStats: 'Статистика появится после первой карточки.',
   states: (kind: string) => `Состояния ${kind}`,
   effort: 'Оценка',
   effortHint: (estimated: string, total: string, kind: string) => `Оценка указана у ${estimated} из ${total} ${kind}`,
@@ -58,8 +59,6 @@ const priorities: (CardPriority | null)[] = ['high', 'medium', 'low', null];
 export function DeckSummary({ deck, cards, catalog, source, refreshKey, onOpen, disabled, onTrack, onCollapse }: DeckSummaryProps) {
   const t = useText(text);
   const lang = useLang();
-  const numberFormat = new Intl.NumberFormat(locale(lang));
-  const effortFormat = new Intl.NumberFormat(locale(lang), { maximumFractionDigits: 2 });
   const summary = useMemo(() => {
     const deckCards = [...new Map(cards.filter(isActiveCatalogCard).map(card => [card.id, card])).values()];
     const heroIds = new Set(deckCards.filter(card => card.kind === 'hero').map(card => card.id));
@@ -97,54 +96,57 @@ export function DeckSummary({ deck, cards, catalog, source, refreshKey, onOpen, 
   // Hand-edited catalogs can carry a broken color; the CSS accent fallback covers everything that is not #rrggbb.
   const overviewAccent = /^#[\da-f]{6}$/iu.test(deck.color) ? deck.color : undefined;
 
-  return <aside className="deck-overview" aria-label={t.summary(deck.title)} style={overviewAccent ? { '--overview-accent': overviewAccent } as CSSProperties : undefined}>
-    <div className={`deck-overview-intro${deck.description ? ' has-description' : ''}`}>
+  return <aside className="deck-overview glass-sheet" aria-label={t.summary(deck.title)} style={overviewAccent ? { '--overview-accent': overviewAccent } as CSSProperties : undefined}>
+    <div className={`deck-overview-intro glass-section${deck.description ? ' has-description' : ''}`}>
+      <header className="panel-head"><h2 className="panel-title">{t.heading}</h2><div className="panel-actions">
+        <Button variant="ghost" size="icon" className="deck-overview-collapse" onClick={onCollapse} aria-label={t.collapse} title={t.collapse}><PanelLeftClose size={15} /></Button>
+      </div></header>
       {deck.description && <p>{deck.description}</p>}
-      <Button variant="ghost" size="icon" className="deck-overview-collapse" onClick={onCollapse} aria-label={t.collapse} title={t.collapse}><PanelLeftClose size={15} /></Button>
     </div>
 
-    <section className="deck-overview-stats" aria-label={t.metrics}>
+    {summary.cardCount === 0 ? <EmptyState className="deck-overview-empty glass-section" message={t.emptyStats} /> : <section className="deck-overview-stats glass-section" aria-label={t.metrics}>
+      <header className="panel-head"><h2 className="panel-title">{t.metrics}</h2></header>
       <div className="deck-overview-row">
         <div className="deck-overview-states" role="list" aria-label={t.states(taskLabel)}>
-          {summary.states.map(({ state, count }) => { const label = `${state ? stateLabel(state, lang) : t.noState}: ${numberFormat.format(count)}`;
-            return <span role="listitem" key={state} className={`deck-overview-state state-${statusClass(state)}${count ? '' : ' is-empty'}`} title={label} aria-label={label}><strong>{count ? numberFormat.format(count) : '–'}</strong></span>; })}
+          {summary.states.map(({ state, count }) => { const label = `${state ? stateLabel(state, lang) : t.noState}: ${formatNumber(count, 3, lang)}`;
+            return <span role="listitem" key={state} className={`deck-overview-state state-${statusClass(state)}${count ? '' : ' is-empty'}`} title={label} aria-label={label}><strong>{count ? formatNumber(count, 3, lang) : '–'}</strong></span>; })}
         </div>
         <div className="deck-overview-priorities" role="list" aria-label={t.priorities}>
           {summary.priorityStats.map(({ priority, total, done }) => { const most = Math.max(1, ...summary.priorityStats.map(item => item.total));
-            const label = t.priorityShare(priority ? priorityLabel(priority, lang) : t.noPriority, numberFormat.format(done), numberFormat.format(total));
+            const label = t.priorityShare(priority ? priorityLabel(priority, lang) : t.noPriority, formatNumber(done, 3, lang), formatNumber(total, 3, lang));
             return <span role="listitem" key={priority ?? 'none'} className="deck-overview-priority" title={label} aria-label={label}>
               <JourneyPriorityIcon priority={priority} size={16} /><i style={{ width: total ? Math.max(5, Math.round(total / most * 32)) : 5 }} aria-hidden="true" /></span>; })}
         </div>
       </div>
-      <div className="deck-overview-effort" title={t.effortHint(numberFormat.format(summary.estimatedCount), numberFormat.format(summary.tasks.length), taskLabel)}>
-        <span><Gauge size={16} aria-hidden="true" /><span className="visually-hidden">{t.effort}</span><strong>{effortFormat.format(summary.effort)}</strong></span>
-        <strong>{numberFormat.format(percentage)}%</strong>
+      <div className="deck-overview-effort" title={t.effortHint(formatNumber(summary.estimatedCount, 3, lang), formatNumber(summary.tasks.length, 3, lang), taskLabel)}>
+        <span><Gauge size={16} aria-hidden="true" /><span className="visually-hidden">{t.effort}</span><strong>{formatNumber(summary.effort, 2, lang)}</strong></span>
+        <strong>{formatNumber(percentage, 3, lang)}%</strong>
       </div>
-      <progress className="deck-overview-progress" value={summary.accepted} max={Math.max(1, summary.tasks.length)} aria-label={t.accepted(stateLabel('done', lang), numberFormat.format(summary.accepted), numberFormat.format(summary.tasks.length), taskLabel)} />
+      <progress className="deck-overview-progress" value={summary.accepted} max={Math.max(1, summary.tasks.length)} aria-label={t.accepted(stateLabel('done', lang), formatNumber(summary.accepted, 3, lang), formatNumber(summary.tasks.length, 3, lang), taskLabel)} />
       <div className="deck-overview-count">
         {deck.kind === 'knowledge' ? <NotebookText size={16} aria-hidden="true" /> : <Layers size={16} aria-hidden="true" />}
-        <strong>{numberFormat.format(summary.cardCount)} {deck.kind === 'knowledge' ? t.documents(summary.cardCount) : t.cards}</strong>
-        {deck.kind === 'asset' && <span>· {numberFormat.format(summary.tasks.length)} {t.subCards}</span>}
+        <strong>{formatNumber(summary.cardCount, 3, lang)} {deck.kind === 'knowledge' ? t.documents(summary.cardCount) : t.cards}</strong>
+        {deck.kind === 'asset' && <span>· {formatNumber(summary.tasks.length, 3, lang)} {t.subCards}</span>}
       </div>
       {deck.kind === 'asset' && summary.tasks.length === 0 && <p className="deck-overview-note">{t.noSubCards}</p>}
       {summary.owners.length > 0 && <div className="deck-overview-owners" role="list" aria-label={t.owners}>
-        {summary.owners.map(({ owner, count }) => { const most = summary.owners[0].count; const label = `${owner ?? t.unassigned}: ${numberFormat.format(count)}`;
+        {summary.owners.map(({ owner, count }) => { const most = summary.owners[0].count; const label = `${owner ?? t.unassigned}: ${formatNumber(count, 3, lang)}`;
           return <span role="listitem" key={owner ?? 'none'} className="deck-overview-owner" title={label} aria-label={label}>
             <i style={{ height: Math.max(4, Math.round(count / most * 64)) }} aria-hidden="true" />
             {owner ? <CardOwnerAvatar owner={owner} members={catalog.members ?? []} /> : <span className="deck-overview-unassigned" aria-hidden="true">–</span>}
           </span>; })}
       </div>}
-    </section>
+    </section>}
 
-    {summary.tracks.length > 0 && <nav className="deck-overview-tracks" aria-label={t.tracks}>
+    {summary.tracks.length > 0 && <nav className="deck-overview-tracks glass-section" aria-label={t.tracks}>
       {summary.tracks.map(track => <button key={track.id} type="button" disabled={disabled} onClick={() => onTrack(track.id)}><Route size={13} aria-hidden="true" /><span>{track.title}</span></button>)}
     </nav>}
 
     <DeckActivity deckId={deck.id} source={source} refreshKey={refreshKey} disabled={disabled} onOpen={onOpen} />
 
-    <details className="deck-overview-files">
-      <summary>{t.sourceFiles} <span>{numberFormat.format(summary.files.length)}</span></summary>
+    {summary.files.length > 0 && <details className="deck-overview-files glass-section">
+      <summary>{t.sourceFiles} <span className="panel-count page-number">{formatNumber(summary.files.length, 3, lang)}</span></summary>
       <div>{summary.files.map(card => <button key={card.path} type="button" disabled={disabled} onClick={() => onOpen(card.id)} title={t.openCard(card.title, card.path)}><FileText size={13} aria-hidden="true" /><span>{card.path}</span></button>)}</div>
-    </details>
+    </details>}
   </aside>;
 }

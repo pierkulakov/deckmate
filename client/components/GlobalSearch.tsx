@@ -1,3 +1,4 @@
+import { moveFocus } from '../focus.ts';
 // Global card search opens with "/" from anywhere.
 // The query language itself (words, tags, owners, deck:/kind:/state:, property and content filters, $ID / gd: / gc:
 // navigation) lives in search-query.ts; active filters show as removable pills below the search bar.
@@ -17,6 +18,9 @@ import { StatusBadge } from './StatusMenu.tsx';
 import { defineText, locale, useLang, useText } from '../i18n.ts';
 import { kindLabel } from '../locales/common.ts';
 import { emitSignal } from '../onboarding/signals.ts';
+import { EmptyState } from './EmptyState.tsx';
+import { LoadingState } from './LoadingState.tsx';
+import { ErrorState } from './ErrorState.tsx';
 import '../global-search.css';
 
 const text = defineText({
@@ -36,7 +40,6 @@ const text = defineText({
   results: 'Search results',
   content: 'Content',
   goToCard: 'Go to card',
-  empty: 'Nothing found. Try a different query or filters.',
   noCards: 'The project has no cards yet.',
   found: (total: number, limit: number) => `Found ${total.toLocaleString(locale())} — showing the first ${limit.toLocaleString(locale())}.`,
   goTo: (title: string) => `Go to: ${title}`,
@@ -60,7 +63,6 @@ const text = defineText({
   results: 'Результаты поиска',
   content: 'Содержимое',
   goToCard: 'Перейти к карточке',
-  empty: 'Ничего не найдено. Измените запрос или фильтры.',
   noCards: 'В проекте пока нет карточек.',
   found: (total: number, limit: number) => `Найдено ${total.toLocaleString(locale())} — показаны первые ${limit.toLocaleString(locale())}.`,
   goTo: (title: string) => `Перейти: ${title}`,
@@ -94,7 +96,7 @@ export function GlobalSearch({ snapshot, refreshKey, onOpenCard }: {
   refreshKey: number;
   onOpenCard: (id: string) => void;
 }) {
-  const { catalog, error } = useCatalog(snapshot, refreshKey);
+  const { catalog, error, refresh } = useCatalog(snapshot, refreshKey);
   const t = useText(text);
   const lang = useLang();
   const [value, setValue] = useState('');
@@ -127,23 +129,32 @@ export function GlobalSearch({ snapshot, refreshKey, onOpenCard }: {
     const next = withoutToken(value, token);
     setValue(next);
     if (!next.trim()) setOpen(false);
-    inputRef.current?.focus();
+    moveFocus(inputRef.current);
   }
 
   function toggleOr() {
     setValue(toggleTagOr(value));
-    inputRef.current?.focus();
+    moveFocus(inputRef.current);
   }
 
   // "/" focuses the field; "q" toggles My Cards.
   useEffect(() => {
     function onKeyDown(event: globalThis.KeyboardEvent) {
+      // 2026-11-10: only the exact generated owner query opts out of the normal typing guard.
+      if (event.code === 'KeyQ' && !event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey
+        && !event.repeat && !event.isComposing && event.target === inputRef.current && member && value === '@' + member.id) {
+        event.preventDefault();
+        setValue('');
+        setOpen(false);
+        inputRef.current?.blur();
+        return;
+      }
       // One registry and one «typing / dialog open» check for every shortcut (keyboard-shortcuts.ts).
       const shortcut = matchShortcut(event);
       if (!shortcut || shortcutTargetBlocked(event)) return;
       if (shortcut.id === 'focus-search') {
         event.preventDefault();
-        inputRef.current?.focus();
+        moveFocus(inputRef.current);
         inputRef.current?.select();
         return;
       }
@@ -160,7 +171,7 @@ export function GlobalSearch({ snapshot, refreshKey, onOpenCard }: {
       }
       setValue(myQuery);
       setOpen(true);
-      inputRef.current?.focus();
+      moveFocus(inputRef.current);
       inputRef.current?.select();
     }
     document.addEventListener('keydown', onKeyDown, true);
@@ -238,7 +249,7 @@ export function GlobalSearch({ snapshot, refreshKey, onOpenCard }: {
   const hasOperators = query.split(/\s+/u).some(token => /^(?:\$.+|[!#@]|(?:t|sub|gd|gc|deck|kind|state|effort|priority|run|milestone|hand|due):)/iu.test(token));
 
   return <div className="global-search" ref={fieldRef}>
-    <div className={`global-search-field${open ? ' is-open' : ''}`}>
+    <div className={`global-search-field control-field${open ? ' is-open' : ''}`}>
       <Search size={20} strokeWidth={1.75} aria-hidden="true" />
       <input ref={inputRef} type="search" role="combobox" aria-label={t.searchCards} aria-expanded={open}
         aria-controls="global-search-results" aria-activedescendant={open && entries.length ? `global-search-option-${highlighted}` : undefined}
@@ -249,19 +260,19 @@ export function GlobalSearch({ snapshot, refreshKey, onOpenCard }: {
         onChange={event => { setValue(event.target.value); setOpen(Boolean(event.target.value.trim())); }} />
       <kbd className="global-search-key" aria-hidden="true">/</kbd>
     </div>
-    {open && <div className="global-search-pop">
-      {error && <p className="global-search-empty" role="alert">{error}</p>}
-      {!error && !catalog && <p className="global-search-empty" role="status">{t.loading}</p>}
+    {open && <div className="global-search-pop dialog-panel">
+      <ErrorState variant="inline" className="global-search-empty" message={error} onRetry={refresh} />
+      {!error && !catalog && <LoadingState message={t.loading} />}
       {!error && catalog && <div className="global-search-sections">
         {pills.length > 0 && <div className="global-search-pills" role="group" aria-label={t.activeFilters}>
-          {pills.map(token => <button key={token.start} type="button" className="global-search-pill"
+          {pills.map(token => <button key={token.start} type="button" className="global-search-pill control"
             onMouseDown={event => event.preventDefault()}
             title={t.removeFilter} aria-label={t.removeFilterNamed(token.raw)}
             onClick={() => removeFilter(token)}>
             <SearchFilterLabel token={token} definitions={catalog.projectTags} /><X size={11} aria-hidden="true" />
           </button>)}
           {tagValues.length >= 2 && <button type="button"
-            className={`global-search-pill is-toggle${tagOrActive ? ' is-on' : ''}`}
+            className={`global-search-pill control is-toggle${tagOrActive ? ' is-on' : ''}`}
             onMouseDown={event => event.preventDefault()}
             aria-pressed={tagOrActive}
             title={tagOrActive ? t.disableOr : t.enableOr}
@@ -287,7 +298,9 @@ export function GlobalSearch({ snapshot, refreshKey, onOpenCard }: {
           </div>
         </div>
         {/* 2026-11-06: in a project without cards the query is not at fault, so the message says what is missing. */}
-        {results && !entries.length && !ambiguous.length && <p className="global-search-empty" role="status">{catalog.cards.length ? t.empty : t.noCards}</p>}
+        {results && !entries.length && !ambiguous.length && (catalog.cards.length
+          ? <EmptyState variant="filtered" className="global-search-empty" onReset={() => { setValue(''); setOpen(false); moveFocus(inputRef.current); }} />
+          : <EmptyState className="global-search-empty" message={t.noCards} />)}
         {results && results.cards.length > 0 && results.cards.length < results.total
           && <p className="global-search-empty global-search-total" role="status">{t.found(results.total, RESULT_LIMIT)}</p>}
       </div>}

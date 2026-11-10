@@ -1,8 +1,67 @@
 # Changelog
 
-Notable changes are grouped by version using [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
+Notable changes are grouped by version using [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Russian version: [CHANGELOG.ru.md](CHANGELOG.ru.md).
 
 ## [Unreleased]
+
+## [0.6.0] - 2026-11-10
+
+### Added
+
+- **Deckmate Desktop.** The Windows app now uses Tauri 2; its installer is about 32 MB instead of 121 MB. The installer automatically removes the old Electron installation while keeping `%APPDATA%\Deckmate`, including settings, recent projects and language.
+- **Updates.** Installed Desktop downloads updates in the background and verifies their update signature; you can install later or skip a version. The portable build only notifies you and offers the download page.
+- **What's new.** A window shows the changes after an update; you can also open it from Help.
+- **Workspace.** Pin, remove and reorder projects on the start screen or in the board's side panel; Ctrl+1–9 opens the first nine. The side panel shows shortcut labels and project initials; Ctrl+Shift+P opens the start screen.
+- **Deck covers.** Six new covers: Characters, Levels, Story, Agents, Releases and Ideas.
+- **Unsaved work.** Desktop warns before closing, switching projects or installing an update if you have unsaved changes. Windows shows why Deckmate is blocking shutdown so you can cancel it and save.
+- **Third-party licenses.** Desktop includes licenses for Node.js, Rust dependencies and WebView2 in `THIRD-PARTY-NOTICES.txt` next to the app.
+- **Spaces.** Delete a space with no decks from its header.
+
+### Changed
+
+- **Start screen.** Navigate project lists with the keyboard; workspace projects no longer repeat under Recent. The start screen, menus and dialogs use clearer wording, including that Create project makes a sample project.
+- **Refreshed look.** Controls, chips, tabs and panels have sharper, flatter shapes instead of pill shapes; the server status badge remains a capsule.
+- **Card proportions.** On larger screens, the open-card column is wider and fills the available height, with larger reading text; covers on the open-deck shelf are larger.
+- **Card state row.** Four buttons (`▷ [!] [?] ✓`) use their fill to show work, blockers, review and acceptance without a separate state label; `[!]` opens dependencies. `[?]` submits for review or, in Review, offers Accept review and Request changes; requesting changes requires a reason and returns the card to Not started.
+- **Card sections.** Properties, Sub Cards, Dependencies, Attachments and History open in a column beside the card's icon rail, over the deck.
+- **Card filters.** In All cards and open decks, one row shows the count, removable filters and Clear all. The In progress and In review figures in the project pulse open filtered All cards; Back and Forward restore the view.
+- **Smoother board.** Opening and closing decks and cards, moving between cards and hovering tiles do much less work per frame, and these transitions no longer shift the layout. The deck gallery has refreshed hover and focus feedback and a cleaner opening transition; Hand reordering is steadier, and opening or closing a deck no longer shows an unwanted tooltip or focus ring.
+- **Installer.** The installer and the Windows app list show the publisher, homepage and license. Deleting app data when you uninstall now also removes `%APPDATA%\Deckmate`. The bundled server is smaller.
+- **Agent skill.** The `/deckmate` skill's commands, states and references match the CLI, and the HTTP actions it relies on ship inside the skill, so agents no longer need files from the Deckmate repository. Its project profile also supports software, and the documentation walks through an agent's work from picking a card to review.
+- **Release checks.** Releases are prepared as drafts, the update signature is checked before publication, and the update manifest is uploaded last. `npm run desktop:updater-e2e` checks updates end to end, and screenshot capture has timeouts. CI runs browser tests in three parallel shards on Ubuntu and Windows, and a release tag publishes only a commit with green CI instead of running the tests again.
+- **Dependency blocking.** Only an existing, active, unfinished prerequisite blocks a card; archived, deleted and missing prerequisites do not. The board, agent briefs and activity history use the same rule.
+- **CLI options.** Commands now reject options that do not apply to them and suggest the available options. `--help` works across commands and subcommands; each `project` command has an example.
+- **Skill installation.** `deckmate skills install` now refuses to replace locally changed or added files without `--force`; move your changes out first if you want to keep them.
+- **README links.** Documentation links and images work from the npm package page.
+
+### Fixed
+
+- **Long paths.** Projects in Windows folders with paths longer than 260 characters can be opened and created.
+- **Page recovery.** A page that keeps crashing no longer reloads endlessly: choose Reload or Start screen. A page that stops responding offers Reload or Wait.
+- **Board preferences.** Saved card drafts and board preferences remain available after a restart or project switch when the saved local port is free.
+- **Desktop settings.** A setting that could not be saved no longer looks applied, and a damaged `desktop.json` is kept as a dated copy before the defaults are used.
+- **Drive roots.** A project at the root of a drive is named after the drive instead of showing an empty name.
+- **Agent briefs.** Answers recorded under an English `## Decided` heading now appear in `deckmate project brief`.
+- **Attachments.** A failed check after publishing the attachment registry no longer deletes the uploaded file. The attachments panel refreshes when another tab or agent changes attachments.
+- **Partial saves.** A conflict after an earlier save step now warns that some changes were saved instead of reporting a simple failure; internal conflict codes are hidden.
+- **Card state retries.** Repeating a state change completes unfinished Owner, Hand and acceptance-date steps; repeating start does not move a card already in Hand.
+- **Review feedback.** Return reasons are recorded even for cards without a deck, and `deckmate project brief` shows agents the latest recorded return feedback.
+- **Review shortcuts.** Space and W open review choices rather than accidentally accepting a card in Review.
+- **Card refresh.** Ordinary card switches no longer flash a loading label, and short Quick Settings saves no longer flash the card's controls.
+- **Manifest writes.** The manifest uses the same guarded writer as cards. Deck, space and Track forms detect changes made since opening and keep the entered values on conflict.
+- **Dependencies.** The dependency graph is reread before saving, so a cycle introduced during the request is rejected.
+- **CSV import.** Tags are saved in batches, and a repeated import completes missing tags on matching cards.
+- **Journey saves.** An operation journal lets a later write targeting the Journey resume an interrupted save. A conflicting external edit names the file; the API can abandon the unfinished operation without rolling back files.
+- **Tabs and Vision.** Switching tabs keeps the selected deck, search and Ordering; clicking the active tab no longer closes the deck. Vision refreshes card references and selection properties after edits.
+- **Interface text.** Connection errors follow the interface language, Hand keeps its name in Russian, and card tiles no longer show a native title tooltip on hover.
+- **Steadier layout.** Rapid filtering no longer duplicates cards; table rows stay together, Quick Settings menus no longer jump or clip, and save-status labels no longer overlap.
+- **First load.** The light theme no longer flashes before the saved theme, and the header no longer shifts on first load.
+- **Desktop shortcuts.** Menu shortcuts work with focus in the page: Ctrl+Shift+P, Ctrl+O, Ctrl+1–9, Ctrl+R, Ctrl+Q and F11.
+- **Desktop reliability.** Update cleanup leaves unrelated folders alone; a stuck project creation times out and can be cancelled by quitting; if the server port is taken, Desktop retries on another port.
+
+### Removed
+
+- Removed: deck piles; all decks are shown on the Decks home screen; existing `piled` keys are ignored.
 
 ## [0.5.0] - 2026-11-09
 
@@ -130,7 +189,10 @@ First public release.
 - Third-party notices: `dist/client/third-party-licenses.md` now carries full license texts for bundled packages that ship no license file and for code embedded in prebuilt packages (Chevrotain, Langium, the vscode-languageserver libraries and lodash-es inside `@mermaid-js/parser`, js-yaml inside `mermaid`); the build fails on an empty section or on undeclared embedded code.
 - Source-checkout instructions also open the demo, and the `/deckmate` analyze and audit workflows move new cards to `discussing` after creating them.
 
-[Unreleased]: https://github.com/pierkulakov/deckmate/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/pierkulakov/deckmate/compare/v0.6.0...HEAD
+[0.6.0]: https://github.com/pierkulakov/deckmate/compare/v0.5.0...v0.6.0
+[0.5.0]: https://github.com/pierkulakov/deckmate/compare/v0.4.0...v0.5.0
+[0.4.0]: https://github.com/pierkulakov/deckmate/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/pierkulakov/deckmate/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/pierkulakov/deckmate/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/pierkulakov/deckmate/releases/tag/v0.1.0

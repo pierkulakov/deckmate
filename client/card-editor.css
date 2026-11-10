@@ -1,5 +1,7 @@
 .card-content-reading { display: flex; flex: 1; flex-direction: column; width: 100%; min-width: 0; }
 .card-edit-hints { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; min-width: 0; }
+/* 2026-11-10: Russian attachment hints wrap; shrinking the icon tools instead creates a horizontal scrollbar. */
+.card-edit-hint-row > .card-preview-title-tools { flex-shrink: 0; }
 .card-edit-insert { padding-inline: 0; }
 /* 2026-11-09: above the card focus mode (120), level with the editor command menu. */
 .card-edit-attachments { z-index: 160; width: min(340px, calc(100vw - 24px)); max-height: min(360px, var(--radix-dropdown-menu-content-available-height)); overflow-y: auto; }
@@ -17,22 +19,26 @@
 .card-content-reading-actions { display: inline-flex; align-items: center; gap: 8px; flex-shrink: 0; margin-left: auto; }
 .card-content-reading-actions > .ui-button { flex-shrink: 0; }
 .card-content-readonly { margin: 0 0 16px; color: var(--muted); font-size: 11px; }
-.card-content-conflict { padding: 14px; border: 1px solid color-mix(in srgb, var(--warning-ink) 35%, var(--line)); border-radius: 7px; background: var(--warning-bg); }
+.card-content-conflict { padding: 14px; border: 1px solid color-mix(in srgb, var(--warning-ink) 35%, var(--line)); border-radius: var(--glass-radius); background: var(--warning-bg); }
 .card-content-conflict > p { margin: 0 0 12px; color: var(--warning-ink); font-size: 12px; line-height: 1.6; }
 .card-content-conflict-columns { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
 .card-content-conflict-columns section { min-width: 0; }
 .card-content-conflict-columns h3 { margin: 0 0 6px; color: var(--warning-ink); font-size: 11px; font-weight: 500; }
-.card-content-conflict-columns pre { max-height: 220px; overflow: auto; margin: 0; padding: 10px; border: 1px solid var(--line); border-radius: 5px; background: var(--surface); color: var(--ink); white-space: pre-wrap; overflow-wrap: anywhere; font: 11px/1.65 'Geist Mono', monospace; }
+.card-content-conflict-columns pre { max-height: 220px; overflow: auto; margin: 0; padding: 10px; border: 1px solid var(--line); border-radius: var(--control-radius); background: var(--surface); color: var(--ink); white-space: pre-wrap; overflow-wrap: anywhere; font: 11px/1.65 'Geist Mono', monospace; }
 .card-content-conflict-actions { display: flex; justify-content: flex-end; margin-top: 12px; }
 @media (max-width: 640px) { .card-content-conflict-columns { grid-template-columns: 1fr; } }
 
-/* 2026-11-05: unsaved-changes banner after Cancel, as in the reference — the draft waits here instead of a confirmation dialog. */
+/* 2026-11-05: unsaved-changes banner after Cancel — the draft waits here instead of a confirmation dialog. */
 :root { --draft-banner-bg: #e4d4f6; --draft-banner-ink: #3a2a55; --draft-banner-button: #cdb6ef; --draft-banner-button-hover: #c0a5ea; }
 :root.dark { --draft-banner-bg: #7d5fb3; --draft-banner-ink: #ffffff; --draft-banner-button: #64479a; --draft-banner-button-hover: #56398c; }
-.card-draft-banner { display: flex; flex-direction: column; align-items: center; gap: 8px; margin: 0 0 16px; padding: 12px 16px; border-radius: 6px; background: var(--draft-banner-bg); color: var(--draft-banner-ink); text-align: center; interpolate-size: allow-keywords; overflow: clip; overflow-clip-margin: 4px; animation: banner-reveal var(--motion-panel) var(--ease-panel); }
+.card-draft-banner { display: flex; flex-direction: column; align-items: center; gap: 8px; margin: 0 0 16px; padding: 12px 16px; border-radius: var(--glass-radius); background: var(--draft-banner-bg); color: var(--draft-banner-ink); text-align: center; interpolate-size: allow-keywords; overflow: clip; overflow-clip-margin: 4px; animation: banner-reveal var(--motion-panel) var(--ease-panel); }
 .card-preview .card-draft-banner { margin: -16px -16px 16px; border-radius: 0; }
 .card-draft-banner p { margin: 0; font-size: 14px; font-weight: 700; line-height: 18px; }
 .card-draft-banner-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; }
-.card-draft-banner-actions .ui-button { gap: 6px; height: 28px; padding: 0 10px; border: 0; border-radius: 4px; background: var(--draft-banner-button); color: var(--draft-banner-ink); font-weight: 600; transition: background-color var(--motion-feedback); }
+.card-draft-banner-actions .ui-button { gap: 6px; height: 28px; padding: 0 10px; border: 0; border-radius: var(--control-radius); background: var(--draft-banner-button); color: var(--draft-banner-ink); font-weight: 600; transition: background-color var(--motion-feedback); }
 .card-draft-banner-actions .ui-button:hover:not(:disabled) { background: var(--draft-banner-button-hover); }
 .card-draft-banner-actions .ui-button:focus-visible { outline: 2px solid var(--draft-banner-ink); outline-offset: 2px; }
+.card-content-save-status { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; }
+.card-edit > .card-content-save-status { padding-inline: var(--space-2); }
+/* 2026-11-10: a full row belongs to the horizontal reading footer, not the editor's vertical flex column. */
+.card-content-reading-footer > .card-content-save-status { flex-basis: 100%; background: var(--canvas); }

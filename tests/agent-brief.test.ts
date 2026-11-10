@@ -1,10 +1,12 @@
 import { afterEach, expect, it } from 'vitest';
-import { createHash } from 'node:crypto';
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { createHash, randomUUID } from 'node:crypto';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { buildBrief, estimateTokens, readFileLines, selectContextLines, sourceLineRange, sourceLines } from '../server/agent-brief.ts';
 import type { CatalogCard, CatalogView } from '../src/catalog-contracts.ts';
+import type { DeckActivityEvent } from '../src/activity-contracts.ts';
+import { activityEventPath, appendActivity } from '../server/activity.ts';
 
 const roots: string[] = [];
 const digest = (bytes: Buffer) => createHash('sha256').update(bytes).digest('hex');
@@ -142,4 +144,83 @@ it('keeps the card verbatim, accounts for every context section, and links all o
 it('rejects a budget that cannot hold the verbatim card and navigation instead of silently cutting it', async () => {
   const { root, card, catalog } = await briefFixture();
   await expect(buildBrief(catalog, root, card, { budget: 1 })).rejects.toThrow(/too small.*at least/u);
+});
+
+function cardEvent(card: CatalogCard, second: number, overrides: Partial<DeckActivityEvent> = {}): DeckActivityEvent {
+  return { schema: 1, id: randomUUID(), at: new Date(Date.UTC(2026, 10, 10, 12, 0, second)).toISOString(),
+    action: 'set-card-state', actor: 'Deckmate', actorMemberId: 'reviewer', summary: 'State changed',
+    cards: [{ id: card.id, title: card.title }], deckIds: [], details: [], ...overrides };
+}
+
+it('shows the newest recorded return for this card even outside the three-event summary', async () => {
+  const { root, bytes, body, card, catalog } = await briefFixture();
+  const older = cardEvent(card, 0, { transitions: [{ cardId: card.id, from: 'review', to: 'started', reason: 'Old feedback.' }] });
+  const latest = cardEvent(card, 1, { actorMemberId: 'maya', transitions: [
+    { cardId: 'another-card', from: 'review', to: 'not-started', reason: 'Another card in the same bulk event.' },
+    { cardId: card.id, from: 'review', to: 'not-started', reason: 'Уточнить коллизию и приложить проверку.' },
+  ] });
+  const events = [older, latest,
+    cardEvent(card, 2, { transitions: [{ cardId: card.id, from: 'started', to: 'not-started', reason: 'Not a review return.' }] }),
+    cardEvent(card, 3, { transitions: [{ cardId: card.id, from: 'review', to: 'done', reason: 'Acceptance is not a return.' }] }),
+    cardEvent(card, 4, { transitions: [{ cardId: card.id, from: 'review', to: 'review', reason: 'Same state.' }] }),
+    cardEvent(card, 5, { cards: [{ id: 'another-card', title: 'Other' }],
+      transitions: [{ cardId: 'another-card', from: 'review', to: 'started', reason: 'Other card feedback.' }] }),
+  ];
+  for (const event of events) await appendActivity(root, event, 'ru');
+  const journalBytes = await Promise.all(events.map(event => readFile(path.join(root, activityEventPath(event)))));
+  const result = await buildBrief(catalog, root, card);
+  expect(result.markdown).toContain('## Latest recorded review return\n');
+  expect(result.markdown).toContain(`${latest.at} · Actor: maya · review → not-started`);
+  expect(result.markdown).toContain('Reason: Уточнить коллизию и приложить проверку.');
+  expect(result.markdown).toContain('Journal: 5; shown 3.');
+  for (const reason of ['Old feedback.', 'Another card in the same bulk event.', 'Not a review return.', 'Acceptance is not a return.', 'Same state.', 'Other card feedback.']) {
+    expect(result.markdown).not.toContain(reason);
+  }
+  expect(result.markdown).toContain('## Card (verbatim)\n' + body);
+  const reference = result.readNext.find(reference => reference.path === activityEventPath(latest))!;
+  expect(reference).toBeDefined();
+  expect(reference.from).toBe(1);
+  expect(reference.to).toBe(sourceLines(journalBytes[1]).length);
+  expect(result.tokens).toBe(estimateTokens(result.markdown));
+  expect(result.tokens).toBeLessThanOrEqual(1500);
+  expect(await readFile(path.join(root, card.path))).toEqual(bytes);
+  expect(await Promise.all(events.map(event => readFile(path.join(root, activityEventPath(event)))))).toEqual(journalBytes);
+});
+
+it('marks budget-omitted feedback explicitly, links the full reason, and never invents its author', async () => {
+  const { root, body, card, catalog } = await briefFixture();
+  const reason = 'Проверить коллизию. '.repeat(500);
+  const event = cardEvent(card, 1, { actorMemberId: undefined,
+    transitions: [{ cardId: card.id, from: 'review', to: 'not-started', reason }] });
+  await appendActivity(root, event, 'en');
+  const result = await buildBrief(catalog, root, card);
+  expect(result.markdown).toContain('Actor: unknown · review → not-started');
+  expect(result.markdown).toContain('[return feedback truncated; read the full journal range]');
+  expect(result.markdown).not.toContain(reason);
+  expect(result.markdown).toContain('## Card (verbatim)\n' + body);
+  expect(result.truncated).toBe(true);
+  expect(result.tokens).toBeLessThanOrEqual(1500);
+  const reference = result.readNext.find(reference => reference.path === activityEventPath(event))!;
+  const full = await readFileLines(root, reference.path, reference.from, reference.to);
+  expect(full.markdown).toContain(reason);
+  const larger = await buildBrief(catalog, root, card, { budget: 20000 });
+  expect(larger.markdown).toContain('Reason: ' + reason);
+  expect(larger.markdown).not.toContain('[return feedback truncated');
+});
+
+it('keeps a reason-free brief byte-identical when legacy review exits have no recorded reason', async () => {
+  const { root, card, catalog } = await briefFixture();
+  const event = cardEvent(card, 1, { actorMemberId: undefined, details: ['Legacy free-form details are not feedback.'] });
+  await appendActivity(root, event, 'en');
+  const baseline = await buildBrief(catalog, root, card);
+  const filename = path.join(root, activityEventPath(event));
+  const original = await readFile(filename, 'utf8');
+  for (const reason of [undefined, '', '    ']) {
+    const transition = `transitions:\n  - cardId: ${card.id}\n    from: review\n    to: started\n`
+      + (reason === undefined ? '' : `    reason: '${reason}'\n`);
+    await writeFile(filename, original.replace('\n---\n', '\n' + transition + '---\n'));
+    expect(await buildBrief(catalog, root, card)).toEqual(baseline);
+  }
+  expect(baseline.markdown).not.toContain('Latest recorded review return');
+  expect(baseline.markdown).not.toContain('no reason recorded');
 });

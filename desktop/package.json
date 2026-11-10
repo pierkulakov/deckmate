@@ -1,65 +1,17 @@
 {
   "name": "deckmate-desktop",
-  "productName": "Deckmate",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "description": "Desktop shell for Deckmate, a local project board over Markdown.",
-  "main": "main.js",
   "type": "module",
   "private": true,
   "author": "pierkulakov",
   "license": "AGPL-3.0-only",
   "scripts": {
-    "start": "electron .",
-    "dist": "electron-builder --win --dir",
-    "dist:nsis": "electron-builder --win nsis"
-  },
-  "build": {
-    "appId": "com.deckmate.desktop",
-    "productName": "Deckmate",
-    "asar": false,
-    "electronVersion": "45.2.3",
-    "electronDist": "node_modules/electron/dist",
-    "icon": "build/icon.png",
-    "files": [
-      "main.js",
-      "preload.cjs",
-      "launcher/**",
-      "package.json"
-    ],
-    "directories": {
-      "output": "release",
-      "buildResources": "build"
-    },
-    "win": {
-      "icon": "build/icon.ico",
-      "target": [
-        "nsis",
-        "dir"
-      ]
-    },
-    "nsis": {
-      "oneClick": false,
-      "allowToChangeInstallationDirectory": true
-    },
-    "npmRebuild": false,
-    "electronFuses": {
-      "runAsNode": false,
-      "enableNodeOptionsEnvironmentVariable": false,
-      "enableNodeCliInspectArguments": false,
-      "enableCookieEncryption": true
-    },
-    "extraResources": [
-      {
-        "from": "node_modules/deckmate/LICENSE",
-        "to": "LICENSES/deckmate-AGPL.txt"
-      }
-    ]
+    "tauri": "tauri",
+    "dev": "tauri dev",
+    "dist": "tauri build --config src-tauri/tauri.release.conf.json"
   },
   "devDependencies": {
-    "electron": "45.2.3",
-    "electron-builder": "26.18.1"
-  },
-  "dependencies": {
-    "deckmate": "file:deckmate-0.2.0.tgz"
+    "@tauri-apps/cli": "2.12.4"
   }
 }

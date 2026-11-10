@@ -140,9 +140,9 @@ export function DeckTypePicker({ deck, cards, journeys, pending, writable, manif
       </Button>
     </DropdownMenu.Trigger>
     <DropdownMenu.Portal>
-      <DropdownMenu.Content className="deck-type-menu" align="start" sideOffset={8} collisionPadding={12} aria-labelledby={headingId} aria-busy={saving !== null}
+      <DropdownMenu.Content className="deck-type-menu dialog-panel" align="start" sideOffset={8} collisionPadding={12} aria-labelledby={headingId} aria-busy={saving !== null}
         onEscapeKeyDown={event => { if (saving) event.preventDefault(); }}>
-        <DropdownMenu.Label id={headingId} className="deck-type-heading">{t.heading}</DropdownMenu.Label>
+        <DropdownMenu.Label id={headingId} className="deck-type-heading dialog-head dialog-title">{t.heading}</DropdownMenu.Label>
         <DropdownMenu.RadioGroup className="deck-type-options" value={deck.kind}>
           {deckTypeOrder.map(kind => <DeckTypeTile key={kind} option={options[kind]} deckId={deck.id} cards={cards}
             issue={issues.get(kind) ?? null} saving={saving === kind}

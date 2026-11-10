@@ -1,0 +1,5 @@
+/* 2026-11-10: the pixel scene of an empty state (EmptyArt.tsx): a gray 32×24 drawing in the page's own ink at a whole
+   4× (3× on a phone), so every pixel stays square and the scene reads as part of the page, not as a picture on it. */
+.empty-art { display: block; flex: 0 0 auto; width: 128px; height: 96px; }
+.empty-art > svg { display: block; width: 100%; height: 100%; }
+@media (max-width: 420px) { .empty-art { width: 96px; height: 72px; } }

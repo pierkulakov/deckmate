@@ -13,7 +13,7 @@ Deckmate is a local project board over Markdown. The files in the user's project
 | `bin/deckmate.mjs` | Published command: `deckmate`, `deckmate init <folder>`, and `deckmate project`, `skills`, `agents` — the same functions as the npm scripts of those names. |
 | `skills/deckmate/` | Agent skill in the open Agent Skills format: router, workflows, lenses, genres, engines. |
 | `assets/` | Fonts, logo, deck art, starter project templates and Journey templates. |
-| `desktop/` | Electron shell: start screen, window and menu, the bundled server as a child process; its own package.json, see [desktop/README.md](desktop/README.md). |
+| `desktop/` | Tauri 2 shell: Rust in `desktop/src-tauri/`, start screen, window and menu, the bundled Node server as a sidecar; its own package.json, see [desktop/README.md](desktop/README.md). |
 | `tests/` | Vitest suites. |
 | `docs/` | Data contract ([catalog.md](docs/catalog.md)), local API ([api.md](docs/api.md)), skills and agent configuration. |
 
@@ -35,6 +35,7 @@ Deckmate is a local project board over Markdown. The files in the user's project
 - **Legacy names** (`FREETION_*` variables, `freetion` keys, `tasks/freetion*.md`) are read for compatibility; new data is written with `deckmate` names.
 - **Dependencies.** No new package without a maintainer's approval; OSI-approved licenses only. Never commit secrets or `.env.local`.
 - **Comments** explain why, not what, and use absolute dates (2026-11-05), never "today" or "for now".
+- **Comments and docs** state reasons directly; never attribute decisions to people or conversations, quote chats, cite design sketches or mock-ups, or name competitors or the AI tools that wrote the code.
 - Readable names, short functions, no nested ternaries.
 
 ## Checks
@@ -49,7 +50,11 @@ npm run quiet -- npx vitest run <test files that cover your change>
 npm run quiet -- npm run build
 ```
 
-Run the full `npm test` before opening a pull request. The running app serves `dist/`: client changes need `npm run build` and a page reload; server changes need `npm run build` and a restart.
+The desktop shell has its own tests: `cargo test --manifest-path desktop/src-tauri/Cargo.toml`; they need Rust, and `npm test` does not build them. `npm run desktop:smoke` additionally drives the real debug shell end to end over CDP (Windows only; needs `cargo build` first).
+
+CI runs the whole suite on every pull request, on Ubuntu and Windows: typecheck, the unit project and the browser project split into three parallel shards. The release workflow publishes only a commit whose CI is green and does not run the suite again. Locally, run the checks above for the files you changed; run the full `npm test` when a change touches shared helpers, test infrastructure or many modules. The running app serves `dist/`: client changes need `npm run build` and a page reload; server changes need `npm run build` and a restart.
+
+Vitest runs `unit` (at most four workers) before `browser` (one file at a time); Vitest 5 schedules different worker budgets in separate groups. Use `npx vitest run --project browser` for all browser files and `--shard=1/3` to repeat one CI shard; normal file filters still work. Every headless page starts as a desktop with a fine hovering pointer and motion allowed (`tools/layout-capture.ts`); a test of the touch layout or of reduced motion emulates it explicitly. Browser fixtures share one temporary build/preview server per invocation, not `dist/` or a dev dependency cache; profiles and project data stay isolated per file. Add browser fixtures to `tests/browser-files.ts`. Set `DECKMATE_BROWSER` to an installed Chrome/Edge/Chromium executable if discovery fails. Local absence prints one skipped-case count; `CI=true` or `DECKMATE_REQUIRE_BROWSER=1` requires a browser and fails if it is missing. Do not increase worker limits or setup timeouts to hide contention.
 
 ## Commits and pull requests
 

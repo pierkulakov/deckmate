@@ -64,12 +64,12 @@ export function buildCatalogLookups(cards: readonly CatalogCard[], subCardOrder?
     }
     normalizedSearch.set(card.id, [card.title, card.path, card.version, card.owner, card.markdown].join(' ').toLocaleLowerCase('ru'));
     kindCounts[card.kind] += 1;
+    checklistByCard.set(card.id, checklistProgress(card));
     if (!cardsByDeck.has(card.deckId)) cardsByDeck.set(card.deckId, []);
     cardsByDeck.get(card.deckId)!.push(card);
     deckCounts.set(card.deckId, (deckCounts.get(card.deckId) ?? 0) + 1);
     if (card.id.startsWith('card:') && card.owner) nativeOwners.add(card.owner);
     if (card.kind === 'task') {
-      checklistByCard.set(card.id, checklistProgress(card));
       if (card.state) states.add(card.state);
     }
     if ((card.kind === 'task' || card.kind === 'doc') && card.parentId) {

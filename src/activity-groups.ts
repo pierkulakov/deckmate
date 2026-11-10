@@ -30,7 +30,8 @@ const actionGroups: Record<string, ActivityEventGroup> = {
   'set-card-state': 'status', 'update-status': 'status',
   'set-card-properties': 'properties', 'configure-members': 'properties',
   'update-deck': 'properties', 'set-deck-kind': 'properties', 'upload-cover': 'properties',
-  'move-deck': 'properties', 'move-space': 'properties', 'set-deck-pile': 'properties', 'create-track': 'properties', 'save-project-tag': 'properties',
+  // 2026-11-10: removed pile actions stay mapped so old journal entries retain their Properties filter.
+  'move-deck': 'properties', 'move-space': 'properties', 'delete-space': 'properties', 'set-deck-pile': 'properties', 'create-track': 'properties', 'save-project-tag': 'properties',
   'update-card-content': 'content', 'update-block': 'content',
   'set-card-parent': 'links', 'set-card-links': 'links', 'assign-deck': 'links',
   'bulk-assign-deck': 'links', 'set-tracks': 'links', 'bulk-add-track': 'links',

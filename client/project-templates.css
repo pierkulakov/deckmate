@@ -1,81 +1,99 @@
-/* 2026-11-05: project setup uses the existing Journey catalog palette and shared controls. */
-.project-template-picker { position: fixed; z-index: 71; inset: 50% auto auto 50%; transform: translate(-50%, -50%); display: flex; flex-direction: column; width: min(1100px, calc(100vw - 40px)); height: min(820px, calc(100dvh - 48px)); overflow: hidden; border-radius: 12px; background: var(--canvas); color: var(--ink); box-shadow: var(--shadow); animation: dialog-drop var(--motion-spring-firm) var(--ease-spring-firm); }
-.project-template-header { display: flex; align-items: flex-start; justify-content: space-between; flex: 0 0 auto; gap: 24px; padding: 22px 24px 20px; background: var(--surface); }
-.project-template-header h2 { margin: 0; font-size: 24px; font-weight: 700; line-height: 1.25; }
-.project-template-header p { margin: 7px 0 0; color: var(--muted); line-height: 1.5; }
-/* 2026-11-05: shelf tabs reuse the segmented switcher of the tag picker (card-tags.css), sized for the dialog header. */
-/* 2026-11-06: the switcher sits with the close button on the title's centre line: space-between had left it floating at an
-   arbitrary point between the title and ×. The −5 px is (40 − 30) / 2, the switcher against the 30 px title line. */
-.project-template-shelves { display: flex; flex-shrink: 0; align-self: flex-start; gap: 3px; margin: -5px 0 0 auto; padding: 3px; border-radius: 6px; background: var(--ground); }
-.project-template-shelf { min-height: 34px; padding: 6px 16px; border: 0; border-radius: 4px; background: transparent; color: var(--muted); font-size: 13px; font-weight: 600; line-height: 1.2; cursor: pointer; }
-.project-template-shelf:hover:not(:disabled):not([aria-selected="true"]) { color: var(--ink); }
-.project-template-shelf[aria-selected="true"] { outline: 1px solid color-mix(in srgb, var(--focus) 70%, transparent); outline-offset: -1px; background: var(--surface); color: var(--ink); box-shadow: var(--shadow); }
+/* 2026-11-10: the starter picker reads as one product with the redesigned Decks home: the frame, the head and the title
+   are the shared dialog grammar of client/surface.css (.dialog-panel/.dialog-head/.dialog-title), the browser and the
+   plan are flat panels with panel-head titles and counts, card counters are Geist Mono (.page-number), and Apply is
+   the one mint action. The shelf switcher, the starter cards, the plan list and the footer's stacked rows stay local. */
+.project-template-picker { position: fixed; z-index: 71; inset: 50% auto auto 50%; transform: translate(-50%, -50%);
+  display: flex; flex-direction: column; width: min(1100px, calc(100vw - 40px)); height: min(820px, calc(100dvh - 48px));
+  overflow: hidden; animation: dialog-drop var(--motion-spring-firm) var(--ease-spring-firm); }
+/* The head wraps the tools under the title on a phone; .dialog-head carries the row, padding and hairline. */
+.project-template-header { flex-wrap: wrap; }
+.project-template-heading { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.project-template-heading p { margin: 0; max-width: 56ch; color: var(--muted); font-size: 12px; line-height: 16px; overflow-wrap: anywhere; }
+.project-template-tools { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); margin-inline-start: auto; }
+/* 2026-11-05: shelf tabs reuse the segmented switcher of the tag picker (card-tags.css), sized for the dialog head;
+   2026-11-10 they sit with × in the head's tool cluster, 30px tall like every tool (client/surface.css). */
+.project-template-shelves { display: flex; flex-shrink: 0;  }
+.project-template-shelf { min-height: 28px; padding: 4px 12px; font-size: 13px; line-height: 1.2; cursor: pointer; }
 .project-template-shelf:disabled { cursor: default; opacity: .5; }
-.project-template-body { display: grid; grid-template-columns: minmax(0, 1fr) 340px; flex: 1; min-height: 0; }
-.project-template-browser { min-width: 0; overflow-y: auto; padding: 20px 24px 24px; scrollbar-width: thin; }
-.project-template-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
-.project-template-option { display: flex; flex-direction: column; gap: 9px; min-width: 0; min-height: 142px; padding: 15px 16px; border: 1px solid var(--line); border-radius: 6px; text-align: left; color: var(--ink); background: var(--surface); }
-/* 2026-11-08: hover is a soft fill only — the accent edge is the language of the chosen card and of :focus-visible (D13). */
-.project-template-option:hover:not(:disabled):not([aria-pressed="true"]) { background: var(--hover); }
-.project-template-option[aria-pressed="true"] { border-color: var(--focus); background: var(--accent-soft); }
-.project-template-option:focus-visible { outline: 2px solid var(--focus); outline-offset: 3px; }
+/* 2026-11-10: each pane scrolls its whole panel so the flat face spans the full content height. */
+.project-template-body { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: var(--space-4); flex: 1; min-height: 0; padding: var(--space-4); }
+.project-template-pane { min-width: 0; min-height: 0; overflow-y: auto; scrollbar-width: thin; }
+.project-template-pane > .glass-panel { min-height: 100%; }
+/* --shelf-inset is the home page's left edge; a dialog's panels keep a plain 16px reading inset. */
+.project-template-body .glass-panel { padding: var(--space-3) var(--space-4) var(--space-4); }
+.project-template-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-3); }
+/* 2026-11-10: starter choices carry the Foil mark without changing border width when chosen. */
+.project-template-option { display: flex; flex-direction: column; gap: var(--space-2); min-width: 0; min-height: 142px;
+  padding: var(--space-4); border: var(--control-hairline) solid var(--control-line); border-radius: var(--control-radius); text-align: left; color: var(--ink);
+  background: transparent; font-weight: 500; letter-spacing: .01em; }
+.project-template-option[aria-pressed="true"] { border-color: var(--mark); background: var(--mark-tint); color: var(--mark); }
+@media (hover: hover) {
+  .project-template-option:hover:not(:disabled):not([aria-pressed="true"]) { border-color: var(--button-line); background: var(--hover); }
+  .project-template-option[aria-pressed="true"]:hover:not(:disabled), .project-template-shelves > [aria-selected="true"]:hover:not(:disabled) { background: var(--mark-tint-strong); }
+}
 .project-template-option:disabled { cursor: default; opacity: .5; }
 .project-template-option-title { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
-.project-template-option-title strong { font-size: 21px; line-height: 1.25; overflow-wrap: anywhere; }
+.project-template-option-title strong { font-size: 17px; font-weight: 500; line-height: 24px; overflow-wrap: anywhere; }
 .project-template-option-title svg { flex-shrink: 0; }
 .project-template-description { color: var(--muted); font-size: 13px; line-height: 1.45; overflow-wrap: anywhere; }
-.project-template-counts { display: flex; flex-wrap: wrap; gap: 6px 14px; margin-top: auto; padding-top: 3px; color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+.project-template-counts { display: flex; flex-wrap: wrap; gap: 6px 14px; margin-top: auto; padding-top: 3px; color: var(--muted); font-size: 12px; line-height: 16px; }
 .project-template-counts > span { display: inline-flex; align-items: center; gap: 5px; }
-.project-template-plan { min-width: 0; padding: 20px 24px 24px; overflow-y: auto; border-left: 1px solid var(--line); background: var(--ground); scrollbar-width: thin; }
-.project-template-plan h3 { margin: 0 0 10px; font-size: 21px; font-weight: 700; line-height: 1.3; overflow-wrap: anywhere; }
 .project-template-details { font-size: 14px; line-height: 1.5; overflow-wrap: anywhere; }
 .project-template-details p { margin: 0 0 10px; }
-.project-template-note { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.5; }
-.project-template-plan-group { margin-top: 24px; }
-.project-template-plan-group h4 { display: flex; align-items: center; gap: 6px; margin: 0 0 8px; font-size: 13px; font-weight: 700; }
-.project-template-plan-group h4 > span { margin-left: auto; color: var(--muted); font-weight: 400; font-variant-numeric: tabular-nums; }
+.project-template-note { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; }
+.project-template-plan-group { margin-top: var(--space-4); }
+.project-template-plan-group h4 { display: flex; align-items: center; gap: 6px; margin: 0 0 var(--space-2); font-size: 13px; font-weight: 600; }
+.project-template-plan-group h4 > .panel-count { margin-left: auto; }
 .project-template-plan-group ul { margin: 0; padding: 0; list-style: none; }
-.project-template-plan-group li { padding: 8px 0; border-bottom: 1px solid var(--line); font-size: 13px; line-height: 1.35; }
+.project-template-plan-group li { padding: var(--space-2) 0; border-bottom: 1px solid var(--line); font-size: 13px; line-height: 1.35; }
 .project-template-plan-group li > div { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
 .project-template-plan-group li > div > span { overflow-wrap: anywhere; }
 .project-template-plan-group li small { flex-shrink: 0; color: var(--muted); font-size: 12px; }
 .project-template-plan-group li p { margin: 4px 0 0; color: var(--muted); font-size: 12px; }
-.project-template-footer { display: flex; flex-direction: column; flex: 0 0 auto; gap: 12px; max-height: 40%; overflow-y: auto; padding: 17px 24px; border-top: 1px solid var(--line); background: var(--surface); }
-.project-template-footer-row { display: flex; align-items: center; justify-content: space-between; gap: 24px; }
+/* The footer rows mirror .dialog-foot's metrics (client/surface.css) because they stack several rows, not one. */
+.project-template-footer { display: flex; flex-direction: column; flex: 0 0 auto; gap: var(--space-3); max-height: 40%;
+  overflow-y: auto; padding: var(--space-3) var(--space-4); border-top: 1px solid var(--line); }
+.project-template-footer-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-3) var(--space-4); }
 .project-template-samples { display: flex; align-items: flex-start; gap: 10px; cursor: pointer; }
 .project-template-samples input { flex-shrink: 0; margin-top: 3px; }
-.project-template-samples strong { display: block; font-size: 14px; font-weight: 600; line-height: 1.4; }
+.project-template-samples strong { display: block; font-size: 14px; font-weight: 500; letter-spacing: .01em; line-height: 1.4; }
 .project-template-samples small { display: block; margin-top: 3px; color: var(--muted); font-size: 12px; line-height: 1.35; }
-.project-template-actions { display: flex; flex-shrink: 0; gap: 8px; }
-.project-template-message { display: flex; align-items: center; gap: 8px; margin: 16px 0; color: var(--muted); line-height: 1.5; }
-.project-template-error { margin: 0; padding: 10px 12px; border-radius: 4px; background: var(--warning-bg); color: var(--warning-ink); font-size: 13px; line-height: 1.45; }
-.project-template-error p { margin: 0 0 8px; }
+.project-template-actions { display: flex; flex-shrink: 0; gap: var(--space-2); }
+.project-template-error { margin: 0; padding: 10px 12px; border-radius: var(--glass-radius); background: var(--warning-bg); color: var(--warning-ink); font-size: 12px; line-height: 1.45; overflow-wrap: anywhere; }
+/* ErrorState's banner carries the page's own 20px bottom margin; inside a stacked footer it would open a gap. */
+.project-template-state { margin: 0; }
 .project-template-stale { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; color: var(--warning-ink); font-size: 13px; }
-.project-template-start { display: flex; align-items: center; justify-content: space-between; gap: 24px; max-width: 740px; margin: 24px 0; padding: 24px; border-radius: 8px; background: var(--surface); }
-.project-template-start h2 { margin: 0 0 7px; font-size: 21px; font-weight: 600; line-height: 1.3; }
-.project-template-start p { max-width: 48ch; margin: 0; color: var(--muted); line-height: 1.5; }
-.project-template-start > button { flex-shrink: 0; }
+/* 2026-11-10: the first-project starting block is a flat panel like the pulse bar under it; Deck.tsx owns the markup,
+   so the recipe mirrors .glass-panel from client/surface.css. */
+.project-template-start { position: relative; isolation: isolate; display: flex; align-items: center; justify-content: space-between;
+  gap: var(--space-6); min-width: 0; margin: 0 0 var(--space-4); padding: var(--space-4) var(--shelf-inset, var(--space-6));
+  border-radius: var(--glass-radius); }
+.project-template-start::before { content: ''; position: absolute; inset: 0; z-index: -1; border-radius: inherit;
+  background: var(--glass-face);
+  box-shadow: var(--glass-rim), var(--glass-lift); pointer-events: none; }
+.project-template-start h2 { margin: 0 0 4px; font-size: 17px; font-weight: 600; line-height: 24px; overflow-wrap: anywhere; }
+.project-template-start p { max-width: 48ch; margin: 0; color: var(--muted); font-size: 12px; line-height: 16px; overflow-wrap: anywhere; }
+.project-template-start > .ui-button { flex-shrink: 0; }
+/* The mint fold to a bare icon (surface.css, ≤420px) belongs to page heads whose label sits in a span; the picker's
+   creating action is text-only, so it keeps its label at phone widths (2026-11-10). */
+@media (max-width: 420px) { .project-template-actions .action-mint { width: auto; padding: 0 12px 0 9px; } }
+@media (prefers-reduced-motion: reduce) { .project-template-picker { animation: none; } }
 @media (max-width: 900px) {
   .project-template-body { grid-template-columns: minmax(0, 1fr) 300px; }
-  .project-template-browser, .project-template-plan { padding: 16px; }
   .project-template-grid { grid-template-columns: minmax(0, 1fr); }
   .project-template-option { min-height: auto; }
 }
 @media (max-width: 640px) {
   .project-template-picker { width: calc(100vw - 16px); height: calc(100dvh - 24px); }
   /* 2026-11-08: × keeps its own right column on the title's axis (D05): on flex-wrap the unshrinkable text block
-     pushed it onto a lone left-edge line between the description and the shelves. Grid columns replace order tricks. */
-  .project-template-header { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: start; padding: 16px; gap: 12px; }
-  .project-template-header h2 { font-size: 21px; }
-  .project-template-heading { grid-column: 1; grid-row: 1; }
-  .project-template-close { grid-column: 2; grid-row: 1; }
-  .project-template-shelves { grid-column: 1 / -1; grid-row: 2; margin: 0; }
+     pushed it onto a lone left-edge line between the description and the shelves. The tools wrap as one cluster. */
+  .project-template-heading { flex: 1 1 100%; }
+  .project-template-tools { margin-inline-start: auto; }
   .project-template-shelf { flex: 1; }
-  .project-template-body { display: block; overflow-y: auto; }
-  .project-template-browser, .project-template-plan { overflow: visible; }
-  .project-template-plan { border-left: 0; border-top: 1px solid var(--line); }
-  .project-template-footer { padding: 14px 16px; }
-  .project-template-footer-row { align-items: stretch; flex-direction: column; gap: 16px; }
+  .project-template-body { display: flex; flex-direction: column; gap: var(--space-3); overflow-y: auto; }
+  .project-template-pane { overflow: visible; }
+  .project-template-pane > .glass-panel { min-height: 0; }
+  .project-template-footer-row { align-items: stretch; flex-direction: column; gap: var(--space-3); }
   .project-template-actions { justify-content: flex-end; }
-  .project-template-start { align-items: flex-start; flex-direction: column; padding: 20px; }
+  .project-template-start { align-items: flex-start; flex-direction: column; gap: var(--space-3); padding: var(--space-4); }
 }

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { failureMessage } from '../failure-message.ts';
 import { RotateCcw } from 'lucide-react';
 import type { CatalogJourneyStep, JourneyMetrics, JourneyStepMetrics } from '../../src/catalog-contracts.ts';
 import type { DataSource } from '../../src/workspace-contracts.ts';
@@ -97,7 +98,7 @@ export function useJourneyMetrics(source: DataSource, journeyId: string | null, 
         if (!response.ok) throw new Error(result.message ?? text[lang].metricsFailed);
         setState({ metrics: result, error: '' });
       } catch (failure) {
-        if (!controller.signal.aborted) setState({ metrics: null, error: failure instanceof Error ? failure.message : text[lang].metricsFailed });
+        if (!controller.signal.aborted) setState({ metrics: null, error: failureMessage(failure, text[lang].metricsFailed) });
       }
     })();
     return () => controller.abort();
@@ -121,9 +122,10 @@ export function JourneyStepMetricsBadge({ metrics }: { metrics: JourneyStepMetri
 export function JourneyMetricsTable({ metrics, error, steps }: { metrics: JourneyMetrics | null; error: string; steps: CatalogJourneyStep[] }) {
   const lang = useLang();
   const t = text[lang];
-  return <section className="journey-metrics" aria-label={t.metrics}>
+  return <section className="journey-metrics glass-panel" aria-label={t.metrics}>
+    <header className="panel-head"><h3 className="panel-title">{t.metrics}</h3></header>
     {error && <p className="journey-metrics-error" role="alert">{error}</p>}
-    {metrics && metrics.steps.length > 0 && <table>
+    {metrics && metrics.steps.length > 0 && <div className="journey-metrics-scroll" tabIndex={0}><table>
       <thead><tr><th scope="col">{t.step}</th><th scope="col">{t.cards}</th><th scope="col">{stateLabel('done', lang)}</th><th scope="col">{t.returnsColumn}</th><th scope="col">{t.cycleColumns}</th><th scope="col">{t.ownersColumn}</th><th scope="col">{t.statusActorsColumn}</th><th scope="col">{t.lastReturnsColumn}</th></tr></thead>
       <tbody>{metrics.steps.map(step => {
         const definition = steps.find(candidate => candidate.id === step.stepId);
@@ -138,7 +140,7 @@ export function JourneyMetricsTable({ metrics, error, steps }: { metrics: Journe
           <td>{step.lastReturns.length ? <ul>{step.lastReturns.map(item => <li key={item.at + item.cardId}><time dateTime={item.at}>{localDate(item.at, lang)}</time> {item.reason}</li>)}</ul> : '—'}</td>
         </tr>;
       })}</tbody>
-    </table>}
+    </table></div>}
     {metrics?.warnings.map(warning => <p key={warning} className="journey-metrics-error" role="status">{warning}</p>)}
     <p className="journey-metrics-note">{t.note}</p>
   </section>;

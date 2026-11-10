@@ -1,11 +1,11 @@
 import { createHash } from 'node:crypto';
-import { isAlias, isMap, parseDocument, visit } from 'yaml';
 import type { MilestoneRecord } from '../src/catalog-contracts.ts';
 import { validDate } from './card-options.ts';
 import { readProjectMarkdown } from './native-cards.ts';
 import { milestonesPath } from '../src/planning-files.ts';
 import { defineText, serverText } from './i18n.ts';
 import { invalidPlanning, validatePlanningDetails } from './run-model.ts';
+import { parseYamlFrontMatter } from './yaml-front-matter.ts';
 
 /** 2026-11-04: Milestones record key project dates in one registry, like Card Options. */
 
@@ -44,12 +44,10 @@ function record(value: unknown): value is Record<string, unknown> {
 
 export function parseMilestones(bytes: Buffer): MilestoneRecord[] {
   if (bytes.length > 1024 * 1024) throw new Error(serverText(milestoneText).sizeLimit);
-  const text = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(bytes);
-  const match = /^(?:\uFEFF)?---(\r?\n)([\s\S]*?)^---[ \t]*(?:\r?\n|$)/mu.exec(text);
-  if (!match || match.index !== 0) throw new Error(serverText(milestoneText).yamlHeader);
-  const document = parseDocument(match[2]);
-  if (document.errors.length || !isMap(document.contents)) throw new Error(serverText(milestoneText).invalidYaml);
-  visit(document, (_key, node) => { if (isAlias(node)) throw new Error(serverText(milestoneText).noAliases); });
+  const { document } = parseYamlFrontMatter(bytes, {
+    headerError: serverText(milestoneText).yamlHeader, yamlError: serverText(milestoneText).invalidYaml,
+    aliases: 'reject', aliasError: serverText(milestoneText).noAliases,
+  });
   const metadata: unknown = document.toJS({ maxAliasCount: 0 });
   if (!record(metadata) || metadata.schema !== 1 || !Array.isArray(metadata.milestones) || metadata.milestones.length > 1000) {
     throw new Error(serverText(milestoneText).schema);

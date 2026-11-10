@@ -12,7 +12,7 @@
 
 - [ ] I have signed the [Contributor License Agreement](https://github.com/pierkulakov/deckmate/blob/main/CLA.md) (first pull request only; the bot will ask)
 - [ ] `npm run typecheck` passes
-- [ ] `npm test` passes (new/updated tests for parser or write-path changes)
+- [ ] The tests covering the change pass locally and CI is green (new/updated tests for parser or write-path changes)
 - [ ] `npm run build` passes
 - [ ] Packaging changes: a packed tarball starts outside the repository
 - [ ] Data writes preserve unchanged bytes, BOM, and line endings; stale hashes are rejected (or not applicable)

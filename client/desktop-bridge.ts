@@ -1,8 +1,10 @@
+import { useEffect } from 'react';
+
 /**
- * 2026-11-08: Deckmate Desktop exposes this narrow bridge on the board page so the project menu can switch between
- * recent projects. It is absent in a browser (CLI, Docker), and the menu then shows only the current project.
+ * 2026-11-09: Deckmate Desktop exposes this narrow bridge on the board page so the project menu can switch between
+ * workspace projects. It is absent in a browser (CLI, Docker), and the menu then shows only the current project.
  * The board renders project content, so the shell answers only from the top frame of the current server origin
- * and switches only to folders already in its recent list; anything else still goes through the start screen.
+ * and switches only to folders already in its workspace or recent list.
  */
 export type DesktopRecentProject = {
   /** Absolute folder path as the shell stores it. */
@@ -17,14 +19,39 @@ export type DesktopRecentProject = {
 
 export type DesktopResult = { ok: true } | { ok: false; code: string; message?: string };
 
+export type DesktopWorkspaceProject = {
+  path: string;
+  name: string;
+  current: boolean;
+  missing: boolean;
+};
+
+export type DesktopWorkspaceSource = { kind: 'dialog' } | { kind: 'current' } | { kind: 'recent'; path: string };
+export type DesktopWorkspaceResult = { ok: true; projects: DesktopWorkspaceProject[] } | Extract<DesktopResult, { ok: false }>;
+
 export type DesktopBoardBridge = {
   /** Recent projects, most recent first, the current one included and marked. */
   recentProjects(): Promise<DesktopRecentProject[]>;
-  /** Opens a folder from the recent list in this window; the page is replaced on success. */
+  /** Optional as a group: older shells keep their recent-project menu. */
+  workspaceProjects?(): Promise<DesktopWorkspaceProject[]>;
+  addToWorkspace?(source: DesktopWorkspaceSource): Promise<DesktopWorkspaceResult>;
+  removeFromWorkspace?(path: string): Promise<DesktopWorkspaceResult>;
+  moveInWorkspace?(path: string, index: number): Promise<DesktopWorkspaceResult>;
+  /** Opens a folder from the workspace or recent list; the page is replaced on success. */
   switchProject(path: string): Promise<DesktopResult>;
   /** Shows the start screen, where another folder can be opened or created. */
   showStartScreen(): Promise<DesktopResult>;
+  /** 2026-11-09: optional for boards served by older shells. */
+  setDirty?(dirty: boolean): Promise<DesktopResult>;
 };
+
+export type DesktopWorkspaceBridge = DesktopBoardBridge & Required<Pick<DesktopBoardBridge,
+  'workspaceProjects' | 'addToWorkspace' | 'removeFromWorkspace' | 'moveInWorkspace'>>;
+
+export function hasWorkspace(board: DesktopBoardBridge): board is DesktopWorkspaceBridge {
+  return typeof board.workspaceProjects === 'function' && typeof board.addToWorkspace === 'function'
+    && typeof board.removeFromWorkspace === 'function' && typeof board.moveInWorkspace === 'function';
+}
 
 declare global {
   interface Window { deckmateBoard?: DesktopBoardBridge }
@@ -32,4 +59,19 @@ declare global {
 
 export function desktopBoard(): DesktopBoardBridge | undefined {
   return typeof window === 'undefined' ? undefined : window.deckmateBoard;
+}
+
+const dirtyEditors = new Set<symbol>();
+
+export function useDesktopDirty(dirty: boolean): void {
+  useEffect(() => {
+    const board = desktopBoard();
+    if (!dirty || !board?.setDirty) return;
+    // 2026-11-09: nested editors must not clear each other's unsaved-work guard on save or unmount.
+    const editor = Symbol();
+    dirtyEditors.add(editor);
+    const report = () => { void board.setDirty!(dirtyEditors.size > 0).catch(error => console.error(error)); };
+    report();
+    return () => { dirtyEditors.delete(editor); report(); };
+  }, [dirty]);
 }

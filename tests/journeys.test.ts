@@ -137,6 +137,7 @@ it('rechecks archive metadata before publishing a prepared Journey card', async 
     return original(...args);
   });
   await expect(editProjectCatalog(root, edit)).rejects.toMatchObject({ saved: false, created: [], message: expect.stringContaining('CARD_OPTIONS_CONFLICT') });
+  expect(archived).toBe(true);
   vi.mocked(nativeFiles.createManagedMarkdown).mockImplementation(original);
   expect((await readCardOptions(root)).options[parentId].archived).toBe(true);
   expect(await readdir(path.join(root, 'cards'))).toEqual([]);
@@ -248,6 +249,7 @@ it.each(['before-next', 'after-publish'])('retains partial success after I/O fai
     return written;
   });
   await expect(editProjectCatalog(root, await request(root))).rejects.toMatchObject({ saved: true, created: expect.any(Array), missing: expect.any(Array) });
+  expect(writes).toBe(mode === 'before-next' ? 2 : 1);
   expect(await files(root)).toHaveLength(1);
   const filename = (await files(root))[0];
   const bytes = await readFile(path.join(root, 'cards', filename));
@@ -378,13 +380,16 @@ it('keeps a removed step edited externally after the Journey was read', async ()
   const filename = path.join(root, `tasks/journeys/${journey.id}/steps/review.md`);
   const external = Buffer.concat([await readFile(filename), Buffer.from('\nExternal instruction.\n')]);
   const original = vi.mocked(nativeFiles.replaceProjectMarkdown).getMockImplementation()!;
+  let injected = false;
   vi.mocked(nativeFiles.replaceProjectMarkdown).mockImplementationOnce(async (...args) => {
     await original(...args);
+    injected = true;
     await writeFile(filename, external);
   });
   await expect(updateJourney(root, catalog, { action: 'update-journey', journeyId: journey.id, journeyHash: journey.fileHash,
     title: journey.title, description: '', zones: [], steps: journey.steps.filter(step => step.id !== 'review'),
-    manifestHash: catalog.manifestHash })).rejects.toMatchObject({ saved: true, message: expect.stringContaining('JOURNEY_CONFLICT') });
+    manifestHash: catalog.manifestHash })).rejects.toMatchObject({ saved: true, message: expect.stringContaining('steps/review.md') });
+  expect(injected).toBe(true);
   expect(await readFile(filename)).toEqual(external);
 });
 

@@ -40,11 +40,10 @@
 .journey-picker-instruction { margin-top: 14px; font-size: 12px; }
 .journey-picker-instruction > summary { width: fit-content; color: var(--muted); cursor: pointer; }
 .journey-picker-instruction > .journey-markdown { max-height: 220px; overflow: auto; margin-top: 10px; scrollbar-width: thin; }
-.journey-picker-error { margin: 14px 0 0; padding: 10px 12px; border-radius: 5px; background: var(--warning-bg); color: var(--warning-ink); font-size: 11px; line-height: 1.6; }
+.journey-picker-error { margin: 14px 0 0; padding: 10px 12px; border-radius: var(--glass-radius); background: var(--warning-bg); color: var(--warning-ink); font-size: 11px; line-height: 1.6; }
 .journey-picker-footer { display: flex; align-items: center; justify-content: flex-end; gap: 8px; margin-top: 24px; padding-top: 16px; border-top: 1px solid var(--line); }
 .journey-picker-footer > span { margin-right: auto; color: var(--muted); font-size: 11px; }
 .journey-picker-empty { display: flex; flex-direction: column; align-items: center; max-width: 390px; margin: 28px auto; text-align: center; }
-.journey-picker-empty-icon { display: flex; align-items: center; justify-content: center; width: 48px; height: 48px; margin-bottom: 14px; border-radius: 13px; background: var(--accent-soft); color: var(--accent); }
 .journey-picker-empty h4 { margin: 0; font-size: 16px; font-weight: 600; }
 .journey-picker-empty p { margin: 9px 0 18px; color: var(--muted); font-size: 12px; line-height: 1.7; }
 @media (max-width: 640px) {
@@ -56,3 +55,14 @@
   .journey-picker-footer > span { width: 100%; }
 }
 @media (prefers-reduced-motion: reduce) { .journey-step-card { transition: none; } }
+
+/* 2026-11-10: the picker is embedded in a card, so its shared panels keep the card's available width. */
+.journey-apply-picker .journey-picker-heading h3.dialog-title { font-size: 18px; font-weight: 600; line-height: 24px; letter-spacing: normal; }
+.journey-picker-group-title.panel-head::after { content: none; }
+.journey-picker-details.glass-panel { min-width: 0; padding: var(--space-4); border: 0; }
+.journey-picker-details h4.panel-title { font-size: 15px; font-weight: 600; line-height: 24px; }
+.journey-picker-footer.dialog-foot { padding-inline: 0; padding-bottom: 0; }
+.journey-picker-footer .action-mint { width: auto; padding: 0 12px; }
+.journey-picker-empty.ui-empty h2 { margin: 0; font-size: 17px; }
+.journey-picker-empty.ui-empty p { margin: 0; }
+@media (max-width: 420px) { .journey-picker-controls { flex-wrap: wrap; } .journey-picker-controls > .catalog-field { width: 100%; } }

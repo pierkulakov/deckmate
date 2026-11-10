@@ -1,8 +1,14 @@
-/* Table rows use the card face in both themes: 34 px height + 1 px separator, 4 px state strip, 32 px Priority, 50 px Effort, 14/400/16 title, 162 px tags and a right cell of at least 130 px.
-   Lane headings use a 24 px line with 12/400 text; label, rule and Add Card share 200 px, followed by effort. Rows start 12 px below; lanes are 32 px apart. Checkboxes appear on hover in a 24 px gutter. Use theme tokens only. */
-.deck-table-scroll { min-width: 0; width: 100%; overflow-x: auto; padding: 0 0 12px 24px; container: deck-table / inline-size; }
-/* 2026-11-06: with lane headings the table starts 10 px down, so the first 24 px heading centers on the first rail button and on the
-   panel heading beside it, as the 44 px heading row does in Cards; switching views no longer moves the first heading. */
+/* 2026-11-10: the Table is the card grid's twin, so a list reads the same in Cards and in Table, in a deck and in a
+   card scope; glass lanes, an inset heading and a 24 px gutter made it feel disconnected. A lane is the cards
+   view's heading (a 24 px line of muted 12 px text, the dashed rule, a quiet Add) over one 4 px-rounded block of
+   card-face rows with 1 px of card-edge between them; the state strip runs inside the block's corners. The table starts
+   at the results' left edge, like the first card column, the result line and the lane chips: the row checkbox sits
+   inside the row by its strip, the lane checkbox inside the heading, which slides 24 px to show it, as in the cards
+   view. Counters stay Geist Mono and tag chips glass. 34 px of row content on a 35 px pitch, the same column grid,
+   checkboxes, drag, keyboard, sorting and zones. */
+.deck-table-scroll { min-width: 0; width: 100%; overflow-x: auto; padding: 0 0 var(--space-3); container: deck-table / inline-size; }
+/* 2026-11-06: with lane headings the table starts 10 px down, so the first 24 px heading centers on the first rail
+   button 22 px into the results; switching views does not move the first heading. */
 .deck-table-scroll:has(> .deck-table > tbody > .catalog-table-group) { padding-top: 10px; }
 .deck-table {
   --row-ink: var(--card-ink);
@@ -14,71 +20,86 @@
   /* 2026-11-06: one column grid for the whole table; tbody and rows take it by subgrid, so Priority, Effort, Tags and the right cell
      start at the same x in every row and lane. The right cell is max-content: as wide as the widest row's indicators.
      A subgrid row hands its 4 px strip and 8 px padding to its edge tracks, so the first track is 44 px: 4 + 8 + the 32 px Priority cell. */
-  display: grid; grid-template-columns: 44px 50px minmax(0, 1fr) 162px max-content; width: 100%; border-spacing: 0; font-size: 14px; line-height: 16px;
+  display: grid; grid-template-columns: 54px 50px minmax(0, 1fr) 162px max-content; width: 100%; border-spacing: 0; font-size: 14px; line-height: 16px;
 }
 :root.dark .deck-table { --row-ink: var(--ink); }
 .deck-table button { font: inherit; }
 
-/* A lane: heading line, then a 4 px rounded box whose color shows through the 1 px gaps as separators. */
+/* A lane: its heading line, then one 4 px-rounded block whose card-edge shows through the 1 px gaps between rows. */
 .deck-table > tbody { position: relative; z-index: 0; display: grid; grid-template-columns: subgrid; grid-column: 1 / -1; }
-.deck-table > tbody + tbody { margin-top: 32px; }
-.deck-table > tbody::before { content: ''; position: absolute; inset: 0; z-index: -1; border-radius: 4px; background: var(--card-edge); box-shadow: var(--card-row-shadow, var(--card-shadow)); }
+.deck-table > tbody + tbody { margin-top: var(--space-6); }
+.deck-table > tbody::before { content: ''; position: absolute; inset: 0; z-index: -1; border-radius: 4px; background: var(--card-edge); box-shadow: var(--card-row-shadow, var(--card-shadow)); pointer-events: none; }
 .deck-table > tbody:has(> .catalog-table-group)::before { top: 36px; }
 .deck-table > tbody:not(:has(> .deck-table-row))::before { display: none; }
-.deck-table > tbody.is-zone-over { box-shadow: inset 0 3px 0 var(--accent); }
+.deck-table > tbody.is-zone-over::before { box-shadow: var(--card-row-shadow, var(--card-shadow)), inset 0 3px 0 var(--accent); }
 
-.deck-table .catalog-table-group { display: block; grid-column: 1 / -1; margin-bottom: 12px; }
+/* The lane heading is the cards view's: a 24 px line, the label with its icon and Geist Mono count, the dashed rule,
+   Add and the effort sum on hover. 12 px below it the rows begin (card-transfer.css starts its drop strip at 36 px). */
+.deck-table .catalog-table-group { display: block; grid-column: 1 / -1; margin-bottom: var(--space-3); }
 .deck-table .catalog-table-group > th { display: block; padding: 0; font: inherit; text-align: left; }
-.deck-table .catalog-card-group-heading { position: relative; display: grid; grid-template-columns: auto minmax(200px, max-content) auto auto 1fr; align-items: center; height: 24px; min-height: 24px; margin: 0; gap: 0; color: var(--muted); font-size: 12px; font-weight: 400; line-height: 14px; }
-.deck-table .catalog-card-group-heading > .catalog-zone-handle { grid-area: 1 / 1; margin-right: 8px; }
-/* Label, rule and Add Card share the 200 px cell; the page color masks the rule behind the label and button. */
-.deck-table .catalog-card-group-heading > label { grid-area: 1 / 2; justify-self: start; z-index: 1; gap: 8px; max-width: 100%; padding-right: 8px; background: var(--ground); }
-.deck-table .catalog-card-group-heading > label > span:not(.catalog-group-count) { gap: 4px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; overflow-wrap: normal; }
-.deck-table .catalog-card-group-heading > label svg { flex: 0 0 auto; width: 16px; height: 16px; }
-.deck-table .catalog-card-group-heading .catalog-group-count { font: 11px/12px 'Geist Mono', monospace; }
-.deck-table .catalog-card-group-heading > .catalog-group-rule { grid-area: 1 / 2; align-self: center; width: auto; margin-left: 16px; border-top: .667px solid var(--panel-box-line, var(--line)); }
-.deck-table .catalog-card-group-heading .catalog-group-add { grid-area: 1 / 2; justify-self: end; z-index: 1; width: 24px; height: 24px; min-height: 24px; border: .667px solid var(--button-line, var(--focus)); color: var(--button-ink, var(--accent)); background: var(--ground); box-shadow: -8px 0 0 var(--ground); }
-.deck-table .catalog-card-group-heading .catalog-group-add svg { width: 16px; height: 16px; }
+.deck-table .catalog-card-group-heading { position: relative; display: flex; align-items: center; gap: var(--space-3); height: 24px; min-height: 24px; margin: 0; color: var(--muted); font-size: 12px; font-weight: 400; line-height: 14px; }
+.deck-table .catalog-table-group .catalog-card-group-heading > .catalog-group-label { background: none; }
+.deck-table .catalog-card-group-heading > .catalog-zone-handle { margin-right: 0; }
+.deck-table .catalog-card-group-heading .catalog-zone-title-input { font-size: 12px; }
+.deck-table .catalog-card-group-heading .catalog-group-count { font: 500 11px/12px 'Geist Mono', monospace; font-variant-numeric: tabular-nums; }
+.deck-table .catalog-card-group-heading .catalog-group-add { border: var(--control-hairline) solid var(--button-line); border-radius: var(--control-radius); background: transparent; color: var(--muted); box-shadow: none; }
+.deck-table .catalog-card-group-heading .catalog-group-add:hover:not(:disabled) { background: var(--hover); color: var(--ink); }
 .deck-table .catalog-card-group-heading > .catalog-zone-tools { grid-area: 1 / 3; margin-left: 16px; }
-/* The lane effort sum appears only while its heading is hovered. */
-.deck-table .catalog-card-group-heading > .catalog-group-effort { grid-area: 1 / 4; gap: 6px; margin-left: 16px; font-size: 11px; line-height: 12px; opacity: 0; transition: opacity var(--motion-feedback); }
+.deck-table .catalog-zone-tools .ui-button { border-color: var(--button-line); border-radius: var(--control-radius); background: transparent; }
+/* The lane effort sum appears only while its heading is hovered; as a counter it is Geist Mono, like the home's numbers. */
+.deck-table .catalog-card-group-heading > .catalog-group-effort { grid-area: 1 / 4; gap: 6px; margin-left: 16px; font-family: 'Geist Mono', monospace; font-weight: 500; font-size: 11px; line-height: 16px; font-variant-numeric: tabular-nums; opacity: 0; transition: opacity var(--motion-feedback); }
 .deck-table .catalog-group-effort svg { width: 16px; height: 16px; }
 .deck-table .catalog-card-group-heading:hover > .catalog-group-effort, .deck-table .catalog-card-group-heading:focus-within > .catalog-group-effort { opacity: 1; }
-/* 2026-11-08 (NW-02): the hit target moved to the label: its 5px padding forms a 26×26 target around the 16px input
-   (a pseudo on the bordered input clips ~1px in this scroll container). left/top keep the checkbox at its old spot;
-   the filter margin keeps the 8px slot the label used to occupy as a zero-width flex item. */
-.deck-table .catalog-card-group-heading .catalog-group-select { position: absolute; left: -27px; top: -1px; padding: 5px; }
-.deck-table .catalog-card-group-heading .catalog-group-filter { margin-left: 8px; }
-.deck-table .catalog-card-group-heading input[type="checkbox"] { opacity: 0; transition: opacity var(--motion-feedback); }
-.deck-table .catalog-card-group-heading:hover input[type="checkbox"], .deck-table .catalog-card-group-heading input[type="checkbox"]:is(:focus-visible, :checked, :indeterminate) { opacity: 1; }
+/* 2026-11-10: the lane checkbox sits inside the heading, as in the cards view: its label (a 26×26 target round the
+   16 px input) overlaps the start of the name, and hover, focus or a selection slides the name and rule 24 px. */
+.deck-table .catalog-card-group-heading .catalog-group-select { position: absolute; left: -5px; top: 50%; z-index: 2; translate: 0 -50%; padding: 5px; }
+.deck-table .catalog-card-group-heading .catalog-group-label > :is(.catalog-group-filter, .catalog-zone-title-input, .catalog-group-count) { position: relative; z-index: 1; transition: transform var(--motion-feedback) var(--ease-out); }
+.deck-table .catalog-card-group-heading > .catalog-group-rule { transition: transform var(--motion-feedback) var(--ease-out), clip-path var(--motion-feedback) var(--ease-out); }
+.deck-table .catalog-card-group-heading:is(:hover, :focus-within, [data-selecting]) .catalog-group-label > :is(.catalog-group-filter, .catalog-zone-title-input, .catalog-group-count),
+.deck-table .catalog-card-group-heading:has(.catalog-group-select input:is(:checked, :indeterminate)) .catalog-group-label > :is(.catalog-group-filter, .catalog-zone-title-input, .catalog-group-count) { transform: translateX(24px); }
+.deck-table .catalog-card-group-heading:is(:hover, :focus-within, [data-selecting]) > .catalog-group-rule,
+.deck-table .catalog-card-group-heading:has(.catalog-group-select input:is(:checked, :indeterminate)) > .catalog-group-rule { transform: translateX(24px); clip-path: inset(0 24px 0 0); }
+.deck-table .catalog-card-group-heading .catalog-group-check { opacity: 0; transition: opacity var(--motion-feedback); }
+.deck-table .catalog-card-group-heading:hover .catalog-group-check, .deck-table .catalog-card-group-heading .catalog-group-check:is(:focus-visible, :checked, :indeterminate) { opacity: 1; }
 
-/* Card row. */
-.deck-table-row { position: relative; display: grid; grid-template-columns: subgrid; grid-column: 1 / -1; align-items: center; height: 34px; margin-bottom: 1px; padding: 0 8px; border-left: 4px solid var(--row-strip); background: var(--card-face); color: var(--row-ink); transition: box-shadow var(--motion-feedback) ease-out; }
+/* Card row: 34 px of content on the card face plus the lane's 1 px of card-edge below it, the 35 px pitch. The block's
+   first and last rows round by 4 px, so the opaque state strip follows the block's corners. */
+.deck-table-row { position: relative; display: grid; grid-template-columns: subgrid; grid-column: 1 / -1; align-items: center; height: 34px; margin-bottom: 1px; padding: 0 8px; border-left: 4px solid var(--row-strip); background: var(--card-face); color: var(--row-ink); transition: background-color var(--motion-feedback) ease-out, box-shadow var(--motion-feedback) ease-out; }
 .deck-table > tbody > .deck-table-row:first-child, .deck-table .catalog-table-group + .deck-table-row { border-top-left-radius: 4px; border-top-right-radius: 4px; }
-.deck-table > tbody > .deck-table-row:last-child { border-bottom-left-radius: 4px; border-bottom-right-radius: 4px; }
+.deck-table > tbody > .deck-table-row:last-child { margin-bottom: 0; border-bottom-left-radius: 4px; border-bottom-right-radius: 4px; }
 /* The strip shows card state; Task colors match the family panel rows. */
 .deck-table-row[data-kind="hero"] { --row-strip: var(--hero-strip); }
 .deck-table-row[data-state="working"] { --row-strip: var(--sub-card-state-working, var(--champagne)); }
 .deck-table-row[data-state="review"] { --row-strip: var(--sub-card-state-review, var(--plum)); }
 .deck-table-row[data-state="accepted"] { --row-strip: var(--sub-card-state-accepted, var(--accepted-metal)); }
-.deck-table-row:hover { z-index: 1; box-shadow: 0 0 5px 1px color-mix(in srgb, var(--card-highlight) 25%, transparent), 0 0 0 1px color-mix(in srgb, var(--card-highlight) 45%, transparent); }
+/* Hover keeps the app's mint edge (DESIGN: hover and selection use a mint edge) over a faint mint wash of the card
+   face; the ring rounds with the row. */
+.deck-table-row:hover { z-index: 1; background: color-mix(in srgb, var(--card-highlight) 7%, var(--card-face)); box-shadow: 0 0 5px 1px color-mix(in srgb, var(--card-highlight) 25%, transparent), 0 0 0 1px color-mix(in srgb, var(--card-highlight) 45%, transparent); }
 .deck-table-row.is-opened { z-index: 2; box-shadow: 0 0 5px 1px color-mix(in srgb, var(--row-ring) 45%, transparent), 0 0 0 1px var(--row-ring); }
-/* 2026-11-08: replace the 1 px gap with a border at the same row pitch, joining checked rows into one recessed block. */
-.deck-table-row.is-multi-selected { z-index: 2; height: 35px; margin-bottom: 0; border-bottom: 1px solid color-mix(in srgb, var(--check-on-face) 22%, var(--card-face)); background: color-mix(in srgb, var(--check-on-face) 22%, var(--card-face)); }
+/* 2026-11-08: checked rows join into one recessed block, 22% check-on-face over the card face. */
+.deck-table-row.is-multi-selected { z-index: 2; background: color-mix(in srgb, var(--check-on-face) 22%, var(--card-face)); }
 .deck-table-row.is-multi-selected:where(:not(.is-opened)) { box-shadow: none; }
 .deck-table-row.is-multi-selected:where(:not(.is-multi-selected + .is-multi-selected)) { box-shadow: inset 0 4px 5px -4px #0c0a1399; }
-.deck-table-row.is-multi-selected:not(:has(+ .is-multi-selected)) { border-bottom-color: var(--card-edge); }
 .deck-table-row.is-multi-selected:where(.is-opened:not(.is-multi-selected + .is-multi-selected)) { box-shadow: inset 0 4px 5px -4px #0c0a1399, 0 0 5px 1px color-mix(in srgb, var(--row-ring) 45%, transparent), 0 0 0 1px var(--row-ring); }
 .deck-table-row.is-card-order-target { z-index: 2; box-shadow: inset 0 2px 0 var(--accent), 0 -2px 6px color-mix(in srgb, var(--accent) 60%, transparent); }
 .deck-table-row:has(.catalog-table-title:focus-visible) { z-index: 2; outline: 2px solid var(--focus); outline-offset: -1px; }
 
 .deck-table-row > td { display: flex; align-items: center; min-width: 0; height: 100%; padding: 0 8px; }
-.deck-table-row > .deck-table-select { position: absolute; z-index: 3; top: 0; left: -26px; width: 16px; padding: 0; }
-.deck-table-select input { display: grid; opacity: 0; transition: opacity var(--motion-feedback); }
-.deck-table-row:hover .deck-table-select input, .deck-table-select input:is(:focus-visible, :checked) { opacity: 1; }
+/* 2026-11-10: the row checkbox has its own place at the start of the row, 4 px clear of the state strip and 6 px clear of
+   the Priority icon (the first track grew 10 px and the Priority cell's inset 10 px): sitting on the strip, it overlapped
+   the icon, and its focus ring spilled over both. Keyboard focus
+   frames the row from inside instead of ringing the checkbox; a lane's checkbox shows an inset ring in its own box. */
+.deck-table-row > .deck-table-select { position: absolute; z-index: 3; top: 0; left: 4px; width: 16px; padding: 0; }
+.deck-table-row > .deck-table-priority { padding-left: 18px; }
+.deck-table .deck-table-row input.deck-table-check:focus-visible, .deck-table .catalog-card-group-heading input.catalog-group-check:focus-visible { outline: none; }
+.deck-table .deck-table-row:has(input.deck-table-check:focus-visible) { outline: 2px solid var(--focus); outline-offset: -2px; }
+.deck-table .catalog-card-group-heading .catalog-group-select:has(input:focus-visible) { outline: 2px solid var(--focus); outline-offset: -2px; border-radius: var(--control-radius); }
+.deck-table-check { display: grid; opacity: 0; transition: opacity var(--motion-feedback); }
+.deck-table-row:hover .deck-table-check, .deck-table-check:is(:focus-visible, :checked) { opacity: 1; }
 .deck-table-priority { color: var(--row-meta); }
 .deck-table-priority .journey-priority-icon { color: inherit; }
-.deck-table-effort { gap: 4px; overflow: visible; color: var(--row-meta); font-size: 12px; font-weight: 700; line-height: 14px; letter-spacing: .12px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+/* Effort is a counter, so it takes the home's Geist Mono numbers (12/500, tabular, as the cover counters). */
+.deck-table-effort { gap: 4px; overflow: visible; color: var(--row-meta); font-family: 'Geist Mono', monospace; font-size: 12px; font-weight: 500; line-height: 14px; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .deck-table-effort > svg { flex: 0 0 auto; }
 .deck-table-priority.is-empty > *, .deck-table-effort.is-empty > svg { opacity: .15; }
 
@@ -107,14 +128,17 @@
 /* The chip is as wide as its steps need (at least 47px), so each step starts at 3px and takes its weight's share of the rest. */
 .deck-table-hero .sub-card-progress-segment { flex: var(--sub-card-weight, 1) 0 3px; min-width: 0; border-radius: 0; }
 
-/* Tag chips occupy a 162 px column: 12/700/14 text, padding 0 4, radius 4 and gap 4; an 11 px emoji or # precedes the name. */
+/* Tag labels keep their own shape and a flat face. */
+/* 2026-11-10: the tags keep the shared plaque corner; a 6px radius made them capsules in the Table only. */
 .deck-table-tags { overflow: hidden; }
 .deck-table-tags:empty { display: none; }
 .deck-table-tags .card-tags { position: relative; z-index: 1; flex-wrap: nowrap; gap: 4px; max-width: 100%; overflow: hidden; }
+.deck-table-tags .tag-badge.is-project { background: var(--hover); color: var(--ink); }
+.deck-table-tags .tag-badge.is-project .tag-badge-glyph { color: var(--ink); }
 /* 2026-11-06: beside an open card or the deck info at 1024 px the table gets ~400 px, and the title was left 40 px under the Hero label.
-   Below 760 px of table width the Tags column folds to 0 and the title takes it; emoji and icon tags still lead the title. */
+    Below 760 px of table width the Tags column folds to 0 and the title takes it; emoji and icon tags still lead the title. */
 @container deck-table (max-width: 760px) {
-  .deck-table { grid-template-columns: 44px 50px minmax(0, 1fr) 0 max-content; }
+  .deck-table { grid-template-columns: 54px 50px minmax(0, 1fr) 0 max-content; }
   .deck-table-row > .deck-table-tags { display: none; }
   .deck-table-card { grid-column: 3 / 5; }
 }
@@ -123,16 +147,19 @@
 .deck-table-row > .deck-table-details { grid-column: 5; justify-content: flex-end; gap: 4px; min-width: 130px; color: var(--row-meta); }
 .deck-table-details > * { position: relative; z-index: 1; }
 .deck-table-details .card-indicators { color: inherit; }
-.deck-table-checklist { display: inline-flex; align-items: center; gap: 3px; color: var(--card-muted); font-size: 11px; line-height: 12px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+/* The checklist fraction is a counter: Geist Mono, tabular. */
+.deck-table-checklist { display: inline-flex; align-items: center; gap: 3px; color: var(--card-muted); font-family: 'Geist Mono', monospace; font-weight: 500; font-size: 11px; line-height: 12px; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .deck-table-state { display: inline-flex; color: var(--mint, var(--card-highlight)); }
 
 /* 2026-11-08: below 460 px the title owns the first line; the parent and metrics share the second.
    The nested subgrid keeps the parent inside its cell without letting it squeeze the title. */
 @container deck-table (max-width: 460px) {
-  .deck-table { grid-template-columns: 36px max-content minmax(0, 1fr) 0 max-content; }
-  .deck-table > tbody > .deck-table-row { grid-template-rows: 28px 24px; row-gap: 2px; height: auto; padding-block: 4px; }
+  /* 2026-11-10: the two-line row keeps 24 px at its left for the checkbox inside it (always shown on touch), so the first
+     track grows from 36 px to 52 px: the 4 px strip, the 24 px, and the Priority cell. */
+  .deck-table { grid-template-columns: 52px max-content minmax(0, 1fr) 0 max-content; }
+  .deck-table > tbody > .deck-table-row { grid-template-rows: 28px 24px; row-gap: 2px; height: auto; padding-block: 4px; padding-left: 24px; }
   .deck-table-row > td { padding: 0 4px; }
-  .deck-table-row > .deck-table-priority { grid-area: 2 / 1; }
+  .deck-table-row > .deck-table-priority { grid-area: 2 / 1; padding-left: 4px; }
   .deck-table-row > .deck-table-effort { grid-area: 2 / 2; }
   .deck-table .deck-table-row > .deck-table-card { display: grid; grid-template-columns: subgrid; grid-template-rows: subgrid; grid-area: 1 / 1 / 3 / -1; gap: 0; }
   .deck-table-card > :is(.catalog-table-title, .deck-table-hero) { grid-area: 1 / 1 / 2 / -1; justify-self: start; max-width: 100%; }
@@ -148,7 +175,14 @@
 .deck-table-row .card-transfer-handle { width: 22px; height: 22px; padding: 3px; color: var(--row-meta); opacity: 0; transition: opacity var(--motion-feedback); }
 .deck-table-row:hover .card-transfer-handle, .deck-table-row .card-transfer-handle:focus-visible { opacity: 1; }
 
+/* 2026-11-10: the pointer-drag face is a card, not a lane row — it keeps the card corner of card-transfer.css instead
+   of the lane's tangent rounding, and no seam. */
+.card-drag-face .deck-table > tbody > .deck-table-row { border-bottom: 0; border-radius: 4px; }
+
 @media (hover: none) {
   .deck-table-select input, .deck-table .catalog-card-group-heading input[type="checkbox"], .deck-table .catalog-card-group-heading > .catalog-group-effort, .deck-table-row .card-transfer-handle { opacity: 1; }
+  /* The lane checkbox is always shown on touch, so its name and rule keep the 24 px slide. */
+  .deck-table .catalog-card-group-heading .catalog-group-label > :is(.catalog-group-filter, .catalog-zone-title-input, .catalog-group-count) { transform: translateX(24px); }
+  .deck-table .catalog-card-group-heading > .catalog-group-rule { transform: translateX(24px); clip-path: inset(0 24px 0 0); }
 }
 @media (prefers-reduced-motion: reduce) { .deck-table-row, .deck-table-select input, .deck-table-row .card-transfer-handle { transition: none; } }

@@ -1,5 +1,6 @@
 import { useCallback, useLayoutEffect, useRef, useState } from 'react';
 import type { RefCallback } from 'react';
+import { readMotionTokens } from './motion.ts';
 import './card-motion.css';
 
 interface CardLayoutMotionOptions {
@@ -9,6 +10,8 @@ interface CardLayoutMotionOptions {
   resetKey?: string | number;
   /** Suspend layout motion while the drag engine owns item positions. */
   dragging?: boolean;
+  /** Preserve a sortable neighbor's unfinished slide when the drop commits its new layout. */
+  settleDrag?: boolean;
 }
 
 interface CardPosition {
@@ -56,7 +59,7 @@ export function useCardLayoutMotion<ElementType extends HTMLElement = HTMLDivEle
 
   useLayoutEffect(() => {
     controller.current?.update(options);
-  }, [container, options.layoutKey, options.resetKey, options.dragging]);
+  }, [container, options.layoutKey, options.resetKey, options.dragging, options.settleDrag]);
 
   return attach;
 }
@@ -109,12 +112,15 @@ function createLayoutMotion(container: HTMLElement): LayoutMotionController {
   let initialized = false;
   let disposed = false;
   let resetFrame: number | null = null;
+  let captureOnRelease = false;
   // Cards that left the layout keep fading where they were while the others close the gap (2026-11-05).
-  const leaving = new Set<HTMLElement>();
+  const leaving = new Map<HTMLElement, Animation>();
   const fadeEasing = getComputedStyle(document.documentElement).getPropertyValue('--ease-spring-firm').trim() || 'ease-out';
+  const moveMotion = readMotionTokens('--motion-material');
 
-  function measure() {
+  function measure(visual = false) {
     const bounds = container.getBoundingClientRect();
+    const origin = visual ? layoutOffset(container) : null;
     const next = new Map<string, CardPosition>();
     for (const element of container.querySelectorAll<HTMLElement>('[data-card-id], [data-layout-follow]')) {
       if (element.closest('[data-card-motion-root]') !== container) continue;
@@ -124,7 +130,7 @@ function createLayoutMotion(container: HTMLElement): LayoutMotionController {
       next.set(id, {
         element,
         parent: element.parentElement,
-        ...layoutOffset(element),
+        ...(origin ? { left: rect.left + origin.left - bounds.left, top: rect.top + origin.top - bounds.top } : layoutOffset(element)),
         width: rect.width,
         height: rect.height,
         visible: rect.bottom > 0 && rect.right > 0 && rect.top < window.innerHeight && rect.left < window.innerWidth,
@@ -135,6 +141,8 @@ function createLayoutMotion(container: HTMLElement): LayoutMotionController {
 
   /** A removed card is copied back over its old place, out of flow and inert, and fades while the others close the gap. */
   function fadeOut(position: CardPosition, shift: { left: number; top: number }) {
+    // 2026-11-09: a fixed table row loses its subgrid tracks and stacks cells over each other; only standalone tiles can leave as copies.
+    if (position.element.tagName === 'TR') return;
     if (typeof position.element.animate !== 'function') return;
     const ghost = position.element.cloneNode(true) as HTMLElement;
     for (const element of [ghost, ...ghost.querySelectorAll<HTMLElement>('[data-card-id], [data-layout-follow], [id]')]) { element.removeAttribute('data-card-id'); element.removeAttribute('data-layout-follow'); element.removeAttribute('id'); }
@@ -148,8 +156,8 @@ function createLayoutMotion(container: HTMLElement): LayoutMotionController {
       width: position.width + 'px', height: position.height + 'px',
     });
     (position.parent?.isConnected ? position.parent : container).append(ghost);
-    leaving.add(ghost);
     const animation = ghost.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 220, easing: fadeEasing, fill: 'forwards' });
+    leaving.set(ghost, animation);
     const remove = () => { leaving.delete(ghost); ghost.remove(); };
     animation.onfinish = remove;
     animation.oncancel = remove;
@@ -167,6 +175,17 @@ function createLayoutMotion(container: HTMLElement): LayoutMotionController {
     running.clear();
   }
 
+  function clearLeaving() {
+    // 2026-11-09: a scroll, drag or newer filter invalidates the fixed copies too, not only the moving live cards.
+    for (const [ghost, animation] of leaving) {
+      animation.onfinish = null;
+      animation.oncancel = null;
+      animation.cancel();
+      ghost.remove();
+    }
+    leaving.clear();
+  }
+
   function rebase() {
     const measured = measure();
     positions = measured.positions;
@@ -175,11 +194,22 @@ function createLayoutMotion(container: HTMLElement): LayoutMotionController {
 
   function scheduleRebase() {
     stopAll();
+    clearLeaving();
     if (resetFrame !== null) return;
     resetFrame = requestAnimationFrame(() => {
       resetFrame = null;
       if (!disposed) rebase();
     });
+  }
+
+  function captureRelease(event: Event) {
+    if (!captureOnRelease || reducedMotion.matches) return;
+    if (event instanceof KeyboardEvent && !['Space', 'Enter'].includes(event.code)) return;
+    // 2026-11-10: read before the drag engine clears its transforms and React commits the order. The same FLIP
+    // then continues from the painted position, rather than replaying a full slide or snapping its remaining half.
+    const measured = measure(true);
+    positions = measured.positions;
+    containerWidth = measured.width;
   }
 
   function animate(id: string, element: HTMLElement, keyframes: Keyframe[], duration: number, easing = 'cubic-bezier(.16, 1, .3, 1)') {
@@ -199,6 +229,19 @@ function createLayoutMotion(container: HTMLElement): LayoutMotionController {
 
   function update(options: CardLayoutMotionOptions) {
     if (disposed) return;
+    captureOnRelease = Boolean(options.dragging && options.settleDrag);
+    const mayAnimate = initialized && previousKey !== options.layoutKey && previousReset === options.resetKey
+      && !options.dragging && !reducedMotion.matches && resetFrame === null;
+    previousKey = options.layoutKey;
+    previousReset = options.resetKey;
+    initialized = true;
+    // 2026-11-09: a commit that cannot animate (first layout, navigation, an open card, a drag) records its positions on
+    // the next frame instead of forcing a layout inside the commit: opening a card paid ~35 ms (4x CPU) for a measurement
+    // nothing used. A sort that lands before that frame is treated like one during a resize and does not animate.
+    if (!mayAnimate) {
+      scheduleRebase();
+      return;
+    }
     const previous = new Map(positions);
     // Read every running offset before canceling: rapid sorts start where the
     // cards currently appear, not at the previous animation's destination.
@@ -211,17 +254,11 @@ function createLayoutMotion(container: HTMLElement): LayoutMotionController {
       previous.set(id, { ...position, left: position.left + matrix.m41, top: position.top + matrix.m42 });
     }
     stopAll();
-    const wasResizing = resetFrame !== null;
-    if (resetFrame !== null) cancelAnimationFrame(resetFrame);
-    resetFrame = null;
+    clearLeaving();
     const next = measure();
-    const shouldAnimate = initialized && previousKey !== options.layoutKey && previousReset === options.resetKey
-      && !options.dragging && !reducedMotion.matches && !wasResizing && Math.abs(next.width - containerWidth) < 1;
+    const shouldAnimate = Math.abs(next.width - containerWidth) < 1;
     positions = next.positions;
     containerWidth = next.width;
-    previousKey = options.layoutKey;
-    previousReset = options.resetKey;
-    initialized = true;
     if (!shouldAnimate) return;
 
     // Reads above, animation writes below; never alternate layout reads and
@@ -256,7 +293,7 @@ function createLayoutMotion(container: HTMLElement): LayoutMotionController {
       animate(id, nextPosition.element, [
         { transform: `translate(${horizontal}px, ${vertical}px)` },
         { transform: 'translate(0px, 0px)' },
-      ], 220);
+      ], moveMotion.duration, moveMotion.easing);
     }
   }
 
@@ -271,6 +308,8 @@ function createLayoutMotion(container: HTMLElement): LayoutMotionController {
   // immediately and coalesce measurements; no per-frame animation polling.
   window.addEventListener('scroll', scheduleRebase, true);
   window.addEventListener('resize', scheduleRebase);
+  window.addEventListener('pointerup', captureRelease, true);
+  window.addEventListener('keydown', captureRelease, true);
   reducedMotion.addEventListener('change', scheduleRebase);
 
   return {
@@ -278,13 +317,14 @@ function createLayoutMotion(container: HTMLElement): LayoutMotionController {
     dispose() {
       disposed = true;
       stopAll();
-      for (const ghost of leaving) ghost.remove();
-      leaving.clear();
+      clearLeaving();
       if (resetFrame !== null) cancelAnimationFrame(resetFrame);
       observer?.disconnect();
       windowObserver.disconnect();
       window.removeEventListener('scroll', scheduleRebase, true);
       window.removeEventListener('resize', scheduleRebase);
+      window.removeEventListener('pointerup', captureRelease, true);
+      window.removeEventListener('keydown', captureRelease, true);
       reducedMotion.removeEventListener('change', scheduleRebase);
       if (originalRoot === null) container.removeAttribute('data-card-motion-root');
       else container.setAttribute('data-card-motion-root', originalRoot);

@@ -1,0 +1,138 @@
+/* 2026-11-10: the Decks home's layout grammar as shared classes, so every screen and state reads as one product.
+   Screens build their title row, tools and sections from these instead of copying the
+   gallery's values. The numbers mirror deck-gallery.css (2026-11-09) and DESIGN.md «Home screen»; change them together. */
+
+/* A tab page sits under the same soft page light as the Decks home. */
+.page-light { background: var(--gallery-light) no-repeat fixed; }
+
+/* Title row: a 26/700 name with a quiet caption under it, one primary action beside it, tools on the right. */
+.page-head { display: flex; flex-wrap: wrap; align-items: flex-start; gap: var(--space-3) var(--space-4); min-height: 52px; margin: 0 0 20px; padding-inline-start: var(--shelf-inset, var(--space-6)); }
+.page-head-main { display: flex; align-items: flex-start; gap: var(--space-3); min-width: 0; flex: 0 1 auto; }
+.page-title-block { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.page-title { margin: 0; color: var(--ink); font-size: 26px; font-weight: 600; line-height: 30px; letter-spacing: -.015em; overflow-wrap: anywhere; text-wrap: balance; }
+.page-caption { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 6px; margin: 0; color: var(--muted); font-size: 12px; line-height: 16px; }
+/* 2026-11-10: the tools take the rest of the row and sit at its end, so a child with a flex basis (the 260px search)
+   keeps it instead of the group shrinking to its content and wrapping early. */
+.page-tools { display: flex; flex: 1 1 auto; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: var(--space-2) var(--space-3); margin-inline-start: auto; }
+
+/* Numbers and counters are Geist Mono, as in the gallery caption and the pulse. */
+.page-number { color: var(--ink); font: 500 11px/16px 'Geist Mono', monospace; font-variant-numeric: tabular-nums; }
+
+/* 2026-11-10, the Foil Rule (DESIGN.md «Controls»): one language for every button, toggle, chip, rail button and field.
+   The Foil shape is a 2px rectangle drawn by one quiet .67px hairline (one device pixel at 150%), with a 500 label; the
+   chosen state is marked by the violet mark — its hairline and its label over a faint tint — never by a filled pill.
+   Primary actions keep the violet fill, creating actions are a mint hairline and label. Every state changes flat colours
+   only, so a hover can ease and never blinks (the «5 Sub Cards» flicker). Sizes stay with each component: 24px compact,
+   30px tools, 32px rail and reading actions. The Button variants in styles.css (.button-outline/-ghost/-default) are the
+   same rules. */
+:root {
+  --control-radius: 2px; --control-hairline: .67px; --control-field: var(--surface); --control-field-line: var(--line);
+  /* The quiet edge at rest: today's violet button line, 38% into the page (about 2:1 against the ground; the label names
+     the control, the line only draws its shape). Hover brings back the full --button-line. */
+  --control-line: color-mix(in srgb, var(--button-line) 62%, var(--ground));
+  /* The mark of a chosen control: the accent, its tint behind the label, a stronger tint on hover. */
+  --mark: var(--accent); --mark-tint: color-mix(in srgb, var(--accent) 9%, transparent); --mark-tint-strong: color-mix(in srgb, var(--accent) 16%, transparent);
+}
+:root.dark { --control-field: var(--ground); --control-field-line: #5b5572; --mark: #d4b4ff; --mark-tint: color-mix(in srgb, var(--accent) 16%, transparent); --mark-tint-strong: color-mix(in srgb, var(--accent) 26%, transparent); }
+
+/* A control's size and type: a 30px tool with a 13/500 label (components set 24px or 32px where they need it). */
+.control { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 30px; padding: 0 9px; font-size: 13px; font-weight: 500; letter-spacing: .01em; line-height: 16px; }
+/* Outline: the secondary button and the off state of a toggle or chip. */
+:is(.control, .button-outline) { border: var(--control-hairline) solid var(--control-line); border-radius: var(--control-radius); background: transparent; color: var(--button-ink); }
+/* Ghost: icon buttons and quiet actions in heads and footers; the hairline is reserved so a ghost and an outline line up. */
+.control.control-ghost { border-color: transparent; color: var(--muted); }
+.button-ghost { border-color: transparent; background: transparent; color: inherit; }
+/* Pointer press moves a control 1px, as .ui-button does (styles.css). */
+.control { transition: background-color var(--motion-feedback), color var(--motion-feedback), border-color var(--motion-feedback), transform var(--motion-feedback) var(--ease-out); }
+.control:active:not(:disabled) { transform: translateY(1px); }
+/* Chosen: an aria-pressed toggle, a chip that filters, a rail button whose panel is open. The mark's hairline and label
+   over its tint — never a filled pill, never a second ring. */
+:is(.control, .button-outline, .button-ghost):is([aria-pressed="true"], .is-on) { border-color: var(--mark); background: var(--mark-tint); color: var(--mark); }
+@media (hover: hover) {
+  :is(.control, .button-outline, .button-ghost):hover:not(:disabled) { border-color: var(--button-line); background: var(--hover); color: var(--ink); }
+  :is(.control-ghost, .button-ghost):hover:not(:disabled) { border-color: transparent; }
+  :is(.control, .button-outline, .button-ghost):is([aria-pressed="true"], .is-on):hover:not(:disabled) { border-color: var(--mark); background: var(--mark-tint-strong); color: var(--mark); }
+}
+/* Destructive: danger ink and a danger hairline; the confirming button in a dialog is the solid --danger-fill. */
+:is(.control, .button-outline).destructive { border-color: color-mix(in srgb, var(--danger) 60%, transparent); color: var(--danger); }
+.button-default.destructive { background: var(--danger-fill); color: var(--danger-fill-ink); }
+@media (hover: hover) {
+  :is(.control, .button-outline, .button-ghost).destructive:hover:not(:disabled) { background: color-mix(in srgb, var(--danger) 13%, transparent); color: var(--danger); }
+  .button-default.destructive:hover:not(:disabled) { background: color-mix(in srgb, var(--danger-fill) 88%, white); color: var(--danger-fill-ink); }
+}
+
+/* Field: text inputs, search boxes and the closed part of a select. A recessed well with a quiet edge; hover brings the
+   violet hairline, focus the focus colour on the edge itself (the caret shows where typing goes), no ring round it. */
+.control-field { min-height: 30px; border: var(--control-hairline) solid var(--control-field-line); border-radius: var(--control-radius); background-color: var(--control-field); color: var(--ink); font-size: 13px; transition: border-color var(--motion-feedback), box-shadow var(--motion-feedback); }
+@media (hover: hover) { .control-field:hover:not(:disabled, :focus, :focus-within) { border-color: var(--button-line); } }
+.control-field:is(:focus, :focus-within) { border-color: var(--focus); box-shadow: inset 0 0 0 1px var(--focus); }
+.control-field:is(:focus, :focus-within, :focus-visible) { outline: none; }
+
+/* Segmented: one quiet hairline frame round several choices; the chosen one carries the mark (its hairline drawn inside
+   the segment, so the frame keeps one line), the others are plain text. */
+.control-segmented { display: inline-flex; align-items: stretch; gap: 0; padding: 0; border: var(--control-hairline) solid var(--control-line); border-radius: var(--control-radius); }
+.control-segmented > :is(button, [role="tab"], [role="radio"]) { min-height: 28px; padding: 0 9px; border: 0; border-radius: 0; background: transparent; color: var(--button-ink); font-size: 13px; font-weight: 500; letter-spacing: .01em; }
+.control-segmented > :is(button, [role="tab"], [role="radio"]) + :is(button, [role="tab"], [role="radio"]) { border-inline-start: var(--control-hairline) solid var(--control-line); }
+.control-segmented > :is(button, [role="tab"], [role="radio"]):first-child { border-start-start-radius: inherit; border-end-start-radius: inherit; }
+.control-segmented > :is(button, [role="tab"], [role="radio"]):last-child { border-start-end-radius: inherit; border-end-end-radius: inherit; }
+.control-segmented > :is([aria-pressed="true"], [aria-selected="true"], [aria-checked="true"]) { background: var(--mark-tint); color: var(--mark); box-shadow: inset 0 0 0 var(--control-hairline) var(--mark); }
+.control-segmented > :focus-visible { position: relative; z-index: 1; }
+@media (hover: hover) { .control-segmented > :is(button, [role="tab"], [role="radio"]):not([aria-pressed="true"], [aria-selected="true"], [aria-checked="true"]):hover:not(:disabled) { background: var(--hover); color: var(--ink); } }
+
+/* Tabs that switch a page section: label only, 14/600 (one weight in every state, so choosing a tab never shifts its
+   neighbours), a 2px underline in the mark on the chosen one, over a 1px rule. */
+.control-tabs { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 4px 24px; border-bottom: 1px solid var(--line); }
+.control-tab { display: inline-flex; flex-shrink: 0; align-items: center; gap: 12px; height: 38px; padding: 8px 0; border: 0; border-radius: 0; background: none; box-shadow: inset 0 -2px 0 transparent; color: var(--muted); font-size: 14px; font-weight: 600; line-height: 16px; transition: color var(--motion-feedback), box-shadow var(--motion-feedback); }
+.control-tab[aria-selected="true"] { color: var(--ink); box-shadow: inset 0 -2px 0 var(--mark); }
+@media (hover: hover) { .control-tab:hover:not([aria-selected="true"], :disabled) { color: var(--ink); } }
+
+/* The screen's one creating action — «Create space», the open deck's Journey button — is a mint hairline round a mint
+   label (the Foil Rule: colour marks it by a line, not by a face). */
+:root { --action-mint-ink: var(--mint-ink); --action-mint-line: #3fae96; --action-mint-hover: color-mix(in srgb, var(--mint) 35%, transparent); }
+:root.dark { --action-mint-ink: var(--mint); --action-mint-line: var(--mint-edge); --action-mint-hover: color-mix(in srgb, var(--mint) 12%, transparent); }
+.action-mint { display: inline-flex; align-items: center; gap: 6px; flex: 0 0 auto; height: 30px; min-height: 30px; padding: 0 12px 0 9px; border: var(--control-hairline) solid var(--action-mint-line); border-radius: var(--control-radius); background: transparent; color: var(--action-mint-ink); font-size: 14px; font-weight: 600; letter-spacing: .01em; line-height: 1; white-space: nowrap; transition: background-color var(--motion-feedback), transform var(--motion-feedback) var(--ease-out); }
+.action-mint:active:not(:disabled) { transform: translateY(1px); }
+/* The line is restated on hover: the Journey button is also a ghost Button, and the ghost hover clears its edge. */
+@media (hover: hover) { .action-mint:hover:not(:disabled) { border-color: var(--action-mint-line); background: var(--action-mint-hover); color: var(--action-mint-ink); } }
+
+/* Sections are flat panels (the --glass-* tokens keep their 2026-11-09 names): a 4px corner, one face and a crisp 1px
+   edge on one layer, no blur and no lift — the edge is what keeps a panel readable against the page. */
+.glass-panel { position: relative; isolation: isolate; min-width: 0; padding: var(--space-3) var(--shelf-inset, var(--space-6)) var(--space-4); border-radius: var(--glass-radius); }
+.glass-panel::before { content: ''; position: absolute; inset: 0; z-index: -1; border-radius: inherit; background: var(--glass-face); -webkit-backdrop-filter: var(--glass-blur); backdrop-filter: var(--glass-blur); box-shadow: var(--glass-rim), var(--glass-lift); pointer-events: none; }
+.glass-stack { display: flex; flex-direction: column; gap: var(--space-4); min-width: 0; }
+/* 2026-11-10: a sheet is one glass panel holding several sections split by seams. A narrow column (the deck sidebar) of
+   short panels read as a stack of capsules; as one sheet it reads as one panel. It is its own scroll owner
+   where it scrolls, so the face lies on the sheet itself rather than on a pseudo-element that would scroll away. */
+.glass-sheet { min-width: 0; border-radius: var(--glass-radius); background: var(--glass-face); -webkit-backdrop-filter: var(--glass-blur); backdrop-filter: var(--glass-blur); box-shadow: var(--glass-rim), var(--glass-lift); }
+/* A panel component placed in a sheet (Latest activity in the deck sidebar) becomes one of its sections. */
+.glass-sheet > :is(.glass-section, .glass-panel) { padding: var(--space-3) var(--space-4) var(--space-4); border-radius: 0; }
+.glass-sheet > .glass-panel::before { content: none; }
+.glass-sheet > :is(.glass-section, .glass-panel) + :is(.glass-section, .glass-panel) { border-top: 1px solid var(--glass-seam); }
+
+/* A section's label row: 15/600 title, a muted count, quiet actions. */
+.panel-head { display: flex; align-items: center; gap: var(--space-2); min-height: 32px; margin: 0 0 var(--space-3); }
+.panel-title { margin: 0; color: var(--ink); font-size: 15px; font-weight: 600; line-height: 24px; overflow-wrap: anywhere; }
+.panel-count { flex-shrink: 0; color: var(--muted); font-size: 12px; line-height: 16px; font-variant-numeric: tabular-nums; }
+.panel-actions { display: flex; align-items: center; gap: 4px; margin-inline-start: auto; opacity: .8; transition: opacity var(--motion-feedback) var(--ease-out); }
+.panel-head:hover .panel-actions, .panel-actions:focus-within { opacity: 1; }
+
+/* Dialogs and popovers share one frame: the surface, a hairline, the panel's 4px corner and the app shadow; a header row
+   with an 18/600 title and a 32px ghost close button over a hairline; actions at the end of a footer row, the primary
+   one last. */
+.dialog-panel { border: 1px solid var(--line); border-radius: var(--glass-radius); background: var(--surface); color: var(--ink); box-shadow: var(--shadow); }
+.dialog-head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); min-height: 32px; padding: var(--space-3) var(--space-4); border-bottom: 1px solid var(--line); }
+.dialog-title { margin: 0; color: var(--ink); font-size: 18px; font-weight: 600; line-height: 24px; overflow-wrap: anywhere; }
+.dialog-body { padding: var(--space-4); }
+.dialog-foot { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: var(--space-2); padding: var(--space-3) var(--space-4); border-top: 1px solid var(--line); }
+
+@media (max-width: 420px) {
+  .page-head { padding-inline-start: var(--shelf-inset, var(--space-2)); }
+  .page-title { font-size: 22px; line-height: 26px; }
+  .action-mint { width: 30px; padding: 0; justify-content: center; }
+  .action-mint > span { display: none; }
+}
+@media (hover: none) { .panel-actions { opacity: 1; } }
+
+/* 2026-11-10: rows inside menus, listboxes and comboboxes show keyboard focus by their highlight, not by the global
+   ring: a ring inside a framed popup read as a second frame. Text inputs keep their own border focus. */
+:is([role="menuitem"], [role="menuitemradio"], [role="menuitemcheckbox"], [role="option"], .dropdown-item):focus-visible { outline: none; background: var(--hover); }

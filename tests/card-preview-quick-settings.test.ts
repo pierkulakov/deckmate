@@ -1,56 +1,19 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { spawn, type ChildProcess } from 'node:child_process';
-import { existsSync } from 'node:fs';
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
-import { createServer, type ViteDevServer } from 'vite';
-import tailwindcss from '@tailwindcss/vite';
-import { freePort } from './free-port.ts';
-import { waitForPageTarget } from './browser-target.ts';
+import { createBrowserSession } from './browser-session.ts';
+import { requireBrowser } from './browser-environment.ts';
 
-const browserPath = [process.env.DECKMATE_BROWSER, process.env.BROWSER,
-  'C:/Program Files/Google/Chrome/Application/chrome.exe', 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe',
-  '/usr/bin/google-chrome', '/usr/bin/chromium', '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome']
-  .find((candidate): candidate is string => Boolean(candidate && existsSync(candidate)));
+const browserPath = requireBrowser();
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+type PlateControlFrame = { tab: string; opacity: number; connected: boolean; rect: number[]; initialRect: number[] };
+type PlateMeasurement = { frames: { at: number; controls: PlateControlFrame[] }[]; label: string; actionCount: number };
 
 // 2026-11-08: no DOM shim can verify Radix's real Escape/focus behavior; use the installed headless browser over CDP.
 describe.skipIf(!browserPath)('CardPreview Quick Settings (browser)', () => {
-  let server: ViteDevServer | undefined;
-  let browser: ChildProcess | undefined;
-  let profile: string | undefined;
-  let socket: WebSocket | undefined;
-  let executionContextId: number | undefined;
-  let sequence = 0;
-  const pending = new Map<number, { resolve: (value: any) => void; reject: (error: Error) => void }>();
-  const errors: string[] = [];
-
-  async function send(method: string, params: object = {}): Promise<any> {
-    const id = ++sequence;
-    return new Promise((resolve, reject) => { pending.set(id, { resolve, reject }); socket!.send(JSON.stringify({ id, method, params })); });
-  }
-  async function evaluate(expression: string): Promise<any> {
-    const result = await send('Runtime.evaluate', { expression, returnByValue: true, awaitPromise: true });
-    if (result.exceptionDetails) throw new Error(result.exceptionDetails.exception?.description ?? result.exceptionDetails.text);
-    return result.result?.value;
-  }
-  // 2026-11-09: keep data out of executable source, including selectors with quotes or backslashes.
-  async function call(functionDeclaration: string, ...args: unknown[]): Promise<any> {
-    if (executionContextId === undefined) throw new Error('No default browser execution context');
-    const result = await send('Runtime.callFunctionOn', { functionDeclaration, executionContextId,
-      arguments: args.map(value => ({ value })), returnByValue: true, awaitPromise: true });
-    if (result.exceptionDetails) throw new Error(result.exceptionDetails.exception?.description ?? result.exceptionDetails.text);
-    return result.result?.value;
-  }
-  // 2026-11-08: the first page load waits for Vite's cold dependency scan, which can exceed five seconds on Windows.
-  async function until(expression: string | (() => Promise<unknown>), attempts = 100) {
-    for (let attempt = 0; attempt < attempts; attempt++) {
-      if (await (typeof expression === 'string' ? evaluate(expression) : expression())) return;
-      await delay(50);
-    }
-    throw new Error('Timed out: ' + expression + '\n' + errors.join('\n'));
-  }
+  const session = createBrowserSession();
+  const { send, evaluate, callFunction: call, until } = session;
+  let errors: string[] = [];
   async function click(selector: string) {
     await call('function(selector) { document.querySelector(selector).click(); }', selector);
     await delay(60);
@@ -85,52 +48,13 @@ describe.skipIf(!browserPath)('CardPreview Quick Settings (browser)', () => {
   }
 
   beforeAll(async () => {
-    server = await createServer({ configFile: false, root: process.cwd(), plugins: [tailwindcss(), {
-      name: 'quick-settings-fixture', configureServer(vite) {
-        vite.middlewares.use((request, response, next) => {
-          if (request.url !== '/') return next();
-          response.setHeader('Content-Type', 'text/html');
-          response.end('<!doctype html><html><body><div id="root"></div><script type="module" src="/tests/fixtures/card-preview-quick-settings.tsx"></script></body></html>');
-        });
-      },
-    }], server: { host: '127.0.0.1', port: 0 },
-      // 2026-11-08: crawl the fixture's imports at startup so no late dep re-optimization reloads the page mid-test.
-      optimizeDeps: { entries: ['tests/fixtures/card-preview-quick-settings.tsx'] }, logLevel: 'error' });
-    await server.listen();
-    // 2026-11-08: warm transforms and the dep optimizer before the browser loads the page — a late
-    // re-optimization fires a full-reload that wipes the page while the suite is already running.
-    await server.warmupRequest('/tests/fixtures/card-preview-quick-settings.tsx').catch(() => {});
-    const port = await freePort();
-    profile = await mkdtemp(path.join(tmpdir(), 'deckmate-quick-settings-'));
-    // 2026-11-09: a headless Chrome on a Linux CI runner sees no pointing device and reports (hover: none), where the
-    // tile ribbon stays pinned at rest by design; the suite tests the desktop pointer, so it declares a fine hovering one.
-    browser = spawn(browserPath!, ['--headless=new', '--disable-gpu', '--no-first-run', '--no-default-browser-check', '--window-size=1280,1000',
-      '--blink-settings=primaryHoverType=2,availableHoverTypes=2,primaryPointerType=4,availablePointerTypes=4',
-      `--remote-debugging-port=${port}`, `--user-data-dir=${profile}`, 'about:blank'], { stdio: 'ignore' });
-    const target = await waitForPageTarget(port, browser!);
-    socket = new WebSocket(target);
-    await new Promise(resolve => socket!.addEventListener('open', resolve, { once: true }));
-    socket.addEventListener('message', event => {
-      const message = JSON.parse(String(event.data));
-      if (message.id) {
-        const request = pending.get(message.id);
-        pending.delete(message.id);
-        if (message.error) request?.reject(new Error(JSON.stringify(message.error)));
-        else request?.resolve(message.result);
-      }
-      if (message.method === 'Runtime.exceptionThrown') errors.push(message.params.exceptionDetails.exception?.description ?? message.params.exceptionDetails.text);
-      if (message.method === 'Runtime.executionContextCreated' && message.params.context.auxData?.isDefault) executionContextId = message.params.context.id;
-      if (message.method === 'Runtime.executionContextsCleared') executionContextId = undefined;
-    });
-    await send('Page.enable');
-    await send('Runtime.enable');
-    await send('Emulation.setDeviceMetricsOverride', { width: 1280, height: 1000, deviceScaleFactor: 1, mobile: false });
+    await session.open(browserPath!, { viewport: { width: 1280, height: 1000, scale: 1 } });
+    errors = session.errors;
     await send('Emulation.setFocusEmulationEnabled', { enabled: true });
     // 2026-11-09: Windows CI can inherit disabled OS animations. Both the tile and flat bands ignore pointers in reduce.
     await setMotionPreference('no-preference');
-    await send('Page.navigate', { url: server.resolvedUrls!.local[0] });
+    await session.navigate('card-preview-quick-settings', `Boolean(window.previewTest && document.querySelector('[data-panel="content"]'))`, 600);
     await send('Page.bringToFront');
-    await until(`Boolean(window.previewTest && document.querySelector('[data-panel="content"]'))`, 600);
     await evaluate(`document.addEventListener('pointermove', event => {
       window.previewPointerSample = { target: event.target, trusted: event.isTrusted, pointerType: event.pointerType,
         x: event.clientX, y: event.clientY };
@@ -140,17 +64,7 @@ describe.skipIf(!browserPath)('CardPreview Quick Settings (browser)', () => {
   }, 90000);
 
   afterAll(async () => {
-    if (socket?.readyState === WebSocket.OPEN) {
-      await send('Browser.close').catch(() => {});
-      socket.close();
-    }
-    if (browser?.pid && browser.exitCode === null) {
-      const command = process.platform === 'win32' ? spawn('taskkill', ['/T', '/F', '/PID', String(browser.pid)], { stdio: 'ignore' }) : browser;
-      if (process.platform !== 'win32') browser.kill();
-      await new Promise(resolve => { if (command.exitCode !== null) resolve(null); else command.once('exit', resolve); });
-    }
-    await server?.close();
-    if (profile) await rm(profile, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+    await session.close();
   }, 20000);
 
   it.each(['hero', 'task'])('%s: Effort keeps the text panel, tabs work, Escape restores the clicked anchor', async kind => {
@@ -209,6 +123,62 @@ describe.skipIf(!browserPath)('CardPreview Quick Settings (browser)', () => {
     expect(await evaluate(`document.querySelector('.card-quick-settings') === null`)).toBe(true);
     expect(await evaluate('window.previewTest.actions[0].change')).toEqual({ kind: 'properties', effort: amount });
     await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 0, y: 0 });
+  });
+
+  it.each([
+    { theme: 'dark', tab: 'priority', choice: 'Medium', label: 'Priority: Medium', card: { priority: 'low' } },
+    { theme: 'dark', tab: 'effort', choice: '3', label: 'Effort: 3', card: {} },
+    { theme: 'dark', tab: 'owner', choice: 'Alex', label: 'Owner: Alex', card: {} },
+    { theme: 'light', tab: 'priority', choice: 'Medium', label: 'Priority: Medium', card: { priority: 'low' } },
+    { theme: 'light', tab: 'effort', choice: '3', label: 'Effort: 3', card: {} },
+    { theme: 'light', tab: 'owner', choice: 'Alex', label: 'Owner: Alex', card: {} },
+  ])('keeps the material plate stable throughout a $tab save in the $theme theme', async ({ theme, tab, choice, label, card }) => {
+    await call(`function(theme) { document.documentElement.classList.toggle('dark', theme === 'dark'); }`, theme);
+    await render('task', { holdSave: true, card });
+    await click(button(tab));
+    await expectPopup(tab, button(tab));
+    const measurement = await call(`async function(tab, choice) {
+      const controls = [...document.querySelectorAll('.card-preview-material-band button')].map(element => {
+        const rect = element.getBoundingClientRect();
+        return { element, tab: element.dataset.quickSettingsTab, rect: [rect.x, rect.y, rect.width, rect.height] };
+      });
+      const option = [...document.querySelectorAll('[role="option"]')].find(item => item.textContent.trim() === choice);
+      if (!option) throw new Error('Missing Quick Settings choice: ' + choice);
+      const frames = [];
+      const started = performance.now();
+      option.click();
+      setTimeout(() => window.previewTest.finishSave(), 120);
+      return await new Promise((resolve, reject) => {
+        const timer = setTimeout(() => reject(new Error('Quick Settings save did not finish')), 3000);
+        function sample(now) {
+          if (document.querySelector('.card-quick-settings')) option.click();
+          frames.push({ at: now - started, controls: controls.map(({ element, tab, rect }) => {
+            const next = element.getBoundingClientRect();
+            return { tab, opacity: Number(getComputedStyle(element).opacity), connected: element.isConnected,
+              rect: [next.x, next.y, next.width, next.height], initialRect: rect };
+          }) });
+          if (!document.querySelector('.card-quick-settings')) {
+            clearTimeout(timer);
+            resolve({ frames, label: document.querySelector('[data-quick-settings-tab="' + tab + '"]').getAttribute('aria-label'),
+              actionCount: window.previewTest.actions.length });
+          } else requestAnimationFrame(sample);
+        }
+        requestAnimationFrame(sample);
+      });
+    }`, tab, choice) as PlateMeasurement;
+    const summary = measurement.frames[0].controls.map(control => ({
+      tab: control.tab,
+      opacity: Math.min(...measurement.frames.flatMap(frame => frame.controls.filter(item => item.tab === control.tab).map(item => item.opacity))),
+      connected: measurement.frames.every(frame => frame.controls.find(item => item.tab === control.tab)?.connected),
+      rects: [...new Set(measurement.frames.map(frame => JSON.stringify(frame.controls.find(item => item.tab === control.tab)?.rect)))],
+    }));
+    const frames = measurement.frames.flatMap(frame => frame.controls);
+    expect(measurement.frames.length).toBeGreaterThan(3);
+    expect(frames.every(control => control.opacity === 1), JSON.stringify(summary)).toBe(true);
+    expect(frames.every(control => control.connected), 'The plate controls must not remount').toBe(true);
+    expect(frames.every(control => JSON.stringify(control.rect) === JSON.stringify(control.initialRect)), JSON.stringify(summary)).toBe(true);
+    expect(measurement.label).toBe(label);
+    expect(measurement.actionCount).toBe(1);
   });
 
   it('retains the anchor when tabs change and replaces the popup when another property is clicked', async () => {
@@ -445,7 +415,7 @@ describe.skipIf(!browserPath)('CardPreview Quick Settings (browser)', () => {
     expect([idle.willChange, idle.layers]).toEqual([rest.willChange, rest.layers]);
   }, 15000);
 
-  it.each([[115, 147], [180, 210]])('keeps both ribbon cuts on one diagonal across a %s × %s tile', async (width, height) => {
+  it.each([[113, 144], [180, 210]])('keeps both ribbon cuts on one diagonal across a %s × %s tile', async (width, height) => {
     await render('task', { child: true });
     await call(`function(width, height) {
       const style = document.querySelector('.deck-card').style;

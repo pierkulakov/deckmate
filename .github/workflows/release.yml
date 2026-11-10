@@ -3,6 +3,12 @@ name: Release
 on:
   push:
     tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Test signed assets in a disposable draft (publication requires a tag push)'
+        type: boolean
+        default: true
 
 permissions:
   contents: read
@@ -12,13 +18,21 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  release:
+  # Nothing in this job publishes. All version sources and both dated changelogs
+  # are checked before either the desktop build or any publication can start.
+  # A tag publishes only a commit whose required CI checks are green; the suite
+  # itself runs in CI, not again here (2026-11-10).
+  preflight:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
     permissions:
-      contents: write
-      packages: write
-      id-token: write
+      contents: read
+      checks: read
+    outputs:
+      version: ${{ steps.release.outputs.version }}
+      dry_run: ${{ steps.release.outputs.dry_run }}
+      release_tag: ${{ steps.release.outputs.release_tag }}
+      pub_date: ${{ steps.release.outputs.pub_date }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -29,30 +43,12 @@ jobs:
           cache: npm
           cache-dependency-path: package-lock.json
           registry-url: https://registry.npmjs.org
-      - name: Validate release version and notes
-        id: release
-        run: |
-          node --input-type=module <<'NODE'
-          import { readFileSync, writeFileSync, appendFileSync } from 'node:fs';
-          const { version } = JSON.parse(readFileSync('package.json', 'utf8'));
-          if (process.env.GITHUB_REF_NAME !== `v${version}`) {
-            throw new Error('The tag must match the version in package.json.');
-          }
-          const changelog = readFileSync('CHANGELOG.md', 'utf8');
-          const section = changelog.split(/^## /m).find((entry) => entry.startsWith(`[${version}] - `));
-          if (!section || !section.includes('\n')) {
-            throw new Error(`CHANGELOG.md needs a dated [${version}] release section.`);
-          }
-          const notes = section.slice(section.indexOf('\n') + 1).trim();
-          if (!notes) throw new Error('Release notes must not be empty.');
-          writeFileSync('release-notes.md', `${notes}\n`);
-          appendFileSync(process.env.GITHUB_OUTPUT, `version=${version}\n`);
-          NODE
-      - name: Validate publication access
+      - name: Validate publication access before building
         env:
           REPOSITORY_PRIVATE: ${{ github.event.repository.private }}
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
+          set -euo pipefail
           if [[ "$REPOSITORY_PRIVATE" != "false" ]]; then
             echo "::error::Open the repository before publishing a public release."
             exit 1
@@ -62,9 +58,54 @@ jobs:
             exit 1
           fi
           npm whoami --registry=https://registry.npmjs.org
+      - name: Validate every release version and both changelogs
+        id: release
+        env:
+          DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run || false }}
+        run: |
+          node --input-type=module <<'NODE'
+          import { execFileSync } from 'node:child_process';
+          import { readFileSync, writeFileSync, appendFileSync } from 'node:fs';
+          import { pathToFileURL } from 'node:url';
+          import { releasePlan } from './desktop/scripts/github-release.mjs';
+          const { version } = JSON.parse(readFileSync('package.json', 'utf8'));
+          const env = process.env;
+          const plan = releasePlan({ eventName: env.GITHUB_EVENT_NAME, dryRun: env.DRY_RUN,
+            refType: env.GITHUB_REF_TYPE, refName: env.GITHUB_REF_NAME, version, runId: env.GITHUB_RUN_ID });
+          const pubDate = new Date(execFileSync('git', ['show', '-s', '--format=%cI', 'HEAD'], { encoding: 'utf8' }).trim()).toISOString();
+          const sources = [
+            ['desktop/package.json', JSON.parse(readFileSync('desktop/package.json', 'utf8')).version],
+            ['desktop/src-tauri/tauri.conf.json', JSON.parse(readFileSync('desktop/src-tauri/tauri.conf.json', 'utf8')).version],
+          ];
+          const manifest = readFileSync('desktop/src-tauri/Cargo.toml', 'utf8');
+          const packageBlock = manifest.match(/^\[package\]\r?$([\s\S]*?)(?=^\[)/m)?.[1];
+          const manifestVersion = packageBlock?.match(/^version\s*=\s*"([^"]+)"\s*$/m)?.[1];
+          if (!manifestVersion) throw new Error('desktop/src-tauri/Cargo.toml has no [package] version.');
+          sources.push(['desktop/src-tauri/Cargo.toml', manifestVersion]);
+          const lock = readFileSync('desktop/src-tauri/Cargo.lock', 'utf8');
+          const lockEntry = lock.split(/^\[\[package\]\]\s*$/m).slice(1)
+            .find(block => /^name\s*=\s*"deckmate-desktop"\s*$/m.test(block));
+          const lockVersion = lockEntry?.match(/^version\s*=\s*"([^"]+)"\s*$/m)?.[1];
+          if (!lockVersion) throw new Error('Cargo.lock has no deckmate-desktop package version.');
+          sources.push(['desktop/src-tauri/Cargo.lock (deckmate-desktop)', lockVersion]);
+          for (const [file, actual] of sources) {
+            if (actual !== version) throw new Error(`${file} has version ${actual}; it must match v${version}.`);
+          }
+          // release-notes.mjs is the single changelog parser, also used by desktop/scripts/updater-manifest.mjs.
+          const { extractReleaseNotes } = await import(pathToFileURL('desktop/scripts/release-notes.mjs').href);
+          writeFileSync('release-notes.md', `${extractReleaseNotes(readFileSync('CHANGELOG.md', 'utf8'), version)}\n`);
+          extractReleaseNotes(readFileSync('CHANGELOG.ru.md', 'utf8'), version, 'CHANGELOG.ru.md');
+          appendFileSync(env.GITHUB_OUTPUT, `version=${version}\ndry_run=${plan.dryRun}\nrelease_tag=${plan.tag}\npub_date=${pubDate}\n`);
+          NODE
+      - name: Require green CI on the release commit
+        if: github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.release.outputs.version }}
+          DRY_RUN: ${{ steps.release.outputs.dry_run }}
+          RELEASE_TAG: ${{ steps.release.outputs.release_tag }}
+        run: node desktop/scripts/github-release.mjs require-ci
       - run: npm ci
-      - run: npm run typecheck
-      - run: npm test
       - run: npm run build
       - name: Pack release
         id: package
@@ -75,12 +116,252 @@ jobs:
           const [artifact] = JSON.parse(readFileSync('package-info.json', 'utf8'));
           appendFileSync(process.env.GITHUB_OUTPUT, `filename=${artifact.filename}\n`);
           NODE
+      - name: Upload validated package and release notes
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: npm-package
+          if-no-files-found: error
+          retention-days: 7
+          path: |
+            package-info.json
+            release-notes.md
+            ${{ steps.package.outputs.filename }}
+
+  # The Windows artifacts are completely built, signed, self-tested and packed
+  # before the publishing job is eligible to run.
+  desktop:
+    needs: preflight
+    runs-on: windows-latest
+    timeout-minutes: 45
+    outputs:
+      version: ${{ steps.desktop.outputs.version }}
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: package.json
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - name: Use the preflight release version
+        id: desktop
+        env:
+          VERSION: ${{ needs.preflight.outputs.version }}
+        run: Add-Content -Path $env:GITHUB_OUTPUT -Value "version=$env:VERSION"
+      - run: npm ci
+      - name: Show the pinned Rust toolchain
+        working-directory: desktop/src-tauri
+        run: |
+          rustup show
+          cargo --version
+          rustc --version
+          if ($LASTEXITCODE -ne 0) { throw 'The pinned Rust toolchain is unavailable.' }
+      # Signing must not consume a Cargo registry/git cache written by another workflow.
+      # This stages Node and deckmate, then generates THIRD-PARTY-NOTICES.txt
+      # from the authenticated Node LICENSE and the locked Windows Cargo graph.
+      - name: Stage release inputs and third-party notices
+        run: node desktop/scripts/prepare-sidecar.mjs
+      - name: Install desktop dependencies
+        working-directory: desktop
+        run: npm ci
+      - name: Check updater signing secrets
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          foreach ($name in 'TAURI_SIGNING_PRIVATE_KEY', 'TAURI_SIGNING_PRIVATE_KEY_PASSWORD') {
+            if ([string]::IsNullOrEmpty([Environment]::GetEnvironmentVariable($name))) {
+              throw "$name is empty. Set the repository secret before pushing a release tag; without it the updater cannot sign the installer."
+            }
+          }
+      - name: Build and sign the Windows installer
+        working-directory: desktop/src-tauri
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          # Updater artifacts are CI-only; a local npm run dist stays unsigned.
+          # tauri-cli merges this flag over tauri.release.conf.json.
+          node ../node_modules/@tauri-apps/cli/tauri.js build --config tauri.release.conf.json --config '{"bundle":{"createUpdaterArtifacts":true}}'
+          if ($LASTEXITCODE -ne 0) { throw "Tauri build exited with code $LASTEXITCODE." }
+      - name: Self-test the unpacked release build
+        run: |
+          $release = 'desktop/src-tauri/target/release'
+          $demo = Join-Path $env:RUNNER_TEMP 'deckmate-selftest'
+          foreach ($file in @("$release/Deckmate.exe", "$release/node.exe", "$release/deckmate/bin/deckmate.mjs", "$release/THIRD-PARTY-NOTICES.txt")) {
+            if (-not (Test-Path -LiteralPath $file)) { throw "Missing build output: $file" }
+          }
+          if ((Get-Item -LiteralPath "$release/THIRD-PARTY-NOTICES.txt").Length -eq 0) { throw 'The unpacked third-party notices file is empty.' }
+          & "$release/node.exe" "$release/deckmate/bin/deckmate.mjs" init $demo
+          if ($LASTEXITCODE -ne 0) { throw "deckmate init exited with code $LASTEXITCODE." }
+          # A windowed release binary never blocks PowerShell's call operator,
+          # so wait for the process and parse its JSON report, not just its exit code.
+          $report = Join-Path $env:RUNNER_TEMP 'self-test-release.json'
+          $shell = Start-Process -FilePath "$release/Deckmate.exe" -ArgumentList "--self-test $demo" -NoNewWindow -Wait -PassThru -RedirectStandardOutput $report
+          $line = Get-Content -LiteralPath $report | Where-Object { $_.TrimStart().StartsWith('{') } | Select-Object -Last 1
+          if (-not $line) { throw 'The unpacked --self-test did not print a JSON report.' }
+          $result = $line | ConvertFrom-Json
+          Get-Content -LiteralPath $report
+          if ($shell.ExitCode -ne 0) { throw "Deckmate.exe --self-test exited with code $($shell.ExitCode)." }
+          if ($result.ok -ne $true -or -not [string]::IsNullOrEmpty([string]$result.error)) {
+            throw "The unpacked --self-test reported failure: $line"
+          }
+      - name: Self-test the installer and the uninstaller
+        run: |
+          $release = 'desktop/src-tauri/target/release'
+          $installers = @(Get-ChildItem -LiteralPath "$release/bundle/nsis" -Filter '*-setup.exe')
+          if ($installers.Count -ne 1) { throw "Expected one NSIS installer in $release/bundle/nsis, found $($installers.Count)." }
+          $installer = $installers[0].FullName
+          # /S selects silent mode; NSIS takes /D= as the unquoted, trailing install-dir override.
+          $installDir = Join-Path $env:RUNNER_TEMP 'deckmate-install'
+          $setup = Start-Process -FilePath $installer -ArgumentList "/S /D=$installDir" -Wait -PassThru
+          if ($setup.ExitCode -ne 0) { throw "The installer exited with code $($setup.ExitCode)." }
+          $installed = "$installDir/Deckmate.exe"
+          if (-not (Test-Path -LiteralPath $installed)) { throw "The installer did not create $installed." }
+          if (-not (Test-Path -LiteralPath "$installDir/THIRD-PARTY-NOTICES.txt")) { throw 'The installer omitted THIRD-PARTY-NOTICES.txt.' }
+          if ((Get-Item -LiteralPath "$installDir/THIRD-PARTY-NOTICES.txt").Length -eq 0) { throw 'The installed third-party notices file is empty.' }
+          $demo = Join-Path $env:RUNNER_TEMP 'deckmate-selftest'
+          $report = Join-Path $env:RUNNER_TEMP 'self-test-installed.json'
+          $shell = Start-Process -FilePath $installed -ArgumentList "--self-test $demo" -NoNewWindow -Wait -PassThru -RedirectStandardOutput $report
+          $line = Get-Content -LiteralPath $report | Where-Object { $_.TrimStart().StartsWith('{') } | Select-Object -Last 1
+          if (-not $line) { throw 'The installed --self-test did not print a JSON report.' }
+          $result = $line | ConvertFrom-Json
+          Get-Content -LiteralPath $report
+          if ($shell.ExitCode -ne 0) { throw "The installed Deckmate.exe --self-test exited with code $($shell.ExitCode)." }
+          if ($result.ok -ne $true -or -not [string]::IsNullOrEmpty([string]$result.error)) {
+            throw "The installed --self-test reported failure: $line"
+          }
+          # _?= runs the uninstaller in place, which makes -Wait meaningful.
+          $uninstall = Start-Process -FilePath "$installDir/uninstall.exe" -ArgumentList "/S _?=$installDir" -Wait -PassThru
+          if ($uninstall.ExitCode -ne 0) { throw "The uninstaller exited with code $($uninstall.ExitCode)." }
+          if (Test-Path -LiteralPath $installed) { throw "The uninstaller left $installed behind." }
+      - name: Pack signed desktop artifacts and updater manifest
+        id: pack
+        env:
+          VERSION: ${{ steps.desktop.outputs.version }}
+          RELEASE_TAG: ${{ needs.preflight.outputs.release_tag }}
+          PUB_DATE: ${{ needs.preflight.outputs.pub_date }}
+        run: |
+          $release = 'desktop/src-tauri/target/release'
+          New-Item -ItemType Directory -Force -Path desktop/release | Out-Null
+          $installers = @(Get-ChildItem -LiteralPath "$release/bundle/nsis" -Filter '*-setup.exe')
+          if ($installers.Count -ne 1) { throw "Expected one NSIS installer in $release/bundle/nsis, found $($installers.Count)." }
+          $signature = "$($installers[0].FullName).sig"
+          if (-not (Test-Path -LiteralPath $signature)) { throw "Missing updater signature: $signature" }
+          $installer = "desktop/release/Deckmate.Setup.$env:VERSION.exe"
+          Move-Item -LiteralPath $signature -Destination "$installer.sig"
+          Move-Item -LiteralPath $installers[0].FullName -Destination $installer
+          # The portable zip has the same notices beside Deckmate.exe as the installer.
+          $inputs = @("$release/Deckmate.exe", "$release/node.exe", "$release/deckmate", "$release/THIRD-PARTY-NOTICES.txt")
+          foreach ($file in $inputs) {
+            if (-not (Test-Path -LiteralPath $file)) { throw "Missing release output: $file" }
+          }
+          $zip = "desktop/release/Deckmate-$env:VERSION-win-x64.zip"
+          Compress-Archive -Path $inputs -DestinationPath $zip -Force
+          Copy-Item -LiteralPath "$release/THIRD-PARTY-NOTICES.txt" -Destination desktop/release/THIRD-PARTY-NOTICES.txt
+          Add-Type -AssemblyName System.IO.Compression.FileSystem
+          $archive = [System.IO.Compression.ZipFile]::OpenRead((Resolve-Path $zip))
+          try {
+            $notice = $archive.GetEntry('THIRD-PARTY-NOTICES.txt')
+            if ($null -eq $notice -or $notice.Length -eq 0) { throw 'The portable zip has no non-empty THIRD-PARTY-NOTICES.txt.' }
+          } finally {
+            $archive.Dispose()
+          }
+          $assetName = "Deckmate.Setup.$env:VERSION.exe"
+          $installerUrl = "https://github.com/$env:GITHUB_REPOSITORY/releases/download/$env:RELEASE_TAG/$assetName"
+          # The release job checks the planned URL against the API asset name in
+          # the draft, then browser_download_url after publication, without rewriting it.
+          node desktop/scripts/updater-manifest.mjs --version $env:VERSION --url $installerUrl --installer $installer --signature-file "$installer.sig" --pub-date $env:PUB_DATE --out desktop/release/latest.json
+          if ($LASTEXITCODE -ne 0) { throw "updater-manifest exited with code $LASTEXITCODE." }
+          $installerMb = [math]::Round((Get-Item -LiteralPath $installer).Length / 1MB, 1)
+          $unpackedMb = [math]::Round((Get-ChildItem -LiteralPath $inputs -Recurse -File | Measure-Object -Property Length -Sum).Sum / 1MB, 1)
+          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value @(
+            '### Windows desktop sizes',
+            '',
+            '| Artifact | Tauri | Electron (2026-11-08) |',
+            '|---|---|---|',
+            "| Installer | $installerMb MB | 121 MB |",
+            "| Unpacked | $unpackedMb MB | 380 MB |"
+          )
+      - name: Upload proven desktop artifacts for publication
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: desktop-release
+          if-no-files-found: error
+          retention-days: 7
+          path: desktop/release/*
+
+  # npm and GHCR wait for all draft assets to be uploaded and verified, with
+  # latest.json last. An identical public release resumes only public verification.
+  release:
+    needs: [preflight, desktop]
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: write
+      packages: write
+      id-token: write
+    env:
+      VERSION: ${{ needs.desktop.outputs.version }}
+      DRY_RUN: ${{ needs.preflight.outputs.dry_run }}
+      RELEASE_TAG: ${{ needs.preflight.outputs.release_tag }}
+      PUB_DATE: ${{ needs.preflight.outputs.pub_date }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: package.json
+          cache: npm
+          cache-dependency-path: package-lock.json
+          registry-url: https://registry.npmjs.org
+      - name: Download the validated npm package
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: npm-package
+          path: release-input/npm
+      - name: Download the proven desktop build
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: desktop-release
+          path: desktop/release
+      - name: Verify downloaded desktop notices, zip and update signature
+        run: |
+          set -euo pipefail
+          test -s desktop/release/THIRD-PARTY-NOTICES.txt
+          python3 - <<'PY'
+          import zipfile
+          path = "desktop/release/Deckmate-" + __import__("os").environ["VERSION"] + "-win-x64.zip"
+          with zipfile.ZipFile(path) as archive:
+              info = archive.getinfo("THIRD-PARTY-NOTICES.txt")
+              if info.file_size == 0:
+                  raise SystemExit("The portable THIRD-PARTY-NOTICES.txt is empty")
+          PY
+          node desktop/scripts/github-release.mjs verify
+      - name: Create or inspect the GitHub Release
+        id: github-release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node desktop/scripts/github-release.mjs prepare
+      - name: Upload and verify draft assets, with latest.json last
+        id: upload
+        if: steps.github-release.outputs.published == 'false'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_ID: ${{ steps.github-release.outputs.release_id }}
+        run: node desktop/scripts/github-release.mjs upload
       - name: Check published npm artifact
         id: npm
+        if: github.event_name == 'push' && needs.preflight.outputs.dry_run == 'false' && steps.github-release.outputs.published == 'false'
         run: |
           node --input-type=module <<'NODE'
           import { readFileSync, appendFileSync } from 'node:fs';
-          const [artifact] = JSON.parse(readFileSync('package-info.json', 'utf8'));
+          const [artifact] = JSON.parse(readFileSync('release-input/npm/package-info.json', 'utf8'));
           const response = await fetch(`https://registry.npmjs.org/${encodeURIComponent(artifact.name)}/${encodeURIComponent(artifact.version)}`, { signal: AbortSignal.timeout(30000) });
           let published = false;
           if (response.status !== 404) {
@@ -94,30 +375,31 @@ jobs:
           }
           appendFileSync(process.env.GITHUB_OUTPUT, `published=${published}\n`);
           NODE
-      - name: Build container
+      - name: Build container only after the desktop build succeeds
         id: container
-        env:
-          VERSION: ${{ steps.release.outputs.version }}
+        if: github.event_name == 'push' && needs.preflight.outputs.dry_run == 'false' && steps.github-release.outputs.published == 'false'
         run: |
+          set -euo pipefail
           image="ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/deckmate"
           docker build --pull --label "org.opencontainers.image.source=https://github.com/${GITHUB_REPOSITORY}" --label "org.opencontainers.image.revision=${GITHUB_SHA}" --label "org.opencontainers.image.version=${VERSION}" --tag "${image}:${VERSION}" .
           printf 'image=%s\n' "$image" >> "$GITHUB_OUTPUT"
       - name: Publish npm package
-        if: steps.npm.outputs.published == 'false'
+        if: github.event_name == 'push' && needs.preflight.outputs.dry_run == 'false' && steps.github-release.outputs.published == 'false' && steps.npm.outputs.published == 'false'
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-          PACKAGE_FILE: ${{ steps.package.outputs.filename }}
-          VERSION: ${{ steps.release.outputs.version }}
         run: |
+          set -euo pipefail
+          package_file=$(node -p "JSON.parse(require('fs').readFileSync('release-input/npm/package-info.json', 'utf8'))[0].filename")
           npm_tag=latest
           if [[ "$VERSION" == *-* ]]; then npm_tag=next; fi
-          npm publish "$PACKAGE_FILE" --access public --provenance --tag "$npm_tag"
+          npm publish "release-input/npm/$package_file" --access public --provenance --tag "$npm_tag"
       - name: Publish container
+        if: github.event_name == 'push' && needs.preflight.outputs.dry_run == 'false' && steps.github-release.outputs.published == 'false'
         env:
-          GH_TOKEN: ${{ github.token }}
           IMAGE: ${{ steps.container.outputs.image }}
-          VERSION: ${{ steps.release.outputs.version }}
+          GH_TOKEN: ${{ github.token }}
         run: |
+          set -euo pipefail
           printf '%s' "$GH_TOKEN" | docker login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
           docker push "${IMAGE}:${VERSION}"
           if [[ "$VERSION" != *-* ]]; then
@@ -125,73 +407,22 @@ jobs:
             docker push "${IMAGE}:latest"
           fi
           docker logout ghcr.io
-      - name: Create GitHub Release
+      - name: Publish the completed draft release
+        if: github.event_name == 'push' && needs.preflight.outputs.dry_run == 'false' && steps.github-release.outputs.published == 'false'
         env:
           GH_TOKEN: ${{ github.token }}
-          PACKAGE_FILE: ${{ steps.package.outputs.filename }}
-          VERSION: ${{ steps.release.outputs.version }}
-        run: |
-          prerelease=()
-          if [[ "$VERSION" == *-* ]]; then prerelease+=(--prerelease); fi
-          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
-            gh release upload "$GITHUB_REF_NAME" "$PACKAGE_FILE" --clobber
-          else
-            gh release create "$GITHUB_REF_NAME" "$PACKAGE_FILE" --verify-tag --title "Deckmate ${VERSION}" --notes-file release-notes.md "${prerelease[@]}"
-          fi
-
-  # Runs only after npm, GHCR and the GitHub Release are published, so a failed
-  # desktop build never blocks or undoes them; the installer can then be uploaded
-  # by hand (2026-11-08).
-  desktop:
-    needs: release
-    runs-on: windows-latest
-    timeout-minutes: 45
-    continue-on-error: false
-    permissions:
-      contents: write
-    defaults:
-      run:
-        shell: pwsh
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
-        with:
-          node-version-file: package.json
-          cache: npm
-          cache-dependency-path: package-lock.json
-      - name: Validate desktop version
-        id: desktop
-        run: |
-          $version = (Get-Content package.json -Raw | ConvertFrom-Json).version
-          if (-not (Test-Path -LiteralPath desktop/package.json)) { throw 'desktop/package.json is missing.' }
-          $desktopVersion = (Get-Content desktop/package.json -Raw | ConvertFrom-Json).version
-          if ($desktopVersion -ne $version) { throw "desktop/package.json has version $desktopVersion; it must match $version." }
-          Add-Content -Path $env:GITHUB_OUTPUT -Value "version=$version"
-      - run: npm ci
-      - run: npm run build
-      # prepare-deckmate.mjs packs the repository root into desktop/ and runs npm install there itself.
-      - name: Install desktop dependencies
-        working-directory: desktop
-        run: node scripts/prepare-deckmate.mjs
-      - name: Build Windows installer and portable folder
-        working-directory: desktop
-        run: npx electron-builder --win --publish never
-      - name: Pack portable folder
-        env:
-          VERSION: ${{ steps.desktop.outputs.version }}
-        run: Compress-Archive -Path desktop/release/win-unpacked/* -DestinationPath "desktop/release/Deckmate-$env:VERSION-win-x64.zip"
-      - name: Upload desktop build to GitHub Release
+          RELEASE_ID: ${{ steps.github-release.outputs.release_id }}
+          VERIFIED_ASSETS: ${{ steps.upload.outputs.verified_assets }}
+        run: node desktop/scripts/github-release.mjs publish
+      - name: Verify public assets and anonymous installer and updater endpoints
+        if: github.event_name == 'push' && needs.preflight.outputs.dry_run == 'false'
         env:
           GH_TOKEN: ${{ github.token }}
-          GH_REPO: ${{ github.repository }}
-          VERSION: ${{ steps.desktop.outputs.version }}
-        run: |
-          $installer = "desktop/release/Deckmate Setup $env:VERSION.exe"
-          $files = @($installer, "$installer.blockmap", "desktop/release/Deckmate-$env:VERSION-win-x64.zip")
-          foreach ($file in $files) {
-            if (-not (Test-Path -LiteralPath $file)) { throw "Missing build output: $file" }
-          }
-          gh release upload "$env:GITHUB_REF_NAME" @files --clobber
-          if ($LASTEXITCODE -ne 0) { throw "gh release upload exited with code $LASTEXITCODE." }
+          RELEASE_ID: ${{ steps.github-release.outputs.release_id }}
+        run: node desktop/scripts/github-release.mjs verify-public
+      - name: Delete the dry-run draft even after a failed asset check
+        if: always() && github.event_name == 'workflow_dispatch' && needs.preflight.outputs.dry_run == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_ID: ${{ steps.github-release.outputs.release_id }}
+        run: node desktop/scripts/github-release.mjs cleanup

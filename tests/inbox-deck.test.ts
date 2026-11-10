@@ -75,7 +75,8 @@ it.each(['asset', 'knowledge'] as const)('clears Inbox atomically when its kind 
     const view = await service.edit({ action: 'set-deck-kind', deckId: 'tasks', kind,
       manifestHash: (await readProjectCatalog(root)).manifestHash }, 'sandbox');
     expect(view.inboxDeckId).toBeNull();
-    expect(view.warnings).toContain('Inbox destination cleared: this deck no longer takes Tasks.');
+    // 2026-11-10: notices about what a write also changed travel in savedWarning, not among project content warnings.
+    expect(view.savedWarning).toContain('Inbox destination cleared: this deck no longer takes Tasks.');
     expect(await readFile(filename)).toEqual(Buffer.from(text.replace("kind: 'task'", `kind: '${kind}'`).replace('inboxDeckId: "tasks"', 'inboxDeckId: null')));
   } finally { await service.close(); }
 });

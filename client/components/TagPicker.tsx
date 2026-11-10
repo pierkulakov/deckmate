@@ -1,6 +1,5 @@
 import { useId, useMemo, useRef, useState } from 'react';
 import * as Dialog from '@radix-ui/react-dialog';
-import { renderToStaticMarkup } from 'react-dom/server';
 import {
   Activity, AlarmClock, Archive, ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Award, Axe,
   Banknote, Bell, Book, Bookmark, Box, Boxes, Briefcase, Brush, Bug, Calendar,
@@ -24,11 +23,13 @@ import { Button } from './ui/button.tsx';
 import { CardTags, TagBadge, TagColorIndicator } from './CardTags.tsx';
 import { defineText, textNow, useText } from '../i18n.ts';
 import { navigateTabs } from '../tab-navigation.ts';
+import { moveFocus } from '../focus.ts';
+import { EmptyState } from './EmptyState.tsx';
 
 const text = defineText({
   squareSvg: 'The SVG must be square: viewBox width and height must match.',
   findTag: 'Find a tag', tagPlaceholder: 'Find a tag…', projectTags: 'Project tags', configureTag: (name: string) => 'Configure tag: ' + name,
-  colorAndIcon: 'Decoration', noTags: 'No tags match this search.', firstTags: 'Showing the first 100 tags. Refine your search.',
+  colorAndIcon: 'Decoration', emptyTags: 'No project tags yet. Create one in Configure tags.', firstTags: 'Showing the first 100 tags. Refine your search.',
   tagNotSaved: 'The tag was not saved. Check the catalog message and try again.', svgLimit: 'Choose an SVG up to 16 KB.',
   svgReadFailed: 'Could not read the SVG.', svgPrepareFailed: 'Could not prepare the SVG icon.', checkProperties: 'Check the tag properties.',
   tagExists: 'This tag already exists. Select it in the list to configure it.', appearanceSaved: 'Tag appearance saved.',
@@ -40,17 +41,17 @@ const text = defineText({
   decoration: 'Decoration', decorationNone: 'None', decorationColor: 'Color', iconColor: 'Icon color',
   decorationHelp: 'Cards with this tag get the chosen decoration: a color dot, or an emoji or icon before the title.',
   pickEmoji: 'Choose an emoji.', pickIcon: 'Choose an icon or upload an SVG.',
-  findEmoji: 'Find emoji', emojiPlaceholder: 'Find emoji: star…', emojiName: (emoji: string) => 'Emoji ' + emoji, noEmoji: 'No emoji match this search.',
+  findEmoji: 'Find emoji', emojiPlaceholder: 'Find emoji: star…', emojiName: (emoji: string) => 'Emoji ' + emoji,
   findIcon: 'Find an icon', iconPlaceholder: 'Find an icon by name…', lucideIcons: 'Lucide icons', iconName: (name: string) => 'Icon ' + name,
-  noIcons: 'No icons match this search.', uploadSvg: 'Upload a square SVG',
+  uploadSvg: 'Upload a square SVG',
   svgHelp: 'Up to 16 KB. The viewBox width and height must match. Simple vector shapes without scripts, styles or external links.',
-  tagCard: 'Tag card', cardPlaceholder: 'Find a catalog card…', removeCard: 'Remove card', projectCards: 'Project cards', noCards: 'No cards match this search.',
+  tagCard: 'Tag card', cardPlaceholder: 'Find a catalog card…', removeCard: 'Remove card', projectCards: 'Project cards', emptyCards: 'The project has no cards yet.',
   cardHelp: 'The card describes the tag in the catalog, for example a faction in a “Factions” deck; each tag has one card.',
   preview: 'Preview', tag: 'Tag', conflict: 'Tags changed in the files. Your draft is kept.', useCurrent: 'Use current version', cancel: 'Cancel', save: 'Save', create: 'Create tag',
 }, {
   squareSvg: 'SVG должен быть квадратным: ширина и высота viewBox должны совпадать.',
   findTag: 'Найти тег', tagPlaceholder: 'Найти тег…', projectTags: 'Теги проекта', configureTag: (name: string) => 'Настроить тег: ' + name,
-  colorAndIcon: 'Оформление', noTags: 'Тегов по этому запросу нет.', firstTags: 'Показаны первые 100 тегов. Уточните поиск.',
+  colorAndIcon: 'Оформление', emptyTags: 'Тегов проекта пока нет. Создайте тег в настройках тегов.', firstTags: 'Показаны первые 100 тегов. Уточните поиск.',
   tagNotSaved: 'Тег не сохранён. Проверьте сообщение каталога и повторите действие.', svgLimit: 'Выберите SVG до 16 КБ.',
   svgReadFailed: 'Не удалось прочитать SVG.', svgPrepareFailed: 'Не удалось подготовить SVG-иконку.', checkProperties: 'Проверьте свойства тега.',
   tagExists: 'Такой тег уже существует. Выберите его в списке для настройки.', appearanceSaved: 'Оформление тега сохранено.',
@@ -62,11 +63,11 @@ const text = defineText({
   decoration: 'Оформление', decorationNone: 'Нет', decorationColor: 'Цвет', iconColor: 'Цвет значка',
   decorationHelp: 'Карточки с этим тегом получают выбранное оформление: цветную точку, эмодзи или значок перед названием.',
   pickEmoji: 'Выберите эмодзи.', pickIcon: 'Выберите иконку или загрузите SVG.',
-  findEmoji: 'Найти эмодзи', emojiPlaceholder: 'Найти эмодзи: star или звезда…', emojiName: (emoji: string) => 'Эмодзи ' + emoji, noEmoji: 'Эмодзи по этому запросу нет.',
+  findEmoji: 'Найти эмодзи', emojiPlaceholder: 'Найти эмодзи: star или звезда…', emojiName: (emoji: string) => 'Эмодзи ' + emoji,
   findIcon: 'Найти иконку', iconPlaceholder: 'Найти иконку по имени…', lucideIcons: 'Иконки Lucide', iconName: (name: string) => 'Иконка ' + name,
-  noIcons: 'Иконок по этому запросу нет.', uploadSvg: 'Загрузить квадратный SVG',
+  uploadSvg: 'Загрузить квадратный SVG',
   svgHelp: 'До 16 КБ. Ширина и высота viewBox должны совпадать. Простые векторные фигуры без скриптов, стилей и внешних ссылок.',
-  tagCard: 'Карточка тега', cardPlaceholder: 'Найти карточку каталога…', removeCard: 'Снять карточку', projectCards: 'Карточки проекта', noCards: 'Карточек по этому запросу нет.',
+  tagCard: 'Карточка тега', cardPlaceholder: 'Найти карточку каталога…', removeCard: 'Снять карточку', projectCards: 'Карточки проекта', emptyCards: 'В проекте пока нет карточек.',
   cardHelp: 'Карточка описывает тег в каталоге, например сторону в колоде «Фракции»; у тега она одна.',
   preview: 'Предпросмотр', tag: 'Тег', conflict: 'Теги изменились в файлах. Черновик сохранён.', useCurrent: 'Использовать актуальную версию', cancel: 'Отмена', save: 'Сохранить', create: 'Создать тег',
 });
@@ -119,7 +120,11 @@ function squareTagSvg(value: string) {
   return iconSvg;
 }
 
-function lucideTagSvg(Icon: LucideIcon) {
+const loadTagRenderer = () => import('react-dom/server');
+
+async function lucideTagSvg(Icon: LucideIcon) {
+  // 2026-11-10: SVG export is only needed after choosing an icon, not for displaying the board or tag list.
+  const { renderToStaticMarkup } = await loadTagRenderer();
   const markup = renderToStaticMarkup(<Icon size={24} strokeWidth={2} />);
   // The sanitizer accepts geometry only; React/Lucide presentation attributes are not needed in the stored file.
   return squareTagSvg(markup.replace(/\s(?:class|aria-hidden)="[^"]*"/gu, ''));
@@ -141,7 +146,9 @@ export function TagSelectionList({ tags, definitions = [], selected, query, onQu
         </button>
         {onConfigure && <button type="button" className="tag-configure" disabled={disabled} aria-label={t.configureTag(tag.name)} title={t.colorAndIcon} onClick={() => onConfigure(tag)}><Pencil size={13} /></button>}
       </div>)}
-      {!matching.length && <p className="tag-empty">{t.noTags}</p>}
+      {!matching.length && (query.trim()
+        ? <EmptyState variant="filtered" onReset={() => onQueryChange('')} />
+        : <EmptyState message={t.emptyTags} />)}
     </div>
     {matching.length > 100 && <p className="tag-help">{t.firstTags}</p>}
   </div>;
@@ -221,15 +228,19 @@ export function TagPicker({ card, catalog, disabled, onEdit, onOpenChange, onOpe
     } catch (error) { setMessage(tagFailure(error, 'svgReadFailed')); }
     finally { inFlight.current = false; setBusy(false); }
   }
-  function chooseLucideIcon(name: string, Icon: LucideIcon) {
+  async function chooseLucideIcon(name: string, Icon: LucideIcon) {
     if (!draft || unavailable) return;
+    inFlight.current = true; setBusy(true); setMessage(null);
     try {
-      const iconSvg = lucideTagSvg(Icon);
+      const iconSvg = await lucideTagSvg(Icon);
       setDraft({ ...draft, iconSvg, emoji: undefined }); setSelectedIconName(name); setMessage(null);
     } catch (error) { setMessage(tagFailure(error, 'svgPrepareFailed')); }
+    finally { inFlight.current = false; setBusy(false); }
   }
   function chooseDecoration(next: TagDecoration) {
     if (!draft || unavailable || next === decoration) return;
+    // 2026-11-10: selecting icon decoration gives the local renderer a head start before an icon is chosen.
+    if (next === 'icon') void loadTagRenderer().catch(() => {});
     setDecoration(next); setMessage(null);
     if (next !== 'icon') setSelectedIconName('');
     // Keep one decoration at a time: switching clears the previous decoration's stored value.
@@ -276,7 +287,7 @@ export function TagPicker({ card, catalog, disabled, onEdit, onOpenChange, onOpe
                     const index = event.key === 'Home' ? 0 : event.key === 'End' ? decorations.length - 1 : step === undefined ? -1 : (decorations.indexOf(choice) + step + decorations.length) % decorations.length;
                     if (index < 0) return;
                     event.preventDefault(); chooseDecoration(decorations[index]);
-                    (event.currentTarget.parentElement?.children[index] as HTMLElement | undefined)?.focus();
+                    moveFocus(event.currentTarget.parentElement?.children[index] as HTMLElement | undefined);
                   }}>{{ none: t.decorationNone, color: t.decorationColor, emoji: t.emoji, icon: t.icon }[choice]}</button>)}
               </div>
               <p className="tag-help">{t.decorationHelp}</p>
@@ -286,7 +297,7 @@ export function TagPicker({ card, catalog, disabled, onEdit, onOpenChange, onOpe
                 <div className="tag-symbol-grid" role="group" aria-label={t.emoji}>
                   {matchingEmojis.map(item => <button type="button" className="tag-symbol-choice" key={item.emoji} aria-label={t.emojiName(item.emoji)} aria-pressed={draft.emoji === item.emoji} title={item.keywords} onClick={() => { setDraft({ ...draft, emoji: item.emoji, iconSvg: undefined }); setMessage(null); }}>{item.emoji}</button>)}
                 </div>
-                {!matchingEmojis.length && <p className="tag-empty">{t.noEmoji}</p>}
+                {!matchingEmojis.length && <EmptyState variant="filtered" onReset={() => setEmojiQuery('')} />}
               </div>}
               {decoration === 'icon' && <>
                 <div className="tag-icon-tabs" role="tablist" aria-label={t.iconType} onKeyDown={navigateTabs}>
@@ -298,7 +309,7 @@ export function TagPicker({ card, catalog, disabled, onEdit, onOpenChange, onOpe
                     <div className="tag-symbol-grid" role="group" aria-label={t.lucideIcons}>
                       {matchingIcons.map(([name, Icon]) => <button type="button" className="tag-symbol-choice" key={name} aria-label={t.iconName(name)} aria-pressed={Boolean(draft.iconSvg) && selectedIconName === name} title={name} onClick={() => chooseLucideIcon(name, Icon)}><Icon size={20} /></button>)}
                     </div>
-                    {!matchingIcons.length && <p className="tag-empty">{t.noIcons}</p>}
+                    {!matchingIcons.length && <EmptyState variant="filtered" onReset={() => setIconQuery('')} />}
                   </>}
                   {iconTab === 'svg' && <>
                     <div className="tag-icon-upload"><label htmlFor={inputId}><ImagePlus size={15} />{t.uploadSvg}</label><input id={inputId} type="file" accept="image/svg+xml,.svg" onChange={event => { void chooseIcon(event.target.files?.[0]); event.target.value = ''; }} /></div>
@@ -318,7 +329,8 @@ export function TagPicker({ card, catalog, disabled, onEdit, onOpenChange, onOpe
                   <span>{item.version && <small>{item.version} </small>}{item.title}</span>{draft.cardId === item.id && <Check size={13} />}
                 </button>)}
               </div>}
-              {cardQuery.trim() && cardMatches.length === 0 && <p className="tag-empty">{t.noCards}</p>}
+              {cardQuery.trim() && cardMatches.length === 0 && <EmptyState variant="filtered" onReset={() => setCardQuery('')} />}
+              {!cardQuery.trim() && !catalog.cards.some(item => !item.deleted && !item.archived) && <EmptyState message={t.emptyCards} />}
               <p className="tag-help">{t.cardHelp}</p>
             </div>
             <div className="tag-preview"><span>{t.preview}</span><CardTags tags={[draft.name || t.tag]} definitions={[{ name: draft.name || t.tag, color: draft.color, emoji: draft.emoji, iconSvg: draft.iconSvg }]} /><TagColorIndicator tags={[draft.name || t.tag]} definitions={[{ name: draft.name || t.tag, color: draft.color, emoji: draft.emoji, iconSvg: draft.iconSvg }]} /></div>

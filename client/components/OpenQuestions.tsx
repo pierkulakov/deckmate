@@ -1,4 +1,5 @@
 import { readStoredValue } from '../storage.ts';
+import { storedMemberId } from '../current-member.ts';
 import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
 import * as Dialog from '@radix-ui/react-dialog';
 import { AlertCircle, Check, ListChecks, LoaderCircle, Send, UserRound, X } from 'lucide-react';
@@ -7,6 +8,7 @@ import { resolveReference, shortReference } from '../../src/references.ts';
 import type { CatalogAction } from '../useCatalog.ts';
 import { Button } from './ui/button.tsx';
 import { defineText, textNow, useText } from '../i18n.ts';
+import { moveFocus } from '../focus.ts';
 import '../open-questions.css';
 
 const text = defineText({
@@ -17,6 +19,8 @@ const text = defineText({
   saveUnconfirmed: 'Could not confirm the save. Retry: the task ID is preserved.',
   answerRequired: 'Enter an answer — it will become an item in the “Resolved” section.',
   noAuthor: 'The project registry has no person whose name can record the decision.',
+  chooseAuthor: 'Choose a person to record the decision',
+  actingAs: 'Acting as',
   answerNotSaved: 'Answer not recorded. Check the catalog message and that the question is current; the answer text is preserved.',
   recordUnconfirmed: 'Could not confirm the entry. The answer text is preserved; try again.',
   section: (count: number) => `Open · ${count}`,
@@ -51,6 +55,8 @@ const text = defineText({
   saveUnconfirmed: 'Не удалось подтвердить сохранение. Повторите: идентификатор задачи сохранён.',
   answerRequired: 'Введите ответ — он станет пунктом раздела «Решено».',
   noAuthor: 'В реестре проекта нет человека, от имени которого можно записать решение.',
+  chooseAuthor: 'Выберите человека для записи решения',
+  actingAs: 'От имени',
   answerNotSaved: 'Ответ не записан. Проверьте сообщение каталога и актуальность вопроса; текст ответа сохранён.',
   recordUnconfirmed: 'Не удалось подтвердить запись. Текст ответа сохранён; повторите действие.',
   section: (count: number) => `Открыто · ${count}`,
@@ -59,7 +65,7 @@ const text = defineText({
   emptyQuestion: 'Пустой вопрос — нужен текст в Markdown.',
   openTask: (title: string) => `Открыть задачу: ${title}`,
   decision: 'Решение',
-  toHand: 'В руку',
+  toHand: 'В Hand',
   answer: 'Ответить',
   answerLabel: 'Ответ на вопрос',
   answerPlaceholder: 'Решение для раздела «Решено»…',
@@ -68,13 +74,13 @@ const text = defineText({
   saving: 'Сохраняем…',
   record: 'Записать',
   readOnly: 'Источник открыт только для чтения. Откройте тестовую копию через меню источника в верхней полосе — вопросы и ответы сохраняются туда.',
-  raiseTitle: 'В руку…',
-  closeRaise: 'Закрыть окно «В руку»',
+  raiseTitle: 'В Hand…',
+  closeRaise: 'Закрыть окно «В Hand»',
   member: 'Участник',
   noPeople: 'Нет людей в реестре',
   deck: 'Колода',
   noDecks: 'Нет колод для Task',
-  raiseNote: 'Создастся Task «Решение»: исполнитель — выбранный человек, задача появится в его руке, а ссылка — в пункте вопроса.',
+  raiseNote: 'Создастся Task «Решение»: исполнитель — выбранный человек, задача появится в его Hand, а ссылка — в пункте вопроса.',
   retryId: 'ID повтора сохраняется',
   retryAction: 'Повторить',
 });
@@ -90,6 +96,7 @@ interface RaiseDraft {
 }
 
 interface AnswerDraft {
+  memberId: string;
   questionIndex: number;
   questionText: string;
   answer: string;
@@ -153,7 +160,7 @@ export function OpenQuestions({ card, catalog, writable, disabled, onEdit, onSel
   }, [active, onActiveChange]);
 
   useEffect(() => {
-    if (answerDraft) answerField.current?.focus();
+    if (answerDraft) moveFocus(answerField.current);
   }, [answerDraft?.questionIndex, answerDraft?.questionText]);
 
   // A 200 response can still describe a partially saved raise-decision. The refreshed projection is the verdict:
@@ -240,7 +247,8 @@ export function OpenQuestions({ card, catalog, writable, disabled, onEdit, onSel
     setRaiseDraft(null);
     setRaiseError('');
     setAnswerError('');
-    setAnswerDraft({ questionIndex, questionText: question.text, answer: '' });
+    const author = humans.find(member => member.id === storedMemberId());
+    setAnswerDraft({ questionIndex, questionText: question.text, answer: '', memberId: author?.id ?? '' });
   }
 
   function cancelAnswer() {
@@ -253,8 +261,8 @@ export function OpenQuestions({ card, catalog, writable, disabled, onEdit, onSel
     if (!answerDraft || answerInFlight.current || locked || !writable) return;
     const answer = answerDraft.answer.trim();
     if (!answer) { setAnswerError(t.answerRequired); return; }
-    const author = humans[0];
-    if (!author) { setAnswerError(t.noAuthor); return; }
+    const author = humans.find(member => member.id === answerDraft.memberId);
+    if (!author) { setAnswerError(humans.length ? t.chooseAuthor : t.noAuthor); return; }
     answerInFlight.current = true;
     setAnswerSaving(true);
     setAnswerError('');
@@ -307,6 +315,16 @@ export function OpenQuestions({ card, catalog, writable, disabled, onEdit, onSel
             </div>
           </div>
           {answering && answerDraft && <div className="open-question-answer">
+            <label><span>{t.actingAs}</span><select value={answerDraft.memberId} disabled={locked} aria-label={t.actingAs}
+              onChange={event => {
+                const memberId = event.target.value;
+                setAnswerDraft(current => current ? { ...current, memberId } : null);
+                setAnswerError('');
+              }}>
+              <option value="">—</option>
+              {humans.map(member => <option key={member.id} value={member.id}>{member.label}</option>)}
+            </select></label>
+            {!answerDraft.memberId && <p style={{ overflowWrap: 'anywhere' }}>{humans.length ? t.chooseAuthor : t.noAuthor}</p>}
             <label><span className="visually-hidden">{t.answerLabel}</span><textarea ref={answerField} value={answerDraft.answer} rows={3} maxLength={200000}
               placeholder={t.answerPlaceholder} disabled={locked} onChange={event => {
                 const answer = event.target.value;
@@ -314,9 +332,9 @@ export function OpenQuestions({ card, catalog, writable, disabled, onEdit, onSel
                 setAnswerError('');
               }} onKeyDown={answerKeys} /></label>
             {answerError && <p className="open-question-error" role="alert">{answerError}</p>}
-            <div className="open-question-answer-footer"><span>{t.answerHint(humans[0]?.label ?? null)}</span>
+            <div className="open-question-answer-footer"><span>{t.answerHint(humans.find(member => member.id === answerDraft.memberId)?.label ?? null)}</span>
               <Button type="button" variant="ghost" size="sm" disabled={answerSaving} onClick={cancelAnswer}>{t.cancel}</Button>
-              <Button type="button" size="sm" disabled={locked || !answerDraft.answer.trim()} onClick={() => void saveAnswer()}>
+              <Button type="button" size="sm" disabled={locked || !answerDraft.answer.trim() || !humans.some(member => member.id === answerDraft.memberId)} onClick={() => void saveAnswer()}>
                 {answerSaving ? <LoaderCircle size={13} className="spin" /> : <Check size={13} />}{answerSaving ? t.saving : t.record}
               </Button>
             </div>
@@ -329,7 +347,7 @@ export function OpenQuestions({ card, catalog, writable, disabled, onEdit, onSel
     {raiseDraft && <Dialog.Root open onOpenChange={open => { if (!open) closeRaise(); }}><Dialog.Portal>
       <Dialog.Overlay className="open-questions-overlay" />
       <Dialog.Content className="open-questions-dialog" aria-busy={raiseSaving || raiseChecking}
-        onOpenAutoFocus={event => { event.preventDefault(); memberField.current?.focus(); }}
+        onOpenAutoFocus={event => { event.preventDefault(); moveFocus(memberField.current); }}
         onEscapeKeyDown={event => { if (raiseSaving || raiseChecking) event.preventDefault(); }}
         onPointerDownOutside={event => { if (raiseSaving || raiseChecking) event.preventDefault(); }}>
         <header className="open-questions-dialog-heading"><Dialog.Title>{t.raiseTitle}</Dialog.Title>

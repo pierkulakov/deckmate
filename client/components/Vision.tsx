@@ -20,12 +20,17 @@ import type { ShortcutScreen } from '../keyboard-shortcuts.ts';
 import { ShortcutsHelp } from './ShortcutsHelp.tsx';
 import { Button } from './ui/button.tsx';
 import { CardTags, TagTitlePrefix } from './CardTags.tsx';
+import { EmptyState } from './EmptyState.tsx';
 import { shortReference } from '../../src/references.ts';
 import { CatalogReferenceLink } from './JourneyPanel.tsx';
 import VisionCardNode, { visionCardSize, visionCardViewOf, visionCardViewOptions } from './VisionCardNode.tsx';
 import VisionSmartNode, { visionSmartSize } from './VisionSmartNode.tsx';
 import { fitVisionOnOpen } from '../vision-viewport.ts';
+import { desktopBoard } from '../desktop-bridge.ts';
+import { deferredVisionScene, sanitizeVisionScene, visionSceneSignature } from '../vision-scene.ts';
+import { BoardSceneSafetyError, boardImageMimeTypes, boardSafetyText, boardVideoAddress, isSafeBoardEmbed, isSafeBoardImage, isSafeBoardLink, maximumBoardBytes, maximumBoardImageBytes, sanitizeBoardScene, type BoardSafetyIssue } from '../../src/board-scene-safety.ts';
 import '../vision.css';
+import { warmMount } from '../warmup-mount.tsx';
 
 const text = defineText({
   newScheme: 'New board',
@@ -40,6 +45,8 @@ const text = defineText({
   openFailed: 'Could not open the board.',
   loadingBoard: 'Opening board…',
   saveFailed: 'Could not save the board.',
+  retry: 'Retry',
+  restoreFailed: 'Could not restore the board. It has not been replaced with an empty board.',
   notResponding: 'Deckmate is not responding. Check that it is running, then try again.',
   notSavedOffline: 'Not saved: Deckmate is not responding. Check that it is running, then try again.',
   copyTitle: (title: string) => `${title} — copy`.slice(0, 120),
@@ -67,6 +74,7 @@ const text = defineText({
   noCards: 'The project has no cards yet.',
   cardNotFound: 'Card not found',
   emptyLinked: 'Find a card and click + to add it to the board.',
+  emptyLinkedReadOnly: 'No cards are linked to this board yet.',
   smartNode: 'Smart Node',
   smartDescription: (done: string) => `A “${done} / total” bar for a deck; recalculated on every catalog update.`,
   widgetDeck: 'Widget deck',
@@ -76,6 +84,9 @@ const text = defineText({
   widget: 'Widget',
   youtubeTitle: 'YouTube video',
   youtubeDescription: 'A YouTube link creates a video node; pasting a link directly onto the board works the same way.',
+  desktopVideo: 'Videos do not play in the app. Add the video as a link and open it in your browser.',
+  addVideoLink: 'Add as link',
+  openInBrowser: 'Open in browser',
   youtubeLink: 'YouTube link',
   add: 'Add',
   selected: 'Selected',
@@ -96,6 +107,7 @@ const text = defineText({
   deckNotFound: 'Deck not found',
   memberNotFound: 'Member not found',
   noTextRefs: 'There are no references in text nodes yet.',
+  importFailed: 'Could not import the drawing. Use an Excalidraw scene, library, PNG, JPEG or WebP image.',
 }, {
   newScheme: 'Новая доска',
   agent: 'агент',
@@ -109,6 +121,8 @@ const text = defineText({
   openFailed: 'Не удалось открыть доску.',
   loadingBoard: 'Открываем доску…',
   saveFailed: 'Не удалось сохранить доску.',
+  retry: 'Повторить',
+  restoreFailed: 'Не удалось восстановить доску. Она не заменена пустой доской.',
   notResponding: 'Deckmate не отвечает. Проверьте, что он запущен, и повторите.',
   notSavedOffline: 'Не сохранено: Deckmate не отвечает. Проверьте, что он запущен, и повторите.',
   copyTitle: (title: string) => `${title} — копия`.slice(0, 120),
@@ -136,6 +150,7 @@ const text = defineText({
   noCards: 'В проекте пока нет карточек.',
   cardNotFound: 'Карточка не найдена',
   emptyLinked: 'Найдите карточку и нажмите +, чтобы добавить её на доску.',
+  emptyLinkedReadOnly: 'К этой доске пока не привязаны карточки.',
   smartNode: 'Умный узел',
   smartDescription: (done: string) => `Полоса «${done} / всего» по колоде; пересчитывается при каждом обновлении каталога.`,
   widgetDeck: 'Колода виджета',
@@ -145,6 +160,9 @@ const text = defineText({
   widget: 'Виджет',
   youtubeTitle: 'Видео YouTube',
   youtubeDescription: 'Ссылка YouTube создаёт видеоузел; вставка ссылки прямо на доску работает так же.',
+  desktopVideo: 'В приложении видео не проигрывается. Добавьте его как ссылку и откройте в браузере.',
+  addVideoLink: 'Добавить как ссылку',
+  openInBrowser: 'Открыть в браузере',
   youtubeLink: 'Ссылка YouTube',
   add: 'Добавить',
   selected: 'Выделено',
@@ -165,15 +183,27 @@ const text = defineText({
   deckNotFound: 'Колода не найдена',
   memberNotFound: 'Участник не найден',
   noTextRefs: 'Ссылок в текстовых узлах пока нет.',
+  importFailed: 'Не удалось импортировать рисунок. Используйте сцену Excalidraw, библиотеку, PNG, JPEG или WebP.',
 });
 
 const emptyScene: BoardScene = { type: 'excalidraw', version: 2, elements: [], appState: {}, files: {} };
+export async function warmVisionCanvas(signal: AbortSignal) {
+  const lang = document.documentElement.lang;
+  await warmMount(<Excalidraw initialData={{ elements: [] }} langCode={lang === 'ru' ? 'ru-RU' : 'en-US'}
+    theme={document.documentElement.classList.contains('dark') ? 'dark' : 'light'} viewModeEnabled
+    UIOptions={{ canvasActions: { loadScene: false, saveToActiveFile: false } }} />, signal);
+  if (signal.aborted) return;
+  // 2026-11-10: Assistant belongs to Excalidraw's CSS, so the app font warmup cannot load it before this chunk installs it.
+  for (const weight of [400, 500, 600, 700]) {
+    if (signal.aborted) return;
+    await document.fonts.load(`${weight} 14px Assistant`);
+  }
+}
 // Vision has no shortcuts of its own: the overview lists the app-wide ones, as in Hand.
 const visionShortcutScreens: readonly ShortcutScreen[] = ['app'];
-function sceneSignature(scene: BoardScene): string {
-  return JSON.stringify({ elements: scene.elements, files: scene.files, background: scene.appState.viewBackgroundColor, gridSize: scene.appState.gridSize });
-}
 type Props = { snapshot: WorkspaceSnapshot; refreshKey: number; dark: boolean; onEditing: (value: boolean) => void; onOpenCard: (id: string) => void };
+type BoardRetry = { kind: 'list' } | { kind: 'open'; id: string; recovering: boolean } | { kind: 'save'; copy: boolean; accessOverride?: BoardAccess };
+type BoardError = { message: string; retry: BoardRetry | null };
 
 /** A fully-formed embeddable element: updateScene does not run restore, so every base field is explicit. */
 function embeddableElement(seed: { x: number; y: number; width: number; height: number; link: string; customData: Record<string, unknown> }): Record<string, unknown> {
@@ -230,15 +260,21 @@ function accessTitle(access: BoardAccess, lang: Lang): string {
 function accessHint(access: BoardAccess, lang: Lang): string {
   return { editable: text[lang].editableHint, readonly: text[lang].readonlyHint, locked: text[lang].lockedHint }[access];
 }
-const youTubeLink = /^(https?:\/\/)?(www\.|m\.)?(youtube\.com|youtu\.be)\//iu;
+/** 2026-11-10: the quiet caption under the board name reports the editing state as one plain word. */
+function boardSaveStateText(dirty: boolean, opened: BoardDocument | null, opening: boolean, states: { dirty: string; saved: string; newBoard: string }): string {
+  if (opening) return '';
+  if (dirty) return states.dirty;
+  if (opened) return states.saved;
+  return states.newBoard;
+}
 const lastBoardKey = (source: string) => `deckmate-vision-board-${source}`;
 /** 2026-11-06: the board a fresh Vision mount will open (URL request first, then the last opened one), or null for a new board.
  * Knowing it before the first paint lets the canvas wait for that board instead of mounting an empty one and replacing it. */
-function boardToRestore(source: string): { id: string; silent: boolean } | null {
+function boardToRestore(source: string): { id: string } | null {
   const requested = new URLSearchParams(location.search).get('board');
-  if (requested) return { id: requested, silent: false };
+  if (requested) return { id: requested };
   const last = readStoredValue(localStorage, lastBoardKey(source));
-  return last ? { id: last, silent: true } : null;
+  return last ? { id: last } : null;
 }
 
 /** 2026-11-06: errors read as sentences, not «TypeError: Failed to fetch»: a server reply keeps its message, a stopped server
@@ -258,15 +294,21 @@ async function responseJson<T>(response: Response): Promise<T> {
 export default function Vision({ snapshot, refreshKey, dark, onEditing, onOpenCard }: Props) {
   const t = useText(text);
   const lang = useLang();
-  const { catalog, error: catalogError } = useCatalog(snapshot, refreshKey);
+  const desktop = Boolean(desktopBoard());
+  const { catalog, error: catalogError, refresh: refreshCatalog } = useCatalog(snapshot, refreshKey);
   const [boards, setBoards] = useState<BoardSummary[]>([]);
   const [document, setDocument] = useState<BoardDocument | null>(null);
   const [title, setTitle] = useState(() => textNow(text).newScheme);
   const [initialData, setInitialData] = useState<ExcalidrawProps['initialData']>(null);
   const [canvasKey, setCanvasKey] = useState(0);
   const [dirty, setDirty] = useState(false);
+  const [sceneRevision, setSceneRevision] = useState(0);
   const [pending, setPending] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [boardError, setBoardError] = useState<BoardError | null>(null);
+  const error = boardError?.message ?? null;
+  const retryAction = boardError?.retry ?? null;
+  const [restoreFailed, setRestoreFailed] = useState(false);
+  const [warnings, setWarnings] = useState<string[]>([]);
   const [restoring, setRestoring] = useState(() => boardToRestore(snapshot.source) !== null);
   const [query, setQuery] = useState('');
   const [linkedIds, setLinkedIds] = useState<string[]>([]);
@@ -274,11 +316,15 @@ export default function Vision({ snapshot, refreshKey, dark, onEditing, onOpenCa
   const [smartDeckId, setSmartDeckId] = useState('');
   const [smartState, setSmartState] = useState('');
   const [videoUrl, setVideoUrl] = useState('');
+  const [videoError, setVideoError] = useState<string | null>(null);
   const [captionDraft, setCaptionDraft] = useState('');
   const api = useRef<ExcalidrawImperativeAPI | null>(null);
   const fitOnOpen = useRef(true);
   const draftId = useRef<string>(crypto.randomUUID());
   const scene = useRef(emptyScene);
+  const deferredScene = useMemo(() => deferredVisionScene(({ elements, appState, files }) => {
+    scene.current = JSON.parse(serializeAsJSON(elements as never, appState as never, files as never, 'local')) as BoardScene;
+  }), []);
   // 2026-11-05: quests count cards newly placed on the board; a ref, not the linkedIds state, so rapid canvas
   // changes diff against the latest set and loading another board resets the baseline without counting as additions.
   const boardCardIds = useRef<Set<string>>(new Set());
@@ -293,12 +339,27 @@ export default function Vision({ snapshot, refreshKey, dark, onEditing, onOpenCa
   const editing = dirty || pending;
   const accessBlocked = document ? document.access !== 'editable' : false;
   // Read Only and Locked disable canvas editing while keeping the access menu available.
-  const editable = snapshot.writable && !accessBlocked;
+  const editable = snapshot.writable && !accessBlocked && !restoring && !restoreFailed;
+  // 2026-11-10: in read-only the sidebar states facts instead of inviting actions the mode cannot take.
+  const readOnly = !snapshot.writable || accessBlocked;
   // 2026-11-06: while the remembered board is read, the toolbar agrees with the loading state: no «New board» title and no Save
   // that would write an empty board in its place.
-  const opening = restoring && !initialData;
+  const opening = (restoring || restoreFailed) && !initialData;
+  const boardChoiceTitle = restoreFailed ? t.openFailed : t.newScheme;
 
-  useEffect(() => { onEditing(editing); return () => onEditing(false); }, [editing, onEditing]);
+  useEffect(() => { deferredScene.flush(); onEditing(editing); return () => onEditing(false); }, [editing, onEditing, deferredScene]);
+  useEffect(() => {
+    // 2026-11-10: unloading or leaving Vision can precede the debounce, including in a background window.
+    if (typeof window === 'undefined') return () => deferredScene.flush();
+    const flush = () => deferredScene.flush();
+    window.addEventListener('beforeunload', flush, true);
+    window.addEventListener('pagehide', flush);
+    return () => {
+      flush();
+      window.removeEventListener('beforeunload', flush, true);
+      window.removeEventListener('pagehide', flush);
+    };
+  }, [deferredScene]);
   useEffect(() => {
     if (previousLang.current === lang) return;
     const previousDefault = text[previousLang.current].newScheme;
@@ -311,18 +372,34 @@ export default function Vision({ snapshot, refreshKey, dark, onEditing, onOpenCa
     previousLang.current = lang;
   }, [lang, document, title]);
 
-  function display(next: BoardDocument | null, mountCanvas = true, keepError = false) {
+  function reportError(message: string | null, retry: BoardRetry | null = null) {
+    setBoardError(message ? { message, retry } : null);
+  }
+
+  function reportListError(message: string | null) {
+    // 2026-11-10: background list refreshes must not erase the failed board's restore/save retry target.
+    setBoardError(previous => {
+      if (previous && previous.retry?.kind !== 'list') return previous;
+      return message ? { message, retry: { kind: 'list' } } : null;
+    });
+  }
+
+  function display(next: BoardDocument | null, mountCanvas = true) {
     fitOnOpen.current = true;
-    const restored = restore((next?.scene ?? emptyScene) as unknown as Parameters<typeof restore>[0], null, null);
+    const safe = sanitizeVisionScene(next?.scene ?? emptyScene);
+    setWarnings([...new Set([...(next?.warnings ?? []), ...safe.issues.map(issue => boardSafetyText[lang][issue])])]);
+    const restored = restore(safe.scene as unknown as Parameters<typeof restore>[0], null, null);
     const serialized = serializeAsJSON(restored.elements, restored.appState, restored.files, 'local');
     scene.current = JSON.parse(serialized) as BoardScene;
-    baseline.current = sceneSignature(scene.current);
+    setSceneRevision(value => value + 1);
+    deferredScene.reset(restored as unknown as Parameters<typeof visionSceneSignature>[0]);
+    baseline.current = deferredScene.signature;
     baselineTitle.current = next?.title ?? textNow(text).newScheme;
     currentTitle.current = baselineTitle.current;
     titleEdited.current = false;
     setDocument(next); setTitle(next?.title ?? textNow(text).newScheme);
     draftId.current = next?.id ?? crypto.randomUUID();
-    setLinkedIds(next?.linkedCardIds ?? []); setDirty(false); if (!keepError) setError(null);
+    setLinkedIds(next?.linkedCardIds ?? []); setDirty(false); reportError(null); setRestoreFailed(false);
     boardCardIds.current = new Set(next?.linkedCardIds ?? []);
     // A pending restore keeps the canvas unmounted so the loading state shows instead of an empty board.
     setInitialData(mountCanvas ? { ...restored, scrollToContent: true } : null); setCanvasKey(value => value + 1);
@@ -330,10 +407,11 @@ export default function Vision({ snapshot, refreshKey, dark, onEditing, onOpenCa
 
   async function refreshList() {
     const requested = snapshot.source;
+    reportListError(null);
     try {
       const result = await responseJson<BoardSummary[]>(await fetch(`/api/boards?source=${requested}`));
       if (source.current === requested) setBoards(result);
-    } catch (failure) { if (source.current === requested) setError(failureText(failure, textNow(text).notResponding, textNow(text).openFailed)); }
+    } catch (failure) { if (source.current === requested) reportListError(failureText(failure, textNow(text).notResponding, textNow(text).openFailed)); }
   }
 
   useEffect(() => {
@@ -342,67 +420,88 @@ export default function Vision({ snapshot, refreshKey, dark, onEditing, onOpenCa
     display(null, !wanted); setBoards([]); setSelectionKey(''); setRestoring(wanted !== null);
     void (async () => {
       await refreshList();
-      if (!wanted) return;
-      const opened = await open(wanted.id, wanted.silent);
-      // The board could not be read: fall back to an empty one, keeping the error the failed open reported.
-      if (!opened && source.current === snapshot.source) display(null, true, true);
-      setRestoring(false);
+      if (!wanted || source.current !== snapshot.source) return;
+      // 2026-11-10: a failed restore must keep its retry target, not mount a writable empty replacement.
+      await open(wanted.id, true);
     })();
   }, [snapshot.source]);
   useEffect(() => { void refreshList(); }, [refreshKey]);
 
-  async function open(id: string, silent = false): Promise<boolean> {
-    if (editing) return false;
+  async function open(id: string, recovering = false): Promise<boolean> {
+    if (hasUnsavedChanges() || pending) return false;
     const requested = snapshot.source;
-    setPending(true);
+    setPending(true); reportError(null);
+    if (recovering) setRestoring(true);
     try {
       const result = await responseJson<BoardDocument>(await fetch(`/api/boards/${id}?source=${requested}`));
       if (source.current !== requested) return false;
       display(result); localStorage.setItem(lastBoardKey(requested), id); return true;
     }
     catch (failure) {
-      if (silent) localStorage.removeItem(lastBoardKey(requested));
-      else if (source.current === requested) setError(failureText(failure, textNow(text).notResponding, textNow(text).openFailed));
+      if (source.current === requested) {
+        const message = failureText(failure, textNow(text).notResponding, textNow(text).openFailed);
+        reportError(recovering ? `${textNow(text).restoreFailed} ${message}` : message, { kind: 'open', id, recovering });
+        if (recovering) setRestoreFailed(true);
+      }
       return false;
     }
-    finally { setPending(false); }
+    finally { if (source.current === requested) { setPending(false); if (recovering) setRestoring(false); } }
   }
 
   async function save(copy = false, accessOverride?: BoardAccess) {
+    deferredScene.flush();
     const token = (snapshot as WorkspaceSnapshot & { token?: string }).token;
-    if (!token || !snapshot.writable || pending) return;
-    setPending(true); setError(null);
+    if (!token || !snapshot.writable || pending || opening) return;
+    setPending(true); reportError(null);
     // The access state travels inside the scene appState; the editor never emits it, so inject it on every save.
     const access = accessOverride ?? (copy ? 'editable' : document?.access ?? 'editable');
     const payloadScene: BoardScene = { ...scene.current, appState: { ...scene.current.appState, [BOARD_ACCESS_KEY]: access } };
+    const savedSignature = deferredScene.signature;
     try {
       const result = await responseJson<BoardDocument>(await fetch('/api/boards', { method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-deckmate-token': token },
         body: JSON.stringify({ source: snapshot.source, id: copy ? crypto.randomUUID() : document?.id ?? draftId.current,
           title: copy ? t.copyTitle(title) : title, hash: copy ? '' : document?.hash ?? '', scene: payloadScene }),
       }));
-      setDocument(result); setTitle(result.title); setDirty(false);
-      baseline.current = sceneSignature(scene.current);
+      deferredScene.flush();
+      setDocument(result); setTitle(result.title);
+      baseline.current = savedSignature;
       baselineTitle.current = result.title;
       currentTitle.current = result.title;
+      setDirty(hasUnsavedChanges());
       localStorage.setItem(lastBoardKey(source.current), result.id);
       await refreshList();
-    } catch (failure) { setError(failureText(failure, t.notSavedOffline, t.saveFailed)); }
+    } catch (failure) { reportError(failureText(failure, t.notSavedOffline, t.saveFailed), { kind: 'save', copy, accessOverride }); }
     finally { setPending(false); }
+  }
+
+  function retryBoard() {
+    if (!retryAction || pending) return;
+    if (retryAction.kind === 'list') void refreshList();
+    else if (retryAction.kind === 'open') void open(retryAction.id, retryAction.recovering);
+    else void save(retryAction.copy, retryAction.accessOverride);
   }
 
   const onChange: ExcalidrawProps['onChange'] = (elements, appState, files) => {
     if (fitOnOpen.current && api.current) fitOnOpen.current = !fitVisionOnOpen(api.current);
-    const serialized = serializeAsJSON(elements, appState, files, 'local');
-    scene.current = JSON.parse(serialized) as BoardScene;
-    setDirty(sceneSignature(scene.current) !== baseline.current || currentTitle.current !== baselineTitle.current);
-    const ids = [...new Set(elements.filter(element => !element.isDeleted).map(boardCardIdOf).filter((id): id is string => id !== null))];
-    for (const id of ids) if (!boardCardIds.current.has(id)) emitSignal({ type: 'vision-card-added', cardId: id });
-    boardCardIds.current = new Set(ids);
-    setLinkedIds(previous => previous.join('\n') === ids.join('\n') ? previous : ids);
+    if (deferredScene.update({ elements, appState, files } as unknown as Parameters<typeof visionSceneSignature>[0])) {
+      // 2026-11-10: panels need the live elements immediately, but disk-format serialization can wait for the batch.
+      scene.current = { ...scene.current, elements: elements as unknown as BoardScene['elements'], appState: appState as unknown as BoardScene['appState'], files };
+      setSceneRevision(value => value + 1);
+      setDirty(deferredScene.signature !== baseline.current || currentTitle.current !== baselineTitle.current);
+      const ids = [...new Set(elements.filter(element => !element.isDeleted).map(boardCardIdOf).filter((id): id is string => id !== null))];
+      for (const id of ids) if (!boardCardIds.current.has(id)) emitSignal({ type: 'vision-card-added', cardId: id });
+      boardCardIds.current = new Set(ids);
+      setLinkedIds(previous => previous.join('\n') === ids.join('\n') ? previous : ids);
+    }
     const selection = Object.keys(appState.selectedElementIds).sort().join('\n');
     setSelectionKey(previous => previous === selection ? previous : selection);
   };
+
+  function hasUnsavedChanges(): boolean {
+    deferredScene.flush();
+    return deferredScene.signature !== baseline.current || currentTitle.current !== baselineTitle.current;
+  }
 
   function viewportAnchor(): { x: number; y: number } {
     if (!api.current) return { x: 100, y: 100 };
@@ -432,7 +531,7 @@ export default function Vision({ snapshot, refreshKey, dark, onEditing, onOpenCa
 
   function addSmartNode() {
     const deckId = smartDeckId || catalog?.decks[0]?.id;
-    if (!deckId) { setError(t.noDecksForSmart); return; }
+    if (!deckId) return;
     const queryValue: BoardSmartQuery = { deckId, state: smartState || null };
     const { x, y } = viewportAnchor();
     addElement(embeddableElement({ x, y, ...visionSmartSize,
@@ -440,15 +539,16 @@ export default function Vision({ snapshot, refreshKey, dark, onEditing, onOpenCa
   }
 
   function addVideoNode() {
-    const link = videoUrl.trim();
-    if (!youTubeLink.test(link)) { setError(t.youtubeError); return; }
+    const link = boardVideoAddress(videoUrl.trim());
+    if (!link) { setVideoError(t.youtubeError); return; }
+    setVideoError(null);
     const { x, y } = viewportAnchor();
     addElement(embeddableElement({ x, y, width: 560, height: 315, link, customData: { deckmateVideo: link } }));
     setVideoUrl('');
   }
 
   function openCardFromBoard(cardId: string) {
-    if (editing) setError(t.saveBeforeCard);
+    if (hasUnsavedChanges() || pending) reportError(t.saveBeforeCard);
     else onOpenCard(cardId);
   }
 
@@ -462,18 +562,105 @@ export default function Vision({ snapshot, refreshKey, dark, onEditing, onOpenCa
         catalog={catalog} interactive={active} onOpen={openCardFromBoard} />;
     }
     if (isSmartQuery(smartQuery)) return <VisionSmartNode query={smartQuery} catalog={catalog} />;
-    return null; // YouTube links keep the stock Excalidraw iframe.
+    const video = boardCustomValue(element.customData, 'Video');
+    const link = typeof element.link === 'string' ? element.link : '';
+    if (desktop && (typeof video === 'string' || boardVideoAddress(link))) {
+      const address = boardVideoAddress(link);
+      return <div className="deckmate-vision-video">
+        <Clapperboard size={24} aria-hidden="true" />
+        <strong>{t.youtubeTitle}</strong><p>{t.desktopVideo}</p>
+        <span className="vision-video-address">{link || String(video)}</span>
+        {address && <a className="ui-button button-outline button-size-sm" href={address} target="_blank" rel="noreferrer">{t.openInBrowser}<ArrowUpRight size={14} /></a>}
+      </div>;
+    }
+    if (boardVideoAddress(link) && isSafeBoardEmbed(link)) return null;
+    // 2026-11-10: an internal link without a matching project node must never fall back to a same-origin iframe.
+    return <div />;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [catalog, editing, onOpenCard, t]);
+  }, [catalog, editing, onOpenCard, t, desktop]);
 
   // Allow only our own embeddables and YouTube links to render.
-  const validateEmbeddable = useCallback((link: string) => link.startsWith('/r/') || isBoardProtocolLink(link) || youTubeLink.test(link), []);
+  const validateEmbeddable = useCallback(isSafeBoardEmbed, []);
+
+  function reportSafety(issues: BoardSafetyIssue[]) {
+    if (issues.length) setWarnings(previous => [...new Set([...previous, ...issues.map(issue => boardSafetyText[lang][issue])])]);
+  }
+  function importFailure(failure: unknown) {
+    reportError(failure instanceof BoardSceneSafetyError ? boardSafetyText[lang][failure.code] : t.importFailed);
+  }
+  const onPaste: NonNullable<ExcalidrawProps['onPaste']> = data => {
+    if (!data.elements) return true;
+    try {
+      const elements = data.programmaticAPI ? convertToExcalidrawElements(data.elements as never) : data.elements;
+      const safe = sanitizeVisionScene({ elements: elements as unknown as Record<string, unknown>[], appState: {}, files: data.files ?? {} });
+      reportSafety(safe.issues);
+      data.elements = safe.scene.elements as never;
+      data.files = safe.scene.files as never;
+      data.programmaticAPI = false;
+      return safe.scene.elements.length > 0;
+    } catch (failure) { importFailure(failure); return false; }
+  };
+  const onDuplicate: NonNullable<ExcalidrawProps['onDuplicate']> = (elements, previous) => {
+    try {
+      const safe = sanitizeVisionScene({ elements: elements as unknown as Record<string, unknown>[], appState: {}, files: {} });
+      reportSafety(safe.issues);
+      return safe.scene.elements as never;
+    } catch (failure) { importFailure(failure); return [...previous]; }
+  };
+
+  async function importDrawing(file: File) {
+    if (!api.current || !editable || pending) return;
+    try {
+      if (file.size > maximumBoardBytes) throw new BoardSceneSafetyError('limit');
+      if (/\.(?:excalidraw|json|excalidrawlib)$/iu.test(file.name)) {
+        const input = JSON.parse(await file.text());
+        if (input.type === 'excalidrawlib') {
+          const items = input.libraryItems ?? input.library;
+          if (!Array.isArray(items)) throw new BoardSceneSafetyError('invalid');
+          // 2026-11-10: sanitize the complete library in one pass so per-item limits cannot multiply.
+          const all = items.flatMap((item: { elements?: unknown[] } | unknown[]) => Array.isArray(item) ? item : item.elements ?? []);
+          const safe = sanitizeBoardScene({ type: 'excalidraw', version: 2, elements: all, appState: {}, files: {} });
+          reportSafety(safe.issues);
+          const kept = new Map(safe.scene.elements.map(element => [element.id, element]));
+          await api.current.updateLibrary({ libraryItems: items.map((item: { elements: Record<string, unknown>[] } | Record<string, unknown>[]) => {
+            const elements = Array.isArray(item) ? item : item.elements;
+            return { ...(Array.isArray(item) ? {} : item), elements: elements.map(element => kept.get(element.id)).filter(Boolean) };
+          }) as never, merge: true, openLibraryMenu: true });
+          return;
+        }
+        importScene(input);
+        return;
+      }
+      // 2026-11-10: never decode PNG metadata as a scene: the native drop loader bypasses UIOptions.loadScene.
+      if (!boardImageMimeTypes.includes(file.type) || file.size > maximumBoardImageBytes) throw new Error();
+      const dataURL = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result)); reader.onerror = () => reject(reader.error);
+        reader.readAsDataURL(file);
+      });
+      if (!isSafeBoardImage({ mimeType: file.type, dataURL })) throw new Error();
+      const image = new Image(); image.src = dataURL; await image.decode();
+      const fileId = crypto.randomUUID();
+      api.current.addFiles([{ id: fileId, mimeType: file.type, dataURL, created: Date.now() }] as never);
+      const { x, y } = viewportAnchor();
+      const elements = convertToExcalidrawElements([{ type: 'image', fileId, x, y, width: image.naturalWidth, height: image.naturalHeight, status: 'saved' } as never]);
+      commitScene([...api.current.getSceneElements(), ...elements]);
+    } catch (failure) { importFailure(failure); }
+  }
+  function importScene(input: unknown) {
+    const safe = sanitizeBoardScene(input);
+    reportSafety(safe.issues);
+    const restored = restore(safe.scene as unknown as Parameters<typeof restore>[0], null, null);
+    api.current?.addFiles(Object.values(restored.files));
+    api.current?.updateScene({ elements: restored.elements, appState: safe.scene.appState as unknown as AppState, captureUpdate: CaptureUpdateAction.IMMEDIATELY });
+    api.current?.scrollToContent();
+  }
 
   const selectedElements = useMemo<SceneElement[]>(() => {
     if (!selectionKey) return [];
     const wanted = new Set(selectionKey.split('\n'));
     return scene.current.elements.filter(element => wanted.has(element.id as string) && !(element as SceneElement).isDeleted) as SceneElement[];
-  }, [selectionKey, dirty, document]);
+  }, [selectionKey, sceneRevision, document]);
   const selectedCardNodes = selectedElements.filter(element => element.type === 'embeddable' && boardCardIdOf(element));
   const selectedImages = selectedElements.filter(element => element.type === 'image');
   const selectedImage = selectedImages.length === 1 ? selectedImages[0] : null;
@@ -483,7 +670,7 @@ export default function Vision({ snapshot, refreshKey, dark, onEditing, onOpenCa
       const candidate = element as SceneElement;
       return !candidate.isDeleted && candidate.type === 'text' && boardCustomValue(candidate.customData, 'CaptionFor') === selectedImage.id;
     }) as (SceneElement & { text?: string }) | null;
-  }, [selectedImage, selectionKey, dirty]);
+  }, [selectedImage, selectionKey, sceneRevision]);
   useEffect(() => { setCaptionDraft(typeof captionElement?.text === 'string' ? captionElement.text : ''); }, [captionElement]);
 
   function switchCardView(view: string) {
@@ -521,26 +708,36 @@ export default function Vision({ snapshot, refreshKey, dark, onEditing, onOpenCa
 
   const results = query.trim() ? catalog?.cards.filter(card => `${card.title} ${card.path}`.toLocaleLowerCase().includes(query.toLocaleLowerCase())).slice(0, 16) ?? [] : [];
   const stale = document && boards.some(board => board.id === document.id && board.hash !== document.hash);
-  const textRefs = useMemo(() => textReferences(scene.current, catalog, lang), [catalog, dirty, document, lang]);
+  const textRefs = useMemo(() => textReferences(scene.current, catalog, lang), [catalog, sceneRevision, document, lang]);
   const smartStates = boardColumns.filter(column => column.id !== 'inbox');
   const commonCardView = selectedCardNodes.length
     ? (new Set(selectedCardNodes.map(node => visionCardViewOf(boardCustomValue(node.customData, 'CardView'))))).size === 1
       ? visionCardViewOf(boardCustomValue(selectedCardNodes[0].customData, 'CardView')) : ''
     : '';
-  return <section className="vision-workspace">
-    <header className="vision-toolbar">
-      <div className="vision-toolbar-fields">
-        <select aria-label={t.board} value={document?.id ?? ''} disabled={editing || opening} onChange={event => { if (event.target.value) void open(event.target.value); else display(null); }}>
-          <option value="">{opening ? t.loadingBoard : t.newScheme}</option>{boards.map(board => <option key={board.id} value={board.id}>{board.title}</option>)}
-        </select>
-        <input aria-label={t.schemeTitle} value={opening ? '' : title} maxLength={120} disabled={!editable || pending || opening} onChange={event => { titleEdited.current = true; currentTitle.current = event.target.value; setTitle(event.target.value); setDirty(sceneSignature(scene.current) !== baseline.current || event.target.value !== baselineTitle.current); }} />
+  const saveStateText = boardSaveStateText(dirty, document, opening, t);
+  return <section className="vision-workspace page-light">
+    {/* 2026-11-10: the toolbar is the tab's page head (surface.css): the board name is the 26/700 title with the save
+        state and reference as its quiet caption, «New board» is the one creating action, the picker and actions sit right. */}
+    <header className="vision-toolbar page-head">
+      <div className="page-head-main">
+        <div className="page-title-block">
+          <input className="page-title vision-board-name" aria-label={t.schemeTitle} value={opening ? '' : title} maxLength={120} disabled={!editable || pending || opening} onChange={event => { titleEdited.current = true; currentTitle.current = event.target.value; setTitle(event.target.value); setDirty(hasUnsavedChanges()); }} />
+          <p className="page-caption"><span className="vision-save-state">{saveStateText}</span>
+            {document && <CatalogReferenceLink kind="v" id={document.id} source={snapshot.source} />}
+          </p>
+        </div>
+        <button type="button" className="action-mint vision-new-board" disabled={editing || opening} onClick={() => display(null)}><Plus size={15} aria-hidden="true" /><span>{t.newBoard}</span></button>
       </div>
-      <div className="vision-toolbar-details">
+      <div className="page-tools">
+        <select className="control-field vision-board-picker" aria-label={t.board} value={document?.id ?? ''} disabled={editing || opening} onChange={event => { if (event.target.value) void open(event.target.value); else display(null); }}>
+          <option value="">{restoring ? t.loadingBoard : boardChoiceTitle}</option>{boards.map(board => <option key={board.id} value={board.id}>{board.title}</option>)}
+        </select>
         {document && <DropdownMenu.Root>
-          <DropdownMenu.Trigger className="ui-button button-ghost button-size-sm vision-access" aria-label={t.boardAccess} disabled={!snapshot.writable || pending || document.access === 'locked'}>
+          <DropdownMenu.Trigger className="control vision-access" aria-label={t.boardAccess} disabled={!snapshot.writable || pending || document.access === 'locked'}>
             <MoreHorizontal size={14} /><span className={`vision-access-state${document.access === 'locked' ? ' is-locked' : ''}`}>{accessTitle(document.access, lang)}</span>
           </DropdownMenu.Trigger>
-          <DropdownMenu.Portal><DropdownMenu.Content className="dropdown" align="start" sideOffset={6}>
+          {/* 2026-11-10: the access menu shares the dialog frame (dialog-panel): the 12px corners, hairline and app shadow. */}
+          <DropdownMenu.Portal><DropdownMenu.Content className="dropdown dialog-panel vision-access-menu" align="start" sideOffset={6}>
             <DropdownMenu.Label className="dropdown-label">{t.boardAccess}</DropdownMenu.Label>
             {boardAccesses.map(access => <DropdownMenu.Item key={access} className="dropdown-item" onSelect={() => { if (document.access !== access) void save(false, access); }}>
               {accessTitle(access, lang)}{document.access === access && <Check size={14} className="menu-check" />}
@@ -548,90 +745,122 @@ export default function Vision({ snapshot, refreshKey, dark, onEditing, onOpenCa
             <DropdownMenu.Label className="dropdown-label">{accessHint(document.access, lang)}</DropdownMenu.Label>
           </DropdownMenu.Content></DropdownMenu.Portal>
         </DropdownMenu.Root>}
-        <span className="vision-save-state">{dirty ? t.dirty : document ? t.saved : opening ? '' : t.newBoard}</span>
-        {document && <CatalogReferenceLink kind="v" id={document.id} source={snapshot.source} />}
-      </div>
-      <div className="vision-toolbar-actions">
-        <Button size="sm" disabled={!editable || pending || opening || !title.trim()} onClick={() => void save()}><Save size={14} />{t.save}</Button>
-        <Button size="sm" variant="outline" disabled={!editable || pending || opening || !title.trim()} onClick={() => void save(true)}>{t.copy}</Button>
-        <Button size="sm" variant="ghost" disabled={pending || !dirty} onClick={() => display(document)}>{t.discard}</Button>
+        <span className="vision-toolbar-actions">
+          <Button size="sm" disabled={!editable || pending || opening || !title.trim()} onClick={() => void save()}><Save size={14} />{t.save}</Button>
+          <Button size="sm" variant="outline" disabled={!editable || pending || opening || !title.trim()} onClick={() => void save(true)}>{t.copy}</Button>
+          <Button size="sm" variant="ghost" disabled={pending || !dirty} onClick={() => display(document)}>{t.discard}</Button>
+        </span>
       </div>
     </header>
-    {(error || catalogError) && <div className="error-banner" role="alert">{error ?? catalogError}</div>}
+    {error && <div className="error-banner vision-error" role="alert"><span>{error}</span>
+      {retryAction && <Button size="sm" variant="outline" disabled={pending} onClick={retryBoard}>{t.retry}</Button>}
+      {restoreFailed && <Button size="sm" variant="ghost" disabled={pending} onClick={() => display(null)}>{t.newBoard}</Button>}
+    </div>}
+    {catalogError && <div className="catalog-error vision-error" role="alert"><span>{catalogError}</span><Button size="sm" variant="outline" onClick={() => void refreshCatalog()}>{t.retry}</Button></div>}
+    {warnings.map(warning => <div className="notice" role="status" key={warning}>{warning}</div>)}
     {stale && <div className="notice">{t.stale} <button disabled={editing} onClick={() => void open(document.id)}>{t.loadNewVersion}</button></div>}
     {accessBlocked && <div className="notice">{t.openedAs(accessTitle(document!.access, lang))}{document!.access === 'readonly' && t.switchEditable}</div>}
-    <div className="vision-body"><div className="vision-canvas">
-      {opening && <div className="loading-state vision-loading" role="status" aria-live="polite"><LoaderCircle className="spin" size={22} /><p>{t.loadingBoard}</p></div>}
+    <div className="vision-body"><div className="vision-canvas"
+      onDropCapture={event => {
+        const file = event.dataTransfer.files[0];
+        if (!file) return;
+        event.preventDefault(); event.stopPropagation();
+        void importDrawing(file);
+      }}
+      onPasteCapture={event => {
+        const data = event.clipboardData;
+        const file = data.files[0];
+        // 2026-11-10: rich HTML/image paste runs before Excalidraw's onPaste hook; do not let it import SVG or remote images.
+        if ((file && (!boardImageMimeTypes.includes(file.type) || file.size > maximumBoardImageBytes))
+          || (!file && (data.getData('text/plain').trimStart().startsWith('<svg')
+            || /<(?:img|svg|iframe|object)\b/iu.test(data.getData('text/html'))))) {
+          event.preventDefault(); event.stopPropagation(); reportSafety(['files']);
+        }
+      }}>
+      {restoring && !initialData && <div className="loading-state vision-loading" role="status" aria-live="polite"><LoaderCircle className="spin" size={22} /><p>{t.loadingBoard}</p></div>}
       {initialData && <Excalidraw key={`${snapshot.source}-${canvasKey}`} initialData={initialData} excalidrawAPI={instance => { api.current = instance; }}
         theme={dark ? 'dark' : 'light'} langCode={lang === 'ru' ? 'ru-RU' : 'en-US'} viewModeEnabled={!snapshot.writable || pending || accessBlocked} onChange={onChange}
-        validateEmbeddable={validateEmbeddable} renderEmbeddable={renderEmbeddable}
+        validateEmbeddable={validateEmbeddable} renderEmbeddable={renderEmbeddable} aiEnabled={false}
+        onPaste={onPaste} onDuplicate={onDuplicate}
         onLinkOpen={(element, event) => {
           const cardId = boardCardIdOf(element);
           const link = typeof element.link === 'string' ? element.link : '';
+          if (!isSafeBoardLink(link)) { event.preventDefault(); return; }
           if (isBoardProtocolLink(link)) { event.preventDefault(); return; }
           if (typeof cardId === 'string') { event.preventDefault(); openCardFromBoard(cardId); }
         }} UIOptions={{ canvasActions: { loadScene: false, saveToActiveFile: false } }} />}
     </div><aside className="vision-links">
-      <h2><Link2 size={16} />{t.cardsOnBoard}</h2><p>{t.cardLinksDescription}</p>
-      <label className="vision-search"><Search size={15} /><input placeholder={t.findCard} aria-label={t.findCardForBoard} value={query} onChange={event => setQuery(event.target.value)} /></label>
-      {/* 2026-11-06: an empty project explains itself instead of reporting a failed search. */}
-      {query && <div className="vision-results">{results.map(card => <button key={card.id} disabled={!editable || pending} onClick={() => addCard(card)}><Plus size={13} /><span title={card.title}><TagTitlePrefix tags={card.tags} definitions={catalog?.projectTags} />{card.title}<small>{kindLabel(card.kind, lang)} · ${shortReference('c', card.id)}</small><CardTags tags={card.tags} definitions={catalog?.projectTags} compact /></span></button>)}{!results.length && <p>{catalog?.cards.length ? t.noMatches : t.noCards}</p>}</div>}
-      <div className="vision-linked-list">{linkedIds.map(id => { const card = catalog?.cards.find(candidate => candidate.id === id); return <button key={id} disabled={editing || !card} onClick={() => onOpenCard(id)}><span title={card?.title}><TagTitlePrefix tags={card?.tags} definitions={catalog?.projectTags} />{card?.title ?? t.cardNotFound}<small>{card?.state ? stateLabel(card.state, lang) : card ? kindLabel(card.kind, lang) : id}</small><CardTags tags={card?.tags} definitions={catalog?.projectTags} compact /></span><ArrowUpRight size={14} /></button>; })}</div>
-      {!linkedIds.length && <p className="vision-empty">{t.emptyLinked}</p>}
+      {/* 2026-11-10: the sidebar is a stack of glass panels over the tab's page light (surface.css), like the home's spaces. */}
+      <div className="glass-sheet vision-stack">
+        <section className="glass-panel vision-panel">
+          <div className="panel-head"><h2 className="panel-title"><Link2 size={16} aria-hidden="true" />{t.cardsOnBoard}</h2><span className="panel-count">{linkedIds.length}</span></div>
+          <p className="vision-note">{t.cardLinksDescription}</p>
+          <label className="vision-search control-field"><Search size={15} aria-hidden="true" /><input placeholder={t.findCard} aria-label={t.findCardForBoard} value={query} onChange={event => setQuery(event.target.value)} /></label>
+          {/* 2026-11-10: no matches is a filtered state with a reset; an empty project is a quiet fact, not a failed search. */}
+          {query && <div className="vision-results">{results.map(card => <button key={card.id} disabled={!editable || pending} onClick={() => addCard(card)}><Plus size={13} /><span title={card.title}><TagTitlePrefix tags={card.tags} definitions={catalog?.projectTags} />{card.title}<small>{kindLabel(card.kind, lang)} · ${shortReference('c', card.id)}</small><CardTags tags={card.tags} definitions={catalog?.projectTags} compact /></span></button>)}{!results.length && (catalog?.cards.length
+            ? <EmptyState variant="filtered" message={t.noMatches} onReset={() => setQuery('')} />
+            : <EmptyState variant="quiet" message={t.noCards} />)}</div>}
+          <div className="vision-linked-list">{linkedIds.map(id => { const card = catalog?.cards.find(candidate => candidate.id === id); return <button key={id} disabled={editing || !card} onClick={() => onOpenCard(id)}><span title={card?.title}><TagTitlePrefix tags={card?.tags} definitions={catalog?.projectTags} />{card?.title ?? t.cardNotFound}<small>{card?.state ? stateLabel(card.state, lang) : card ? kindLabel(card.kind, lang) : id}</small><CardTags tags={card?.tags} definitions={catalog?.projectTags} compact /></span><ArrowUpRight size={14} /></button>; })}</div>
+          {!linkedIds.length && <EmptyState variant="quiet" message={readOnly ? t.emptyLinkedReadOnly : t.emptyLinked} />}
+        </section>
 
-      <div className="vision-tools">
-        <h3><Gauge size={14} />{t.smartNode}</h3>
-        <p>{t.smartDescription(stateLabel(SMART_DONE_STATE, lang).toLocaleLowerCase(locale(lang)))}</p>
-        <div className="vision-tool-row vision-smart-controls">
-          <select aria-label={t.widgetDeck} value={smartDeckId} disabled={!editable || pending} onChange={event => setSmartDeckId(event.target.value)}>
-            {catalog?.decks.map(deck => <option key={deck.id} value={deck.id}>{deck.title}</option>) ?? <option value="">{t.noDecks}</option>}
-          </select>
-          <select aria-label={t.widgetState} value={smartState} disabled={!editable || pending} onChange={event => setSmartState(event.target.value)}>
-            <option value="">{t.allStates}</option>
-            {smartStates.map(column => <option key={column.id} value={column.id}>{stateLabel(column.id, lang)}</option>)}
-          </select>
-          <Button size="sm" disabled={!editable || pending || !catalog?.decks.length} onClick={addSmartNode}><Plus size={13} />{t.widget}</Button>
-        </div>
-      </div>
+        <section className="glass-panel vision-panel vision-tools">
+          <div className="panel-head"><h3 className="panel-title"><Gauge size={14} aria-hidden="true" />{t.smartNode}</h3></div>
+          <p className="vision-note">{t.smartDescription(stateLabel(SMART_DONE_STATE, lang).toLocaleLowerCase(locale(lang)))}</p>
+          <div className="vision-tool-row vision-smart-controls">
+            <select className="control-field" aria-label={t.widgetDeck} value={smartDeckId} disabled={!editable || pending} onChange={event => setSmartDeckId(event.target.value)}>
+              {catalog?.decks.length ? catalog.decks.map(deck => <option key={deck.id} value={deck.id}>{deck.title}</option>) : <option value="">{t.noDecks}</option>}
+            </select>
+            <select className="control-field" aria-label={t.widgetState} value={smartState} disabled={!editable || pending} onChange={event => setSmartState(event.target.value)}>
+              <option value="">{t.allStates}</option>
+              {smartStates.map(column => <option key={column.id} value={column.id}>{stateLabel(column.id, lang)}</option>)}
+            </select>
+            <Button size="sm" disabled={!editable || pending || !catalog?.decks.length} onClick={addSmartNode}><Plus size={13} />{t.widget}</Button>
+          </div>
+          {/* 2026-11-10: no decks is a fact, not a failure: a quiet note like the other hints, no alert before any attempt. */}
+          {catalog && !catalog.decks.length && <p className="vision-note">{t.noDecksForSmart}</p>}
+        </section>
 
-      <div className="vision-tools">
-        <h3><Clapperboard size={14} />{t.youtubeTitle}</h3>
-        <p>{t.youtubeDescription}</p>
-        <div className="vision-tool-row">
-          <input placeholder="https://youtube.com/watch?v=…" aria-label={t.youtubeLink} value={videoUrl} disabled={!editable || pending} onChange={event => setVideoUrl(event.target.value)} />
-          <Button size="sm" disabled={!editable || pending || !videoUrl.trim()} onClick={addVideoNode}><Plus size={13} />{t.add}</Button>
-        </div>
-      </div>
+        <section className="glass-panel vision-panel vision-tools">
+          <div className="panel-head"><h3 className="panel-title"><Clapperboard size={14} aria-hidden="true" />{t.youtubeTitle}</h3></div>
+          <p className="vision-note">{desktop ? t.desktopVideo : t.youtubeDescription}</p>
+          <div className="vision-tool-row">
+            <input className="control-field" placeholder="https://youtube.com/watch?v=…" aria-label={t.youtubeLink} aria-invalid={Boolean(videoError)} aria-describedby={videoError ? 'vision-video-error' : undefined} value={videoUrl} disabled={!editable || pending} onChange={event => { setVideoUrl(event.target.value); setVideoError(null); }} />
+            <Button size="sm" disabled={!editable || pending || !videoUrl.trim()} onClick={addVideoNode}><Plus size={13} />{desktop ? t.addVideoLink : t.add}</Button>
+          </div>
+          {videoError && <p className="inline-error" id="vision-video-error" role="alert">{videoError}</p>}
+        </section>
 
-      {(selectedCardNodes.length > 0 || selectedImage) && <div className="vision-selected">
-        <h3>{t.selected}</h3>
-        {selectedCardNodes.length > 0 && <div className="vision-selected-row">
-          <span>{t.view} {selectedCardNodes.length > 1 ? t.nodes(selectedCardNodes.length) : ''}:</span>
-          <select aria-label={t.cardNodeView} value={commonCardView} disabled={!editable || pending} onChange={event => switchCardView(event.target.value)}>
-            {!commonCardView && <option value="">{t.mixed}</option>}
-            {visionCardViewOptions.map(option => <option key={option.id} value={option.id}>{option.title}</option>)}
-          </select>
-        </div>}
-        {selectedImage && <div className="vision-selected-row">
-          <PencilLine size={13} />
-          <input placeholder={t.imageCaption} aria-label={t.imageCaption} value={captionDraft} disabled={!editable || pending} onChange={event => setCaptionDraft(event.target.value)} />
-          <Button size="sm" variant="outline" disabled={!editable || pending || !captionDraft.trim()} onClick={applyImageCaption}>{t.ok}</Button>
-        </div>}
-        {selectedImage && <p className="vision-ref-note">{t.captionNote}</p>}
-      </div>}
+        {(selectedCardNodes.length > 0 || selectedImage) && <section className="glass-panel vision-panel vision-selected">
+          <div className="panel-head"><h3 className="panel-title">{t.selected}</h3>{selectedCardNodes.length > 1 && <span className="panel-count">{t.nodes(selectedCardNodes.length)}</span>}</div>
+          {selectedCardNodes.length > 0 && <div className="vision-selected-row">
+            <span>{t.view}:</span>
+            <select className="control-field" aria-label={t.cardNodeView} value={commonCardView} disabled={!editable || pending} onChange={event => switchCardView(event.target.value)}>
+              {!commonCardView && <option value="">{t.mixed}</option>}
+              {visionCardViewOptions.map(option => <option key={option.id} value={option.id}>{option.title}</option>)}
+            </select>
+          </div>}
+          {selectedImage && <div className="vision-selected-row">
+            <PencilLine size={13} />
+            <input className="control-field" placeholder={t.imageCaption} aria-label={t.imageCaption} value={captionDraft} disabled={!editable || pending} onChange={event => setCaptionDraft(event.target.value)} />
+            <Button size="sm" variant="outline" disabled={!editable || pending || !captionDraft.trim()} onClick={applyImageCaption}>{t.ok}</Button>
+          </div>}
+          {selectedImage && <p className="vision-ref-note">{t.captionNote}</p>}
+        </section>}
 
-      <div className="vision-text-refs">
-        <h3><Type size={14} />{t.textRefs}</h3>
-        <p className="vision-ref-note">{t.textRefCard}<code>$c-…</code>{t.textRefCardTail}<code>{t.textRefDeckToken}</code>{t.textRefDeckTail}<code>{t.textRefMemberToken}</code>{t.textRefMemberTail}</p>
-        {textRefs.map(ref => ref.kind === 'card' && ref.cardId
-          ? <button key={ref.token} className="vision-ref-row" onClick={() => openCardFromBoard(ref.cardId!)}>
-              <span className="vision-ref-kind">$</span><span title={ref.title ?? undefined}>{ref.title ?? t.cardNotFound}<small>{ref.token}</small></span><ArrowUpRight size={13} />
-            </button>
-          : <span key={ref.token} className="vision-ref-row"><span className="vision-ref-kind">{ref.kind === 'deck' ? '$$' : '@'}</span>
-              <span title={ref.title ?? undefined}>{ref.title ?? (ref.kind === 'deck' ? t.deckNotFound : t.memberNotFound)}<small>{ref.token}</small></span></span>)}
-        {!textRefs.length && <p className="vision-ref-note">{t.noTextRefs}</p>}
+        <section className="glass-panel vision-panel vision-text-refs">
+          <div className="panel-head"><h3 className="panel-title"><Type size={14} aria-hidden="true" />{t.textRefs}</h3><span className="panel-count">{textRefs.length}</span></div>
+          <p className="vision-ref-note">{t.textRefCard}<code>$c-…</code>{t.textRefCardTail}<code>{t.textRefDeckToken}</code>{t.textRefDeckTail}<code>{t.textRefMemberToken}</code>{t.textRefMemberTail}</p>
+          {textRefs.map(ref => ref.kind === 'card' && ref.cardId
+            ? <button key={ref.token} className="vision-ref-row" onClick={() => openCardFromBoard(ref.cardId!)}>
+                <span className="vision-ref-kind">$</span><span title={ref.title ?? undefined}>{ref.title ?? t.cardNotFound}<small>{ref.token}</small></span><ArrowUpRight size={13} />
+              </button>
+            : <span key={ref.token} className="vision-ref-row"><span className="vision-ref-kind">{ref.kind === 'deck' ? '$$' : '@'}</span>
+                <span title={ref.title ?? undefined}>{ref.title ?? (ref.kind === 'deck' ? t.deckNotFound : t.memberNotFound)}<small>{ref.token}</small></span></span>)}
+          {!textRefs.length && <EmptyState variant="quiet" message={t.noTextRefs} />}
+        </section>
       </div>
     </aside></div>
-    <ShortcutsHelp screens={visionShortcutScreens} writable={snapshot.writable && snapshot.source === 'sandbox'} />
+    <ShortcutsHelp screens={visionShortcutScreens} writable={snapshot.writable && snapshot.source === 'sandbox'} vision />
   </section>;
 }

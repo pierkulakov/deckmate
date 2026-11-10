@@ -3,6 +3,7 @@ import type { ApiFailure, DataSource, WorkspaceSnapshot } from '../src/workspace
 import { createRefreshBatch } from './refresh-batch.ts';
 import { affectsCatalog, catalogStore, invalidateCatalogs, prepareCatalogSession, releaseCatalogSession } from './catalog-store.ts';
 import { defineText, textNow, useLang, useText } from './i18n.ts';
+import { publishWorkspaceFileChange } from './workspace-file-events.ts';
 
 const text = defineText({
   watcherStopped: 'Automatic file watching has stopped. Refresh data manually or restart Deckmate.',
@@ -107,6 +108,7 @@ export function useWorkspace() {
         releaseCatalogSession(sessionToken!);
         // Initial consumers already share their first read. A reconnect must catch missed events.
         if (reconnecting) {
+          publishWorkspaceFileChange({ source: currentSource.current });
           invalidateCatalogs();
           void catalogStore(currentSource.current, sessionToken).load();
           void refresh(currentSource.current);
@@ -116,6 +118,7 @@ export function useWorkspace() {
         if (disposed) return;
         const message = JSON.parse(event.data) as { type: string; source: DataSource; relativePath?: string; detectedAt: number };
         if (message.type === 'changed') {
+          publishWorkspaceFileChange(message);
           // Invalidate before batching: switching source must not lose a queued change.
           if (affectsCatalog(message.relativePath)) catalogStore(message.source, sessionToken).invalidate();
           if (message.source === currentSource.current) {

@@ -1,3 +1,4 @@
+import { moveFocus } from './focus.ts';
 import { useEffect, useEffectEvent } from 'react';
 import type { RefObject } from 'react';
 
@@ -35,7 +36,7 @@ export function useEscapeToClose(enabled: boolean, onClose: () => void, opener: 
   const close = useEffectEvent(() => {
     const target = opener.current;
     onClose();
-    requestAnimationFrame(() => { if (target?.isConnected) target.focus(); });
+    requestAnimationFrame(() => { if (target?.isConnected) moveFocus(target); });
   });
   useEffect(() => enabled ? listenForEscape(close) : undefined, [enabled]);
 }

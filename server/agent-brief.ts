@@ -8,8 +8,24 @@ import { markdownParser } from '../src/markdown-model.ts';
 import { parseOpenQuestions } from '../src/open-questions.ts';
 import { readHeroSections } from './card-content.ts';
 import { readManagedMarkdown, readNativeCard, readProjectMarkdown } from './native-cards.ts';
-import { readAgentHistory } from './agent-changes.ts';
+import { readAgentHistory, type AgentHistory } from './agent-changes.ts';
+import { activityEventPath } from './activity.ts';
+import { defineText, serverText } from './i18n.ts';
 import { cardStateMarkWords, markerWords } from '../src/format-vocabulary.ts';
+
+const messages = defineText({
+  returnFeedback: 'Latest recorded review return',
+  actor: (memberId: string) => `Actor: ${memberId}`,
+  unknownActor: 'unknown',
+  reason: (reason: string) => `Reason: ${reason}`,
+  feedbackTruncated: '… [return feedback truncated; read the full journal range]',
+}, {
+  returnFeedback: 'Последний записанный возврат с приёмки',
+  actor: (memberId: string) => `Автор: ${memberId}`,
+  unknownActor: 'неизвестен',
+  reason: (reason: string) => `Причина: ${reason}`,
+  feedbackTruncated: '… [обратная связь сокращена; прочитайте полный диапазон журнала]',
+});
 
 export interface ReadNext { path: string; from: number; to: number; title: string; tokens: number }
 export interface AgentBrief { markdown: string; tokens: number; truncated: boolean; readNext: ReadNext[] }
@@ -69,7 +85,11 @@ const openQuestionTitles = markerWords('openQuestions');
 const decisionPrefixes = markerWords('decision').map(marker => marker + ' ');
 const sameTitle = (left: string, right: string) => left.trim().toLocaleLowerCase('ru-RU') === right.toLocaleLowerCase('ru-RU');
 const isOpenQuestionTitle = (title: string) => openQuestionTitles.some(candidate => sameTitle(title, candidate));
-const isQuestionSectionTitle = (title: string) => isOpenQuestionTitle(title) || sameTitle(title, 'Решено');
+// 2026-11-09: record-decision writes the project's own spelling (`## Decided` in English projects); matching only
+// the Russian marker alone dropped every English answer from the brief before 0.6.0.
+const decidedTitles = markerWords('decided');
+const isDecidedTitle = (title: string) => decidedTitles.some(candidate => sameTitle(title, candidate));
+const isQuestionSectionTitle = (title: string) => isOpenQuestionTitle(title) || isDecidedTitle(title);
 const isSignificantSection = (title: string) => isQuestionSectionTitle(title) || /^(Что есть|Как сделано)/iu.test(title);
 
 function wordKey(word: string): string {
@@ -209,7 +229,7 @@ export function ruleCardFor(catalog: CatalogView, card: CatalogCard): CatalogCar
   return catalog.cards.find(candidate => candidate.kind === 'doc' && candidate.id === card.parentId);
 }
 
-interface BriefSupplement { title: string; source: string; lines: string[]; shown: number; clipped: boolean }
+interface BriefSupplement { title: string; source: string; lines: string[]; shown: number; clipped: boolean; truncationMarker?: string }
 interface ReportBlock { start: number; end: number; markdown: string }
 
 function reportBlocks(markdown: string): ReportBlock[] {
@@ -282,7 +302,7 @@ async function briefSupplements(catalog: CatalogView, root: string, card: Catalo
     for (const section of ruleSections.filter(section => isQuestionSectionTitle(section.title))) {
       sources.push(sourceReference(readNext, rule.path, ruleBytes, section.from, section.to, section.title));
     }
-    const decided = ruleSections.find(section => /^Решено$/iu.test(section.title.trim()));
+    const decided = ruleSections.find(section => isDecidedTitle(section.title));
     const answers = decided?.lines.slice(1).filter(line => line.text.trim()).map(line => line.text) ?? [];
     // 2026-11-05: record-decision keeps answers without question IDs; never invent a question/answer pairing.
     if (decisions.length) questionLines.push(...decisions.filter(decision => !questions.some(question =>
@@ -314,10 +334,22 @@ async function briefSupplements(catalog: CatalogView, root: string, card: Catalo
   return supplements;
 }
 
+async function returnFeedbackSupplement(root: string, feedback: NonNullable<AgentHistory['latestReturn']>, readNext: ReadNext[]): Promise<BriefSupplement> {
+  const { event, transition } = feedback;
+  const text = serverText(messages);
+  const relativePath = activityEventPath(event);
+  const bytes = await readProjectMarkdown(root, relativePath);
+  const source = sourceReference(readNext, relativePath, bytes, 1, sourceLines(bytes).length, text.returnFeedback);
+  const actor = typeof event.actorMemberId === 'string' && event.actorMemberId ? event.actorMemberId : text.unknownActor;
+  return { title: text.returnFeedback,
+    source: `${event.at} · ${text.actor(actor)} · ${transition.from} → ${transition.to ?? '—'}\n${source}`,
+    lines: [text.reason(transition.reason)], shown: 0, clipped: false, truncationMarker: text.feedbackTruncated };
+}
+
 function supplementMarkdown(supplements: BriefSupplement[]): string {
   return supplements.map(supplement => `\n\n## ${supplement.title}\n${supplement.source}\n`
     + supplement.lines.slice(0, supplement.shown).join('\n')
-    + (supplement.clipped || supplement.shown < supplement.lines.length ? '\n…' : '')).join('');
+    + (supplement.clipped || supplement.shown < supplement.lines.length ? '\n' + (supplement.truncationMarker ?? '…') : '')).join('');
 }
 
 /** A pure read of primary files; no catalog housekeeping or agent checkpoint is allowed here. */
@@ -346,6 +378,7 @@ export async function buildBrief(catalog: CatalogView, root: string, card: Catal
   const supplements = await briefSupplements(catalog, root, card, bytes, range, fullBody, reports, readNext);
   const history = await historyPromise;
   if (history.sourceHash !== card.sourceHash) throw new RangeError('The card file changed during brief. Repeat the request.');
+  if (history.latestReturn) supplements.unshift(await returnFeedbackSupplement(root, history.latestReturn, readNext));
   const metadata = [
     `# ${shortReference('c', card.id)} · ${card.version ? card.version + ' ' : ''}${card.title}`,
     `File ${card.path}:${location.from}-${location.to} · sourceHash ${card.sourceHash}`,

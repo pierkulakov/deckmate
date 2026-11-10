@@ -24,6 +24,9 @@ import { metrics } from '../planning-metrics.ts';
 import { orderedRunChoices, runChoiceLabel } from '../run-label.ts';
 import { Button } from './ui/button.tsx';
 import type { SavePlanning } from './TimelineView.tsx';
+import { EmptyState } from './EmptyState.tsx';
+// 2026-11-10: the Timeline card scope uses the open deck's action rail, so both rails share one button style.
+import '../deck-workbench.css';
 
 const text = defineText({
   progress: (done: string, tasks: string) => `${done} of ${tasks} tasks done`,
@@ -61,7 +64,10 @@ const text = defineText({
   deck: "Deck",
   cardCount: (count: number) => `${new Intl.NumberFormat(locale("en")).format(count)} ${new Intl.PluralRules(locale("en")).select(count) === "one" ? "card" : "cards"}`,
   noResults: "No cards match this search.",
+  filteredTitle: "No matching cards",
+  filteredHint: "No cards match the current search or filters.",
   empty: "No cards in this plan yet.",
+  emptyHint: "Cards assigned to this plan will appear here.",
   confirmDelete: (title: string) => `Delete Milestone “${title}”?`,
   deleteDescription: (active: number, total: string, pinned: boolean) => `${active > 0 ? `This Milestone has ${new Intl.NumberFormat(locale("en")).format(active)} ${new Intl.PluralRules(locale("en")).select(active) === "one" ? "unarchived card" : "unarchived cards"}. ` : ""}All its cards (${total}), including Archive and Trash, will be unlinked. The cards will stay in the project.${pinned ? " The Milestone will be unpinned from Hand." : ""}`,
   cancel: "Cancel",
@@ -78,7 +84,7 @@ const text = defineText({
   noOwner: "Без исполнителя",
   cards: "Карточки",
   unpin: "Открепить Milestone",
-  pin: "Закрепить Milestone в руке",
+  pin: "Закрепить Milestone в Hand",
   deleteMilestone: "Удалить Milestone",
   editMilestone: "Изменить Milestone",
   editMilestoneTitle: "Изменить Milestone",
@@ -105,9 +111,12 @@ const text = defineText({
   deck: "Колода",
   cardCount: (count: number) => `Карточек: ${new Intl.NumberFormat(locale("ru")).format(count)}`,
   noResults: "Нет карточек по этому запросу.",
+  filteredTitle: "Карточки не найдены",
+  filteredHint: "Нет карточек по текущему запросу или фильтрам.",
   empty: "В плане ещё нет карточек.",
+  emptyHint: "Здесь появятся карточки, добавленные в план.",
   confirmDelete: (title: string) => `Удалить Milestone «${title}»?`,
-  deleteDescription: (active: number, total: string, pinned: boolean) => `${active > 0 ? `В Milestone ${new Intl.NumberFormat(locale("ru")).format(active)} карточек вне архива. ` : ""}Связь с Milestone будет снята со всех его карточек (${total}), включая архив и корзину. Карточки останутся в проекте.${pinned ? " Закрепление в руке будет снято." : ""}`,
+  deleteDescription: (active: number, total: string, pinned: boolean) => `${active > 0 ? `В Milestone ${new Intl.NumberFormat(locale("ru")).format(active)} карточек вне архива. ` : ""}Связь с Milestone будет снята со всех его карточек (${total}), включая архив и корзину. Карточки останутся в проекте.${pinned ? " Закрепление в Hand будет снято." : ""}`,
   cancel: "Отмена",
   deleting: "Удаляем…",
   uiManual: "Вручную",
@@ -269,6 +278,12 @@ export function PlanningScope({ title, subtitle, target, retainedPlan, cards, ca
     if (editDirty && !editStrip.escape()) return;
     closeMilestoneEditNow();
   }
+  // 2026-11-10: cards hidden by search or My cards are a filtered state with one reset for both, never an empty plan;
+  // a truly empty Run or Milestone offers Add card where it can be used.
+  const filtered = Boolean(query || mine);
+  const filteredMessage = mine ? t.filteredHint : t.noResults;
+  const canAddCard = Boolean(target && target.kind !== 'dueDate' && writable && !mutationDisabled && !composing && catalog.decks.length);
+  const addCardAction = canAddCard ? { label: t.addCard, onClick: () => setComposing(true) } : undefined;
 
   return <section className="planning-collection" aria-label={title}>
     <header className="planning-collection-header">
@@ -294,7 +309,7 @@ export function PlanningScope({ title, subtitle, target, retainedPlan, cards, ca
     {selection.length > 0 && <div className="planning-selection"><span>{t.selected(amount(selection.length))}</span><BulkActions cards={selection} catalog={catalog} source={snapshot.source} pending={pending || draftOpen} onAction={change => apply(change)} /><Button variant="ghost" size="icon" aria-label={t.clearSelection} onClick={() => setSelected([])}><X size={16} /></Button></div>}
     {createdId && <div className="notice" role="status">{attachFailed ? t.attachFailed : t.attaching}{attachFailed && <Button size="sm" variant="outline" disabled={pending} onClick={() => void attachCreated()}>{t.retry}</Button>}</div>}
     <div className="planning-collection-body">
-      <nav className="planning-rail" aria-label={t.actions}>
+      <nav className="planning-rail deck-action-rail" aria-label={t.actions}>
         {target && <Button variant="ghost" size="icon" aria-label={t.addToPlan} title={t.addCard} disabled={mutationDisabled || composing || !catalog.decks.length} onClick={() => setComposing(true)}><Plus size={18} /></Button>}
         <Button variant="ghost" size="icon" aria-label={t.information} title={t.information} aria-pressed={information} disabled={detailsDirty} onClick={() => setInformation(value => !value)}><Info size={18} /></Button>
         <Button variant="ghost" size="icon" aria-label={t.grouping} title={t.grouping} aria-pressed={ordering} onClick={() => setOrdering(value => !value)}><ArrowDownWideNarrow size={18} /></Button>
@@ -318,7 +333,9 @@ export function PlanningScope({ title, subtitle, target, retainedPlan, cards, ca
             <CatalogCardTile card={card} catalog={catalog} members={catalog.members ?? []} currentMemberId={currentMember(catalog.members ?? [])?.id} tagDefinitions={catalog.projectTags} lookups={lookups} selected={false} checked={selected.includes(card.id)} selectionActive={selection.length > 0} disabled={pending || draftOpen || Boolean(createdId)} onOpen={(_button, shift) => { if (draftOpen || createdId || pending) return; if (shift || selection.length) toggle(card.id); else { closeComposer(); onOpenCard(card.id); } }} onToggle={() => { if (!draftOpen && !createdId && !pending) toggle(card.id); }} onFamilyOpen={parent => { if (!draftOpen && !createdId && !pending) { closeComposer(); onOpenCard(parent.id); } }} />
           </div>)}</div>
         </section>)}
-        {!visible.length && <p className="planning-empty">{query ? t.noResults : t.empty}</p>}
+        {!visible.length && (filtered
+          ? <EmptyState variant="filtered" art="no-results" title={t.filteredTitle} message={filteredMessage} onReset={() => { setQuery(''); setMine(false); }} />
+          : <EmptyState variant="first-run" art="first-card" title={t.empty} message={t.emptyHint} action={addCardAction} />)}
       </div>
     </div>
     <Dialog.Root open={Boolean(deletion)} onOpenChange={open => { if (!open && !pending) setDeletion(null); }}><Dialog.Portal><Dialog.Overlay className="planning-calendar-overlay" /><Dialog.Content className="planning-calendar planning-delete-dialog">

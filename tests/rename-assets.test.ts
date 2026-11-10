@@ -86,7 +86,8 @@ it('reads mixed attachment references through each actual guarded directory', as
   expect(result.warnings).toEqual([]);
 });
 
-it('reads legacy Journey markers and preserves them when publishing an edit', async () => {
+// 2026-11-10: new data is written with deckmate names; the first real update migrates the marker (docs/catalog.md, Journey operation journal).
+it('reads legacy Journey markers and writes the deckmate marker when publishing an edit', async () => {
   const root = await fixture();
   const publication = { id: 'd0000000-0000-4000-8000-000000000001', version: 1, title: 'Original', deckId: 'assets', description: '', zones: [],
     steps: [{ id: 'first', title: 'First', markdown: 'Instruction\n', deckId: 'tasks', owner: null, dependsOn: [] }] };
@@ -101,8 +102,8 @@ it('reads legacy Journey markers and preserves them when publishing an edit', as
     steps: current.journey.steps, hashes: stepFileHashes(current.documents), indexHash: current.documents[0].hash,
   } }, 'en');
   const saved = await readFile(indexPath, 'utf8');
-  expect(saved).toContain('freetion: journey');
-  expect(saved).not.toContain('deckmate:');
+  expect(saved).toContain('deckmate: journey');
+  expect(saved).not.toContain('freetion:');
   expect((await readJourney(root, publication.id))!.journey.title).toBe('Edited');
 });
 

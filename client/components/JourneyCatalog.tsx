@@ -1,3 +1,4 @@
+import { moveFocus } from '../focus.ts';
 import { useId, useMemo, useRef, useState } from 'react';
 import * as Dialog from '@radix-ui/react-dialog';
 import { ChevronDown, ChevronRight, FolderOpen, Layers, LoaderCircle, Plus, Search, Triangle, X } from 'lucide-react';
@@ -9,6 +10,10 @@ import { Button } from './ui/button.tsx';
 import { TagBadge } from './CardTags.tsx';
 import { defineText, locale, textNow, useLang, useText, type Lang } from '../i18n.ts';
 import { templateText } from '../../src/template-text.ts';
+import { failureMessage } from '../failure-message.ts';
+import type { CatalogAction } from '../useCatalog.ts';
+import { JourneyOperationBadge, JourneyOperationNotice } from './JourneyOperationNotice.tsx';
+import { EmptyState } from './EmptyState.tsx';
 import '../journey-catalog.css';
 
 function numberValue(value: number, lang: Lang): string {
@@ -128,12 +133,6 @@ function catalogStepView(step: CatalogJourneyTemplateStep): CatalogJourneyStep {
   return { id: step.id, title: step.title, markdown: step.markdown, owner: null, deckId: '', dependsOn: [...step.dependsOn], effort: step.effort ?? null, priority: step.priority ?? null, zoneId: step.zoneId ?? 'default' };
 }
 
-function failureMessage(failure: unknown, fallback: string) {
-  if (failure instanceof Error) return failure.message;
-  if (failure && typeof failure === 'object' && 'message' in failure) return String(failure.message);
-  return fallback;
-}
-
 function templateZones(template: CatalogJourneyTemplate): CatalogJourneyZone[] {
   const zones = [...template.zones];
   for (const step of template.steps) {
@@ -169,7 +168,7 @@ function TemplateTile({ template, onSelect }: { template: CatalogJourneyTemplate
     <span className="journey-catalog-preview" aria-hidden="true">
       {template.steps.slice(0, 3).map(step => <JourneyMiniCard key={step.id} title={step.title} effort={step.effort} priority={step.priority} />)}
       {template.source === 'project' && <span className="journey-catalog-badge"><FolderOpen size={11} />{t.project}</span>}
-      <span className="journey-catalog-step-count">{t.count(template.steps.length)}</span>
+      <span className="journey-catalog-step-count page-number">{t.count(template.steps.length)}</span>
     </span>
     <span className="journey-catalog-tile-body">
       <strong>{localized.title}</strong>
@@ -180,12 +179,14 @@ function TemplateTile({ template, onSelect }: { template: CatalogJourneyTemplate
   </button>;
 }
 
-export function JourneyCatalog({ catalog, deck, journey, disabled, source = 'sandbox', onImport, onBack }: {
+export function JourneyCatalog({ catalog, deck, journey, disabled, source = 'sandbox', onEdit, onOperationBusyChange, onImport, onBack }: {
   catalog: CatalogView;
   deck: CatalogDeck;
   journey: CatalogJourney | null;
   disabled: boolean;
   source?: DataSource;
+  onEdit?: (action: CatalogAction) => Promise<boolean>;
+  onOperationBusyChange?: (busy: boolean) => void;
   onImport: ImportTemplate;
   onBack: () => void;
 }) {
@@ -215,25 +216,24 @@ export function JourneyCatalog({ catalog, deck, journey, disabled, source = 'san
     <header className="journey-catalog-header">
       <nav className="journey-catalog-breadcrumbs" aria-label={t.templateNavigation}>
         {/* 2026-11-06: crumbs truncate with an ellipsis; the title attribute keeps the full name one hover away. */}
-        <button type="button" disabled={importing} title={deck.title} onClick={onBack}><span className="journey-deck-icon" aria-hidden="true"><Layers size={11} /></span><span>{deck.title}</span></button>
+        <button type="button" className="control control-ghost" disabled={importing} title={deck.title} onClick={onBack}><span className="journey-deck-icon" aria-hidden="true"><Layers size={11} /></span><span>{deck.title}</span></button>
         <ChevronRight size={14} aria-hidden="true" />
-        <button type="button" disabled={importing} aria-current={selected ? undefined : 'page'} onClick={() => setSelectedKey(null)}>{t.templates}</button>
+        <button type="button" className="control control-ghost" disabled={importing} aria-current={selected ? undefined : 'page'} onClick={() => setSelectedKey(null)}>{t.templates}</button>
         {selected && selectedText && <><ChevronRight size={14} aria-hidden="true" /><span aria-current="page" title={selectedText.title}>{selectedText.title}</span></>}
       </nav>
-      {!selected && <label className="journey-catalog-search"><input aria-label={t.templateSearch} type="search" value={search} placeholder={t.search} onChange={event => setSearch(event.target.value)} /><Search size={14} aria-hidden="true" /></label>}
+      {journey && <JourneyOperationBadge journey={journey} />}
+      {!selected && <label className="journey-catalog-search control-field"><input aria-label={t.templateSearch} type="search" value={search} placeholder={t.search} onChange={event => setSearch(event.target.value)} /><Search size={14} aria-hidden="true" /></label>}
     </header>
+    {journey && <JourneyOperationNotice key={journey.id} journey={journey} catalog={catalog} source={source} writable={source === 'sandbox'} disabled={disabled || importing} onEdit={onEdit} onBusyChange={onOperationBusyChange} />}
     {selected ? <JourneyTemplateDetail key={templateKey(selected)} catalog={catalog} deck={deck} journey={journey} template={selected} disabled={disabled} source={source} onImport={onImport} onBusyChange={setImporting} /> : <div className="journey-catalog-browser">
       <aside className="journey-catalog-categories" aria-label={t.templateCategories}>
-        <h3>{t.categories}</h3>
-        {categories.map(([name, count]) => <button key={name} type="button" aria-pressed={category === name} title={category === name ? t.showAll : undefined} onClick={() => setCategory(previous => previous === name ? '' : name)}><span>{name}</span><span>{t.count(count)}</span></button>)}
+        <h3 className="panel-title">{t.categories}</h3>
+        {categories.map(([name, count]) => <button key={name} type="button" className="control control-ghost" aria-pressed={category === name} title={category === name ? t.showAll : undefined} onClick={() => setCategory(previous => previous === name ? '' : name)}><span>{name}</span><span className="panel-count">{t.count(count)}</span></button>)}
       </aside>
       <div className="journey-catalog-results">
-        {matching.length > 0 ? <div className="journey-catalog-grid">{matching.map(template => <TemplateTile key={templateKey(template)} template={template} onSelect={() => setSelectedKey(templateKey(template))} />)}</div> : <div className="journey-catalog-empty" role="status">
-          <Layers size={30} aria-hidden="true" />
-          <h3>{templates.length ? t.noTemplatesFound : t.emptyCatalog}</h3>
-          <p>{templates.length ? t.noTemplatesDescription : t.emptyCatalogDescription}</p>
-          {templates.length > 0 && <Button type="button" variant="outline" onClick={() => { setSearch(''); setCategory(''); }}>{t.resetSearch}</Button>}
-        </div>}
+        {matching.length > 0 && <div className="journey-catalog-grid">{matching.map(template => <TemplateTile key={templateKey(template)} template={template} onSelect={() => setSelectedKey(templateKey(template))} />)}</div>}
+        {matching.length === 0 && templates.length > 0 && <EmptyState variant="filtered" className="journey-catalog-empty" art="no-results" title={t.noTemplatesFound} message={t.noTemplatesDescription} onReset={() => { setSearch(''); setCategory(''); }} />}
+        {templates.length === 0 && <EmptyState variant="first-run" className="journey-catalog-empty" art="journey" title={t.emptyCatalog} message={t.emptyCatalogDescription} />}
       </div>
     </div>}
   </section>;
@@ -256,7 +256,7 @@ function JourneyTemplateDetail({ catalog, deck, journey, template, disabled, sou
   const [saving, setSaving] = useState<'add' | 'replace' | null>(null);
   const mappingId = useId();
   const savingRef = useRef(false);
-  const busy = disabled || saving !== null;
+  const busy = disabled || saving !== null || !!journey?.pendingOperation;
   const zones = templateZones(template);
   const inspected = template.steps.find(step => step.id === inspectedId);
   const viewSteps = useMemo(() => template.steps.map(catalogStepView), [template]);
@@ -324,7 +324,7 @@ function JourneyTemplateDetail({ catalog, deck, journey, template, disabled, sou
         <div className="journey-catalog-roles">{template.roles.map(role => {
           const deckId = mapping[role.id] ?? '';
           return <label className="journey-catalog-role" key={role.id}><span>{role.title}</span>
-            <span className={'journey-catalog-role-select' + (deckId ? ' is-existing' : '')}>{!deckId && <Plus size={14} aria-hidden="true" />}
+            <span className={'journey-catalog-role-select control-field' + (deckId ? ' is-existing' : '')}>{!deckId && <Plus size={14} aria-hidden="true" />}
               <select aria-label={t.deckForRole(role.title)} value={deckId} onChange={event => { setMapping(previous => ({ ...previous, [role.id]: event.target.value })); setError(''); }}>
                 <option value="">{t.createDeck}</option>
                 {targets.map(target => <option key={target.id} value={target.id}>{target.title}</option>)}
@@ -336,10 +336,10 @@ function JourneyTemplateDetail({ catalog, deck, journey, template, disabled, sou
       {error && <p className="journey-catalog-error" role="alert">{error}</p>}
       {!mappingValid && <p className="journey-catalog-error" role="alert">{t.invalidMapping}</p>}
       <div className="journey-catalog-import-actions">
-        <button type="button" className="journey-catalog-mapping-toggle" aria-expanded={mappingOpen} aria-controls={mappingId} onClick={() => setMappingOpen(previous => !previous)}>{t.mapping}<ChevronDown size={14} /></button>
+        <button type="button" className="journey-catalog-mapping-toggle control" aria-expanded={mappingOpen} aria-controls={mappingId} onClick={() => setMappingOpen(previous => !previous)}>{t.mapping}<ChevronDown size={14} /></button>
         <span>{newDeckCount ? t.creatingDecks(newDeckCount) : t.existingDecks}</span>
-        {journey && <button type="button" className="journey-catalog-replace" disabled={busy || !mappingValid || !stepCount} title={t.replaceTitle} onClick={() => void importTemplate('replace')}>{saving === 'replace' && <LoaderCircle size={14} className="spin" />}{t.replaceSteps(stepCount)}</button>}
-        <button type="button" className="journey-catalog-add" disabled={busy || !mappingValid || !stepCount} onClick={() => void importTemplate('add')}>{saving === 'add' && <LoaderCircle size={14} className="spin" />}{t.addSteps(stepCount)}</button>
+        {journey && <button type="button" className="journey-catalog-replace control destructive" disabled={busy || !mappingValid || !stepCount} title={t.replaceTitle} onClick={() => void importTemplate('replace')}>{saving === 'replace' && <LoaderCircle size={14} className="spin" />}{t.replaceSteps(stepCount)}</button>}
+        <button type="button" className="journey-catalog-add action-mint" disabled={busy || !mappingValid || !stepCount} onClick={() => void importTemplate('add')}>{saving === 'add' && <LoaderCircle size={14} className="spin" />}{t.addSteps(stepCount)}</button>
       </div>
     </footer>
   </div>;
@@ -383,21 +383,21 @@ export function JourneySaveTemplateDialog({ journey, categories, disabled, onSav
 
   return <Dialog.Root open onOpenChange={open => { if (!open && !busy && !savingRef.current) onClose(); }}><Dialog.Portal>
     <Dialog.Overlay className="journey-catalog-save-overlay" />
-    <Dialog.Content className="journey-catalog-save-dialog" aria-busy={saving}
-      onCloseAutoFocus={event => { event.preventDefault(); returnFocus.current?.focus(); }}
+    <Dialog.Content className="journey-catalog-save-dialog dialog-panel" aria-busy={saving}
+      onCloseAutoFocus={event => { event.preventDefault(); moveFocus(returnFocus.current); }}
       onEscapeKeyDown={event => { event.preventDefault(); event.stopPropagation(); if (!busy && !savingRef.current) onClose(); }}
       onPointerDownOutside={event => event.preventDefault()}>
-      <header><Dialog.Title>{t.saveAsTemplate}</Dialog.Title><Button type="button" variant="ghost" size="icon" disabled={busy} onClick={onClose} aria-label={t.closeSave}><X size={17} /></Button></header>
-      <Dialog.Description>{t.saveDescription}</Dialog.Description>
+      <header className="dialog-head"><Dialog.Title className="dialog-title">{t.saveAsTemplate}</Dialog.Title><Button type="button" variant="ghost" size="icon" disabled={busy} onClick={onClose} aria-label={t.closeSave}><X size={17} /></Button></header>
+      <Dialog.Description className="dialog-body">{t.saveDescription}</Dialog.Description>
       <form onSubmit={event => { event.preventDefault(); void save(); }}>
-        <fieldset disabled={busy}>
-          <label><span>{t.title}</span><input value={title} onChange={event => setTitle(event.target.value)} maxLength={120} required autoFocus /></label>
-          <label><span>{t.description}</span><textarea value={description} onChange={event => setDescription(event.target.value)} rows={3} maxLength={2000} /></label>
-          <label><span>{t.category}</span><input value={category} onChange={event => setCategory(event.target.value)} list={categoriesId} maxLength={120} placeholder={t.categoryPlaceholder} required /><datalist id={categoriesId}>{[...new Set(categories)].filter(name => name.trim()).map(name => <option key={name} value={name} />)}</datalist></label>
-          <label><span>{t.tags}</span><input value={tags} onChange={event => setTags(event.target.value)} placeholder={t.tagsPlaceholder} maxLength={1000} /></label>
+        <fieldset className="dialog-body" disabled={busy}>
+          <label><span>{t.title}</span><input className="control-field" value={title} onChange={event => setTitle(event.target.value)} maxLength={120} required autoFocus /></label>
+          <label><span>{t.description}</span><textarea className="control-field" value={description} onChange={event => setDescription(event.target.value)} rows={3} maxLength={2000} /></label>
+          <label><span>{t.category}</span><input className="control-field" value={category} onChange={event => setCategory(event.target.value)} list={categoriesId} maxLength={120} placeholder={t.categoryPlaceholder} required /><datalist id={categoriesId}>{[...new Set(categories)].filter(name => name.trim()).map(name => <option key={name} value={name} />)}</datalist></label>
+          <label><span>{t.tags}</span><input className="control-field" value={tags} onChange={event => setTags(event.target.value)} placeholder={t.tagsPlaceholder} maxLength={1000} /></label>
         </fieldset>
         {error && <p className="journey-catalog-error" role="alert">{error}</p>}
-        <footer><Button type="button" variant="ghost" disabled={busy} onClick={onClose}>{t.cancel}</Button><Button type="submit" disabled={busy || !title.trim() || !category.trim()}>{saving && <LoaderCircle size={14} className="spin" />}{t.saveTemplate}</Button></footer>
+        <footer className="dialog-foot"><Button type="button" variant="ghost" disabled={busy} onClick={onClose}>{t.cancel}</Button><Button type="submit" className="action-mint" disabled={busy || !title.trim() || !category.trim()}>{saving && <LoaderCircle size={14} className="spin" />}{t.saveTemplate}</Button></footer>
       </form>
     </Dialog.Content>
   </Dialog.Portal></Dialog.Root>;

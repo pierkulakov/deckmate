@@ -1,12 +1,15 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState, type CSSProperties, type ElementType, type ReactNode } from 'react';
 import * as Dialog from '@radix-ui/react-dialog';
+import { EmptyState } from './EmptyState.tsx';
 import { defineText, locale, useLang, useText } from '../i18n.ts';
+import { moveFocus } from '../focus.ts';
 import '../deck-picker.css';
+import { usePreparedEntrance } from '../prepared-motion.ts';
 
 const text = defineText(
-  { noResults: 'Nothing found.', searchLabel: (title: string) => `Search ${title}`, choose: (title: string) => `Choose ${title}`,
+  { searchLabel: (title: string) => `Search ${title}`, choose: (title: string) => `Choose ${title}`,
     current: 'current', beforeKeys: 'Use ', beforeEnter: ' to navigate, ', afterEnter: ' to ', confirm: 'confirm' },
-  { noResults: 'Ничего не найдено.', searchLabel: (title: string) => `Поиск: ${title}`, choose: (title: string) => `Выбрать: ${title}`,
+  { searchLabel: (title: string) => `Поиск: ${title}`, choose: (title: string) => `Выбрать: ${title}`,
     current: 'текущее', beforeKeys: '', beforeEnter: ' — выбор, ', afterEnter: ' — ', confirm: 'подтвердить' });
 
 export interface QuickSettingsChoice {
@@ -35,7 +38,17 @@ export function QuickSettingsList({ title, choices, current, disabled, searchDis
   const activeIndex = filtered.findIndex(choice => choice.key === active);
   const optionId = (index: number) => id + '-option-' + index;
 
-  useEffect(() => { search.current?.focus({ preventScroll: true }); }, []);
+  useLayoutEffect(() => {
+    const box = list.current;
+    // 2026-11-10: no matches must not resize a populated picker and move its search caret.
+    // An initially empty selector still measures its reset action; populated lists keep their scrollport.
+    if (!box || query && choices.length) return;
+    // 2026-11-09: filtering must not move the search caret when the popover opens above its anchor.
+    box.style.height = '';
+    box.style.height = `${Math.min(box.scrollHeight, parseFloat(getComputedStyle(box).maxHeight))}px`;
+  }, [choices, query, filtered.length]);
+
+  useEffect(() => { moveFocus(search.current, { preventScroll: true }); }, []);
   useEffect(() => {
     // 2026-11-05: scroll only this list; scrollIntoView also moves the card behind the popover.
     const box = list.current;
@@ -88,7 +101,9 @@ export function QuickSettingsList({ title, choices, current, disabled, searchDis
             </div>;
           })}
         </div>)}
-        {!filtered.length && <p className="deck-choice-empty" role="status">{t.noResults}</p>}
+        {!filtered.length && (query.trim()
+          ? <EmptyState variant="filtered" onReset={() => { setQuery(''); setActive(current); moveFocus(search.current); }} />
+          : <EmptyState />)}
       </div>
     </div>
     <p className="deck-choice-hint">{t.beforeKeys}{tabs && <kbd>←</kbd>}<kbd>↑</kbd><kbd>↓</kbd>{tabs && <kbd>→</kbd>}{t.beforeEnter}<kbd>Enter</kbd>{t.afterEnter}<button type="button" className="deck-choice-confirm" disabled={disabled || activeIndex < 0} onClick={() => choose(filtered[activeIndex]?.key)}>{t.confirm}</button>.</p>
@@ -99,6 +114,7 @@ export function QuickSettingsPopover({ anchor, busy = false, onClose, children }
   anchor: HTMLElement | null; busy?: boolean; onClose: () => void; children: ReactNode;
 }) {
   const content = useRef<HTMLDivElement>(null);
+  const attachContent = usePreparedEntrance(content);
   const outside = useRef(false);
   const [place, setPlace] = useState<CSSProperties>();
   useLayoutEffect(() => {
@@ -115,8 +131,9 @@ export function QuickSettingsPopover({ anchor, busy = false, onClose, children }
       const bounds = anchor?.getBoundingClientRect();
       const width = Math.min(340, innerWidth - 16);
       const left = Math.max(8, Math.min((bounds?.left ?? innerWidth / 2) - 16, innerWidth - width - 8));
-      const bottom = bounds?.bottom ?? 64;
-      const top = bounds?.top ?? 64;
+      // 2026-11-09: shortcuts can open a property whose medallion is below the phone viewport.
+      const bottom = Math.max(8, Math.min(bounds?.bottom ?? 64, innerHeight - 8));
+      const top = Math.max(8, Math.min(bounds?.top ?? 64, innerHeight - 8));
       const below = innerHeight - bottom - 16;
       const above = top - 16;
       const height = content.current?.scrollHeight ?? 410;
@@ -133,9 +150,9 @@ export function QuickSettingsPopover({ anchor, busy = false, onClose, children }
   }, [anchor]);
 
   return <Dialog.Root open modal={false} onOpenChange={open => { if (!open && !busy) onClose(); }}><Dialog.Portal>
-    <Dialog.Content ref={content} className="deck-picker-popover" style={place} aria-describedby={undefined} aria-busy={busy}
-      onOpenAutoFocus={event => { event.preventDefault(); content.current?.querySelector<HTMLElement>('[data-autofocus]')?.focus(); }}
-      onCloseAutoFocus={event => { event.preventDefault(); if (!outside.current && anchor?.isConnected) anchor.focus({ preventScroll: true }); }}
+    <Dialog.Content ref={attachContent} className="deck-picker-popover" style={place} aria-describedby={undefined} aria-busy={busy}
+      onOpenAutoFocus={event => { event.preventDefault(); moveFocus(content.current?.querySelector<HTMLElement>('[data-autofocus]')); }}
+      onCloseAutoFocus={event => { event.preventDefault(); if (!outside.current && anchor?.isConnected) moveFocus(anchor, { preventScroll: true }); }}
       onInteractOutside={event => {
         if (busy || (event.target instanceof Node && anchor?.contains(event.target))) event.preventDefault();
         else outside.current = true;

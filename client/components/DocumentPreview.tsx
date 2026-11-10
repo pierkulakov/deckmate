@@ -4,9 +4,11 @@ import * as Dialog from '@radix-ui/react-dialog';
 import { ArrowLeft, BookOpen, Code2, FileText, LoaderCircle, Maximize2, Minimize2, RefreshCw, X } from 'lucide-react';
 import type { DataSource } from '../../src/workspace-contracts.ts';
 import { markdownParser } from '../../src/markdown-model.ts';
+import { failureMessage } from '../failure-message.ts';
 import { Markdown } from './Markdown.tsx';
 import { Button } from './ui/button.tsx';
 import { defineText, textNow, useText } from '../i18n.ts';
+import { moveFocus } from '../focus.ts';
 import { catalogStore } from '../catalog-store.ts';
 import '../document-preview.css';
 
@@ -154,7 +156,7 @@ export function DocumentPreviewProvider({ children }: { children: ReactNode }) {
         }
       } catch (failure) {
         if (!controller.signal.aborted && requestGeneration === generation.current) {
-          setResult({ key: requestedKey, text: '', error: failure instanceof Error ? failure.message : textNow(copy).unavailable });
+          setResult({ key: requestedKey, text: '', error: failureMessage(failure, textNow(copy).unavailable) });
         }
       }
     }
@@ -231,8 +233,8 @@ export function DocumentPreviewProvider({ children }: { children: ReactNode }) {
       <Dialog.Portal>
         <Dialog.Overlay className="document-preview-overlay" />
         <Dialog.Content className={'document-preview-pane' + (expanded ? ' is-expanded' : '')}
-          onOpenAutoFocus={event => { event.preventDefault(); title.current?.focus(); }}
-          onCloseAutoFocus={event => { event.preventDefault(); if (opener.current?.isConnected) opener.current.focus(); }}>
+          onOpenAutoFocus={event => { event.preventDefault(); moveFocus(title.current); }}
+          onCloseAutoFocus={event => { event.preventDefault(); if (opener.current?.isConnected) moveFocus(opener.current); }}>
           <header className="document-preview-header">
             <div className="document-preview-navigation">
               <Button type="button" size="icon" variant="ghost" disabled={history.length < 2}

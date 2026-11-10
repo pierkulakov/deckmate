@@ -1,0 +1,10 @@
+.journey-operation-notice.catalog-notice { flex-shrink: 0; min-width: 0; margin: 12px 0; padding: 12px; border-radius: var(--glass-radius); color: var(--warning-ink); background: var(--warning-bg); overflow-wrap: anywhere; }
+.journey-operation-notice p { margin: 0; }
+.journey-operation-notice p + p { margin-top: 8px; }
+.journey-operation-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.journey-operation-notice .ui-button { max-width: 100%; height: auto; min-height: 32px; white-space: normal; overflow-wrap: anywhere; text-align: left; }
+.journey-operation-notice .confirm-strip { margin-top: 12px; }
+.journey-operation-notice .confirm-strip-actions { flex-wrap: wrap; }
+.journey-operation-notice:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.journey-operation-badge { display: inline-block; padding: 2px 6px; border-radius: var(--control-radius); color: var(--warning-ink); background: var(--warning-bg); font-size: 12px; line-height: 1.5; }
+.journey-catalog > .journey-operation-notice { margin: 12px; max-height: 50%; overflow-y: auto; }

@@ -11,3 +11,11 @@ export function tileColor(name: string): string {
   for (const char of String(name ?? '')) hash = (hash * 31 + (char.codePointAt(0) ?? 0)) >>> 0;
   return tilePalette[hash % tilePalette.length];
 }
+
+/** The two first letters shown in the tile window — the paired function is the tile.dataset.initials expression in
+ *  desktop/launcher/launcher.js (renderRecentItem). Like tileColor above, it is mirrored by hand because the launcher
+ *  is a separate build the client cannot import; tests/recent-projects.test.tsx fails while the two are apart. */
+export function tileInitials(name: string): string {
+  return String(name ?? '').trim().split(/[^\p{L}\p{N}]+/u).filter(Boolean).slice(0, 2)
+    .map(word => Array.from(word)[0]).join('').toLocaleUpperCase();
+}

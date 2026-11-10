@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-whats-new-get"
+description = "Enables the whats_new_get command without any pre-configured scope."
+commands.allow = ["whats_new_get"]
+
+[[permission]]
+identifier = "deny-whats-new-get"
+description = "Denies the whats_new_get command without any pre-configured scope."
+commands.deny = ["whats_new_get"]

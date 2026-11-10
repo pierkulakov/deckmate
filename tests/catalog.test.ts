@@ -251,18 +251,28 @@ it.each(['conflict', 'rename failure'])('cleans only the new asset after manifes
   const catalog = await readProjectCatalog(root);
   const oldCover = catalog.decks.find(deck => deck.id === 'audio')!.cover!;
   const before = await readFile(filename);
+  let injected = false;
   if (failure === 'conflict') {
     const originalStore = coverStorage.storeCatalogCover;
     vi.spyOn(coverStorage, 'storeCatalogCover').mockImplementationOnce(async (...argumentsList) => {
       const created = await originalStore(...argumentsList);
+      injected = true;
       await writeFile(filename, Buffer.concat([before, Buffer.from('\r\nExternal edit.\r\n')]));
       return created;
     });
   } else {
-    // ENOSPC is never retried; Windows retries a briefly locked manifest (EACCES/EPERM/EBUSY), so a single EACCES would succeed there.
-    vi.mocked(filesystem.rename).mockRejectedValueOnce(Object.assign(new Error('Simulated rename failure'), { code: 'ENOSPC' }));
+    // 2026-11-10: ENOSPC is never retried, unlike transient Windows reader locks.
+    const rename = vi.mocked(filesystem.rename).getMockImplementation()!;
+    vi.mocked(filesystem.rename).mockImplementation(async (source, destination) => {
+      if (String(destination) === filename) {
+        injected = true;
+        throw Object.assign(new Error('Simulated rename failure'), { code: 'ENOSPC' });
+      }
+      return rename(source, destination);
+    });
   }
   await expect(editProjectCatalog(root, { action: 'upload-cover', deckId: 'audio', dataUrl: coverDataUrl, manifestHash: catalog.manifestHash })).rejects.toThrow(failure === 'conflict' ? 'CATALOG_CONFLICT' : 'Simulated rename');
+  expect(injected).toBe(true);
   expect(await filesystem.readdir(path.join(root, 'tasks/deckmate-assets/covers'))).toEqual([path.basename(oldCover)]);
   expect(await readFile(path.join(root, oldCover))).toEqual(coverPng);
   expect((await readProjectCatalog(root)).decks.find(deck => deck.id === 'audio')!.cover).toBe(oldCover);
@@ -303,6 +313,25 @@ it('moves spaces to the start, middle and end without changing decks or cards, a
   expect(await readFile(filename)).toEqual(saved);
 });
 
+it.each(['', 'archived', 'shelved', 'trashed', 'deleted', 'piled'])('refuses deleting a Space referenced by a Deck (flag: %s) without writing', async flag => {
+  const { root, filename } = await fixture();
+  if (flag) {
+    const original = await readFile(filename, 'utf8');
+    await writeFile(filename, original.replace('  - id: audio\r\n', `  - id: audio\r\n    ${flag}: true\r\n`));
+  }
+  const before = await readFile(filename);
+  const catalog = await readProjectCatalog(root);
+  if (flag) expect(catalog.decks[0]).toHaveProperty(flag, true);
+  vi.mocked(filesystem.rename).mockClear();
+  await expect(editProjectCatalog(root, { action: 'delete-space', spaceId: 'production', manifestHash: catalog.manifestHash }))
+    .rejects.toThrow("Move or delete this space's decks first");
+  await expect(editProjectCatalog(root, { action: 'delete-space', spaceId: 'missing', manifestHash: catalog.manifestHash }))
+    .rejects.toThrow('Space not found');
+  expect(filesystem.rename).not.toHaveBeenCalled();
+  expect(await readFile(filename)).toEqual(before);
+  expect((await readProjectCatalog(root)).decks).toEqual(catalog.decks);
+});
+
 it('moves decks within and between spaces preserving their types and card memberships', async () => {
   const { root, filename } = await fixture();
   const initial = await readProjectCatalog(root);
@@ -331,56 +360,24 @@ it('moves decks within and between spaces preserving their types and card member
   expect(await readFile(filename)).toEqual(saved);
 });
 
-// 2026-11-06: the pile is one key of one deck: piling adds `piled: true`, shelving removes it, every other byte stays.
-it('piles and shelves decks by one key, restoring the manifest bytes, and rejects a stale hash', async () => {
+it('reads legacy piled keys without warnings and preserves their bytes during an unrelated deck edit', async () => {
   const { root, filename } = await fixture();
-  const before = await readFile(filename);
-  const pile = async (deckId: string, piled: boolean, manifestHash?: string) => editProjectCatalog(root,
-    { action: 'set-deck-pile', deckId, piled, manifestHash: manifestHash ?? (await readProjectCatalog(root)).manifestHash });
-  expect(await pile('audio', true)).toEqual(['tasks/deckmate.md']);
-  expect(await pile('audio', true)).toEqual([]);
-  await pile('knowledge', true);
-  const piled = (await readFile(filename, 'utf8')).split('    piled: true\r\n');
-  expect(piled).toHaveLength(3);
-  expect(piled.join('')).toBe(before.toString('utf8'));
-  const catalog = await readProjectCatalog(root);
-  expect(catalog.decks.map(deck => [deck.id, deck.piled])).toEqual([['audio', true], ['knowledge', true]]);
-  await expect(pile('audio', false, 'stale')).rejects.toThrow('CATALOG_CONFLICT');
-  await pile('audio', false);
-  await pile('knowledge', false);
-  expect(await readFile(filename)).toEqual(before);
-
-  // A hand-written manifest keeps its comments and flow maps when a deck goes back to the shelf.
   const written = [
     '---', 'schema: 1', 'spaces: [{ id: production, title: P }]', 'decks:',
-    '  - id: audio # sound', '    spaceId: production', '    piled: true', '    # kept', '    title: Audio', '    kind: task',
+    '  - id: audio # keep legacy flag', '    spaceId: production', '    piled: true', '    title: Audio', '    kind: task',
     '    description: ""', '    icon: audio', '    color: "#ff990a"',
-    '  - { id: notes, piled: true, spaceId: production, title: Notes, kind: knowledge, description: "", icon: book, color: "#9cb8d0" }',
+    '  - id: notes', '    spaceId: production', '    piled: false', '    title: Notes', '    kind: knowledge',
+    '    description: ""', '    icon: book', '    color: "#9cb8d0"', '    style: symbol', '    cover: null', '    coverPosition: 50',
     'tracks: []', 'membership: []', '---', 'Body.', '',
-  ].join('\n');
+  ].join('\r\n');
   await writeFile(filename, written);
-  await pile('audio', false);
-  await pile('notes', false);
-  expect(await readFile(filename, 'utf8')).toBe(written.replace('    piled: true\n', '').replace('piled: true, ', ''));
-  await writeFile(filename, written.replace('piled: true, ', 'piled: yes, '));
-  await expect(readProjectCatalog(root)).rejects.toThrow('Deck notes: piled must be true or false.');
-});
-
-
-it.each([
-  ['  - piled: true\n    # keep the deck description\n    id: audio\n    spaceId: production\n    title: Audio\n    kind: task\n    description: ""\n    icon: audio\n    color: "#ff990a"', 'piled: true'],
-  ['  - { id: audio, spaceId: production, title: Audio, kind: task, description: "", icon: audio, color: "#ff990a", # keep the color\n      piled: true }', ', # keep the color\n      piled: true'],
-  ['  - { piled: true, # keep the ID\n      id: audio, spaceId: production, title: Audio, kind: task, description: "", icon: audio, color: "#ff990a" }', 'piled: true,'],
-])('shelves handwritten YAML without consuming neighboring comments (%s)', async (deck, removed) => {
-  const { root, filename } = await fixture();
-  const written = ['---', 'schema: 1', 'spaces: [{ id: production, title: P }]', 'decks:', deck, 'tracks: []', 'membership: []', '---', 'Body.', ''].join('\n');
-  await writeFile(filename, written);
-  await editProjectCatalog(root, { action: 'set-deck-pile', deckId: 'audio', piled: false, manifestHash: (await readProjectCatalog(root)).manifestHash });
-  const expected = removed.includes('# keep the color')
-    ? written.replace(', # keep the color', ' # keep the color').replace('piled: true', '')
-    : written.replace(removed, '');
-  expect(await readFile(filename, 'utf8')).toBe(expected);
-  expect((await readProjectCatalog(root)).decks[0].piled).toBeUndefined();
+  const catalog = await readProjectCatalog(root);
+  expect(catalog.decks.map(deck => deck.id)).toEqual(['audio', 'notes']);
+  expect(catalog.warnings).toEqual([]);
+  await editProjectCatalog(root, { action: 'update-deck', deckId: 'notes', title: 'Renamed', icon: 'book', color: '#9cb8d0',
+    description: '', style: 'symbol', cover: null, coverPosition: 50, manifestHash: catalog.manifestHash });
+  expect(await readFile(filename, 'utf8')).toBe(written.replace('title: Notes', 'title: Renamed'));
+  expect((await readProjectCatalog(root)).decks.map(deck => deck.id)).toEqual(['audio', 'notes']);
 });
 
 const members: CatalogMember[] = [

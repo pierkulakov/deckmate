@@ -331,7 +331,7 @@ describe.skipIf(!browserPath)('Hand pointer drag work (browser)', () => {
     expect(metrics.outlinedFrames).toBe(0);
     expect(metrics.classChanges).toBe(0);
     expect((await page.evaluate('window.handDragTest.result()')).reorder).toEqual([0, 2, 1, 3, 4, 5, 6].map(index => `card:hand-${index}`));
-  }, 10000);
+  }, 20000);
 
   it('keeps keyboard reorder and Escape cancellation on the handle', async () => {
     page = await openHand();

@@ -48,10 +48,7 @@ describe.skipIf(!browserPath)('CardPreview Quick Settings (browser)', () => {
   }
 
   beforeAll(async () => {
-    // 2026-11-09: a headless Chrome on a Linux CI runner sees no pointing device and reports (hover: none), where the
-    // tile ribbon stays pinned at rest by design; the suite tests the desktop pointer, so it declares a fine hovering one.
-    await session.open(browserPath!, { viewport: { width: 1280, height: 1000, scale: 1 },
-      extraArgs: ['--blink-settings=primaryHoverType=2,availableHoverTypes=2,primaryPointerType=4,availablePointerTypes=4'] });
+    await session.open(browserPath!, { viewport: { width: 1280, height: 1000, scale: 1 } });
     errors = session.errors;
     await send('Emulation.setFocusEmulationEnabled', { enabled: true });
     // 2026-11-09: Windows CI can inherit disabled OS animations. Both the tile and flat bands ignore pointers in reduce.

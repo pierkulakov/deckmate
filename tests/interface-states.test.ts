@@ -17,12 +17,14 @@ describe.skipIf(!browserPath)('shared interface states and recovery (browser)', 
   }
   async function reset(screen = 'components', fail: string[] = [], hold: string[] = []) {
     await page.send('Page.navigate', { url: browserFixtureUrl('interface-states') + '?instance=' + Math.random() });
-    await until('Boolean(window.statesTest)');
+    await until('Boolean(window.statesTest) && document.hasFocus()');
     await page.evaluate(`statesTest.setLang('en');localStorage.setItem('deckmate-current-member','builder');statesTest.state.fail=${JSON.stringify(fail)};statesTest.state.hold=${JSON.stringify(hold)};statesTest.render(${JSON.stringify(screen)})`);
   }
   beforeAll(async () => {
     // 2026-11-10: recovery tests reuse built fixtures; per-file dependency optimization adds no coverage.
     page = await openHeadlessBrowser({ width: 1280, height: 1000, scale: 1 });
+    // 2026-11-10: an inactive headless page changes activeElement without firing focus events, so Retry cannot track its focus.
+    await page.send('Emulation.setFocusEmulationEnabled', { enabled: true });
     await reset();
   }, 90000);
   afterAll(async () => {
@@ -159,7 +161,11 @@ describe.skipIf(!browserPath)('shared interface states and recovery (browser)', 
     }
   });
 
-  it.each(['timeline', 'search', 'members'])('recovers %s from a failed catalog request', async screen => {
+  it.each([
+    { screen: 'timeline', content: '.timeline-canvas', surface: '.planning-view' },
+    { screen: 'search', content: '.global-search-row', surface: '.global-search-pop' },
+    { screen: 'members', content: '.members-editor-list', surface: '.members-editor-body' },
+  ])('recovers $screen from a failed catalog request', async ({ screen, content, surface }) => {
     await reset(screen, ['/api/catalog']);
     if (screen === 'search') await page.evaluate(`statesTest.input('.global-search input','Recovered')`);
     await until(`Boolean(document.querySelector('.ui-error[role=alert]'))`);
@@ -168,8 +174,8 @@ describe.skipIf(!browserPath)('shared interface states and recovery (browser)', 
     expect(await page.evaluate('document.activeElement === retryButton')).toBe(true);
     await page.evaluate(`statesTest.state.releases['/api/catalog']()`);
     await until(`!document.querySelector('.ui-error[role=alert]')`);
-    expect(await page.evaluate(`Boolean(document.querySelector(${JSON.stringify(screen === 'timeline' ? '.timeline-canvas' : screen === 'search' ? '.global-search-row' : '.members-editor-list')}))`)).toBe(true);
-    expect(await page.evaluate('document.activeElement !== document.body')).toBe(true);
+    expect(await page.evaluate(`Boolean(document.querySelector(${JSON.stringify(content)}))`)).toBe(true);
+    expect(await page.evaluate(`document.activeElement === document.querySelector(${JSON.stringify(surface)})`)).toBe(true);
   });
 
   it('shows an actionable first-run Timeline overview', async () => {
@@ -343,7 +349,7 @@ describe.skipIf(!browserPath)('shared interface states and recovery (browser)', 
     expect(await page.evaluate(`document.querySelector('.level-panel .ui-error').textContent`)).toContain('last known progress');
     await page.evaluate(`statesTest.state.fail=[];document.querySelector('.level-panel .ui-error button').focus();document.querySelector('.level-panel .ui-error button').click()`);
     await until(`!document.querySelector('.level-panel .ui-error[role=alert]')`);
-    expect(await page.evaluate('document.activeElement !== document.body')).toBe(true);
+    expect(await page.evaluate(`document.activeElement === document.querySelector('.level-panel-body')`)).toBe(true);
     expect(await page.evaluate(`document.querySelectorAll('.level-quest').length`)).toBeGreaterThan(0);
   });
 

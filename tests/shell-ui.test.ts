@@ -303,10 +303,7 @@ describe.skipIf(!browserPath)('application shell (browser)', () => {
         const chip = row.querySelector('.shortcuts-panel-key'); if (!chip) return true;
         const chipRect = chip.getBoundingClientRect();
         const remove = row.querySelector('.mission-control-workspace-remove').getBoundingClientRect();
-        // 2026-11-09: under (hover: none) — headless Chrome on Linux CI — the current mark is display: none and its
-        // rect is all zeros, so only a rendered mark takes part in the comparison.
-        const markElement = row.querySelector('.mission-control-workspace-current');
-        const mark = markElement?.getClientRects().length ? markElement.getBoundingClientRect() : undefined;
+        const mark = row.querySelector('.mission-control-workspace-current')?.getBoundingClientRect();
         const name = row.querySelector('.mission-control-workspace-copy strong').getBoundingClientRect();
         return chipRect.right <= remove.left - 2 && (!mark || chipRect.right <= mark.left - 2)
           && name.right <= chipRect.left + 1 && name.height <= 40 && row.scrollWidth <= row.clientWidth;
@@ -314,6 +311,23 @@ describe.skipIf(!browserPath)('application shell (browser)', () => {
     })()`)).toBe(true);
     await click('.mission-control-workspace-row:nth-child(3) .mission-control-workspace-open');
     expect(await evaluate('window.shellTest.workspaceCalls')).toEqual([]);
+  });
+
+  it('workspace: touch exposes remove actions in place of the current mark without overlapping phone shortcuts', async () => {
+    await send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 1 });
+    try {
+      await workspace({}, 375);
+      expect(await evaluate(`matchMedia('(hover: none)').matches`)).toBe(true);
+      expect(await evaluate(`getComputedStyle(document.querySelector('.mission-control-workspace-current')).display`)).toBe('none');
+      expect(await evaluate(`[...document.querySelectorAll('.mission-control-workspace-row')].every(row => {
+        const remove = row.querySelector('.mission-control-workspace-remove');
+        const button = remove.getBoundingClientRect();
+        const chip = row.querySelector('.shortcuts-panel-key').getBoundingClientRect();
+        const name = row.querySelector('.mission-control-workspace-copy strong').getBoundingClientRect();
+        return getComputedStyle(remove).opacity === '1' && chip.right <= button.left - 2
+          && name.right <= chip.left + 1 && name.height <= 40 && row.scrollWidth <= row.clientWidth;
+      })`)).toBe(true);
+    } finally { await send('Emulation.setTouchEmulationEnabled', { enabled: false }); }
   });
 
   it('workspace: empty state adds current, dialog and recent projects only on request', async () => {

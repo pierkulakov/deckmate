@@ -9,7 +9,11 @@ vi.mock('../client/workspace-file-events.ts', async importOriginal => {
 });
 
 const unsubscribe: Array<() => void> = [];
-afterEach(() => { for (const close of unsubscribe.splice(0)) close(); vi.mocked(subscribeWorkspaceFiles).mockClear(); });
+afterEach(() => {
+  for (const close of unsubscribe.splice(0)) close();
+  vi.mocked(subscribeWorkspaceFiles).mockClear();
+  vi.restoreAllMocks();
+});
 const settle = async () => { await new Promise(resolve => setTimeout(resolve, 0)); };
 const id = 'card:ca1d0000-0000-4000-8000-000000000001';
 
@@ -36,16 +40,26 @@ it('shares one workspace listener for hundreds of tiles and dispatches only the 
 
 it('matches native and legacy keys, including an event before hashing finishes, and cleans up', async () => {
   const legacy = 'task:tasks/legacy.md:123';
-  const key = 'legacy-' + createHash('sha256').update(legacy).digest('hex').slice(0, 16);
+  const hash = createHash('sha256').update(legacy).digest();
+  const key = 'legacy-' + hash.toString('hex').slice(0, 16);
   expect(await attachmentRegistryKey(id.toUpperCase())).toBe(id.slice(5));
   expect(await attachmentRegistryKey(legacy)).toBe(key);
   expect(attachmentRegistryKeyFromPath(`tasks/deckmate-assets/cards/${key}/other.md`)).toBeUndefined();
+  // 2026-11-10: Web Crypto completion is independent of timers; hold the digest until the early event has been published.
+  let finishHash!: (value: ArrayBuffer) => void;
+  const hashing = new Promise<ArrayBuffer>(resolve => { finishHash = resolve; });
+  const digest = vi.spyOn(crypto.subtle, 'digest').mockReturnValueOnce(hashing);
   const refresh = vi.fn();
   const close = subscribeCardAttachments('sandbox', legacy, refresh);
   unsubscribe.push(close);
-  publishWorkspaceFileChange({ source: 'sandbox', relativePath: `tasks/deckmate-assets/cards/${key}/attachments.md` });
-  await settle();
-  expect(refresh).toHaveBeenCalledTimes(1);
+  try {
+    expect(digest).toHaveBeenCalledTimes(1);
+    publishWorkspaceFileChange({ source: 'sandbox', relativePath: `tasks/deckmate-assets/cards/${key}/attachments.md` });
+    expect(refresh).not.toHaveBeenCalled();
+  } finally {
+    finishHash(Uint8Array.from(hash).buffer);
+  }
+  await vi.waitFor(() => { expect(refresh).toHaveBeenCalledTimes(1); });
   close();
   publishWorkspaceFileChange({ source: 'sandbox' });
   await settle();

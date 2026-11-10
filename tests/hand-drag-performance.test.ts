@@ -7,6 +7,13 @@ import { waitForLayout } from './browser-layout.ts';
 const browserPath = requireBrowser();
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
+interface SourceDropFrame {
+  x: number;
+  progress: number;
+  overlay: boolean;
+  visible: boolean;
+}
+
 describe.skipIf(!browserPath)('Hand pointer drag work (browser)', () => {
   let page: HeadlessPage | undefined;
   afterEach(async () => {
@@ -35,6 +42,51 @@ describe.skipIf(!browserPath)('Hand pointer drag work (browser)', () => {
       const rect = document.querySelector(selector).getBoundingClientRect();
       return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
     }`, selector);
+  }
+
+  async function recordSourceDrop() {
+    await page!.evaluate(`(() => {
+      const slot = document.querySelector('.hand-slot.is-drag-source');
+      const start = performance.now();
+      const frames = [];
+      let stable = 0;
+      window.handSourceDropFrames = new Promise((resolve, reject) => {
+        function sample() {
+          const face = document.querySelector('.card-drag-face');
+          const source = face ?? slot;
+          const motion = face?.parentElement.getAnimations().find(animation =>
+            animation.effect.getKeyframes().some(key => key.transform));
+          const style = getComputedStyle(source);
+          frames.push({ x: source.getBoundingClientRect().left,
+            progress: face ? motion?.effect.getComputedTiming().progress ?? 0 : 1,
+            overlay: !!face, visible: source.isConnected && style.visibility === 'visible' && Number(style.opacity) >= .99 });
+          stable = face ? 0 : stable + 1;
+          if (stable >= 3) return resolve(frames);
+          if (performance.now() - start > 5000) return reject(new Error('Source drop did not finish'));
+          requestAnimationFrame(sample);
+        }
+        sample();
+      });
+    })()`);
+  }
+
+  function expectContinuousSourceDrop(frames: SourceDropFrame[]) {
+    const start = frames[0].x;
+    const end = frames.at(-1)!.x;
+    expect(frames[0].overlay).toBe(true);
+    expect(frames.at(-1)!.overlay).toBe(false);
+    expect(start - end).toBeCloseTo(16, 1);
+    expect(frames.some(frame => frame.progress > 0 && frame.progress < 1)).toBe(true);
+    // 2026-11-10: a 33ms frame travels 10.4px along the same curve as a 16ms frame's 6.4px.
+    // Subtract WAAPI's eased travel, not elapsed frame count, so a missing overlay or a handoff snap still fails.
+    let previousError = 0;
+    for (const frame of frames) {
+      expect(frame.visible).toBe(true);
+      const error = frame.x - (start + (end - start) * frame.progress);
+      expect(Math.abs(error), JSON.stringify(frame)).toBeLessThanOrEqual(1);
+      expect(Math.abs(error - previousError), JSON.stringify(frame)).toBeLessThanOrEqual(1);
+      previousError = error;
+    }
   }
 
   async function dragBetween(start: { x: number; y: number }, end: { x: number; y: number }, touch = false) {
@@ -96,8 +148,10 @@ describe.skipIf(!browserPath)('Hand pointer drag work (browser)', () => {
     await moveTo(points.end + 16);
     await delay(250);
     await page.evaluate(`window.handDragRecording.phase('drop')`);
+    if (!reducedMotion) await recordSourceDrop();
     await page.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x, y: points.start.y, button: 'left', buttons: 0, clickCount: 1 });
-    await delay(350);
+    if (!reducedMotion) expectContinuousSourceDrop(await page.evaluate('window.handSourceDropFrames'));
+    await waitForLayout(page.evaluate, '.hand-slots');
     const metrics = await page.evaluate('window.handDragRecording.finish()');
     console.info('Hand slow drag:', JSON.stringify(metrics));
     for (const phase of ['left', 'right', 'left-again']) expect.soft(metrics.changes[phase], JSON.stringify(metrics)).toBe(1);
@@ -109,7 +163,6 @@ describe.skipIf(!browserPath)('Hand pointer drag work (browser)', () => {
     else {
       expect.soft(metrics.movingFrames).toBeGreaterThan(6);
       expect.soft(metrics.maxNeighborStep).toBeLessThan(60);
-      expect.soft(metrics.maxSourceDropStep).toBeLessThan(8);
       expect.soft(metrics.sourceDropSteps.length).toBeGreaterThan(2);
       expect.soft(metrics.sourceDropSteps.every((step: number) => step < 0)).toBe(true);
     }

@@ -60,18 +60,21 @@ async function catalogFixture() {
   return { ...context, manifest };
 }
 
+function stubLegacyEnvironment(values: Record<string, string>): void {
+  // 2026-11-10: tool flags also disable the legacy set; track both names so launcher adoption is undone after each test.
+  const names = new Set(Object.keys(process.env).filter(name => /^(?:DECKMATE|FREETION)_/u.test(name)));
+  for (const suffix of Object.keys(values)) {
+    names.add('DECKMATE_' + suffix);
+    names.add('FREETION_' + suffix);
+  }
+  for (const name of names) vi.stubEnv(name, undefined);
+  for (const [suffix, value] of Object.entries(values)) vi.stubEnv('FREETION_' + suffix, value);
+}
+
 it('loads old environment names with one warning per process and gives all new names priority', async () => {
   const { root, outside } = await fixture();
   await execute('git', ['init', '-b', 'freetion/sandbox', root], { windowsHide: true });
-  for (const suffix of ['DATA', 'WRITE', 'PORT', 'PROJECT_NAME', 'PYTHON', 'READ_ONLY']) {
-    vi.stubEnv('DECKMATE_' + suffix, undefined);
-    vi.stubEnv('FREETION_' + suffix, undefined);
-  }
-  vi.stubEnv('FREETION_DATA', outside);
-  vi.stubEnv('FREETION_WRITE', root);
-  vi.stubEnv('FREETION_PORT', '4373');
-  vi.stubEnv('FREETION_PROJECT_NAME', 'Old project');
-  vi.stubEnv('FREETION_PYTHON', 'old-python');
+  stubLegacyEnvironment({ DATA: outside, WRITE: root, PORT: '4373', PROJECT_NAME: 'Old project', PYTHON: 'old-python' });
   vi.resetModules();
   const { loadConfig } = await import('../server/config.ts');
   const warning = vi.spyOn(console, 'warn').mockImplementation(() => {});
@@ -98,14 +101,7 @@ it('loads old environment names with one warning per process and gives all new n
 it('keeps a legacy sandbox pair when the launcher writes DECKMATE_DATA, but never pairs it with another folder', async () => {
   const { root, outside } = await fixture();
   await execute('git', ['init', '-b', 'freetion/sandbox', root], { windowsHide: true });
-  const reset = () => {
-    for (const suffix of ['DATA', 'WRITE', 'PORT', 'PROJECT_NAME', 'PYTHON', 'READ_ONLY']) {
-      vi.stubEnv('DECKMATE_' + suffix, undefined);
-      vi.stubEnv('FREETION_' + suffix, undefined);
-    }
-    vi.stubEnv('FREETION_DATA', outside);
-    vi.stubEnv('FREETION_WRITE', root);
-  };
+  const reset = () => stubLegacyEnvironment({ DATA: outside, WRITE: root });
   reset();
   vi.resetModules();
   const { loadConfig } = await import('../server/config.ts');

@@ -203,7 +203,12 @@ export async function openHeadlessBrowser(viewport?: { width: number; height: nu
   const port = 9300 + Math.floor(Math.random() * 500);
   const profile = mkdtempSync(path.join(tmpdir(), 'deckmate-capture-'));
   const windowArgs = viewport ? [`--window-size=${viewport.width},${viewport.height}`] : [];
-  const child = spawn(browser, ['--headless=new', '--disable-gpu', '--no-first-run', '--no-default-browser-check', ...windowArgs, ...(options.extraArgs ?? []), `--remote-debugging-port=${port}`, `--user-data-dir=${profile}`, 'about:blank'], { stdio: 'ignore', detached: process.platform !== 'win32' });
+  // 2026-11-10: a headless Chrome on a Linux runner sees no pointing device and reports (hover: none), and a Windows runner
+  // with OS animations off reports (prefers-reduced-motion: reduce), so hover, focus and motion checks took other branches
+  // there and passed only on desktops. Every page starts as a desktop with a fine hovering pointer and motion allowed;
+  // a check of the touch layout or of reduced motion emulates it explicitly.
+  const desktopArgs = ['--blink-settings=primaryHoverType=2,availableHoverTypes=2,primaryPointerType=4,availablePointerTypes=4', '--force-prefers-no-reduced-motion'];
+  const child = spawn(browser, ['--headless=new', '--disable-gpu', '--no-first-run', '--no-default-browser-check', ...windowArgs, ...desktopArgs, ...(options.extraArgs ?? []), `--remote-debugging-port=${port}`, `--user-data-dir=${profile}`, 'about:blank'], { stdio: 'ignore', detached: process.platform !== 'win32' });
   let launchError: Error | undefined;
   child.on('error', error => { launchError = error; });
   const launchFailure = () => {

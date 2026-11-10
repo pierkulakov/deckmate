@@ -4,7 +4,7 @@ import { realpath } from 'node:fs/promises';
 import type { RunRecord } from '../src/catalog-contracts.ts';
 import type { CatalogCard, CatalogView } from '../src/catalog-contracts.ts';
 import type { ActivityStateTransition, DeckActivityEvent, DeckActivityPage } from '../src/activity-contracts.ts';
-import type { CardHistoryPage } from '../src/dependency-contracts.ts';
+import { openDependencies, type CardHistoryPage } from '../src/dependency-contracts.ts';
 import { shortReference } from '../src/references.ts';
 import { createManagedMarkdown, listManagedMarkdown, scanManagedMarkdown, type ManagedMarkdownFile } from './native-cards.ts';
 import { readCardState, writeCardState, type FormatLanguage } from '../src/format-vocabulary.ts';
@@ -51,10 +51,10 @@ const messages = defineText({
   coverChanged: "Cover changed",
   deckMoved: "Deck moved",
   spaceMoved: "Space moved",
+  spaceDeleted: "Space deleted",
+  // 2026-11-10: removed pile actions remain in old journals; these summaries localize that history.
   deckPiled: "Deck moved to the pile",
   deckShelved: "Deck back on the shelf",
-  deckPiledDetail: (title: string) => `“${title}” is in the pile at the end of its space`,
-  deckShelvedDetail: (title: string) => `“${title}” is back on the shelf of its space`,
   markdownChanged: "Markdown changed",
   boardSaved: "Vision board saved",
   dependenciesChanged: "Dependencies changed",
@@ -122,10 +122,9 @@ const messages = defineText({
   coverChanged: "Изменена обложка",
   deckMoved: "Колода перемещена",
   spaceMoved: "Space перемещён",
+  spaceDeleted: "Пространство удалено",
   deckPiled: "Колода убрана в стопку",
   deckShelved: "Колода возвращена на полку",
-  deckPiledDetail: (title: string) => `«${title}» лежит в стопке в конце своего пространства`,
-  deckShelvedDetail: (title: string) => `«${title}» снова на полке своего пространства`,
   markdownChanged: "Изменён Markdown",
   boardSaved: "Сохранена доска Vision",
   dependenciesChanged: "Изменены зависимости",
@@ -177,6 +176,7 @@ function activityLabels(formatLanguage: FormatLanguage): Record<string, string> 
     'set-deck-kind': text.deckTypeChanged,
     'upload-cover': text.coverChanged, 'move-deck': text.deckMoved,
     'move-space': text.spaceMoved,
+    'delete-space': text.spaceDeleted,
     'update-block': text.markdownChanged, 'update-status': text.stateChanged,
     'save-board': text.boardSaved,
     // Record dependency changes and newly unblocked cards (2026-11-04).
@@ -353,17 +353,10 @@ export function describeActivity(before: CatalogView, after: CatalogView, action
     // 2026-11-09: Space order belongs to the project; it must not look like settings edits on its unchanged Decks.
     details.push(...after.spaces.map((space, index) => `${index + 1}. ${space.title}`));
   }
-  // 2026-11-06: the pile has a direction, so its summary says where the deck went instead of one label per action.
-  let summary = action === 'apply-project-template' ? text.projectTemplateApplied : activityLabels(after.formatLanguage)[action] ?? text.updatedCards;
-  if (action === 'set-deck-pile') {
-    const deck = after.decks.find(candidate => candidate.id === affectedDeckId);
-    const previous = before.decks.find(candidate => candidate.id === affectedDeckId);
-    if (deck && Boolean(deck.piled) !== Boolean(previous?.piled)) {
-      deckIds.add(deck.id);
-      summary = deck.piled ? text.deckPiled : text.deckShelved;
-      details.push(deck.piled ? text.deckPiledDetail(deck.title) : text.deckShelvedDetail(deck.title));
-    }
+  if (action === 'delete-space') {
+    details.push(...before.spaces.filter(space => !after.spaces.some(current => current.id === space.id)).map(space => space.title));
   }
+  const summary = action === 'apply-project-template' ? text.projectTemplateApplied : activityLabels(after.formatLanguage)[action] ?? text.updatedCards;
   if (action === 'create-journey' || action === 'apply-project-template') {
     for (const journey of after.journeys ?? []) {
       if (before.journeys?.some(previous => previous.id === journey.id && previous.fileHash === journey.fileHash)) continue;
@@ -394,7 +387,8 @@ export function describeActivity(before: CatalogView, after: CatalogView, action
     for (const space of after.spaces) if (!before.spaces.some(previous => previous.id === space.id)) details.push(text.newSpace(space.title));
     for (const tag of after.projectTags ?? []) if (!before.projectTags?.some(previous => previous.name === tag.name)) details.push(text.newTag(tag.name));
   }
-  if (!details.length || (!deckIds.size && !['add-card-report', 'apply-project-template', 'move-space'].includes(action))) return null;
+  // 2026-11-10: state feedback belongs to the card even when it has no deck feed.
+  if (!details.length || (!deckIds.size && !transitions.length && !['add-card-report', 'record-decision', 'apply-project-template', 'move-space', 'delete-space'].includes(action))) return null;
   return { schema: 1, id: randomUUID(), at: new Date().toISOString(), action, actor: 'Deckmate', summary, cards, deckIds: [...deckIds], details,
     ...(transitions.length ? { transitions } : {}) };
 }
@@ -421,24 +415,19 @@ export function describeUnlockedCards(before: CatalogView, after: CatalogView): 
   const text = journalText(after.formatLanguage);
   const beforeById = new Map(before.cards.map(card => [card.id, card]));
   const afterById = new Map(after.cards.map(card => [card.id, card]));
-  const openBefore = (ids: readonly string[] | undefined, byId: ReadonlyMap<string, CatalogCard>) =>
-    (ids ?? []).filter(id => {
-      const dependency = byId.get(id);
-      return dependency && dependency.state !== 'done' && !dependency.archived && !dependency.deleted;
-    });
   const events: DeckActivityEvent[] = [];
   for (const card of after.cards) {
     if (!card.dependsOn?.length || card.archived || card.deleted) continue;
     const previous = beforeById.get(card.id);
-    if (!previous || openBefore(card.dependsOn, afterById).length) continue;
-    const closed = openBefore(previous.dependsOn, beforeById);
+    if (!previous || openDependencies(card.dependsOn, afterById).length) continue;
+    const closed = openDependencies(previous.dependsOn, beforeById);
     if (!closed.length) continue;
     const deckIds = new Set<string>();
     if (card.deckId) deckIds.add(card.deckId);
     const parent = card.parentId ? afterById.get(card.parentId) : undefined;
     if (parent?.deckId) deckIds.add(parent.deckId);
     if (!deckIds.size) continue; // Events without a deck do not appear in any deck feed.
-    const titles = closed.map(id => afterById.get(id)?.title ?? id).join(', ');
+    const titles = closed.map(dependency => afterById.get(dependency.id)?.title ?? dependency.title).join(', ');
     events.push({ schema: 1, id: randomUUID(), at: new Date().toISOString(), action: 'card-unlocked', actor: 'Deckmate',
       summary: text.cardUnlocked, cards: [{ id: card.id, title: card.title }], deckIds: [...deckIds],
       details: [text.dependenciesAccepted(card.title, titles)] });
@@ -446,10 +435,14 @@ export function describeUnlockedCards(before: CatalogView, after: CatalogView): 
   return events;
 }
 
+export function activityEventPath(event: Pick<DeckActivityEvent, 'at' | 'id'>): string {
+  const timestamp = event.at.replace(/[-:.]/gu, '');
+  return `${directory}/${timestamp}-${event.id}.md`;
+}
+
 /** formatLanguage is the project's: transition states are written in its words, like the summary and details. */
 export async function appendActivity(root: string, event: DeckActivityEvent, formatLanguage: FormatLanguage): Promise<void> {
-  const timestamp = event.at.replace(/[-:.]/gu, '');
-  const filename = `${directory}/${timestamp}-${event.id}.md`;
+  const filename = activityEventPath(event);
   const references = event.cards.map(card => `- ${card.title} (${shortReference('c', card.id)})`).join('\n');
   const storedEvent = { ...event, transitions: event.transitions?.map(transition => ({
     ...transition,

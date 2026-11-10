@@ -1,4 +1,4 @@
-use crate::{app, texts, window};
+use crate::{app, menu, texts, window};
 use serde_json::{json, Value};
 use std::{
     path::{Path, PathBuf},
@@ -8,6 +8,7 @@ use tauri::{
     webview::{NewWindowResponse, PageLoadEvent},
     AppHandle, Manager, Url, WebviewUrl, WebviewWindow, WebviewWindowBuilder,
 };
+use tauri_plugin_dialog::{MessageDialogButtons, MessageDialogKind};
 
 pub const RELEASES_URL: &str = "https://github.com/pierkulakov/deckmate/releases";
 const PAGE: &str = "whats-new.html";
@@ -67,17 +68,37 @@ pub fn whats_new_get(app: AppHandle, window: WebviewWindow) -> Value {
     })
 }
 
+async fn open_failed(app: &AppHandle, error: impl std::fmt::Display) {
+    let shell = app::state(app);
+    shell
+        .log
+        .write(format!("what's new window failed: {error}"));
+    let language = shell.language();
+    menu::dialog(
+        app,
+        texts::text(&language, "whatsNewTitle"),
+        &texts::format(&language, "whatsNewOpenFailed", "error", error),
+        MessageDialogButtons::OkCustom(texts::text(&language, "ok").into()),
+        MessageDialogKind::Error,
+    )
+    .await;
+}
+
 pub async fn open(app: &AppHandle, from: Option<String>) {
     let shell = app::state(app);
     let _guard = shell.whats_new.opening.lock().await;
     *shell.whats_new.from.lock().unwrap() = from;
     let title = texts::text(&shell.language(), "whatsNewTitle");
     if let Some(window) = app.get_webview_window(LABEL) {
-        let _ = window.set_title(title);
-        let _ = window.reload();
-        let _ = window.unminimize();
-        let _ = window.show();
-        let _ = window.set_focus();
+        if let Err(error) = window
+            .set_title(title)
+            .and_then(|()| window.reload())
+            .and_then(|()| window.unminimize())
+            .and_then(|()| window.show())
+            .and_then(|()| window.set_focus())
+        {
+            open_failed(app, error).await;
+        }
         return;
     }
     let navigation_app = app.clone();
@@ -129,15 +150,26 @@ pub async fn open(app: &AppHandle, from: Option<String>) {
             }
             shell.log.write("what's new window opened");
         }
-        Err(error) => shell
-            .log
-            .write(format!("what's new window failed: {error}")),
+        Err(error) => open_failed(app, error).await,
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn window_open_failure_is_localized_with_the_cause() {
+        for (language, expected) in [
+            ("en", "Could not open What's new: test error"),
+            ("ru", "Не удалось открыть окно «Что нового»: test error"),
+        ] {
+            assert_eq!(
+                texts::format(language, "whatsNewOpenFailed", "error", "test error"),
+                expected
+            );
+        }
+    }
 
     #[test]
     fn whats_new_requires_its_window_and_bundled_page() {

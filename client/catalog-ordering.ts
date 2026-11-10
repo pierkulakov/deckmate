@@ -116,7 +116,7 @@ interface SortLookups {
 }
 
 // Hero and Doc cards have no priority or state, so they get lanes of their own in both directions. 2026-11-09: Hero
-// Cards lead the deck (author) — they are what the Task lanes below work towards; Doc Cards stay after "No …".
+// Cards lead the deck — they are what the Task lanes below work towards; Doc Cards stay after "No …".
 function nonTaskPosition(card: CatalogCard): OrderPosition {
   if (card.kind === 'hero') return { key: 'kind:hero', title: textNow(text).heroes, state: null, value: null, tail: -1 };
   return { key: 'kind:doc', title: textNow(text).docs, state: null, value: null, tail: 2 };

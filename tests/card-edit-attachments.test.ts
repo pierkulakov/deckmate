@@ -1,18 +1,8 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { spawn, type ChildProcess } from 'node:child_process';
-import { existsSync } from 'node:fs';
-import { mkdtemp, rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import path from 'node:path';
-import { createServer, type ViteDevServer } from 'vite';
-import tailwindcss from '@tailwindcss/vite';
-import { freePort } from './free-port.ts';
-import { closeBrowserGently, waitForPageTarget } from './browser-target.ts';
+import { createBrowserSession } from './browser-session.ts';
+import { requireBrowser } from './browser-environment.ts';
 
-const browserPath = [process.env.DECKMATE_BROWSER, process.env.BROWSER,
-  'C:/Program Files/Google/Chrome/Application/chrome.exe', 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe',
-  '/usr/bin/google-chrome', '/usr/bin/chromium', '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome']
-  .find((candidate): candidate is string => Boolean(candidate && existsSync(candidate)));
+const browserPath = requireBrowser();
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 const initial = 'Attachment test\n\nBefore AFTER';
 const image = '![Sketch \\[v2\\].png](../deckmate-assets/cards/example/sketch.png)';
@@ -20,28 +10,9 @@ const pdf = '[Brief.pdf](../deckmate-assets/cards/example/brief.pdf)';
 
 // Native focus, undo and the asynchronous Radix menu need the same browser editing path as the application.
 describe.skipIf(!browserPath)('card attachment insertion (headless CDP)', () => {
-  let server: ViteDevServer | undefined;
-  let browser: ChildProcess | undefined;
-  let temporary: string | undefined;
-  let socket: WebSocket | undefined;
-  let sequence = 0;
-  const pending = new Map<number, { resolve: (value: any) => void; reject: (error: Error) => void }>();
-  const errors: string[] = [];
-  function send(method: string, params: object = {}): Promise<any> {
-    return new Promise((resolve, reject) => { const id = ++sequence; pending.set(id, { resolve, reject }); socket!.send(JSON.stringify({ id, method, params })); });
-  }
-  async function evaluate(expression: string): Promise<any> {
-    const result = await send('Runtime.evaluate', { expression, returnByValue: true, awaitPromise: true });
-    if (result.exceptionDetails) throw new Error(result.exceptionDetails.exception?.description ?? result.exceptionDetails.text);
-    return result.result?.value;
-  }
-  async function until(expression: string, attempts = 100) {
-    for (let attempt = 0; attempt < attempts; attempt++) {
-      if (await evaluate(expression)) return;
-      await delay(50);
-    }
-    throw new Error('Timed out: ' + expression + '\n' + errors.join('\n'));
-  }
+  const session = createBrowserSession();
+  const { send, evaluate, until } = session;
+  let errors: string[] = [];
   async function key(key: string, modifiers = 0) {
     const codes: Record<string, number> = { Enter: 13, Escape: 27, ArrowDown: 40, ArrowUp: 38, Home: 36, End: 35, z: 90, ' ': 32 };
     for (const type of ['keyDown', 'keyUp']) await send('Input.dispatchKeyEvent', {
@@ -68,46 +39,13 @@ describe.skipIf(!browserPath)('card attachment insertion (headless CDP)', () => 
   const highlighted = () => evaluate(`document.querySelector('.card-edit-attachment[data-highlighted]')?.textContent`);
 
   beforeAll(async () => {
-    temporary = await mkdtemp(path.join(tmpdir(), 'attachment-editor-test-'));
-    server = await createServer({ configFile: false, root: process.cwd(), cacheDir: path.join(temporary, 'vite'),
-      plugins: [tailwindcss(), { name: 'attachment-editor-fixture', configureServer(vite) {
-        vite.middlewares.use((request, response, next) => {
-          if (request.url !== '/') return next();
-          response.setHeader('Content-Type', 'text/html');
-          response.end('<!doctype html><html><body><div id="root"></div><script type="module" src="/tests/fixtures/card-edit-attachments.tsx"></script></body></html>');
-        });
-      } }], server: { host: '127.0.0.1', port: 0 }, optimizeDeps: { entries: ['tests/fixtures/card-edit-attachments.tsx'] }, logLevel: 'error' });
-    await server.listen();
-    await server.warmupRequest('/tests/fixtures/card-edit-attachments.tsx');
-    const port = await freePort();
-    browser = spawn(browserPath!, ['--headless=new', '--disable-gpu', '--no-first-run', '--no-default-browser-check',
-      `--remote-debugging-port=${port}`, `--user-data-dir=${path.join(temporary, 'profile')}`, 'about:blank'], { stdio: 'ignore' });
-    const target = await waitForPageTarget(port, browser!);
-    socket = new WebSocket(target);
-    await new Promise(resolve => socket!.addEventListener('open', resolve, { once: true }));
-    socket.addEventListener('message', event => {
-      const message = JSON.parse(String(event.data));
-      if (message.id) {
-        const request = pending.get(message.id); pending.delete(message.id);
-        if (message.error) request?.reject(new Error(JSON.stringify(message.error))); else request?.resolve(message.result);
-      }
-      if (message.method === 'Runtime.exceptionThrown') errors.push(message.params.exceptionDetails.exception?.description ?? message.params.exceptionDetails.text);
-    });
-    await send('Runtime.enable');
-    await send('Page.enable');
-    await send('Page.navigate', { url: server.resolvedUrls!.local[0] });
-    await until('Boolean(window.attachmentEditorTest)', 600);
+    await session.open(browserPath!);
+    errors = session.errors;
+    await session.navigate('card-edit-attachments', 'Boolean(window.attachmentEditorTest)', 600);
   }, 90000);
 
   afterAll(async () => {
-    if (socket?.readyState === WebSocket.OPEN) { await closeBrowserGently(send); socket.close(); }
-    if (browser?.pid && browser.exitCode === null) {
-      const command = process.platform === 'win32' ? spawn('taskkill', ['/T', '/F', '/PID', String(browser.pid)], { stdio: 'ignore' }) : browser;
-      if (process.platform !== 'win32') browser.kill();
-      await new Promise(resolve => { if (command.exitCode !== null) resolve(null); else command.once('exit', resolve); });
-    }
-    await server?.close();
-    if (temporary) await rm(temporary, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+    await session.close();
   }, 20000);
 
   beforeEach(async () => { await edit(); });

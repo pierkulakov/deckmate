@@ -14,6 +14,8 @@ Another entry point is `deckmate agents run`: it reads launchers from the projec
 
 ## Deckmate Desktop
 
+Vision boards do not execute embedded HTML: server and client allow only reviewed drawing element types, remove `iframe`/unknown types on read (with warnings), reject them on save, and strip AI generation data, executable links and non-raster scene files. Embeds are limited to project nodes and canonical HTTPS YouTube URLs; imported app state cannot enable AI tools or panels, and scene/image sizes are bounded. Reading a filtered board never rewrites its source file.
+
 Deckmate Desktop (the Tauri 2 shell in `desktop/`) wraps the same local server and inherits the same trust model. The installer and portable builds are not Windows code-signed, so SmartScreen may warn about an unknown publisher; download them only from the repository's Releases page, and when a checksum is published for a release, compare the size/checksum of your download against it before running the installer. Installed builds verify the separate updater signature and version before offering an in-app update; portable builds only offer the download page. Inside the app the server listens only on `127.0.0.1`, reusing its saved port when available or selecting a free one. A local process that can reach it can obtain the token and talk to the server, as with the CLI. Application settings and the server log live in the user's profile (`%APPDATA%\Deckmate\desktop.json` and `server.log`); project data stays in the project folder. Vulnerabilities in the desktop shell itself are reported through the same channel described below.
 
 ## Supported versions

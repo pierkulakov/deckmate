@@ -19,6 +19,8 @@ const version = '9.9.9';
 const englishNote = 'E2E signed update.';
 const russianNote = 'Проверенное обновление E2E.';
 const downloadsUrl = 'https://github.com/pierkulakov/deckmate/releases/latest';
+// 2026-11-10: exercise the production budget, not a debug-only reduced download limit.
+const maxUpdateBytes = 512 * 1024 * 1024;
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 let interrupted = false;
 
@@ -252,9 +254,33 @@ async function main(): Promise<number> {
   const processes = new Set<ChildProcess>();
   const files = new Map<string, Buffer>();
   const requests: string[] = [];
+  const abortedOversized = new Set<string>();
   const server = createServer((request, response) => {
     const url = new URL(request.url ?? '/', 'http://127.0.0.1');
     requests.push(url.pathname);
+    if (url.pathname === '/oversized-header/installer.exe' || url.pathname === '/oversized-stream/installer.exe') {
+      const declared = url.pathname.includes('oversized-header');
+      response.writeHead(200, { 'Content-Type': 'application/octet-stream', 'Cache-Control': 'no-store',
+        ...(declared ? { 'Content-Length': maxUpdateBytes + 1 } : {}) });
+      const chunk = Buffer.alloc(64 * 1024);
+      response.on('close', () => abortedOversized.add(url.pathname));
+      if (declared) {
+        // 2026-11-10: the plugin exposes Content-Length only with the first chunk; no large allocation is needed.
+        response.write(chunk);
+      } else {
+        // 2026-11-10: omit Content-Length and stream until the client cancels, respecting socket backpressure.
+        const pump = () => {
+          while (!response.destroyed) {
+            if (!response.write(chunk)) {
+              response.once('drain', pump);
+              return;
+            }
+          }
+        };
+        pump();
+      }
+      return;
+    }
     const bytes = files.get(url.pathname);
     response.writeHead(bytes ? 200 : 404, { 'Content-Type': url.pathname.endsWith('.json') ? 'application/json' : 'application/octet-stream',
       'Content-Length': bytes?.length ?? 0, 'Cache-Control': 'no-store' });
@@ -540,7 +566,30 @@ async function main(): Promise<number> {
     step = 'signed-version';
     manifest(step, '9.9.10');
     await rejected(step, {}, /signed for version 9\.9\.9.*announced version 9\.9\.10/iu);
-    console.log('ok updater-e2e — a–g + signed-version passed; manifests built and verified by updater-manifest.mjs');
+    for (const id of ['oversized-header', 'oversized-stream']) {
+      step = id;
+      manifest(step);
+      await rejected(step, {}, /download exceeds the 536870912 byte safety limit/iu);
+      assert.ok(abortedOversized.has(`/${id}/installer.exe`), 'the oversized response must be disconnected');
+    }
+    step = 'oversized-manifest-size';
+    manifest(step);
+    const manifestPath = `/${step}/latest.json`;
+    const oversized = JSON.parse(files.get(manifestPath)!.toString()) as Manifest;
+    for (const artifact of Object.values(oversized.platforms)) Object.assign(artifact, { size: maxUpdateBytes + 1 });
+    files.set(manifestPath, Buffer.from(JSON.stringify(oversized)));
+    await withShell(step, {}, async session => {
+      session.native('menu', 'Check for updates…');
+      const failure = await dialog(session, 'Could not check for updates');
+      assert.match(failure.Text, /download exceeds the 536870912 byte safety limit/iu);
+      session.native('button', 'OK');
+      await usable(session);
+      assert.match(session.log(), /download size limit exceeded \(Declared\)/u);
+      assert.equal(count(step, 'installer.exe'), 0);
+      assert.ok(!existsSync(path.join(session.settings, 'update-cache/package.bin')));
+      pass('oversized manifest size rejected before requesting the package');
+    });
+    console.log('ok updater-e2e — a–g + signed-version + oversized responses passed; manifests built and verified by updater-manifest.mjs');
     return 0;
   } catch (error) {
     console.error(`FAIL ${step} — ${error instanceof Error ? error.stack ?? error.message : String(error)}`);

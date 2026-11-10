@@ -9,15 +9,16 @@ import { DeckActivity } from './DeckActivity.tsx';
 import { JourneyPriorityIcon } from './JourneyMiniCard.tsx';
 import { statusClass } from './StatusMenu.tsx';
 import { Button } from './ui/button.tsx';
+import { EmptyState } from './EmptyState.tsx';
 import '../deck-summary.css';
 import { defineText, formatNumber, useLang, useText } from '../i18n.ts';
 import { priorityLabel, stateLabel } from '../locales/common.ts';
 
 const text = defineText({
-  summary: (title: string) => `Deck summary: ${title}`, collapse: 'Collapse summary', metrics: 'Deck metrics',
+  summary: (title: string) => `Deck summary: ${title}`, heading: 'Overview', collapse: 'Collapse summary', metrics: 'Deck metrics',
   tasks: (count: number): string => new Intl.PluralRules('en-US').select(count) === 'one' ? 'task' : 'tasks',
   documents: (count: number): string => new Intl.PluralRules('en-US').select(count) === 'one' ? 'document' : 'documents',
-  cards: 'Cards', subCards: 'Sub Cards', noState: 'No state',
+  cards: 'Cards', subCards: 'Sub Cards', noState: 'No state', emptyStats: 'Statistics appear after the first card.',
   states: (kind: string) => `${kind} states`,
   effort: 'Effort',
   effortHint: (estimated: string, total: string, kind: string) => `Effort set for ${estimated} of ${total} ${kind}`,
@@ -27,9 +28,9 @@ const text = defineText({
   priorities: 'Priorities', noPriority: 'No priority', owners: 'Owners', unassigned: 'Unassigned',
   priorityShare: (label: string, done: string, total: string) => `${label}: ${done} of ${total} done`,
 }, {
-  summary: (title: string) => `Сводка колоды ${title}`, collapse: 'Свернуть сводку', metrics: 'Показатели колоды',
+  summary: (title: string) => `Сводка колоды ${title}`, heading: 'Сводка', collapse: 'Свернуть сводку', metrics: 'Показатели колоды',
   tasks: (_count: number) => 'задач', documents: (_count: number) => 'документов',
-  cards: 'Карточки', subCards: 'Sub Cards', noState: 'Без состояния',
+  cards: 'Карточки', subCards: 'Sub Cards', noState: 'Без состояния', emptyStats: 'Статистика появится после первой карточки.',
   states: (kind: string) => `Состояния ${kind}`,
   effort: 'Оценка',
   effortHint: (estimated: string, total: string, kind: string) => `Оценка указана у ${estimated} из ${total} ${kind}`,
@@ -95,13 +96,16 @@ export function DeckSummary({ deck, cards, catalog, source, refreshKey, onOpen, 
   // Hand-edited catalogs can carry a broken color; the CSS accent fallback covers everything that is not #rrggbb.
   const overviewAccent = /^#[\da-f]{6}$/iu.test(deck.color) ? deck.color : undefined;
 
-  return <aside className="deck-overview" aria-label={t.summary(deck.title)} style={overviewAccent ? { '--overview-accent': overviewAccent } as CSSProperties : undefined}>
-    <div className={`deck-overview-intro${deck.description ? ' has-description' : ''}`}>
+  return <aside className="deck-overview glass-sheet" aria-label={t.summary(deck.title)} style={overviewAccent ? { '--overview-accent': overviewAccent } as CSSProperties : undefined}>
+    <div className={`deck-overview-intro glass-section${deck.description ? ' has-description' : ''}`}>
+      <header className="panel-head"><h2 className="panel-title">{t.heading}</h2><div className="panel-actions">
+        <Button variant="ghost" size="icon" className="deck-overview-collapse" onClick={onCollapse} aria-label={t.collapse} title={t.collapse}><PanelLeftClose size={15} /></Button>
+      </div></header>
       {deck.description && <p>{deck.description}</p>}
-      <Button variant="ghost" size="icon" className="deck-overview-collapse" onClick={onCollapse} aria-label={t.collapse} title={t.collapse}><PanelLeftClose size={15} /></Button>
     </div>
 
-    <section className="deck-overview-stats" aria-label={t.metrics}>
+    {summary.cardCount === 0 ? <EmptyState className="deck-overview-empty glass-section" message={t.emptyStats} /> : <section className="deck-overview-stats glass-section" aria-label={t.metrics}>
+      <header className="panel-head"><h2 className="panel-title">{t.metrics}</h2></header>
       <div className="deck-overview-row">
         <div className="deck-overview-states" role="list" aria-label={t.states(taskLabel)}>
           {summary.states.map(({ state, count }) => { const label = `${state ? stateLabel(state, lang) : t.noState}: ${formatNumber(count, 3, lang)}`;
@@ -132,17 +136,17 @@ export function DeckSummary({ deck, cards, catalog, source, refreshKey, onOpen, 
             {owner ? <CardOwnerAvatar owner={owner} members={catalog.members ?? []} /> : <span className="deck-overview-unassigned" aria-hidden="true">–</span>}
           </span>; })}
       </div>}
-    </section>
+    </section>}
 
-    {summary.tracks.length > 0 && <nav className="deck-overview-tracks" aria-label={t.tracks}>
+    {summary.tracks.length > 0 && <nav className="deck-overview-tracks glass-section" aria-label={t.tracks}>
       {summary.tracks.map(track => <button key={track.id} type="button" disabled={disabled} onClick={() => onTrack(track.id)}><Route size={13} aria-hidden="true" /><span>{track.title}</span></button>)}
     </nav>}
 
     <DeckActivity deckId={deck.id} source={source} refreshKey={refreshKey} disabled={disabled} onOpen={onOpen} />
 
-    <details className="deck-overview-files">
-      <summary>{t.sourceFiles} <span>{formatNumber(summary.files.length, 3, lang)}</span></summary>
+    {summary.files.length > 0 && <details className="deck-overview-files glass-section">
+      <summary>{t.sourceFiles} <span className="panel-count page-number">{formatNumber(summary.files.length, 3, lang)}</span></summary>
       <div>{summary.files.map(card => <button key={card.path} type="button" disabled={disabled} onClick={() => onOpen(card.id)} title={t.openCard(card.title, card.path)}><FileText size={13} aria-hidden="true" /><span>{card.path}</span></button>)}</div>
-    </details>
+    </details>}
   </aside>;
 }

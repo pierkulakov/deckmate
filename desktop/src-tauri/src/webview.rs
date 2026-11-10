@@ -6,7 +6,10 @@ use std::{
     },
     time::{Duration, Instant},
 };
-use tauri::{Manager, WebviewWindow};
+use tauri::{
+    menu::{MenuEvent, MenuId},
+    Manager, WebviewWindow,
+};
 use webview2_com::{
     AcceleratorKeyPressedEventHandler, AddScriptToExecuteOnDocumentCreatedCompletedHandler,
     CallDevToolsProtocolMethodCompletedHandler, ContextMenuRequestedEventHandler,
@@ -93,7 +96,7 @@ unsafe fn install_handlers(
     install_popup_and_permissions(window, &core)?;
     install_process_failures(window, &core)?;
     install_context_menu(&core)?;
-    install_zoom_keys(window, &controller)?;
+    install_accelerator_keys(window, &controller)?;
     install_zoom(window, &controller)?;
     install_console(window, &core)
 }
@@ -436,11 +439,6 @@ unsafe fn install_popup_and_permissions(
                 return Ok(());
             };
             args.SetState(COREWEBVIEW2_PERMISSION_STATE_DENY)?;
-            let mut kind = COREWEBVIEW2_PERMISSION_KIND::default();
-            args.PermissionKind(&mut kind)?;
-            if kind == COREWEBVIEW2_PERMISSION_KIND_NOTIFICATIONS {
-                args.SetState(COREWEBVIEW2_PERMISSION_STATE_ALLOW)?;
-            }
             Ok(())
         })),
         &mut token,
@@ -448,7 +446,33 @@ unsafe fn install_popup_and_permissions(
     Ok(())
 }
 
-unsafe fn install_zoom_keys(
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum Accelerator {
+    Menu(&'static str),
+    Workspace(usize),
+}
+
+fn accelerator(key: u16, control: bool, shift: bool) -> Option<Accelerator> {
+    if control && !shift && (VK_1.0..=VK_9.0).contains(&key) {
+        return Some(Accelerator::Workspace((key - VK_1.0) as usize));
+    }
+    // 2026-11-09: Ctrl+Z and Ctrl+Y stay with the page: the card editor and Vision keep their own undo history.
+    let id = match (VIRTUAL_KEY(key), control, shift) {
+        (VK_OEM_PLUS | VK_ADD, true, _) => "zoomIn",
+        (VK_OEM_MINUS | VK_SUBTRACT, true, _) => "zoomOut",
+        (VK_0 | VK_NUMPAD0, true, _) => "actualSize",
+        (VK_O, true, false) => "openFolder",
+        (VK_P, true, true) => "switchProject",
+        (VK_R, true, false) => "reload",
+        (VK_Q, true, false) => "quit",
+        (VK_F11, false, false) => "toggleFullScreen",
+        (VK_F12, false, false) => "toggleDevTools",
+        _ => return None,
+    };
+    Some(Accelerator::Menu(id))
+}
+
+unsafe fn install_accelerator_keys(
     window: &WebviewWindow,
     controller: &ICoreWebView2Controller,
 ) -> windows::core::Result<()> {
@@ -461,10 +485,7 @@ unsafe fn install_zoom_keys(
             };
             let mut kind = COREWEBVIEW2_KEY_EVENT_KIND::default();
             args.KeyEventKind(&mut kind)?;
-            if kind != COREWEBVIEW2_KEY_EVENT_KIND_KEY_DOWN {
-                return Ok(());
-            }
-            if GetKeyState(i32::from(VK_CONTROL.0)) >= 0
+            if kind != COREWEBVIEW2_KEY_EVENT_KIND_KEY_DOWN
                 || GetKeyState(i32::from(VK_MENU.0)) < 0
                 || GetKeyState(i32::from(VK_LWIN.0)) < 0
                 || GetKeyState(i32::from(VK_RWIN.0)) < 0
@@ -473,24 +494,33 @@ unsafe fn install_zoom_keys(
             }
             let mut key = 0;
             args.VirtualKey(&mut key)?;
-            let action = match VIRTUAL_KEY(key as u16) {
-                VK_OEM_PLUS | VK_ADD => Some(0.1),
-                VK_OEM_MINUS | VK_SUBTRACT => Some(-0.1),
-                VK_0 | VK_NUMPAD0 => Some(0.0),
-                _ => None,
+            let control = GetKeyState(i32::from(VK_CONTROL.0)) < 0;
+            let shift = GetKeyState(i32::from(VK_SHIFT.0)) < 0;
+            let Some(action) = accelerator(key as u16, control, shift) else {
+                return Ok(());
             };
-            if let Some(delta) = action {
-                args.SetHandled(true)?;
-                let app = key_window.app_handle().clone();
-                let dispatch = app.clone();
-                let _ = app.run_on_main_thread(move || {
-                    if delta == 0.0 {
-                        window::set_zoom(&dispatch, 1.0);
-                    } else {
-                        window::change_zoom(&dispatch, delta);
+            // 2026-11-09: focused WebView2 consumes keys before the native menu; virtual keys keep
+            // application commands layout-independent, and the menu handler retains all its guards.
+            args.SetHandled(true)?;
+            let app = key_window.app_handle().clone();
+            let dispatch = app.clone();
+            let _ = app.run_on_main_thread(move || {
+                let id = match action {
+                    Accelerator::Menu(id) => Some(id.to_owned()),
+                    Accelerator::Workspace(index) => {
+                        let shell = app::state(&dispatch);
+                        let settings = shell.settings.lock().unwrap();
+                        settings
+                            .workspace
+                            .get(index)
+                            .filter(|entry| std::path::Path::new(&entry.path).is_dir())
+                            .map(|entry| format!("workspace:{}", entry.path))
                     }
-                });
-            }
+                };
+                if let Some(id) = id {
+                    menu::handle(&dispatch, MenuEvent { id: MenuId(id) });
+                }
+            });
             Ok(())
         })),
         &mut token,
@@ -745,6 +775,51 @@ mod tests {
             recovery(COREWEBVIEW2_PROCESS_FAILED_KIND_GPU_PROCESS_EXITED),
             Recovery::None
         );
+    }
+
+    #[test]
+    fn accelerator_matches_every_application_menu_command_by_virtual_key() {
+        for (key, control, shift, command) in [
+            (VK_O.0, true, false, "openFolder"),
+            (VK_P.0, true, true, "switchProject"),
+            (VK_R.0, true, false, "reload"),
+            (VK_Q.0, true, false, "quit"),
+            (VK_OEM_PLUS.0, true, false, "zoomIn"),
+            (VK_ADD.0, true, true, "zoomIn"),
+            (VK_OEM_MINUS.0, true, false, "zoomOut"),
+            (VK_SUBTRACT.0, true, true, "zoomOut"),
+            (VK_0.0, true, false, "actualSize"),
+            (VK_NUMPAD0.0, true, true, "actualSize"),
+            (VK_F11.0, false, false, "toggleFullScreen"),
+            (VK_F12.0, false, false, "toggleDevTools"),
+        ] {
+            assert_eq!(
+                accelerator(key, control, shift),
+                Some(Accelerator::Menu(command))
+            );
+        }
+        for key in VK_1.0..=VK_9.0 {
+            assert_eq!(
+                accelerator(key, true, false),
+                Some(Accelerator::Workspace((key - VK_1.0) as usize))
+            );
+        }
+    }
+
+    #[test]
+    fn accelerator_leaves_printing_and_modified_commands_unhandled() {
+        for (key, control, shift) in [
+            (VK_P.0, true, false),
+            (VK_Z.0, true, false),
+            (VK_Y.0, true, false),
+            (VK_P.0, false, true),
+            (VK_O.0, true, true),
+            (VK_R.0, false, false),
+            (VK_F11.0, true, false),
+            (VK_F12.0, false, true),
+        ] {
+            assert_eq!(accelerator(key, control, shift), None);
+        }
     }
 
     #[test]

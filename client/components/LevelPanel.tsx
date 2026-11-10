@@ -1,3 +1,4 @@
+import { moveFocus } from '../focus.ts';
 // 2026-11-05: the Level panel docks under the top bar on the right: level, the XP line, chapters with their quests.
 // It is not modal — the page keeps working — and closes with the cross, Escape (focus inside) or the badge itself.
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
@@ -9,6 +10,8 @@ import { chapters, questText, type QuestTextKey } from '../onboarding/quests.ts'
 import { showQuestTarget } from '../onboarding/show-me.ts';
 import type { AppView } from '../onboarding/signals.ts';
 import { Button } from './ui/button.tsx';
+import { ErrorState } from './ErrorState.tsx';
+import { LoadingState } from './LoadingState.tsx';
 import '../level-panel.css';
 
 const text = defineText({
@@ -20,6 +23,7 @@ const text = defineText({
   unlockHint: 'Finish a chapter above to unlock the next',
   chapterProgress: (done: number, total: number) => `${done} of ${total} quests done`,
   showMe: 'Show me',
+  factsFailed: 'Could not refresh quests; showing the last known progress.',
 }, {
   regionLabel: 'Уровень и задания',
   close: 'Закрыть',
@@ -29,9 +33,13 @@ const text = defineText({
   unlockHint: 'Закончите главу выше — откроется следующая',
   chapterProgress: (done: number, total: number) => `выполнено заданий: ${done} из ${total}`,
   showMe: 'Показать',
+  factsFailed: 'Не удалось обновить задания — показан последний известный прогресс.',
 });
 
 interface LevelPanelProps {
+  factsFailed?: boolean;
+  factsLoading?: boolean;
+  onRefreshFacts?: () => Promise<void>;
   projectKey: string;
   onClose: () => void;
   /** Switch the top-bar tab, for «Show me» in a quest; the panel stays open. */
@@ -135,7 +143,7 @@ function LockedChapter({ chapter }: { chapter: Chapter<QuestTextKey> }) {
   </div>;
 }
 
-export function LevelPanel({ projectKey, onClose, onNavigate }: LevelPanelProps) {
+export function LevelPanel({ projectKey, onClose, onNavigate, factsFailed, factsLoading, onRefreshFacts }: LevelPanelProps) {
   const lang = useLang();
   const t = useText(text);
   const titleRef = useRef<HTMLHeadingElement>(null);
@@ -149,7 +157,7 @@ export function LevelPanel({ projectKey, onClose, onNavigate }: LevelPanelProps)
   const level = useMemo(() => levelOf(earnedXp(chapters, done), total), [done, total]);
   const locked = chapters.filter((chapter, index) => statuses[index] === 'locked');
 
-  useEffect(() => { titleRef.current?.focus(); }, []);
+  useEffect(() => { moveFocus(titleRef.current); }, []);
   // 2026-11-09: the page narrows by a root attribute instead of .global-shell:has(.level-panel). That :has() anchor sat
   // above the whole board, so every DOM change under it restyled every element of the page (a card open: twice ~2000).
   useLayoutEffect(() => {
@@ -178,6 +186,9 @@ export function LevelPanel({ projectKey, onClose, onNavigate }: LevelPanelProps)
     </header>
     <div className="level-panel-xpbar" aria-hidden="true"><i style={{ width: `${levelShare(level.xp, level.floor, level.next)}%` }} /></div>
     <div className="level-panel-body">
+      <ErrorState variant="inline" className="ui-error-quiet" message={factsFailed ? t.factsFailed : null}
+        pending={factsLoading} onRetry={() => onRefreshFacts?.()} />
+      <LoadingState variant="keep-data" active={factsLoading ?? false} />
       {chapters.map((chapter, index) => statuses[index] === 'locked' ? null
         : <ChapterSection key={chapter.id} chapter={chapter} status={statuses[index]} done={done}
           folded={folds[chapter.id] ?? statuses[index] === 'done'}

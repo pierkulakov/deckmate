@@ -1,20 +1,14 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { spawn, type ChildProcess } from 'node:child_process';
-import { existsSync } from 'node:fs';
-import { mkdtemp, rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import path from 'node:path';
-import { createServer, type ViteDevServer } from 'vite';
-import tailwindcss from '@tailwindcss/vite';
+import { createBrowserSession } from './browser-session.ts';
+import { requireBrowser } from './browser-environment.ts';
+import { expectPageStateDuring } from './browser-layout.ts';
 import { setLang } from '../client/i18n.ts';
 import { JourneyTrack, journeyTrackModels, orderJourneySteps } from '../client/components/JourneyTrack.tsx';
 import { JourneyStepNote } from '../client/components/JourneyStepNote.tsx';
 import { splitJourneyStepLink } from '../client/components/journey-step-link.ts';
 import { journeyStepTitle } from '../client/components/journey-step-title.ts';
 import type { CatalogCard, CatalogJourneyStep } from '../src/catalog-contracts.ts';
-import { freePort } from './free-port.ts';
-import { closeBrowserGently, waitForPageTarget } from './browser-target.ts';
 
 vi.hoisted(() => {
   vi.stubGlobal('document', { documentElement: { lang: '' }, cookie: '' });
@@ -184,37 +178,14 @@ describe('Journey mini-cards', () => {
   });
 });
 
-const browserPath = [process.env.DECKMATE_BROWSER, process.env.BROWSER,
-  'C:/Program Files/Google/Chrome/Application/chrome.exe', 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe',
-  '/usr/bin/google-chrome', '/usr/bin/chromium', '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome']
-  .find((candidate): candidate is string => Boolean(candidate && existsSync(candidate)));
+const browserPath = requireBrowser();
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
 // 2026-11-08: native Enter, focus and Radix tooltips need a real browser, not a server-rendered event-handler inspection.
 describe.skipIf(!browserPath)('Journey navigation (headless CDP)', () => {
-  let server: ViteDevServer | undefined;
-  let browser: ChildProcess | undefined;
-  let temporary: string | undefined;
-  let socket: WebSocket | undefined;
-  let sequence = 0;
-  const pending = new Map<number, { resolve: (value: any) => void; reject: (error: Error) => void }>();
-  const errors: string[] = [];
-  function send(method: string, params: object = {}): Promise<any> {
-    const id = ++sequence;
-    return new Promise((resolve, reject) => { pending.set(id, { resolve, reject }); socket!.send(JSON.stringify({ id, method, params })); });
-  }
-  async function evaluate(expression: string): Promise<any> {
-    const result = await send('Runtime.evaluate', { expression, returnByValue: true, awaitPromise: true });
-    if (result.exceptionDetails) throw new Error(result.exceptionDetails.exception?.description ?? result.exceptionDetails.text);
-    return result.result?.value;
-  }
-  async function until(expression: string, attempts = 100) {
-    for (let attempt = 0; attempt < attempts; attempt++) {
-      if (await evaluate(expression)) return;
-      await delay(50);
-    }
-    throw new Error('Timed out: ' + expression + '\n' + errors.join('\n'));
-  }
+  const session = createBrowserSession();
+  const { send, evaluate, until } = session;
+  let errors: string[] = [];
   async function render(overrides: object = {}) {
     await evaluate(`window.journeyTrackTest.render(${JSON.stringify({ ...props, dependencies: run, ...overrides })})`);
     await delay(80);
@@ -249,48 +220,13 @@ describe.skipIf(!browserPath)('Journey navigation (headless CDP)', () => {
 
   beforeAll(async () => {
     vi.unstubAllGlobals();
-    temporary = await mkdtemp(path.join(tmpdir(), 'journey-test-'));
-    server = await createServer({ configFile: false, root: process.cwd(), cacheDir: path.join(temporary, 'vite'),
-      plugins: [tailwindcss(), { name: 'journey-fixture', configureServer(vite) {
-        vite.middlewares.use((request, response, next) => {
-          if (request.url !== '/') return next();
-          response.setHeader('Content-Type', 'text/html');
-          response.end('<!doctype html><html><body><div id="root"></div><script type="module" src="/tests/fixtures/journey-track.tsx"></script></body></html>');
-        });
-      } }], server: { host: '127.0.0.1', port: 0 }, optimizeDeps: { entries: ['tests/fixtures/journey-track.tsx'] }, logLevel: 'error' });
-    await server.listen();
-    await server.warmupRequest('/tests/fixtures/journey-track.tsx');
-    const port = await freePort();
-    browser = spawn(browserPath!, ['--headless=new', '--disable-gpu', '--no-first-run', '--no-default-browser-check',
-      `--remote-debugging-port=${port}`, `--user-data-dir=${path.join(temporary, 'profile')}`, 'about:blank'], { stdio: 'ignore' });
-    const target = await waitForPageTarget(port, browser!);
-    socket = new WebSocket(target);
-    await new Promise(resolve => socket!.addEventListener('open', resolve, { once: true }));
-    socket.addEventListener('message', event => {
-      const message = JSON.parse(String(event.data));
-      if (message.id) {
-        const request = pending.get(message.id);
-        pending.delete(message.id);
-        if (message.error) request?.reject(new Error(JSON.stringify(message.error)));
-        else request?.resolve(message.result);
-      }
-      if (message.method === 'Runtime.exceptionThrown') errors.push(message.params.exceptionDetails.exception?.description ?? message.params.exceptionDetails.text);
-    });
-    await send('Page.enable');
-    await send('Runtime.enable');
-    await send('Page.navigate', { url: server.resolvedUrls!.local[0] });
-    await until('Boolean(window.journeyTrackTest)', 600);
+    await session.open(browserPath!);
+    errors = session.errors;
+    await session.navigate('journey-track', 'Boolean(window.journeyTrackTest)', 600);
   }, 90000);
 
   afterAll(async () => {
-    if (socket?.readyState === WebSocket.OPEN) { await closeBrowserGently(send); socket.close(); }
-    if (browser?.pid && browser.exitCode === null) {
-      const command = process.platform === 'win32' ? spawn('taskkill', ['/T', '/F', '/PID', String(browser.pid)], { stdio: 'ignore' }) : browser;
-      if (process.platform !== 'win32') browser.kill();
-      await new Promise(resolve => { if (command.exitCode !== null) resolve(null); else command.once('exit', resolve); });
-    }
-    await server?.close();
-    if (temporary) await rm(temporary, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+    await session.close();
   }, 20000);
 
   beforeEach(async () => {
@@ -498,14 +434,14 @@ describe.skipIf(!browserPath)('Journey navigation (headless CDP)', () => {
     expect(errors).toEqual([]);
   });
 
-  // 2026-11-08: the author hovered card 1 and still saw card 2's tooltip — Radix kept the wide tooltip open while the
+  // 2026-11-08: Radix kept card 2's wide tooltip open while the
   // pointer stayed in its grace area, which covers the neighbouring cards. The hovered card always wins over focus.
   it('names the hovered card, not the focused one, and closes when the pointer leaves the row', async () => {
     const tooltips = `[...document.querySelectorAll('[role="tooltip"]')].map(tip => tip.textContent).join('|')`;
     const center = (index: number) => evaluate(`(() => { const box = document.querySelectorAll('.journey-track-open')[${index}].getBoundingClientRect();
       return { x: box.left + box.width / 2, y: box.top + box.height / 2 }; })()`);
     const move = async (x: number, y: number) => { await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x, y }); await delay(20); };
-    // A long title widens the tooltip over the neighbouring cards, as with the author's "Build Moonwake Lantern".
+    // A long title widens the tooltip over the neighbouring cards.
     await render({ cards: run.map(card => card.id === build.id ? { ...card, title: 'Build prop for the evening harbor crossing' } : card) });
     const [first, second] = [await center(0), await center(1)];
     await evaluate(`document.querySelector('.journey-track-open[data-next]').focus()`);
@@ -519,7 +455,7 @@ describe.skipIf(!browserPath)('Journey navigation (headless CDP)', () => {
     await until(`!document.querySelector('[role="tooltip"]')`, 40);
   }, 20000);
 
-  // 2026-11-08: the author still saw tips without hovering. Radix opened them on any focus a pointer did not cause.
+  // 2026-11-08: Radix opened tooltips on any focus a pointer did not cause, including restored focus.
   const tips = `[...document.querySelectorAll('[role="tooltip"]')].map(tip => tip.textContent).join('|')`;
   const cardCenter = (index: number) => evaluate(`(() => { const box = document.querySelectorAll('.journey-track-open')[${index}].getBoundingClientRect();
     return { x: box.left + box.width / 2, y: box.top + box.height / 2 }; })()`);
@@ -540,7 +476,7 @@ describe.skipIf(!browserPath)('Journey navigation (headless CDP)', () => {
     // As after closing the Sub Card with Esc: focus comes back to the card without a pointer or a navigation key.
     await key('Escape');
     await evaluate(`document.querySelector('#after').focus(); document.querySelectorAll('.journey-track-open')[2].focus()`);
-    await delay(600);
+    await expectPageStateDuring(evaluate, `${tips} === ''`, 600);
     expect(await evaluate(tips)).toBe('');
     await evaluate(`document.querySelector('.journey-track-title-button').focus()`);
     await key('Tab');

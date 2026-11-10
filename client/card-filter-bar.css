@@ -1,0 +1,7 @@
+/* 2026-11-10: scope and deck filters share the workbench's first row and the panel controls' Foil mark. */
+.card-filter-bar.panel-head { flex-wrap: wrap; gap: var(--space-2) var(--space-3); margin: var(--workbench-row-inset) 0 var(--space-3); }
+.card-filter-count { color: var(--muted); font-size: 12px; line-height: 32px; white-space: nowrap; }
+.card-filter-bar .control { min-height: 32px; max-width: 100%; min-width: 0; padding: var(--space-1) var(--space-2); white-space: normal; text-align: start; }
+.card-filter-remove { justify-content: flex-start; }
+.card-filter-remove > span { min-width: 0; overflow-wrap: anywhere; }
+.card-filter-remove > svg { flex-shrink: 0; }

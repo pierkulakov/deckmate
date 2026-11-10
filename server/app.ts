@@ -371,13 +371,13 @@ export async function createApp(config: ServerConfig) {
     'bulk-assign-deck': ['cards', 'deckId'], 'bulk-add-track': ['cards', 'trackId'],
     'create-space': ['title'], 'create-deck': ['title', 'spaceId', 'kind', 'icon', 'color', 'description'],
     'update-space': ['spaceId', 'title', 'kind', 'icon'],
+    'delete-space': ['spaceId'],
     'update-deck': ['deckId', 'title', 'icon', 'color', 'description', 'style', 'cover', 'coverPosition'],
     'set-deck-kind': ['deckId', 'kind'],
     'upload-cover': ['deckId', 'dataUrl'],
     'move-deck': ['deckId', 'spaceId', 'beforeDeckId'],
     'move-space': ['spaceId', 'beforeSpaceId'],
     'set-deck-watchers': ['deckId', 'watcherIds'],
-    'set-deck-pile': ['deckId', 'piled'],
     'set-deck-guardians': ['deckId', 'guardianIds'],
     'set-deck-automation': ['deckId', 'autoTag', 'autoTagKeep', 'templateMarkdown', 'templateOwner', 'templateEffort', 'templatePriority'],
     'set-deck-default-order': ['deckId', 'defaultOrder'],
@@ -385,6 +385,7 @@ export async function createApp(config: ServerConfig) {
     'create-journey': ['deckId', 'title', 'steps'],
     'apply-journey': ['cardId', 'journeyId', 'journeyHash', 'stepIds', 'deckAssignments', 'sourceHash'],
     'update-journey': ['journeyId', 'journeyHash', 'title', 'description', 'zones', 'steps'],
+    'abandon-journey-operation': ['journeyId', 'journalHash'],
     'import-journey-template': ['deckId', 'templateId', 'templateSource', 'templateHash', 'mode', 'journeyId', 'journeyHash', 'roleMapping'],
     'save-journey-template': ['journeyId', 'journeyHash', 'title', 'description', 'category', 'tags'],
     'add-journey-step-lesson': ['journeyId', 'journeyHash', 'stepId', 'cardId', 'text'],
@@ -424,6 +425,7 @@ export async function createApp(config: ServerConfig) {
     properties: {
       action: { type: 'string', enum: Object.keys(catalogRequirements) }, manifestHash: { type: 'string', maxLength: 64 },
       optionsHash: { type: 'string', pattern: '^(?:[0-9a-f]{64})?$' },
+      journalHash: { type: 'string', pattern: '^[0-9a-f]{64}$' },
       tagsHash: { type: 'string', pattern: '^(?:[0-9a-f]{64})?$' },
       tag: { type: 'object', additionalProperties: false, required: ['name', 'color'], properties: {
         name: { type: 'string', minLength: 1, maxLength: 80 }, color: { type: 'string', pattern: '^#[0-9a-fA-F]{6}$' },
@@ -471,8 +473,6 @@ export async function createApp(config: ServerConfig) {
       guardianIds: { type: 'array', maxItems: 200, uniqueItems: true, items: { type: 'string', pattern: '^[a-z0-9][a-z0-9-]{0,79}$' } },
       autoTag: { type: ['string', 'null'], maxLength: 80 },
       autoTagKeep: { type: 'boolean' },
-      // 2026-11-06: set-deck-pile moves a deck to the pile at the end of its space (true) or back to the shelf (false).
-      piled: { type: 'boolean' },
       templateMarkdown: { type: ['string', 'null'], maxLength: 50000 },
       templateOwner: { type: ['string', 'null'], maxLength: 120 },
       templateEffort: { type: ['number', 'null'], minimum: 0 },
@@ -532,7 +532,7 @@ export async function createApp(config: ServerConfig) {
       { if: { properties: { action: { enum: shortTitleActions } }, required: ['action'] },
         then: { type: 'object', properties: { title: { type: 'string', maxLength: 120 } } } },
       // Only an import creating a new Journey may use null journeyId/journeyHash.
-      { if: { properties: { action: { enum: ['apply-journey', 'update-journey', 'save-journey-template', 'add-journey-step-lesson'] } }, required: ['action'] },
+      { if: { properties: { action: { enum: ['apply-journey', 'update-journey', 'save-journey-template', 'add-journey-step-lesson', 'abandon-journey-operation'] } }, required: ['action'] },
         then: { properties: { journeyId: { type: 'string' }, journeyHash: { type: 'string' } } } },
       { if: { properties: { action: { const: 'set-deck-kind' } }, required: ['action'] },
         then: { properties: { kind: { type: 'string', enum: ['asset', 'task', 'knowledge', 'mixed'] } } } },

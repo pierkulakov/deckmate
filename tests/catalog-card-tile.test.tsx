@@ -65,7 +65,7 @@ it('sizes each Hero progress step by its Sub Card weight, the same weight as the
   expect(html).toContain('title="Effort: own and Sub Cards — 6">6</strong>');
 });
 
-// 2026-11-09: «Страница» — one band row (type icon, questions, word count) and a face that opens on the document's text.
+// 2026-11-09: a Doc tile has one band row (type icon, questions, word count) and opens on the document's text.
 it('shows the Doc type, questions and word count in one band row and opens the face on the document text', () => {
   // Its own hash: tiles remember text-derived values per card revision, and other tests render card:tile with other text.
   const doc: Partial<CatalogCard> = { kind: 'doc', state: null, sourceHash: 'doc-page', markdown: 'Watch a new player arrive.\n\n## Working notes\nCan they find the lantern?', openQuestions: [{ text: 'Question?', taskRef: null }] };

@@ -1,10 +1,12 @@
-import { useEffect, useId, useMemo, useRef, useState } from 'react';
+import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { failureMessage } from '../failure-message.ts';
 import * as Dialog from '@radix-ui/react-dialog';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import type { RootContent } from 'mdast';
-import { Archive, ArchiveRestore, Bookmark, Check, Copy, Crown, Eye, Gauge, Layers, LoaderCircle, MoreHorizontal, Paperclip, Pause, Play, RotateCcw, Route, Scan, SlidersHorizontal, Trash2, X } from 'lucide-react';
+import { Archive, ArchiveRestore, Bookmark, Check, Copy, Crown, Eye, Gauge, History, Layers, Link2, LoaderCircle, MoreHorizontal, Paperclip, Pause, Play, RotateCcw, Route, Scan, SlidersHorizontal, Trash2, Undo2, X } from 'lucide-react';
 import { deckAcceptsCard, type CardContent, type CatalogCard, type CatalogView } from '../../src/catalog-contracts.ts';
 import type { BulkChange } from '../../src/bulk-contracts.ts';
+import { openDependencies } from '../../src/dependency-contracts.ts';
 import type { NotificationsView } from '../../src/notification-contracts.ts';
 import type { SliceStatus, WorkspaceSnapshot } from '../../src/workspace-contracts.ts';
 import type { CatalogAction } from '../useCatalog.ts';
@@ -13,28 +15,35 @@ import { CardIndicators } from './CardIndicators.tsx';
 import { CardPropertiesPanel, cardHeroEffort } from './CardPropertiesPanel.tsx';
 import { shortReference } from '../../src/references.ts';
 import { markdownParser } from '../../src/markdown-model.ts';
-import { CardContentEditor } from './CardContentEditor.tsx';
+import { CardContentEditor, cardReadOnlyDescription } from './CardContentEditor.tsx';
 import { OpenQuestions } from './OpenQuestions.tsx';
 import { CardOwnerAvatar, CardQuickSettings, type CardQuickSettingsTab } from './CardQuickSettings.tsx';
 import { DeckPicker } from './DeckPicker.tsx';
 import { ApplyJourneyPanel } from './JourneyPanel.tsx';
 import { JourneyTrack } from './JourneyTrack.tsx';
-import { subCardsCount } from './CardFamily.tsx';
+import { CardDependenciesSection, CardHistorySection, subCardsCount, uniqueCardTitles } from './CardFamily.tsx';
 import { DependencyStateWarning, dependencyConflicts, type DependencyConflict } from './DependencyWarning.tsx';
 import { AttachmentsPanel } from './AttachmentsPanel.tsx';
-import { JourneyReturnPrompt, isJourneyReturn, journeyLessonAction, type JourneyReturnAnswer } from './JourneyReturnPrompt.tsx';
+import { ReviewReturnPrompt, isReviewReturn, journeyLessonAction, type ReviewReturnAnswer } from './ReviewReturnPrompt.tsx';
+import { resolveCardStateAction, type CardReviewFocus, type CardReviewRequest, type CardStateAction } from '../card-state-actions.ts';
 import { buildCatalogLookups, familyChildren } from '../catalog-lookups.ts';
 import { useJustFinished } from '../done-impact.ts';
 import { heroFinished, heroTakesManualDone } from '../../src/hero-done.ts';
 import { useCardTilt } from '../useCardTilt.ts';
-import { OPEN_CARD_SHORTCUTS, claimOpenCardShortcuts, markShortcutPropertyHover, matchShortcut, resolveHoveredCardShortcut, shortcutTargetBlocked } from '../keyboard-shortcuts.ts';
+import { OPEN_CARD_SHORTCUTS, claimOpenCardShortcuts, markShortcutPropertyHover, matchShortcut, resolveCardShortcutAction, resolveHoveredCardShortcut, shortcutTargetBlocked } from '../keyboard-shortcuts.ts';
 import { currentMember, onMemberChange } from '../current-member.ts';
 import { countCatalogCardWords } from '../card-word-count.ts';
 import { Button } from './ui/button.tsx';
 import { defineText, locale, textNow, useLang, useText } from '../i18n.ts';
-import { priorityLabel } from '../locales/common.ts';
+import { moveFocus } from '../focus.ts';
+import { priorityLabel, stateLabel } from '../locales/common.ts';
+import { memberForOwner, ownerProgressLabel } from './CardOwnerAvatar.tsx';
 import { JourneyStepNote } from './JourneyStepNote.tsx';
 import '../card-preview.css';
+// 2026-11-10: the preview uses the shared surface classes; importing them here keeps fixtures that mount it alone styled too.
+import '../surface.css';
+import '../card-state-row.css';
+import { prepareEntrance } from '../prepared-motion.ts';
 
 const text = defineText({
   copyId: 'Copy card ID',
@@ -47,6 +56,8 @@ const text = defineText({
   watchOpenFailed: 'Could not read the watch list. Reopen the menu.',
   watchSaveFailed: 'Could not save the watch setting. Reopen the menu.',
   stale: 'The card or catalog changed. Close the menu and try again with current data.',
+  useCurrentReturn: 'Use current data; keep the reason',
+  returnStale: 'The card or catalog changed. Use current data to retry; your reason is kept.',
   notConfirmed: 'Change not confirmed. Check the catalog message and try again.',
   saveFailed: 'Could not save the change. Try again.',
   loadMarkdown: 'Could not load card Markdown.',
@@ -66,16 +77,26 @@ const text = defineText({
   card: (title: string) => `Card: ${title}`,
   noDeck: 'No deck',
   moveDeck: 'Move to another deck',
-  sandboxDeck: 'Open sandbox to change the deck',
   closeCard: 'Close card',
   openFamily: 'Open Hero and Sub Cards',
   returnToHero: (title: string) => `Back to Hero: ${title} · Esc`,
   parentProgress: (done: number, total: number) => `Hero: ${done} of ${total} done`,
   cardState: 'Card state',
+  stateGroup: (state: string) => `State: ${state}`,
+  stateAction: (state: string, action: string) => `${state} — ${action}`,
   start: 'Start work',
-  review: 'Send to review',
+  stop: 'Stop work · return to planned',
+  reviewInProgress: 'Review in progress · decide with the review button',
+  openReview: 'Open review',
+  acceptReview: 'Accept review',
+  requestChanges: 'Request changes…',
+  reopen: 'Reopen · return to planned',
+  reopenCard: 'Reopen',
+  reopenRequired: 'Reopen the card before starting work.',
+  showDependencies: 'Show dependencies',
+  blockers: (count: number) => `Dependencies and blockers${count ? ` (${count})` : ''}`,
+  review: 'Submit for review',
   accept: 'Accept card',
-  plan: 'Return to planned',
   heroDone: 'Mark Hero done',
   heroUndone: 'Remove the done mark',
   applyJourney: 'Apply Journey to Hero Card',
@@ -96,8 +117,6 @@ const text = defineText({
   attachmentsPanel: 'Attachments',
   focusMode: 'Focus Mode',
   moreOptions: 'More Options',
-  ownerLabel: (owner: string) => `Owner: ${owner}`,
-  unassigned: 'Unassigned',
   family: 'Hero and Sub Cards',
   trashChildren: 'This card’s Sub Cards, including archived ones, will also move to Trash. They can be restored with the parent.',
   removalConflict: 'The card or catalog changed. Close this window and try again with current data.',
@@ -120,7 +139,18 @@ const text = defineText({
   startJourney: 'Start Journey',
   effort: 'Effort',
   priority: 'Priority',
-  markdownLabel: 'Markdown',
+  moreTags: (count: number) => `Show ${count} more tags`,
+  fullTitle: 'Show full title',
+  collapseTitle: 'Collapse title',
+  dependenciesPanel: 'Dependencies',
+  historyPanel: 'History',
+  archived: 'Archived',
+  trashed: 'In Trash — file preserved. Restore before editing.',
+  staysArchived: 'Restoring keeps this card archived.',
+  restore: 'Restore',
+  returnReview: 'Request changes',
+  returnDescription: 'Describe what needs changing. The reason will be recorded in the card history.',
+  words: (count: number) => `${new Intl.NumberFormat('en-US').format(count)} ${new Intl.PluralRules('en-US').select(count) === 'one' ? 'word' : 'words'}`,
 }, {
   copyId: 'Скопировать ID карточки',
   copyReference: (reference: string) => `Скопировать ID ${reference}`,
@@ -137,6 +167,8 @@ const text = defineText({
   watchOpenFailed: 'Не удалось прочитать список наблюдения. Откройте меню заново.',
   watchSaveFailed: 'Не удалось сохранить наблюдение. Откройте меню заново.',
   stale: 'Карточка или каталог изменились. Закройте меню и повторите действие с актуальными данными.',
+  useCurrentReturn: 'Использовать актуальные данные, сохранив причину',
+  returnStale: 'Карточка или каталог изменились. Используйте актуальные данные для повтора; причина сохранена.',
   notConfirmed: 'Изменение не подтверждено. Проверьте сообщение каталога и повторите действие.',
   saveFailed: 'Не удалось сохранить изменение. Повторите действие.',
   loadMarkdown: 'Не удалось загрузить Markdown карточки.',
@@ -156,16 +188,26 @@ const text = defineText({
   card: (title: string) => `Карточка: ${title}`,
   noDeck: 'Без колоды',
   moveDeck: 'Переместить в другую колоду',
-  sandboxDeck: 'Для изменения колоды откройте sandbox',
   closeCard: 'Закрыть карточку',
   openFamily: 'Открыть Hero и Sub Cards',
   returnToHero: (title: string) => `Вернуться к Hero: ${title} · Esc`,
   parentProgress: (done: number, total: number) => `Hero: принято ${done} из ${total}`,
   cardState: 'Состояние карточки',
-  start: 'Взять в работу',
+  stateGroup: (state: string) => `Состояние: ${state}`,
+  stateAction: (state: string, action: string) => `${state} — ${action}`,
+  start: 'Начать работу',
+  stop: 'Остановить работу · вернуть в план',
+  reviewInProgress: 'Идёт приёмка · решение — в кнопке приёмки',
+  openReview: 'Открыть приёмку',
+  acceptReview: 'Принять результат',
+  requestChanges: 'Вернуть на доработку…',
+  reopen: 'Открыть снова · вернуть в план',
+  reopenCard: 'Открыть снова',
+  reopenRequired: 'Откройте карточку снова, прежде чем начинать работу.',
+  showDependencies: 'Показать зависимости',
+  blockers: (count: number) => `Зависимости и препятствия${count ? ` (${count})` : ''}`,
   review: 'Отправить на приёмку',
   accept: 'Принять карточку',
-  plan: 'Вернуть в план',
   heroDone: 'Отметить Hero выполненной',
   heroUndone: 'Снять отметку «выполнена»',
   applyJourney: 'Применить Journey к Hero Card',
@@ -186,8 +228,6 @@ const text = defineText({
   attachmentsPanel: 'Вложения',
   focusMode: 'Фокус-режим',
   moreOptions: 'Ещё действия',
-  ownerLabel: (owner: string) => `Исполнитель: ${owner}`,
-  unassigned: 'Без исполнителя',
   family: 'Hero и Sub Cards',
   trashChildren: 'В корзину также попадут Sub Cards этой карточки, включая архивные. Их можно восстановить вместе с родителем.',
   removalConflict: 'Карточка или каталог изменились. Закройте это окно и повторите действие с актуальными данными.',
@@ -210,7 +250,24 @@ const text = defineText({
   startJourney: 'Запустить Journey',
   effort: 'Оценка',
   priority: 'Приоритет',
-  markdownLabel: 'Markdown',
+  moreTags: (count: number) => `Показать остальные теги: ${count}`,
+  fullTitle: 'Название целиком',
+  collapseTitle: 'Свернуть название',
+  dependenciesPanel: 'Зависимости',
+  historyPanel: 'История',
+  archived: 'В архиве',
+  trashed: 'В корзине — файл сохранён. Для правки восстановите карточку.',
+  staysArchived: 'После восстановления карточка останется в архиве.',
+  restore: 'Восстановить',
+  returnReview: 'Вернуть на доработку',
+  returnDescription: 'Укажите, что нужно исправить. Причина останется в истории карточки.',
+  words: (count: number) => {
+    const rule = new Intl.PluralRules('ru-RU').select(count);
+    let unit = 'слов';
+    if (rule === 'one') unit = 'слово';
+    if (rule === 'few') unit = 'слова';
+    return `${new Intl.NumberFormat('ru-RU').format(count)} ${unit}`;
+  },
 });
 
 interface CardPreviewProps {
@@ -220,6 +277,7 @@ interface CardPreviewProps {
   writable: boolean;
   pending: boolean;
   onClose: () => void;
+  onCancelEdit?: () => void;
   onSelect: (card: CatalogCard) => void;
   onOpenSubCard?: (card: CatalogCard) => void;
   onReturnToHero?: () => void;
@@ -232,8 +290,10 @@ interface CardPreviewProps {
   /** Open is available only when the card is shown outside its own deck. */
   onOpenDeck?: () => void;
   familyVisible?: boolean;
+  reviewRequest?: CardReviewRequest;
+  onReviewRequestHandled?: (sequence: number) => void;
 }
-type CardPanel = 'content' | 'properties' | 'attachments';
+type CardPanel = 'content' | 'properties' | 'attachments' | 'dependencies' | 'history';
 type CardRemoval = 'archive' | 'unarchive' | 'delete';
 const openCardShortcuts = OPEN_CARD_SHORTCUTS;
 function shortcutKeys(id: string): string | undefined { return openCardShortcuts.find(shortcut => shortcut.id === id)?.keys; }
@@ -256,6 +316,15 @@ function CardIdChip({ cardId }: { cardId: string }) {
     <span className="card-id-feedback" role="status" data-state={feedback || undefined}>{feedback === 'copied' && <><Check size={12} aria-hidden="true" />{t.copied}</>}{feedback === 'failed' && t.copyFailed}</span></span>;
 }
 
+// 2026-11-10: bracketed marks distinguish workflow actions from the app's circular help icons.
+function StateBracketIcon({ question = false }: { question?: boolean }) {
+  return <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <path d="M8 3H5v18h14V3h-3" />
+    {question ? <path d="M9.5 7a2.5 2.5 0 0 1 5 0c0 2-2.5 2-2.5 4v1" /> : <path d="M12 5v7" />}
+    <path d="M12 16h.01" />
+  </svg>;
+}
+
 function cardLinksTo(candidate: CatalogCard, reference: string, source: string): boolean {
   if (!candidate.markdown.includes(reference)) return false;
   const tree = markdownParser.parse(candidate.markdown);
@@ -276,7 +345,7 @@ function cardLinksTo(candidate: CatalogCard, reference: string, source: string):
   return tree.children.some(containsLink);
 }
 
-export function CardPreview({ card, catalog, snapshot, writable, pending, onClose, onSelect, onOpenSubCard, onReturnToHero, onEdit, onDirtyChange, onShowFamily, onToggleFamily, onManageJourney, onShowTagCards, onOpenDeck, familyVisible }: CardPreviewProps) {
+export function CardPreview({ card, catalog, snapshot, writable, pending, onClose, onCancelEdit, onSelect, onOpenSubCard, onReturnToHero, onEdit, onDirtyChange, onShowFamily, onToggleFamily, onManageJourney, onShowTagCards, onOpenDeck, familyVisible, reviewRequest, onReviewRequestHandled }: CardPreviewProps) {
   const [saving, setSaving] = useState(false);
   const t = useText(text);
   const lang = useLang();
@@ -286,10 +355,14 @@ export function CardPreview({ card, catalog, snapshot, writable, pending, onClos
   const [journeySaving, setJourneySaving] = useState(false);
   const [contentEditing, setContentEditing] = useState(false);
   const [propertiesActive, setPropertiesActive] = useState(false);
+  // 2026-11-10: the pinned dock's action slot, where CardContentEditor portals its reading footer.
+  const [dockActions, setDockActions] = useState<HTMLDivElement | null>(null);
   const [quickSettings, setQuickSettings] = useState<{ cardId: string; tab: CardQuickSettingsTab; anchor: HTMLElement } | null>(null);
   const [quickSaving, setQuickSaving] = useState(false);
   const [panelTarget, setPanelTarget] = useState<{ panel: CardPanel; property?: 'tags' }>({ panel: 'content' });
   const activePanel = panelTarget.panel;
+  const panelOpen = activePanel !== 'content';
+  const layout = useRef<HTMLDivElement>(null);
   const [stateNotice, setStateNotice] = useState('');
   const [moreOpen, setMoreOpen] = useState(false);
   const [moreRevision, setMoreRevision] = useState('');
@@ -300,8 +373,15 @@ export function CardPreview({ card, catalog, snapshot, writable, pending, onClos
   const copyRequest = useRef<AbortController | null>(null);
   // Starting or accepting a card with unfinished prerequisites requires confirmation.
   const [stateQuestion, setStateQuestion] = useState<{ state: SliceStatus; conflicts: DependencyConflict[] } | null>(null);
-  // Returning a Journey card from review first asks for a reason to record as a pitfall.
+  // 2026-11-10: all returns from review use the same required feedback and retain their opening revision.
   const [returnState, setReturnState] = useState<SliceStatus | null>(null);
+  const [returnError, setReturnError] = useState('');
+  const [returnRevision, setReturnRevision] = useState('');
+  const returnOpener = useRef<HTMLElement | null>(null);
+  const returnSaved = useRef(false);
+  const panelOpener = useRef<HTMLElement | null>(null);
+  const [titleExpanded, setTitleExpanded] = useState(false);
+  const [longTitle, setLongTitle] = useState(false);
   const [openQuestionsActive, setOpenQuestionsActive] = useState(false);
   const stateInFlight = useRef(false);
   const journeyInFlight = useRef(false);
@@ -309,12 +389,25 @@ export function CardPreview({ card, catalog, snapshot, writable, pending, onClos
   const journeyManaging = useRef(false);
   const preview = useRef<HTMLElement>(null);
   const materialGlare = useCardTilt<HTMLElement>(0);
-  // 2026-11-09: the author asked for the band's soft glow on the gold parent bar as well.
+  // 2026-11-09: the gold parent bar shares the band's soft glow.
   const parentGlare = useCardTilt<HTMLButtonElement>(0);
   const propertiesContainer = useRef<HTMLDivElement>(null);
   const attachmentsContainer = useRef<HTMLDivElement>(null);
+  const relatedContainer = useRef<HTMLDivElement>(null);
   const panelId = useId();
   const heading = useRef<HTMLHeadingElement>(null);
+  const playButton = useRef<HTMLButtonElement>(null);
+  const reviewButton = useRef<HTMLButtonElement>(null);
+  const doneButton = useRef<HTMLButtonElement>(null);
+  const reviewAccept = useRef<HTMLDivElement>(null);
+  const reviewMenu = useRef<HTMLDivElement>(null);
+  const [reviewFocus, setReviewFocus] = useState<CardReviewFocus | null>(null);
+  const handledReviewRequest = useRef<number | null>(null);
+  const stateFocus = useRef<{ cardId: string; state: SliceStatus } | null>(null);
+  const focusedCardId = useRef<string | null>(null);
+  const stateMenuClosing = useRef(false);
+  const latestCardState = useRef(card.state);
+  latestCardState.current = card.state;
   const currentCard = catalog.cards.find(candidate => candidate.id === card.id);
   const revision = JSON.stringify([snapshot.source, card.id, currentCard?.sourceHash, catalog.manifestHash, catalog.optionsHash]);
   const latestRevision = useRef(revision);
@@ -344,7 +437,9 @@ export function CardPreview({ card, catalog, snapshot, writable, pending, onClos
   const stepNoteShown = Boolean(card.journey && stepRunCards.some(candidate => candidate.id === card.id));
   const journeyChildren = journeyReference ? orderedChildren.filter(child => child.journey?.journeyId === journeyReference.journeyId
     && child.journey.version === journeyReference.version && child.journey.instanceId === journeyReference.instanceId) : [];
+  const journeyTrackShown = Boolean(journeyReference && journeyChildren.length > 0);
   const cardsById = indicatorLookups.cardById;
+  const blockerCount = openDependencies(card.dependsOn, cardsById).length;
   const backlinks = useMemo(() => card.kind === 'doc' ? catalog.cards.filter(candidate => candidate.id !== card.id && !candidate.deleted && !candidate.archived
     && cardLinksTo(candidate, shortReference('c', card.id), snapshot.source)) : [], [catalog.cards, card.id, card.kind, snapshot.source]);
   // Tags described by this card, such as a faction tag linked to its card in a Factions deck.
@@ -363,10 +458,27 @@ export function CardPreview({ card, catalog, snapshot, writable, pending, onClos
   const focusDisabled = saving || quickSaving || pending || journeySaving || propertiesActive || openQuestionsActive;
   const actionDisabled = quickDisabled || snapshot.source !== 'sandbox' || Boolean(currentCard?.deleted);
   const stateDisabled = actionDisabled || Boolean(currentCard?.archived);
+  const terminalState = card.state === 'done' || card.state === 'wont-do';
+  let playLabel = t.start;
+  if (card.state === 'started') playLabel = t.stop;
+  if (card.state === 'review') playLabel = t.reviewInProgress;
+  if (terminalState) playLabel = t.reopenRequired;
+  const stateName = stateLabel(card.state ?? 'not-started', lang);
+  const reviewLabel = card.state === 'review' ? t.openReview : t.review;
+  let doneLabel = t.accept;
+  if (card.state === 'review') doneLabel = t.acceptReview;
+  if (card.state === 'done') doneLabel = t.reopen;
   const moreConflict = moreOpen && moreRevision !== revision;
   const removalConflict = Boolean(removal && removal.revision !== revision);
   const docWords = useMemo(() => card.kind === 'doc' ? countCatalogCardWords(card) : 0, [card.id, card.kind, card.sourceHash, card.markdown]);
   const legacyDocument = card.kind === 'doc' && !card.id.startsWith('card:');
+  const tags = [...new Set(card.tags ?? [])];
+  const ownerMember = memberForOwner(card.owner, catalog.members ?? []);
+  const ownerName = ownerMember?.label ?? card.owner;
+  const checklist = indicatorLookups.checklistByCard.get(card.id);
+  const ownerLabel = ownerProgressLabel(ownerName, checklist, lang);
+  const ownerInitials = ownerName?.trim().split(/\s+/u).slice(0, 2).map(part => Array.from(part)[0]).join('').toLocaleUpperCase(languageTag);
+  const titlesById = useMemo(() => uniqueCardTitles(catalog.cards), [catalog.cards]);
   const watchMember = (catalog.members ?? []).find(member => member.id === selectedMemberId) ?? currentMember(catalog.members ?? []);
   const watchMemberId = watchMember?.id;
   const watchContext = JSON.stringify([snapshot.source, watchMemberId, card.id]);
@@ -376,19 +488,96 @@ export function CardPreview({ card, catalog, snapshot, writable, pending, onClos
   const explicitlyWatching = watchState?.watching.includes(card.id) ?? false;
   const token = (snapshot as WorkspaceSnapshot & { token?: string }).token;
 
-  useEffect(() => { heading.current?.focus(); }, [card.id]);
+  useEffect(() => {
+    if (focusedCardId.current === card.id) return;
+    focusedCardId.current = card.id;
+    setReviewFocus(null); moveFocus(heading.current);
+  }, [card.id]);
+  useEffect(() => {
+    // 2026-11-10: consume navigation intent in Deck too, so history/remounts cannot replay a review shortcut.
+    if (!reviewRequest || handledReviewRequest.current === reviewRequest.sequence) return;
+    handledReviewRequest.current = reviewRequest.sequence;
+    onReviewRequestHandled?.(reviewRequest.sequence);
+    if (card.state === 'review') setReviewFocus(reviewRequest.focus);
+  }, [card.id, reviewRequest, onReviewRequestHandled]);
+  useEffect(() => {
+    const request = stateFocus.current;
+    if (!request || request.cardId !== card.id || navigationLocked || returnState || card.state !== request.state) return;
+    stateFocus.current = null;
+    focusStateButton();
+  });
+  useLayoutEffect(() => prepareEntrance(preview.current), [card.id]);
+  useEffect(() => { setTitleExpanded(false); }, [card.id]);
+  useLayoutEffect(() => {
+    const title = heading.current;
+    if (!title) return;
+    const measure = () => setLongTitle(title.scrollHeight > parseFloat(getComputedStyle(title).lineHeight) * 4 + 1);
+    const observer = new ResizeObserver(measure);
+    observer.observe(title);
+    measure();
+    return () => observer.disconnect();
+  }, [card.id, card.title, contentEditing, focusMode]);
+  const hasParentStrip = Boolean(parent);
+  useLayoutEffect(() => {
+    // 2026-11-10: the Hero strip sits above the sheet; the icon rail starts level with the sheet, not the strip.
+    const shell = preview.current;
+    const strip = parentGlare.element.current;
+    if (!shell) return;
+    if (!strip) { shell.style.removeProperty('--preview-parent-block'); return; }
+    const measure = () => shell.style.setProperty('--preview-parent-block', `${strip.offsetHeight + parseFloat(getComputedStyle(strip).marginBottom)}px`);
+    const observer = new ResizeObserver(measure);
+    observer.observe(strip);
+    measure();
+    return () => observer.disconnect();
+  }, [card.id, hasParentStrip]);
   useEffect(() => {
     let panel: HTMLDivElement | null = null;
     if (activePanel === 'properties') panel = propertiesContainer.current;
     if (activePanel === 'attachments') panel = attachmentsContainer.current;
+    if (activePanel === 'dependencies' || activePanel === 'history') panel = relatedContainer.current;
     if (!panel) return;
     const target = panelTarget.property === 'tags' ? panel.querySelector<HTMLElement>('section[data-property="tags"]') ?? panel : panel;
-    target.focus({ preventScroll: true });
-    // 2026-11-08: stacked panels open below the whole card; their scroll margin clears the sticky deck toolbar.
+    let focusTarget = target;
+    if (panelTarget.property === 'tags') focusTarget = target.querySelector<HTMLElement>('.card-properties-tag-chip:not(:disabled)')
+      ?? target.querySelector<HTMLElement>('.card-tag-open:not(:disabled)') ?? target;
+    moveFocus(focusTarget, { preventScroll: true });
+    // 2026-11-10: on the desktop the layer scrolls on its own and only a section inside it is brought into view; on a phone
+    // the page scrolls, so the layer's top is brought just below the sticky deck toolbar (its scroll margin).
     if (target !== panel || window.matchMedia('(max-width: 760px)').matches) {
       target.scrollIntoView({ block: target === panel ? 'start' : 'center', inline: 'nearest', behavior: 'instant' });
     }
   }, [activePanel, panelTarget]);
+  useEffect(() => {
+    if (activePanel === 'content') return;
+    function closeOnEscape(event: KeyboardEvent) {
+      if (event.key !== 'Escape' || event.defaultPrevented || navigationLocked || document.querySelector('[role="dialog"], [role="menu"]')) return;
+      event.preventDefault(); event.stopImmediatePropagation();
+      closePanel();
+    }
+    window.addEventListener('keydown', closeOnEscape);
+    return () => window.removeEventListener('keydown', closeOnEscape);
+  }, [activePanel, navigationLocked]);
+  // 2026-11-10: on the desktop an open panel lies over the deck's cards beside the open card, gently dimming them instead
+  // of pushing them aside. Those cards are dimmed (card-preview.css) and inert while it is open, and
+  // a click on them closes it; the open card itself stays live. Pop-ups of the panel are portals outside the deck, so
+  // only a press inside the deck's content row, outside the card column and the divider, counts.
+  useEffect(() => {
+    const host = layout.current?.closest<HTMLElement>('.catalog-content-layout');
+    if (!panelOpen || !host || window.matchMedia('(max-width: 760px)').matches) return;
+    const results = host.querySelector<HTMLElement>(':scope > .catalog-results');
+    results?.setAttribute('inert', '');
+    function closeOnDimmedPress(event: PointerEvent) {
+      const target = event.target instanceof Element ? event.target : null;
+      if (!target || !host?.contains(target) || layout.current?.contains(target) || target.closest('.catalog-resize-handle')) return;
+      event.preventDefault();
+      closePanel();
+    }
+    document.addEventListener('pointerdown', closeOnDimmedPress, true);
+    return () => {
+      results?.removeAttribute('inert');
+      document.removeEventListener('pointerdown', closeOnDimmedPress, true);
+    };
+  }, [panelOpen]);
   useEffect(() => { onDirtyChange(saving || quickSaving || journeySaving || contentEditing || propertiesActive || openQuestionsActive); }, [saving, quickSaving, journeySaving, contentEditing, propertiesActive, openQuestionsActive, onDirtyChange]);
   useEffect(() => () => onDirtyChange(false), [onDirtyChange]);
   useEffect(() => { setStateQuestion(null); setReturnState(null); setQuickSettings(null); }, [card.id]);
@@ -410,7 +599,7 @@ export function CardPreview({ card, catalog, snapshot, writable, pending, onClos
           if (!result.watchHash) setWatchError(textNow(text).watchUnavailable);
         }
       } catch (failure) {
-        if (!controller.signal.aborted) setWatchError(failure instanceof Error ? failure.message : textNow(text).watchOpenFailed);
+        if (!controller.signal.aborted) setWatchError(failureMessage(failure, textNow(text).watchOpenFailed));
       }
     }
     void loadWatch();
@@ -432,7 +621,7 @@ export function CardPreview({ card, catalog, snapshot, writable, pending, onClos
       if (!response.ok) throw new Error(result.message ?? textNow(text).watchSaveFailed);
       if (latestWatchContext.current === watchContext) setWatchView({ context: watchContext, view: result });
     } catch (failure) {
-      if (latestWatchContext.current === watchContext) setStateNotice(failure instanceof Error ? failure.message : textNow(text).watchSaveFailed);
+      if (latestWatchContext.current === watchContext) setStateNotice(failureMessage(failure, textNow(text).watchSaveFailed));
     } finally { stateInFlight.current = false; setSaving(false); }
   }
 
@@ -473,7 +662,7 @@ export function CardPreview({ card, catalog, snapshot, writable, pending, onClos
       await navigator.clipboard.writeText('# ' + content.title + '\n\n' + content.markdown);
       setStateNotice(legacyDocument ? t.copiedLegacy : t.copiedMarkdown);
     } catch (failure) {
-      if (!controller.signal.aborted) setStateNotice(failure instanceof Error ? failure.message : t.copyMarkdownFailed);
+      if (!controller.signal.aborted) setStateNotice(failureMessage(failure, t.copyMarkdownFailed));
     } finally {
       copyRequest.current = null;
       stateInFlight.current = false;
@@ -487,18 +676,27 @@ export function CardPreview({ card, catalog, snapshot, writable, pending, onClos
     setRemoval({ action, revision: expectedRevision });
   }
 
-  function workOnCard() {
-    if (actionDisabled || !currentCard) return;
-    const member = currentMember(catalog.members ?? []);
-    if (!member) { setStateNotice(t.noMember); return; }
-    const owned = currentCard.owner === member.label || member.aliases.includes(currentCard.owner ?? '');
-    if (!owned) { void changeCard({ kind: 'properties', owner: member.label }); return; }
-    if (currentCard.kind === 'task' && !currentCard.archived) void changeState(currentCard.state === 'started' ? 'not-started' : 'started');
+  function focusStateButton() {
+    let target = playButton.current;
+    if (latestCardState.current === 'review') target = reviewButton.current;
+    if (latestCardState.current === 'done') target = doneButton.current;
+    if (!target?.isConnected || target.disabled) { moveFocus(heading.current, { preventScroll: true }); return; }
+    moveFocus(target, { preventScroll: true });
+  }
+
+  function runStateAction(action: CardStateAction) {
+    switch (action.kind) {
+      case 'review': setReviewFocus(action.focus); break;
+      case 'reopen-required': setStateNotice(t.reopenRequired); break;
+      case 'member-required': setStateNotice(t.noMember); break;
+      case 'assign': void changeCard({ kind: 'properties', owner: action.owner }); break;
+      case 'state': void changeState(action.state); break;
+    }
   }
 
   useEffect(() => {
     function handleCardShortcut(event: KeyboardEvent) {
-      if (shortcutTargetBlocked(event, 'open-card') || removal || stateQuestion) return;
+      if (shortcutTargetBlocked(event, 'open-card') || removal || stateQuestion || returnState) return;
       const hoveredProperty = resolveHoveredCardShortcut(event);
       if (hoveredProperty?.cardId === card.id && (hoveredProperty.kind === 'effort' || hoveredProperty.kind === 'priority')) {
         if (actionDisabled) return;
@@ -509,11 +707,19 @@ export function CardPreview({ card, catalog, snapshot, writable, pending, onClos
       }
       const shortcut = matchShortcut(event, openCardShortcuts);
       if (!shortcut) return;
+      // 2026-11-10: F opens Focus Mode like the button beside the title; reading only, so read-only sources keep it.
+      if (shortcut.id === 'open-card-focus') {
+        if (focusDisabled || focusMode || !exists) return;
+        event.preventDefault(); event.stopImmediatePropagation();
+        closeJourney(); setFocusMode(true);
+        return;
+      }
       // Reading panels remain available for read-only sources; mutation shortcuts are guarded below.
-      if (shortcut.id === 'open-card-attachments' || shortcut.id === 'open-card-properties') {
+      if (shortcut.id === 'open-card-attachments' || shortcut.id === 'open-card-properties' || shortcut.id === 'open-card-tags') {
         if (panelSwitchDisabled || !exists) return;
         event.preventDefault(); event.stopImmediatePropagation();
-        if (shortcut.id === 'open-card-properties') showPanel('properties');
+        if (shortcut.id === 'open-card-tags') showPanel('properties', 'tags');
+        else if (shortcut.id === 'open-card-properties') showPanel('properties');
         else openAttachments();
         return;
       }
@@ -530,47 +736,80 @@ export function CardPreview({ card, catalog, snapshot, writable, pending, onClos
       if (shortcut.id === 'open-card-work' && target?.closest('button, a, [role="button"], [role="checkbox"], [role="switch"]')) return;
       event.preventDefault();
       event.stopImmediatePropagation();
+      const stateAction = resolveCardShortcutAction(shortcut, currentCard, {
+        disabled: stateDisabled, member: currentMember(catalog.members ?? []), manualHeroDone: heroMarkable,
+      });
+      if (stateAction) { runStateAction(stateAction); return; }
       switch (shortcut.id) {
-        case 'open-card-done': if (!card.archived) void changeState(card.state === 'done' ? 'not-started' : 'done'); break;
         case 'open-card-archive': requestRemoval(card.archived ? 'unarchive' : 'archive'); break;
         case 'open-card-delete': requestRemoval('delete'); break;
         case 'open-card-bookmark': void changeCard({ kind: 'options', patch: { bookmarked: !card.bookmarked } }); break;
-        case 'open-card-work': workOnCard(); break;
       }
     }
     window.addEventListener('keydown', handleCardShortcut, true);
     return () => window.removeEventListener('keydown', handleCardShortcut, true);
   });
 
-  async function changeState(state: SliceStatus, confirmed = false, returnAnswer?: JourneyReturnAnswer) {
+  async function changeState(state: SliceStatus, confirmed = false, returnAnswer?: ReviewReturnAnswer) {
     if (actionDisabled || !currentCard || currentCard.archived || stateInFlight.current) return;
     if (currentCard.kind !== 'task' && !(heroMarkable && (state === 'done' || state === 'not-started'))) return;
     if ((currentCard.state ?? 'not-started') === state) return;
     const conflicts = confirmed ? [] : dependencyConflicts([currentCard], cardsById, state);
     setStateQuestion(conflicts.length ? { state, conflicts } : null);
     if (conflicts.length) return;
-    if (!returnAnswer && isJourneyReturn(currentCard, state)) { setReturnState(state); return; }
-    setReturnState(null);
+    if (isReviewReturn(currentCard, state)) {
+      if (!returnAnswer) {
+        setStateNotice(''); setReturnError(''); setReviewFocus(null);
+        setReturnRevision(revision);
+        returnOpener.current = reviewButton.current;
+        returnSaved.current = false;
+        setReturnState(state); return;
+      }
+      if (!returnAnswer.reason.trim() || returnRevision !== revision) { setReturnError(t.returnStale); return; }
+    }
     stateInFlight.current = true;
+    if (moreOpen) stateMenuClosing.current = true;
     setSaving(true);
     setStateNotice('');
+    setReturnError('');
+    let stateSaved = false;
     try {
       const saved = await onEdit({ action: 'set-card-state', cardId: currentCard.id, state,
         sourceHash: currentCard.sourceHash, manifestHash: catalog.manifestHash, ...(returnAnswer?.reason ? { returnReason: returnAnswer.reason } : {}) });
-      if (!saved) setStateNotice(t.stateNotConfirmed);
+      if (!saved) {
+        if (returnAnswer) setReturnError(t.stateNotConfirmed);
+        else setStateNotice(t.stateNotConfirmed);
+      } else {
+        stateSaved = true;
+        stateFocus.current = { cardId: currentCard.id, state };
+        returnSaved.current = Boolean(returnAnswer);
+        setReviewFocus(null); setReturnState(null);
+      }
       // The status journal already includes the reason; step pitfalls are a separate Journey write. Status changes leave the Journey hash unchanged.
       const lesson = saved && returnAnswer ? journeyLessonAction(currentCard, catalog, returnAnswer) : null;
       if (lesson && !await onEdit(lesson)) setStateNotice(t.lessonFailed);
-    } catch { setStateNotice(t.stateFailed); }
+    } catch {
+      if (stateSaved) setStateNotice(t.lessonFailed);
+      else if (returnAnswer) setReturnError(t.stateFailed);
+      else setStateNotice(t.stateFailed);
+    }
     finally { stateInFlight.current = false; setSaving(false); }
   }
 
   function showPanel(panel: CardPanel, property?: 'tags') {
     if (panelSwitchDisabled) return;
+    if (panel !== 'content') panelOpener.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     setQuickSettings(null);
     closeJourney();
     if (panel !== 'content' && familyVisible) onToggleFamily?.();
     setPanelTarget({ panel, property });
+  }
+
+  /** Closes the open card panel and returns focus to the rail button that opened it (the heading if it is gone). */
+  function closePanel() {
+    setPanelTarget({ panel: 'content' });
+    if (panelOpener.current?.isConnected) moveFocus(panelOpener.current, { preventScroll: true });
+    else moveFocus(heading.current, { preventScroll: true });
   }
 
   function toggleFamily() {
@@ -665,12 +904,13 @@ export function CardPreview({ card, catalog, snapshot, writable, pending, onClos
 
   const removalQuestions: Record<CardRemoval, (title: string) => string> = { archive: t.archiveQuestion, unarchive: t.unarchiveQuestion, delete: t.deleteQuestion };
   const removalTitles: Record<CardRemoval, string> = { archive: t.archiveCard, unarchive: t.unarchiveCard, delete: t.moveToTrash };
-  // 2026-11-09: the Hero done mark sits on the right, beside Focus and More (author).
+  const titleToggle = longTitle && <Button type="button" variant="ghost" size="sm" className="card-preview-title-toggle" aria-expanded={titleExpanded} onClick={() => setTitleExpanded(value => !value)}>{titleExpanded ? t.collapseTitle : t.fullTitle}</Button>;
+  // 2026-11-09: the Hero done mark sits on the right, beside Focus and More.
   const heroMarkActions = heroMarkable && <span className="card-preview-hero-mark" aria-label={t.cardState}>
     <Button type="button" variant="ghost" size="icon" disabled={stateDisabled || card.state === 'done'} aria-pressed={card.state === 'done'} aria-label={t.heroDone} title={t.heroDone} onClick={() => void changeState('done')}><Check size={18} /></Button>
     <Button type="button" variant="ghost" size="icon" disabled={stateDisabled || card.state !== 'done'} aria-label={t.heroUndone} title={t.heroUndone} onClick={() => void changeState('not-started')}><RotateCcw size={16} /></Button>
   </span>;
-  const focusAction = <Button type="button" variant="ghost" size="icon" className="card-preview-focus" disabled={focusDisabled} onClick={() => { closeJourney(); setFocusMode(true); }} aria-label={t.focusMode} title={t.focusMode}><Scan size={17} aria-hidden="true" /></Button>;
+  const focusAction = <Button type="button" variant="ghost" size="icon" className="card-preview-focus" disabled={focusDisabled} onClick={() => { closeJourney(); setFocusMode(true); }} aria-label={t.focusMode} aria-keyshortcuts="F" title={`${t.focusMode} (F)`}><span className="card-preview-focus-glyph" aria-hidden="true"><Scan size={22} strokeWidth={1.75} /><kbd>F</kbd></span></Button>;
   const moreAction = <DropdownMenu.Root open={moreOpen} onOpenChange={open => {
     if (open) setMoreRevision(revision);
     setMoreOpen(open);
@@ -678,7 +918,13 @@ export function CardPreview({ card, catalog, snapshot, writable, pending, onClos
     <Button type="button" variant="ghost" size="icon" className="card-preview-more" disabled={!exists || navigationLocked} aria-label={t.moreOptions} title={t.moreOptions}><MoreHorizontal size={18} /></Button>
   </DropdownMenu.Trigger><DropdownMenu.Portal>
     <DropdownMenu.Content className="card-more-menu" align="end" sideOffset={6} collisionPadding={8} aria-label={t.moreActions}
-      onCloseAutoFocus={event => { if (removal) event.preventDefault(); }}>
+      onCloseAutoFocus={event => {
+        if (removal) event.preventDefault();
+        if (stateMenuClosing.current) {
+          event.preventDefault(); stateMenuClosing.current = false;
+          if (!stateInFlight.current) focusStateButton();
+        }
+      }}>
       <DropdownMenu.Item disabled={moreConflict} onSelect={() => void copyContent()}><Copy size={15} /><span>{t.copyCardContent}</span></DropdownMenu.Item>
       {legacyDocument && <p className="card-more-help">{t.legacyHelp}</p>}
       <DropdownMenu.Separator />
@@ -687,6 +933,7 @@ export function CardPreview({ card, catalog, snapshot, writable, pending, onClos
       {watchError && <p className="card-more-help" role="alert">{watchError}</p>}
       {/* Unstart returns a card from in progress to planned. */}
       {card.kind === 'task' && !card.archived && card.state === 'started' && <DropdownMenu.Item disabled={actionDisabled || moreConflict} onSelect={() => void changeState('not-started')}><Pause size={15} /><span>{t.unstartCard}</span></DropdownMenu.Item>}
+      {card.kind === 'task' && card.state === 'wont-do' && <DropdownMenu.Item disabled={stateDisabled || moreConflict} onSelect={() => void changeState('not-started')}><RotateCcw size={15} /><span>{t.reopenCard}</span></DropdownMenu.Item>}
       <DropdownMenu.Item disabled={actionDisabled || moreConflict} onSelect={() => requestRemoval(card.archived ? 'unarchive' : 'archive', moreRevision)}>{card.archived ? <ArchiveRestore size={15} /> : <Archive size={15} />}<span>{card.archived ? t.unarchiveCard : t.archiveCard}</span><kbd>{shortcutKeys('open-card-archive')}</kbd></DropdownMenu.Item>
       {/* Restore returns a card from Trash while preserving its archive state. */}
       {card.deleted && <DropdownMenu.Item disabled={quickDisabled || snapshot.source !== 'sandbox' || moreConflict} onSelect={() => void changeCard({ kind: 'options', patch: { deleted: false } }, moreRevision, true)}><RotateCcw size={15} /><span>{t.restoreCard}</span></DropdownMenu.Item>}
@@ -697,12 +944,39 @@ export function CardPreview({ card, catalog, snapshot, writable, pending, onClos
     </DropdownMenu.Content>
   </DropdownMenu.Portal></DropdownMenu.Root>;
 
-  return <div className={'card-preview-layout' + (activePanel !== 'content' ? ' has-properties' : '')}><aside ref={preview} className={'card-preview has-action-rail card-preview-' + card.kind} aria-label={t.card(card.title)}>
+  const reviewControl = <Button ref={reviewButton} type="button" variant="ghost" size="icon" className="card-state-button card-state-review" data-filled={card.state === 'review' || undefined}
+    disabled={card.state === 'review' ? panelSwitchDisabled || !exists : stateDisabled} aria-label={t.stateAction(stateName, reviewLabel)} title={reviewLabel}
+    aria-haspopup={card.state === 'review' ? 'menu' : undefined} aria-expanded={card.state === 'review' ? reviewFocus !== null : undefined}
+    onClick={card.state === 'review' ? undefined : () => runStateAction(resolveCardStateAction(currentCard, 'review', { disabled: stateDisabled }))}><StateBracketIcon question /></Button>;
+  const reviewAction = card.state === 'review' ? <DropdownMenu.Root modal={false} open={reviewFocus !== null} onOpenChange={open => setReviewFocus(open ? 'popover' : null)}>
+    <DropdownMenu.Trigger asChild>{reviewControl}</DropdownMenu.Trigger><DropdownMenu.Portal>
+      <DropdownMenu.Content ref={reviewMenu} className="card-more-menu card-review-menu" align="start" sideOffset={6} collisionPadding={8} aria-label={t.openReview}
+        onFocus={event => {
+          if (event.target !== event.currentTarget) return;
+          // 2026-11-10: Space lands on the menu, never Accept; only W deliberately selects that decision.
+          event.preventDefault();
+          let target: HTMLElement | null = reviewMenu.current;
+          if (reviewFocus === 'accept' && !stateDisabled) target = reviewAccept.current;
+          moveFocus(target, { preventScroll: true });
+        }}
+        onKeyDown={event => {
+          if (event.target === event.currentTarget && (event.code === 'Space' || event.key === 'Enter')) { event.preventDefault(); event.stopPropagation(); }
+        }}
+        onCloseAutoFocus={event => {
+          event.preventDefault();
+          if (!returnOpener.current && !stateInFlight.current) focusStateButton();
+        }}>
+        <DropdownMenu.Item ref={reviewAccept} className="card-review-accept" disabled={stateDisabled} onSelect={() => void changeState('done')}><Check size={18} aria-hidden="true" /><span>{t.acceptReview}</span></DropdownMenu.Item>
+        <DropdownMenu.Item className="card-review-return" disabled={stateDisabled} onSelect={() => void changeState('not-started')}><Undo2 size={17} aria-hidden="true" /><span>{t.requestChanges}</span></DropdownMenu.Item>
+      </DropdownMenu.Content>
+    </DropdownMenu.Portal></DropdownMenu.Root> : reviewControl;
+
+  return <div ref={layout} className="card-preview-layout" data-card-panel-open={panelOpen || undefined}><aside ref={preview} className={'card-preview has-action-rail card-preview-' + card.kind} data-title-expanded={titleExpanded || undefined} aria-label={t.card(card.title)}>
     <div className="card-preview-main">
       <header className="card-preview-header">
         <div className="card-preview-context"><DeckPicker catalog={catalog} projectName={snapshot.projectName} source={snapshot.source} card={currentCard ?? card} onEdit={onEdit}
           decks={catalog.decks.filter(candidate => deckAcceptsCard(candidate.kind, card.kind))} current={card.deckId} noneLabel={t.noDeck}
-          shown={deck} text={deck?.title ?? t.noDeck} disabled={quickDisabled} hint={writable ? t.moveDeck : t.sandboxDeck}
+           shown={deck} text={deck?.title ?? t.noDeck} disabled={quickDisabled} hint={writable ? t.moveDeck : cardReadOnlyDescription(snapshot)}
           onOpen={onOpenDeck ? openDeck : undefined} openDisabled={navigationLocked} onQuickSettings={openQuickSettings} /></div>
         <div className="card-preview-tools">
           <Button type="button" variant="ghost" size="icon" onClick={closePreview} disabled={navigationLocked} aria-label={t.closeCard}><X size={19} /></Button>
@@ -717,29 +991,43 @@ export function CardPreview({ card, catalog, snapshot, writable, pending, onClos
     </button>}
     <div className={'card-preview-sheet' + (justDone ? ' is-just-done' : '')} data-state={card.kind === 'task' ? card.state ?? undefined : undefined} data-family-done={familyDone || undefined}>
       {supportsChildren && onShowFamily && <div className="card-preview-subcards-bar">
-        <Button type="button" variant="ghost" size="sm" className="card-preview-subcards-toggle" disabled={navigationLocked} aria-pressed={familyVisible} onClick={toggleFamily}><Crown size={20} /><span>{t.subCardsCount(children.length)}</span></Button>
+        <Button type="button" variant="outline" size="sm" className="card-preview-subcards-toggle" disabled={navigationLocked} aria-pressed={familyVisible} onClick={toggleFamily}><Crown size={20} /><span>{t.subCardsCount(children.length).split(/(\d+)/).map((part, index) => /^\d+$/.test(part) ? <span className="page-number" key={index}>{part}</span> : part)}</span></Button>
         <div className="card-preview-subcards-actions">{heroMarkActions}{focusAction}{moreAction}</div>
       </div>}
       {/* 2026-11-05: the state row stays while text is edited or a checklist item saves; its buttons are disabled then, so the sheet never jumps. */}
-      {card.kind === 'task' && <div className="card-preview-state-actions" aria-label={t.cardState}>
-        <Button type="button" variant="ghost" size="icon" disabled={stateDisabled || card.state === 'started'} aria-pressed={card.state === 'started'} aria-label={t.start} title={t.start} onClick={() => void changeState('started')}><Play size={17} /></Button>
-        <Button type="button" variant="ghost" size="icon" disabled={stateDisabled || card.state === 'review'} aria-pressed={card.state === 'review'} aria-label={t.review} title={t.review} onClick={() => void changeState('review')}><Eye size={17} /></Button>
-        <Button type="button" variant="ghost" size="icon" disabled={stateDisabled || card.state === 'done'} aria-pressed={card.state === 'done'} aria-label={t.accept} title={t.accept} onClick={() => void changeState('done')}><Check size={18} /></Button>
-        <Button type="button" variant="ghost" size="icon" disabled={stateDisabled || card.state === 'not-started'} aria-pressed={card.state === 'not-started'} aria-label={t.plan} title={t.plan} onClick={() => void changeState('not-started')}>{card.state === 'done' ? <RotateCcw size={16} /> : <Pause size={16} />}</Button>
-        {saving && <LoaderCircle size={14} className="spin" />}
+      {card.kind === 'task' && <div className="card-preview-state-actions">
+        <div className="card-state-buttons" role="group" aria-label={t.stateGroup(stateName)}>
+          <Button ref={playButton} type="button" variant="ghost" size="icon" className="card-state-button card-state-play" data-filled={card.state === 'started' || undefined}
+            disabled={stateDisabled || card.state === 'review' || terminalState} aria-pressed={card.state !== 'review' && !terminalState ? card.state === 'started' : undefined}
+            aria-label={t.stateAction(stateName, playLabel)} title={playLabel} onClick={() => runStateAction(resolveCardStateAction(currentCard, 'play', { disabled: stateDisabled }))}><Play size={20} aria-hidden="true" /></Button>
+          <Button type="button" variant="ghost" size="icon" className="card-state-button card-state-blockers" data-filled={blockerCount > 0 || undefined}
+            disabled={panelSwitchDisabled || !exists} aria-label={t.stateAction(stateName, t.blockers(blockerCount))} title={t.blockers(blockerCount)}
+            aria-controls={activePanel === 'dependencies' ? panelId + '-dependencies' : undefined} onClick={() => showPanel('dependencies')}><StateBracketIcon /></Button>
+          {reviewAction}
+          <Button ref={doneButton} type="button" variant="ghost" size="icon" className="card-state-button card-state-done" data-filled={card.state === 'done' || undefined}
+            disabled={stateDisabled} aria-pressed={card.state !== 'review' && card.state !== 'wont-do' ? card.state === 'done' : undefined}
+            aria-label={t.stateAction(stateName, doneLabel)} title={doneLabel} onClick={() => runStateAction(resolveCardStateAction(currentCard, 'check', { disabled: stateDisabled }))}><Check size={20} aria-hidden="true" /></Button>
+        </div>
+        <div className="card-preview-subcards-actions">{focusAction}{moreAction}</div>
       </div>}
       {stateNotice && <p className="card-preview-state-notice" role="alert">{stateNotice}</p>}
       {stateQuestion && <DependencyStateWarning conflicts={stateQuestion.conflicts} busy={saving}
+        state={stateQuestion.state}
         onConfirm={() => void changeState(stateQuestion.state, true)} onCancel={() => setStateQuestion(null)} />}
-      {returnState && currentCard && <JourneyReturnPrompt key={returnState} card={currentCard} catalog={catalog} busy={saving}
-        onAnswer={answer => void changeState(returnState, true, answer)} />}
       <div className="card-preview-panels">
       <section id={panelId + '-content'} data-panel="content" className="card-preview-panel" tabIndex={-1} aria-label={t.contentPanel}>
-      <CardContentEditor card={card} catalog={catalog} snapshot={snapshot} writable={writable && exists} pending={pending}
+      {(card.deleted || card.archived) && <section className="card-preview-lifecycle" aria-label={card.deleted ? t.trashed : t.archived}>
+        <p>{card.deleted ? t.trashed : t.archived}{card.deleted && card.archived && <> {t.staysArchived}</>}</p>
+        <Button type="button" variant="outline" size="sm" disabled={quickDisabled || snapshot.source !== 'sandbox'} onClick={() => {
+          if (card.deleted) void changeCard({ kind: 'options', patch: { deleted: false } }, revision, true);
+          else requestRemoval('unarchive');
+        }}>{t.restore}</Button>
+      </section>}
+      <CardContentEditor card={card} catalog={catalog} snapshot={snapshot} writable={writable && exists && !card.deleted} pending={pending}
         blocked={saving || quickSaving || journeySaving || propertiesActive || openQuestionsActive} headingRef={heading} onEdit={onEdit} onEditingChange={setContentEditing} onOpenCard={selectCard}
-        focusMode={focusMode} onFocusModeExit={() => setFocusMode(false)} hideJourneyStepLink={stepNoteShown}
+        focusMode={focusMode} onFocusModeExit={() => setFocusMode(false)} hideJourneyStepLink={stepNoteShown} onCancelEdit={onCancelEdit} footerTarget={dockActions}
         footerActions={<><CardIdChip cardId={card.id} />{card.kind === 'hero' && card.deckId && !(journeyReference && journeyChildren.length > 0) && <Button type="button" variant="outline" size="sm" className="card-preview-journey-action" disabled={journeyDisabled || propertiesActive} onClick={openJourney} title={t.applyJourney}><Route size={15} />{t.journeyAction}</Button>}</>}
-        titleActions={supportsChildren && onShowFamily ? undefined : <div className="card-preview-subcards-actions">{heroMarkActions}{focusAction}{moreAction}</div>}
+        titleActions={<div className="card-preview-title-tools">{titleToggle}{card.kind !== 'task' && !(supportsChildren && onShowFamily) && <div className="card-preview-subcards-actions">{heroMarkActions}{focusAction}{moreAction}</div>}</div>}
         bodyAfter={boundTags.length > 0 && <div className="card-tag-links">
         {boundTags.map(tag => <button key={tag.name} type="button" className="card-tag-link" disabled={!onShowTagCards || navigationLocked}
           title={t.tagCardsLabel(tag.name)} aria-label={t.tagCardsLabel(tag.name)}
@@ -747,37 +1035,49 @@ export function CardPreview({ card, catalog, snapshot, writable, pending, onClos
           <span>{t.tagLabel}</span><TagBadge name={tag.name} definition={tag} /><span>· {t.tagCards(tagCardCounts.get(tag.name) ?? 0)}</span>
         </button>)}
       </div>} />
-      {/* 2026-11-09: Journey sections belong to reading; card-preview.css hides them while the text is edited. */}
-      {journeyReference && journeyChildren.length > 0 && <JourneyTrack title={journeyDefinition?.title ?? journeyReference.journeyId}
-        version={journeyReference.version} steps={journeyDefinition?.steps ?? []} cards={journeyChildren}
-        description={journeyDefinition?.description} members={catalog.members} onOpenJourney={() => openJourney()}
-        cardsById={cardsById} disabled={navigationLocked} onOpen={next => selectCard(next, onOpenSubCard)} />}
-      {/* 2026-11-08: a Journey Sub Card shows its step as the same soft section, in place of the hidden Markdown tail. */}
-      {stepNoteShown && card.journey && <JourneyStepNote card={card} cards={stepRunCards} steps={stepJourney?.steps ?? []}
-        title={stepJourney?.title ?? card.journey.journeyId} version={card.journey.version} description={stepJourney?.description}
-        cardsById={cardsById} members={catalog.members} disabled={navigationLocked} onOpen={next => selectCard(next, onOpenSubCard)}
-        source={snapshot.source} journeyPath={stepJourney?.path} />}
       <OpenQuestions card={card} catalog={catalog} writable={writable && exists} disabled={questionsDisabled} onEdit={onEdit} onSelect={selectCard} onActiveChange={setOpenQuestionsActive} />
       {!exists && <p className="card-preview-notice" role="status">{t.missingSource}</p>}
       {backlinks.length > 0 && <section className="card-preview-backlinks" aria-label={t.backlinks}><h3>{t.backlinks}</h3><ul>{backlinks.slice(0, 50).map(candidate => <li key={candidate.id}><button type="button" disabled={navigationLocked} onClick={() => selectCard(candidate)}>{candidate.title}</button></li>)}</ul>{backlinks.length > 50 && <p>{t.more(backlinks.length - 50)}</p>}</section>}
       </section>
 
       </div>
-      {/* 2026-11-08: indicators and tag badges share the meta row; the card ID sits in the reading footer beside Edit.
-          An empty row still clears the owner medallion. Disabled controls stay mounted during saving so popups can return
+      {/* 2026-11-10: the dock is pinned between the scrolling text and the band, so the card's status and actions stay in
+          view while long text scrolls: the Journey run or step, then one row of indicators and tags with the
+          save state, the card ID, Journey and Edit at its end (CardContentEditor portals its reading footer there). The
+          bottom inset clears the owner medallion. Disabled controls stay mounted during saving so popups can return
           focus to their original buttons. */}
-      <div className="card-preview-meta-row">
-        <CardIndicators card={card} lookups={indicatorLookups} members={catalog.members ?? []} catalog={catalog} currentMemberId={selectedMemberId} variant="preview"
-          onQuickSettings={openQuickSettings} quickSettingsDisabled={actionDisabled} />
-        <CardTags tags={card.tags} definitions={catalog.projectTags} cardsById={cardsById} onOpenCard={openTagCard}
-          onEditTags={() => showPanel('properties', 'tags')} disabled={navigationLocked} />
+      <div className="card-preview-dock">
+        {(journeyTrackShown || stepNoteShown) && <div className="card-preview-dock-journey">
+          {journeyTrackShown && journeyReference && <JourneyTrack title={journeyDefinition?.title ?? journeyReference.journeyId}
+            version={journeyReference.version} steps={journeyDefinition?.steps ?? []} cards={journeyChildren}
+            description={journeyDefinition?.description} members={catalog.members} onOpenJourney={() => openJourney()}
+            cardsById={cardsById} disabled={navigationLocked} onOpen={next => selectCard(next, onOpenSubCard)} />}
+          {/* 2026-11-08: a Journey Sub Card shows its step as the same soft section, in place of the hidden Markdown tail. */}
+          {stepNoteShown && card.journey && <JourneyStepNote card={card} cards={stepRunCards} steps={stepJourney?.steps ?? []}
+            title={stepJourney?.title ?? card.journey.journeyId} version={card.journey.version} description={stepJourney?.description}
+            cardsById={cardsById} members={catalog.members} disabled={navigationLocked} onOpen={next => selectCard(next, onOpenSubCard)}
+            source={snapshot.source} journeyPath={stepJourney?.path} />}
+        </div>}
+        <div className="card-preview-dock-row">
+          <div className="card-preview-meta-row">
+            <CardIndicators card={card} lookups={indicatorLookups} members={catalog.members ?? []} catalog={catalog} currentMemberId={selectedMemberId} variant="preview"
+              onDependencies={() => showPanel('dependencies')}
+              dependenciesDisabled={navigationLocked}
+              onQuickSettings={openQuickSettings} quickSettingsDisabled={actionDisabled} />
+            {tags.length > 0 && <div className="card-preview-tags"><CardTags tags={tags.slice(0, 2)} definitions={catalog.projectTags} cardsById={cardsById} onOpenCard={openTagCard}
+              onEditTags={() => showPanel('properties', 'tags')} disabled={navigationLocked} />
+              {tags.length > 2 && <Button type="button" variant="ghost" size="sm" disabled={navigationLocked} aria-label={t.moreTags(tags.length - 2)} onClick={() => showPanel('properties', 'tags')}>+{tags.length - 2}</Button>}
+            </div>}
+          </div>
+          <div ref={setDockActions} className="card-preview-dock-actions" />
+        </div>
       </div>
       <footer ref={materialGlare.element} className="card-preview-material-band" onPointerEnter={materialGlare.tilt} onPointerMove={materialGlare.tilt} onPointerLeave={materialGlare.reset}>
         <span className="card-material-glare" aria-hidden="true" />
         {card.kind !== 'doc' && <Button type="button" variant="ghost" size="sm" className="card-preview-property-shortcut" disabled={quickDisabled} data-quick-settings-tab="effort" aria-haspopup="dialog" aria-expanded={quickSettings?.cardId === card.id && quickSettings.anchor.dataset.quickSettingsTab === 'effort'} data-shortcut-property="effort" data-shortcut-card-id={card.id} onPointerEnter={event => markShortcutPropertyHover(event.currentTarget, true)} onPointerLeave={event => markShortcutPropertyHover(event.currentTarget, false)} aria-label={t.effortLabel(String(displayedEffort ?? t.notSet))} title={t.editEffort} onClick={event => openQuickSettings('effort', event.currentTarget)}><span>{t.effort}</span><Gauge size={19} /><strong>{displayedEffort ?? '—'}</strong></Button>}
-        <Button type="button" variant="ghost" size="sm" className="card-preview-owner-shortcut" disabled={quickDisabled} data-quick-settings-tab="owner" aria-haspopup="dialog" aria-expanded={quickSettings?.cardId === card.id && quickSettings.anchor.dataset.quickSettingsTab === 'owner'} aria-label={t.ownerLabel(card.owner ?? t.unassigned)} title={t.ownerLabel(card.owner ?? t.unassigned)} onClick={event => openQuickSettings('owner', event.currentTarget)}><CardOwnerAvatar owner={card.owner} members={catalog.members ?? []} /></Button>
-        {card.kind !== 'doc' && <Button type="button" variant="ghost" size="sm" className="card-preview-property-shortcut" disabled={quickDisabled} data-quick-settings-tab="priority" aria-haspopup="dialog" aria-expanded={quickSettings?.cardId === card.id && quickSettings.anchor.dataset.quickSettingsTab === 'priority'} data-shortcut-property="priority" data-shortcut-card-id={card.id} onPointerEnter={event => markShortcutPropertyHover(event.currentTarget, true)} onPointerLeave={event => markShortcutPropertyHover(event.currentTarget, false)} aria-label={t.priorityLabel(card.priority ? priorityLabel(card.priority, lang) : t.notSet)} title={t.editPriority} onClick={event => openQuickSettings('priority', event.currentTarget)}><span>{t.priority}</span><Layers size={18} /><strong>{card.priority ? priorityLabel(card.priority, lang) : '—'}</strong></Button>}
-        {card.kind === 'doc' && <span className="card-preview-word-count">{t.markdownLabel}{docWords > 0 && <span title={t.wordCount(docWords)} aria-label={t.wordCount(docWords)}> · {new Intl.NumberFormat(languageTag).format(docWords)}</span>}</span>}
+        <Button type="button" variant="ghost" size="sm" className="card-preview-owner-shortcut" disabled={quickDisabled} data-quick-settings-tab="owner" aria-haspopup="dialog" aria-expanded={quickSettings?.cardId === card.id && quickSettings.anchor.dataset.quickSettingsTab === 'owner'} aria-label={ownerLabel} title={ownerLabel} onClick={event => openQuickSettings('owner', event.currentTarget)}>{ownerInitials && <span className="card-preview-owner-initials" aria-hidden="true">{ownerInitials}</span>}{(!ownerInitials || ownerMember) && <CardOwnerAvatar owner={card.owner} members={catalog.members ?? []} />}</Button>
+        {card.kind !== 'doc' && <Button type="button" variant="ghost" size="sm" className="card-preview-property-shortcut" disabled={quickDisabled} data-quick-settings-tab="priority" aria-haspopup="dialog" aria-expanded={quickSettings?.cardId === card.id && quickSettings.anchor.dataset.quickSettingsTab === 'priority'} data-shortcut-property="priority" data-shortcut-card-id={card.id} onPointerEnter={event => markShortcutPropertyHover(event.currentTarget, true)} onPointerLeave={event => markShortcutPropertyHover(event.currentTarget, false)} aria-label={t.priorityLabel(card.priority ? priorityLabel(card.priority, lang) : t.notSet)} title={t.editPriority} onClick={event => openQuickSettings('priority', event.currentTarget)}><span>{t.priority}</span><Layers size={18} /><strong className="card-preview-property-value"><span>{card.priority ? priorityLabel(card.priority, lang) : '—'}</span>{(['low', 'medium', 'high'] as const).map(value => <span key={value} aria-hidden="true">{priorityLabel(value, lang)}</span>)}</strong></Button>}
+        {card.kind === 'doc' && !contentEditing && <span className="card-preview-word-count" title={t.wordCount(docWords)}><span className="page-number" style={{ color: 'inherit' }}>{new Intl.NumberFormat(languageTag).format(docWords)}</span>{t.words(docWords).replace(new Intl.NumberFormat(languageTag).format(docWords), '')}</span>}
       </footer>
     </div>
     </div>
@@ -785,17 +1085,37 @@ export function CardPreview({ card, catalog, snapshot, writable, pending, onClos
       <Button type="button" variant="ghost" size="icon" disabled={panelSwitchDisabled} aria-label={t.propertiesPanel} title={t.propertiesPanel} aria-pressed={activePanel === 'properties'} aria-controls={panelId + '-properties'} className={propertiesActive ? 'has-draft' : ''} onClick={() => showPanel(activePanel === 'properties' ? 'content' : 'properties')}><SlidersHorizontal size={17} /></Button>
       {onShowFamily && <Button type="button" variant="ghost" size="icon" disabled={navigationLocked} data-card-family aria-label={t.family} title={t.family} aria-pressed={familyVisible} onClick={toggleFamily}><Crown size={18} /></Button>}
       <Button type="button" variant="ghost" size="icon" disabled={panelSwitchDisabled || !exists} aria-label={t.attachmentsPanel} title={t.attachmentsPanel} aria-pressed={activePanel === 'attachments'} aria-controls={panelId + '-attachments'} onClick={() => showPanel(activePanel === 'attachments' ? 'content' : 'attachments')}><Paperclip size={18} /></Button>
+      <Button type="button" variant="ghost" size="icon" disabled={panelSwitchDisabled || !exists} aria-label={t.showDependencies} title={t.showDependencies} aria-expanded={activePanel === 'dependencies'} aria-controls={panelId + '-dependencies'} onClick={() => showPanel(activePanel === 'dependencies' ? 'content' : 'dependencies')}><Link2 size={18} /></Button>
+      <Button type="button" variant="ghost" size="icon" disabled={panelSwitchDisabled || !exists} aria-label={t.historyPanel} title={t.historyPanel} aria-pressed={activePanel === 'history'} aria-controls={panelId + '-history'} onClick={() => showPanel(activePanel === 'history' ? 'content' : 'history')}><History size={18} /></Button>
     </nav>
+    {returnState && currentCard && <Dialog.Root open onOpenChange={open => { if (!open && !saving) setReturnState(null); }}><Dialog.Portal>
+      <Dialog.Overlay ref={prepareEntrance} className="card-journey-overlay" />
+      <Dialog.Content className="card-removal-dialog card-review-return-dialog" aria-busy={saving} onCloseAutoFocus={event => {
+        event.preventDefault();
+        if (returnSaved.current) focusStateButton();
+        else if (returnOpener.current?.isConnected && !returnOpener.current.matches(':disabled')) moveFocus(returnOpener.current, { preventScroll: true });
+        else moveFocus(heading.current, { preventScroll: true });
+        returnOpener.current = null;
+      }} onEscapeKeyDown={event => { if (saving) event.preventDefault(); }} onPointerDownOutside={event => { if (saving) event.preventDefault(); }}>
+        <Dialog.Title>{t.returnReview}</Dialog.Title><Dialog.Description>{t.returnDescription}</Dialog.Description>
+        {returnRevision !== revision && <><p role="alert">{t.returnStale}</p><Button type="button" disabled={saving} onClick={() => {
+          setReturnRevision(revision); setReturnError('');
+        }}>{t.useCurrentReturn}</Button></>}
+        <ReviewReturnPrompt key={returnState} card={currentCard} catalog={catalog} busy={saving} blocked={stateDisabled || currentCard.state !== 'review' || returnRevision !== revision}
+          error={returnError}
+          onCancel={() => setReturnState(null)} onAnswer={answer => void changeState(returnState, true, answer)} />
+      </Dialog.Content>
+    </Dialog.Portal></Dialog.Root>}
     {journeyOpen && <Dialog.Root open onOpenChange={open => { if (!open) closeJourney(); }}><Dialog.Portal>
-      <Dialog.Overlay className="card-journey-overlay" />
-      <Dialog.Content className="card-journey-dialog" aria-busy={journeyBusy} aria-describedby={undefined}
+      <Dialog.Overlay ref={prepareEntrance} className="card-journey-overlay" />
+      <Dialog.Content ref={prepareEntrance} className="card-journey-dialog" aria-busy={journeyBusy} aria-describedby={undefined}
         onEscapeKeyDown={event => { if (journeyBusy || journeyInFlight.current) event.preventDefault(); }}
         onPointerDownOutside={event => { if (journeyBusy || journeyInFlight.current) event.preventDefault(); }}
         onCloseAutoFocus={event => {
           event.preventDefault();
           if (journeyManaging.current) return;
-          if (journeyOpener.current?.isConnected) journeyOpener.current.focus({ preventScroll: true });
-          else heading.current?.focus({ preventScroll: true });
+          if (journeyOpener.current?.isConnected) moveFocus(journeyOpener.current, { preventScroll: true });
+          else moveFocus(heading.current, { preventScroll: true });
         }}>
         <Dialog.Title className="visually-hidden">{t.startJourney}</Dialog.Title>
         <ApplyJourneyPanel catalog={catalog} card={card} source={snapshot.source} writable={exists && writable} pending={journeyBusy}
@@ -804,9 +1124,9 @@ export function CardPreview({ card, catalog, snapshot, writable, pending, onClos
       </Dialog.Content>
     </Dialog.Portal></Dialog.Root>}
     {removal && <Dialog.Root open onOpenChange={open => { if (!open && !saving && !pending) setRemoval(null); }}><Dialog.Portal>
-      <Dialog.Overlay className="card-journey-overlay" />
+      <Dialog.Overlay ref={prepareEntrance} className="card-journey-overlay" />
       <Dialog.Content className="card-removal-dialog" aria-busy={saving || pending}
-        onCloseAutoFocus={event => { event.preventDefault(); heading.current?.focus({ preventScroll: true }); }}
+        onCloseAutoFocus={event => { event.preventDefault(); moveFocus(heading.current, { preventScroll: true }); }}
         onEscapeKeyDown={event => { if (saving || pending) event.preventDefault(); }}
         onPointerDownOutside={event => { if (saving || pending) event.preventDefault(); }}>
         <Dialog.Title>{removalTitles[removal.action]}</Dialog.Title>
@@ -826,6 +1146,10 @@ export function CardPreview({ card, catalog, snapshot, writable, pending, onClos
     </div>
     {activePanel === 'attachments' && <div ref={attachmentsContainer} id={panelId + '-attachments'} className="card-properties-slot" tabIndex={-1} aria-label={t.attachmentsPanel}>
       <AttachmentsPanel key={card.id} card={currentCard ?? card} catalog={catalog} writable={exists && writable && !navigationLocked} onEdit={onEdit} />
+    </div>}
+    {(activePanel === 'dependencies' || activePanel === 'history') && <div ref={relatedContainer} id={panelId + '-' + activePanel} className="card-properties-slot card-related-slot" tabIndex={-1} aria-label={activePanel === 'history' ? t.historyPanel : t.dependenciesPanel}>
+      {activePanel === 'dependencies' && <CardDependenciesSection key={card.id} card={currentCard ?? card} catalog={catalog} cardsById={cardsById} writable={writable} disabled={navigationLocked} onEdit={onEdit} onOpen={selectCard} onClose={closePanel} />}
+      {activePanel === 'history' && <CardHistorySection key={card.id} card={currentCard ?? card} source={snapshot.source} refreshKey={catalog.indexedAt} disabled={navigationLocked} titlesById={titlesById} onOpenById={id => { const next = cardsById.get(id); if (next) selectCard(next); }} onClose={closePanel} />}
     </div>}
   </div>;
 }

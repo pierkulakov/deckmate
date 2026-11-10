@@ -1,59 +1,22 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { spawn, type ChildProcess } from 'node:child_process';
-import { existsSync } from 'node:fs';
-import { mkdtemp, rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import path from 'node:path';
-import { createServer, type ViteDevServer } from 'vite';
-import tailwindcss from '@tailwindcss/vite';
-import { freePort } from './free-port.ts';
-import { closeBrowserGently, waitForPageTarget } from './browser-target.ts';
+import { createBrowserSession } from './browser-session.ts';
+import { requireBrowser } from './browser-environment.ts';
+import { waitForLayout } from './browser-layout.ts';
 
-const browserPath = [process.env.DECKMATE_BROWSER, process.env.BROWSER,
-  'C:/Program Files/Google/Chrome/Application/chrome.exe', 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe',
-  '/usr/bin/google-chrome', '/usr/bin/chromium', '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome']
-  .find((candidate): candidate is string => Boolean(candidate && existsSync(candidate)));
+const browserPath = requireBrowser();
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
 // 2026-11-08: test the actual Deck capture listener, native focus and scrolling with CDP keyboard/mouse input.
 describe.skipIf(!browserPath)('one-step Hero return (browser)', () => {
-  let server: ViteDevServer | undefined;
-  let browser: ChildProcess | undefined;
-  let temporary: string | undefined;
-  let socket: WebSocket | undefined;
-  let sequence = 0;
-  let executionContextId: number | undefined;
-  const pending = new Map<number, { resolve: (value: any) => void; reject: (error: Error) => void }>();
-  const errors: string[] = [];
+  const session = createBrowserSession();
+  const { send, evaluate, callFunction } = session;
+  const until = (expression: string, attempts = 100) => session.until(`Boolean(${expression})`, attempts);
+  let errors: string[] = [];
   const tile = (id: string) => `.catalog-results [data-card-id="card:${id}"] .deck-card-open`;
   const mini = (id: string) => `[data-journey-card-id="card:${id}"]`;
   const row = (id: string) => `.card-family-list [data-card-id="card:${id}"] .card-family-row-open`;
   const selected = (id: string) => `new URLSearchParams(location.search).get('card') === 'card:${id}'`;
 
-  function send(method: string, params: object = {}): Promise<any> {
-    const id = ++sequence;
-    return new Promise((resolve, reject) => { pending.set(id, { resolve, reject }); socket!.send(JSON.stringify({ id, method, params })); });
-  }
-  async function evaluate(expression: string): Promise<any> {
-    const result = await send('Runtime.evaluate', { expression, returnByValue: true, awaitPromise: true });
-    if (result.exceptionDetails) throw new Error(result.exceptionDetails.exception?.description ?? result.exceptionDetails.text);
-    return result.result?.value;
-  }
-  // 2026-11-09: values cross into the page as callFunctionOn arguments, not as text baked into the evaluated code
-  // (CodeQL js/bad-code-sanitization flags JSON.stringify interpolation, and arguments survive undefined too).
-  async function callFunction(functionDeclaration: string, ...args: unknown[]): Promise<any> {
-    const result = await send('Runtime.callFunctionOn', { functionDeclaration, executionContextId,
-      arguments: args.map(value => ({ value })), returnByValue: true, awaitPromise: true });
-    if (result.exceptionDetails) throw new Error(result.exceptionDetails.exception?.description ?? result.exceptionDetails.text);
-    return result.result?.value;
-  }
-  async function until(expression: string, attempts = 100) {
-    for (let attempt = 0; attempt < attempts; attempt++) {
-      if (await evaluate(`Boolean(${expression})`)) return;
-      await delay(50);
-    }
-    throw new Error('Timed out: ' + expression + '\n' + errors.join('\n'));
-  }
   async function click(selector: string) {
     const point = await callFunction(`selector => { const element = document.querySelector(selector); element.scrollIntoView({ block: 'nearest' });
       const box = element.getBoundingClientRect(); return { x: box.x + box.width / 2, y: box.y + box.height / 2 }; }`, selector);
@@ -63,7 +26,7 @@ describe.skipIf(!browserPath)('one-step Hero return (browser)', () => {
     await delay(80);
   }
   async function key(key: string, code = key) {
-    const codes: Record<string, number> = { Escape: 27, Enter: 13, Tab: 9 };
+    const codes: Record<string, number> = { Escape: 27, Enter: 13, Tab: 9, ' ': 32 };
     for (const type of ['keyDown', 'keyUp']) await send('Input.dispatchKeyEvent', { type, key, code, windowsVirtualKeyCode: codes[key],
       text: type === 'keyDown' && key === 'Enter' ? '\r' : undefined });
     await delay(80);
@@ -85,7 +48,7 @@ describe.skipIf(!browserPath)('one-step Hero return (browser)', () => {
   }
   async function expectHero(scroll: number, focus: string, familyVisible: boolean) {
     await until(`${selected('hero')} && document.activeElement === document.querySelector(${JSON.stringify(focus)})`);
-    await delay(150);
+    await waitForLayout(evaluate, '.card-preview-panels');
     expect(await evaluate(`document.querySelector('.card-preview-panels').scrollTop`)).toBeCloseTo(scroll, 0);
     expect(await evaluate(`Boolean(document.querySelector('.card-family-panel'))`)).toBe(familyVisible);
   }
@@ -95,51 +58,13 @@ describe.skipIf(!browserPath)('one-step Hero return (browser)', () => {
   }
 
   beforeAll(async () => {
-    temporary = await mkdtemp(path.join(tmpdir(), 'hero-return-test-'));
-    server = await createServer({ configFile: false, root: process.cwd(), cacheDir: path.join(temporary, 'vite'),
-      plugins: [tailwindcss(), { name: 'hero-return-fixture', configureServer(vite) {
-        vite.middlewares.use((request, response, next) => {
-          if (request.url?.split('?')[0] !== '/') return next();
-          response.setHeader('Content-Type', 'text/html');
-          response.end('<!doctype html><html><body><div id="root"></div><script type="module" src="/tests/fixtures/hero-return.tsx"></script></body></html>');
-        });
-      } }], server: { host: '127.0.0.1', port: 0 }, optimizeDeps: { entries: ['tests/fixtures/hero-return.tsx'] }, logLevel: 'error' });
-    await server.listen();
-    await server.warmupRequest('/tests/fixtures/hero-return.tsx');
-    const port = await freePort();
-    browser = spawn(browserPath!, ['--headless=new', '--disable-gpu', '--no-first-run', '--no-default-browser-check',
-      '--disable-features=OverlayScrollbar', `--remote-debugging-port=${port}`, `--user-data-dir=${path.join(temporary, 'profile')}`, 'about:blank'], { stdio: 'ignore' });
-    const target = await waitForPageTarget(port, browser!);
-    socket = new WebSocket(target);
-    await new Promise(resolve => socket!.addEventListener('open', resolve, { once: true }));
-    socket.addEventListener('message', event => {
-      const message = JSON.parse(String(event.data));
-      if (message.method === 'Runtime.executionContextCreated' && message.params.context.auxData?.isDefault)
-        executionContextId = message.params.context.id;
-      if (message.id) {
-        const request = pending.get(message.id);
-        pending.delete(message.id);
-        if (message.error) request?.reject(new Error(JSON.stringify(message.error)));
-        else request?.resolve(message.result);
-      }
-      if (message.method === 'Runtime.exceptionThrown') errors.push(message.params.exceptionDetails.exception?.description ?? message.params.exceptionDetails.text);
-    });
-    await send('Page.enable');
-    await send('Runtime.enable');
-    await send('Emulation.setDeviceMetricsOverride', { width: 1700, height: 900, deviceScaleFactor: 1, mobile: false });
-    await send('Page.navigate', { url: server.resolvedUrls!.local[0] });
-    await until(`Boolean(window.heroReturnTest && document.querySelector(${JSON.stringify(tile('hero'))}))`, 600);
+    await session.open(browserPath!, { viewport: { width: 1700, height: 900, scale: 1 }, extraArgs: ['--disable-features=OverlayScrollbar'] });
+    errors = session.errors;
+    await session.navigate('hero-return', `Boolean(window.heroReturnTest && document.querySelector(${JSON.stringify(tile('hero'))}))`, 600);
   }, 90000);
 
   afterAll(async () => {
-    if (socket?.readyState === WebSocket.OPEN) { await closeBrowserGently(send); socket.close(); }
-    if (browser?.pid && browser.exitCode === null) {
-      const command = process.platform === 'win32' ? spawn('taskkill', ['/T', '/F', '/PID', String(browser.pid)], { stdio: 'ignore' }) : browser;
-      if (process.platform !== 'win32') browser.kill();
-      await new Promise(resolve => { if (command.exitCode !== null) resolve(null); else command.once('exit', resolve); });
-    }
-    await server?.close();
-    if (temporary) await rm(temporary, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+    await session.close();
   }, 20000);
 
   beforeEach(async () => {
@@ -181,6 +106,11 @@ describe.skipIf(!browserPath)('one-step Hero return (browser)', () => {
     await until(selected('build'));
     await click('.card-preview-action-rail button');
     await until(`!document.querySelector('.card-family-panel')`);
+    // 2026-11-10: direct card panels consume Escape before navigation; closing Properties must retain the Sub Card.
+    await until(`document.querySelector('.card-properties-slot')?.hidden === false`);
+    await key('Escape');
+    await until(`document.querySelector('.card-properties-slot')?.hidden === true`);
+    expect(await evaluate(selected('build'))).toBe(true);
     await key('Escape');
     await expectHero(scroll, row('build'), true);
     await key('Escape');
@@ -231,6 +161,25 @@ describe.skipIf(!browserPath)('one-step Hero return (browser)', () => {
     expect(await evaluate(selected('build'))).toBe(true);
     await key('Escape');
     await until(selected('hero'));
+  });
+
+  it('Review Space is safe twice; Escape closes its menu before returning to Hero', async () => {
+    await render({ review: true });
+    const scroll = await openHero();
+    await click(mini('review'));
+    await until(selected('review'));
+    await evaluate(`document.querySelector('.card-preview-title').focus()`);
+    await key(' ', 'Space');
+    await until(`document.activeElement === document.querySelector('.card-review-menu')`);
+    await key(' ', 'Space');
+    expect(await evaluate(`document.activeElement === document.querySelector('.card-review-menu')`)).toBe(true);
+    expect(await evaluate('window.heroReturnTest.requests')).toEqual([]);
+    await key('Escape');
+    await until(`!document.querySelector('.card-review-menu')`);
+    expect(await evaluate(selected('review'))).toBe(true);
+    expect(await evaluate(`document.activeElement === document.querySelector('.card-state-review')`)).toBe(true);
+    await key('Escape');
+    await expectHero(scroll, mini('review'), false);
   });
 
   it.each(['tile', 'link', 'tag', 'family'])('%s navigation to another card clears the return target', async origin => {
@@ -306,7 +255,8 @@ describe.skipIf(!browserPath)('one-step Hero return (browser)', () => {
       // 2026-11-08: returning from the stacked properties panel must reveal the tag below the sticky toolbar before clicking.
       if (width <= 760) await evaluate(`document.querySelector(${JSON.stringify(tag)}).scrollIntoView({ block: 'center', behavior: 'instant' })`);
       await click(tag);
-      await until(`document.activeElement === document.querySelector('section[data-property="tags"]')`);
+      // 2026-11-10: the bounded tag strip opens the full section on its first actionable chip, not its container.
+      await until(`document.activeElement === document.querySelector('section[data-property="tags"] .card-properties-tag-chip:not(:disabled)')`);
       const section = await evaluate(`(() => {
         const target = document.querySelector('section[data-property="tags"]');
         const heading = target.querySelector('h3');
@@ -320,10 +270,13 @@ describe.skipIf(!browserPath)('one-step Hero return (browser)', () => {
       expect(section.bottom).toBeLessThan(height);
       expect(section.hit).toBe(true);
       expect(await evaluate(selected(card))).toBe(true);
+      // 2026-11-10: the open panel lies over the card and the card is inert; Escape closes it before the next tag.
+      await key('Escape');
+      await until(`document.querySelector('.card-properties-slot')?.hidden === true`);
     }
   });
 
-  // 2026-11-09: the author's reference puts the ID at the left of the reading footer, level with Journey and Edit.
+  // 2026-11-09: the ID sits at the left of the reading footer, level with Journey and Edit.
   it.each(['hero', 'task', 'doc', 'subcard'])('%s keeps its copyable ID at the left of the reading footer', async kind => {
     const card = kind === 'subcard' ? 'build' : 'hero';
     await render({ card: 'card:' + card, kind: kind === 'subcard' ? 'hero' : kind, tags: [] });
@@ -342,10 +295,60 @@ describe.skipIf(!browserPath)('one-step Hero return (browser)', () => {
     expect(await evaluate(`window.copiedCardId`)).toBe(await evaluate(`document.querySelector('.card-id-chip').textContent`));
   });
 
-  it('puts a running Journey after the reading footer and opens it from the title menu', async () => {
+  // 2026-11-10: every section of the open card (Properties … History, and Sub Cards) opens as one
+  // full-height column right against the card's rail, over the deck's cards, which are dimmed and inert; a press on them
+  // closes the column and the card stays open and live.
+  it('lays every card section over the dimmed, inert deck cards in one column that a press on them closes', async () => {
+    await send('Emulation.setDeviceMetricsOverride', { width: 1700, height: 1000, deviceScaleFactor: 1, mobile: false });
+    await render();
+    await openHero();
+    const state = () => evaluate(`(() => {
+      const results = document.querySelector('.catalog-results');
+      const layer = document.querySelector('.card-properties-slot:not([hidden]), .catalog-family-layer > .card-family-panel');
+      const rail = document.querySelector('.card-preview-action-rail').getBoundingClientRect();
+      return { offset: layer ? Math.round(layer.getBoundingClientRect().left - rail.right) : null,
+        top: layer ? Math.round(layer.getBoundingClientRect().top - document.querySelector('.card-preview-layout').getBoundingClientRect().top) : null,
+        dimmed: getComputedStyle(results, '::after').content !== 'none',
+        inert: Boolean(results.inert || document.querySelector('.catalog-results-body')?.inert),
+        cardLive: !document.querySelector('.card-preview-sheet').inert };
+    })()`);
+    // The column appears without motion; this also waits out any running animation before measuring.
+    const settled = (selector: string) => until(`(() => { const layer = document.querySelector(${JSON.stringify(selector)});
+      return Boolean(layer) && layer.getAnimations().every(animation => animation.playState === 'finished'); })()`);
+    const pressDeck = async () => {
+      const point = await evaluate(`(() => { const box = document.querySelector('.catalog-results').getBoundingClientRect(); return { x: box.right - 24, y: box.top + 120 }; })()`) as { x: number; y: number };
+      await send('Input.dispatchMouseEvent', { type: 'mousePressed', button: 'left', clickCount: 1, ...point });
+      await send('Input.dispatchMouseEvent', { type: 'mouseReleased', button: 'left', clickCount: 1, ...point });
+      await delay(120);
+    };
+    const properties = '.card-preview-action-rail button[aria-controls$="-properties"]';
+    await click(properties);
+    await until(`document.querySelector('.card-properties-slot')?.hidden === false`);
+    await settled('.card-properties-slot:not([hidden])');
+    // 2026-11-10: the regression is panel/rail alignment; its gap belongs to the shared visual system.
+    const railGap = await evaluate(`parseFloat(getComputedStyle(document.querySelector('.card-preview')).getPropertyValue('--preview-rail-gap'))`);
+    expect(await state()).toEqual({ offset: railGap, top: -8, dimmed: true, inert: true, cardLive: true });
+    await pressDeck();
+    await until(`document.querySelector('.card-properties-slot')?.hidden === true`);
+    expect(await evaluate(selected('hero'))).toBe(true);
+    expect(await evaluate(`document.activeElement === document.querySelector('${properties}')`)).toBe(true);
+    expect(await state()).toEqual({ offset: null, top: null, dimmed: false, inert: false, cardLive: true });
+    // Sub Cards opens in the same column.
+    await click('.card-preview-action-rail [data-card-family]');
+    await until(`Boolean(document.querySelector('.catalog-family-layer > .card-family-panel'))`);
+    await settled('.catalog-family-layer > .card-family-panel');
+    expect(await state()).toEqual({ offset: railGap, top: -8, dimmed: true, inert: true, cardLive: true });
+    await pressDeck();
+    await until(`!document.querySelector('.card-family-panel')`);
+    expect(await evaluate(selected('hero'))).toBe(true);
+  });
+
+  // 2026-11-10: the running Journey is pinned in the dock above the band, over the row with the reading footer.
+  it('pins a running Journey in the dock above the reading footer and opens it from the title menu', async () => {
     await openHero();
     expect(await evaluate(`Boolean(document.querySelector('.card-content-reading .card-preview-journey-progress'))`)).toBe(false);
-    expect(await evaluate(`document.querySelector('.card-content-reading').nextElementSibling.matches('.card-preview-journey-progress')`)).toBe(true);
+    expect(await evaluate(`Boolean(document.querySelector('.card-preview-dock-journey > .card-preview-journey-progress'))`)).toBe(true);
+    expect(await evaluate(`document.querySelector('.card-preview-dock-journey').nextElementSibling.matches('.card-preview-dock-row')`)).toBe(true);
     expect(await evaluate(`Boolean(document.querySelector('.card-content-reading-footer .card-preview-journey-action'))`)).toBe(false);
     await click('.journey-track-title-button');
     await until(`Boolean(document.querySelector('.journey-track-menu-open'))`);
@@ -370,7 +373,8 @@ describe.skipIf(!browserPath)('one-step Hero return (browser)', () => {
     const selector = panel === 'properties' ? '.card-preview-action-rail button:first-child' : '.card-preview-action-rail button:last-child';
     await click(selector);
     await until(`Boolean(document.querySelector('.card-properties-slot:not([hidden])'))`);
-    await delay(200);
+    await until(`document.activeElement === document.querySelector('.card-properties-slot:not([hidden])')`);
+    await waitForLayout(evaluate, '.card-properties-slot, .card-preview-panels');
     const geometry = await evaluate(`(() => {
       const slot = document.querySelector('.card-properties-slot:not([hidden])');
       const heading = slot.querySelector('h2, h3');
@@ -385,13 +389,14 @@ describe.skipIf(!browserPath)('one-step Hero return (browser)', () => {
     expect(geometry.hit).toBe(true);
   });
 
-  it.each([[1024, 768, 'en'], [1280, 800, 'ru']] as const)('refits editor actions after a late panels resize at %s×%s (%s)', async (width, height, lang) => {
+  // 2026-11-10: the pinned state icons and saved/draft row need room above the editor's minimum in this resize exercise.
+  it.each([[1024, 1000, 'en'], [1280, 1000, 'ru']] as const)('refits editor actions after a late panels resize at %s×%s (%s)', async (width, height, lang) => {
     await send('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile: false });
     await render({ card: 'card:build', longContent: true, width: 420, lang });
     await until(`Boolean(document.querySelector('.card-title-edit:not(:disabled)'))`);
     await click('.card-title-edit');
     await until(`Boolean(document.querySelector('.card-edit-text'))`);
-    await delay(250);
+    await waitForLayout(evaluate, '.card-edit-text, .card-preview-panels');
     const original = await evaluate(`document.querySelector('.card-edit-text').clientHeight`);
     const originalPanels = await evaluate(`document.querySelector('.card-preview-panels').clientHeight`);
     expect(original).toBeGreaterThan(204);
@@ -412,6 +417,31 @@ describe.skipIf(!browserPath)('one-step Hero return (browser)', () => {
     expect(geometry.buttons.every((button: { inside: boolean; hit: boolean }) => button.inside && button.hit)).toBe(true);
     await evaluate(`document.querySelector('.card-preview-panels').style.height = '${originalPanels}px'`);
     await until(`document.querySelector('.card-edit-text').clientHeight >= ${original - 1}`);
+  });
+
+  it.each([[1024, 768, 'en'], [1280, 800, 'ru']] as const)('keeps editor actions reachable below the preferred text minimum at %s×%s (%s)', async (width, height, lang) => {
+    await send('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile: false });
+    await render({ card: 'card:build', longContent: true, width: 420, lang });
+    await until(`Boolean(document.querySelector('.card-title-edit:not(:disabled)'))`);
+    await click('.card-title-edit');
+    await until(`Boolean(document.querySelector('.card-edit-text'))`);
+    await waitForLayout(evaluate, '.card-edit-text, .card-preview-panels');
+    // 2026-11-10: 80px, not 60: the dock gives the editor more room than the old meta row, so 60px left it above the minimum.
+    await evaluate(`(() => { const panels = document.querySelector('.card-preview-panels'); panels.style.flex = 'none'; panels.style.height = (panels.clientHeight - 80) + 'px'; })()`);
+    await waitForLayout(evaluate, '.card-edit-text, .card-preview-panels');
+    const geometry = await evaluate(`(() => {
+      const panels = document.querySelector('.card-preview-panels'), bounds = panels.getBoundingClientRect();
+      return { excess: panels.scrollHeight - panels.clientHeight, text: document.querySelector('.card-edit-text').clientHeight,
+        buttons: [...document.querySelectorAll('.card-edit-footer button')].map(button => {
+          const box = button.getBoundingClientRect();
+          return box.top >= bounds.top && box.bottom <= bounds.bottom + 1
+            && button.contains(document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2));
+        }) };
+    })()`);
+    expect(geometry.excess).toBeLessThanOrEqual(1);
+    expect(geometry.text).toBeGreaterThan(0);
+    expect(geometry.text).toBeLessThan(144);
+    expect(geometry.buttons).toEqual([true, true, true]);
   });
 
   it('a missing Hero invalidates the return instead of opening a stale card', async () => {

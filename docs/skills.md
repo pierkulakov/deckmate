@@ -15,9 +15,9 @@ Add `--project <project folder>` to work on another folder. From a Deckmate sour
 
 `install` copies the entire `skills/deckmate/` tree, including workflows, references, lenses, genres, and engines, to `<project>/.claude/skills/deckmate/` (Claude Code) and `<project>/.agents/skills/deckmate/` (Codex and compatible hosts). No other host-specific folder is installed. It records the absolute package/source path as `deckmateHome` in `tasks/deckmate.md` (or the existing legacy `tasks/freetion.md`); the runner uses it as a fallback. The installed skill is self-contained and does not require repository documentation in the user's project.
 
-Installation requires an existing project manifest. Both `install` and `status` accept `--from <Deckmate folder>` to select a package/source tree; otherwise they use the running package, not the manifest's recorded home. `status` reports source version, installed versions, and byte-for-byte `matches`/`differs` (or not installed). Reinstall to update, including after an `npx` cache path changes. Installation replaces differing Deckmate skill copies, removes obsolete files there, and preserves other skills; keep custom lenses/genres in `tasks/`, not in these managed copies. Commit the installed copies with the project.
+Installation requires an existing project manifest. Both `install` and `status` accept `--from <Deckmate folder>` to select a package/source tree; otherwise they use the running package, not the manifest's recorded home. `status` reports source version, installed versions, and byte-for-byte `matches`/`differs` (or not installed). Reinstall to update, including after an `npx` cache path changes. Before replacing anything, `install` compares both copies with the package: copies containing local changes (package files that were modified, or files that exist only in the copy) are listed and nothing is replaced; pass `--force` to replace them and lose the local changes. Copies that only miss package files are updated without `--force`. Every check, including a fresh read of the project manifest, runs before the first file is replaced; if an install still fails halfway, its error names the steps that were applied and those that were not. Installation preserves other skills; keep custom lenses/genres in `tasks/`, not in these managed copies. Commit the installed copies with the project.
 
-Agents run board commands with Node.js 26+ and no server required: `npx deckmate project <command> --data <absolute-project>` (or `deckmate project …` on PATH). From a source checkout, `npm run project -- <command> --data <project>` is equivalent. Explicit `--data` avoids environment defaults; it does not disable a configured `DECKMATE_WRITE` sandbox. `--source sandbox` selects the writable root in direct/sandbox mode; live writes are rejected. Add `--read-only` or set `DECKMATE_READ_ONLY=1` for research. See [catalog.md](catalog.md#sqlite-short-references-and-the-agent-interface).
+Agents run board commands with Node.js 26+ and no server required: `npx deckmate project <command> --data <absolute-project>` (or `deckmate project …` on PATH). From a source checkout, `npm run project -- <command> --data <project>` is equivalent. `deckmate project <command> --help` (and `-h`) prints that command's arguments, options and one example, from every entry point. Explicit `--data` avoids environment defaults; it does not disable a configured `DECKMATE_WRITE` sandbox. `--source sandbox` selects the writable root in direct/sandbox mode; live writes are rejected. Add `--read-only` or set `DECKMATE_READ_ONLY=1` for research. See [catalog.md](catalog.md#sqlite-short-references-and-the-agent-interface).
 
 ## Command
 
@@ -74,6 +74,78 @@ From a Deckmate source checkout, `npm run agents -- run <workflow> <area> --proj
 `--dry` still writes assignments but launches nothing. Inspect them first and launch only with the user's permission; if delegation is prohibited, perform roles sequentially yourself. Preserve `--roles`, `--lens`, and `--out` between preview and execution. Differing existing assignment text is rejected: choose another output folder rather than overwriting work. Use `--lens` for a different domain name and an external `--out` for a read-only project. Missing launchers are marked for manual execution; a launcher failure produces nonzero exit status.
 
 Workflow/lens/genre lookup checks installed `.agents`, installed `.claude`, project `skills/deckmate`, then the package tree selected by `deckmateHome`. Project lenses in `tasks/deckmate-lenses/` and genre guides in `tasks/deckmate-genres/` take priority; an explicit `--lens` wins over all lens defaults. A stale package path can be refreshed by reinstalling from the current package.
+
+## A full pass: from `next` to acceptance
+
+One complete executor route with a reviewer's acceptance, using the real CLI (`npx deckmate project …`, or `npm run project -- …` from a source checkout; add `--data <project>` unless the environment already selects the folder):
+
+1. Pick up the next card for a member:
+
+   ```sh
+   npx deckmate project next <member>
+   ```
+
+   ```json
+   { "source": "sandbox", "member": "casey", "card": { "ref": "c-4i9uf9xerl", "title": "Reproduce the Bug: Coupon freezes checkout", "state": "not-started", "path": "cards/…md", "sourceHash": "…" } }
+   ```
+
+2. Read the card, its rules and what to read next (`--json` adds `truncated` and `readNext`):
+
+   ```sh
+   npx deckmate project brief c-4i9uf9xerl
+   ```
+
+   ```text
+   # c-4i9uf9xerl · Reproduce the Bug: Coupon freezes checkout
+   File cards/…md:22-33 · sourceHash …
+   State not-started · owner Casey · Deck Quality · Dependencies: none recorded
+   …card text, journey step, related cards, events, and Read next ranges…
+   ```
+
+3. Read the exact ranges the brief points to, and a Journey step through its pipeline:
+
+   ```sh
+   npx deckmate project show c-4i9uf9xerl --lines 22-33
+   npx deckmate project step p-c2k6tb1e8p reproduce
+   ```
+
+   ```json
+   { "path": "cards/…md", "from": 22, "to": 33, "totalLines": 33, "markdown": "…", "sourceHash": "…", "tokens": 125 }
+   ```
+
+4. Mark work started, and ask a blocking question if needed:
+
+   ```sh
+   npx deckmate project state c-4i9uf9xerl started --member <you>
+   npx deckmate project ask c-4i9uf9xerl "Which environment should I record first?"
+   ```
+
+   ```json
+   { "question": "Which environment should I record first?", "link": "/r/c-4i9uf9xerl?source=sandbox", "existing": false, "warnings": [] }
+   ```
+
+5. Submit the result for review from a UTF-8 Markdown file:
+
+   ```sh
+   npx deckmate project report c-4i9uf9xerl --file report.md --member <you> --state review
+   ```
+
+   ```json
+   { "id": "card:…", "ref": "c-4i9uf9xerl", "source": "sandbox", "requestedState": "review", "warnings": [], "via": "files" }
+   ```
+
+6. A reviewer returns the card with a reason, or accepts it after the human owner's decision:
+
+   ```sh
+   npx deckmate project state c-4i9uf9xerl started --member <reviewer> --reason "Steps are not reproducible: fix the environment section."
+   npx deckmate project state c-4i9uf9xerl done --member <reviewer>
+   ```
+
+   ```json
+   { "id": "card:…", "ref": "c-4i9uf9xerl", "source": "sandbox", "from": "review", "state": "done", "warnings": [], "via": "files" }
+   ```
+
+A `--reason` is recorded only when returning a card from review; accepting needs no reason. Never mark your own work accepted.
 
 ## Limit context
 

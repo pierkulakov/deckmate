@@ -227,6 +227,7 @@ it('joins a refresh that started while another get was awaiting housekeeping', a
     await Promise.resolve();
     releaseRead();
     const results = await Promise.all([first, second]);
+    expect(held).toBe(true);
     for (const result of results) expect(result.cards.find(card => card.id === child.id)?.title).toBe('Concurrent searchable');
     expect(readsOf(root, child.relative)).toBe(1);
     expect((await service.search('sandbox', { text: 'Concurrent searchable' })).map(card => card.id)).toEqual([child.id]);
@@ -265,6 +266,7 @@ it('keeps an external change consumed by a concurrent GET while a POST is stagin
     expect((await service.get('sandbox')).cards.find(candidate => candidate.id === 'doc:docs/unrelated.md')?.title).toBe('External retained');
     releaseWrite();
     const after = await editing;
+    expect(held).toBe(true);
     expect(after.cards.find(candidate => candidate.id === 'doc:docs/unrelated.md')?.title).toBe('External retained');
     expect((await service.search('sandbox', { text: 'External retained' })).map(candidate => candidate.id)).toEqual(['doc:docs/unrelated.md']);
   } finally {
@@ -309,9 +311,11 @@ it('keeps the deck-kind guard fresh when an external card is added after snapsho
   const bytes = Buffer.from('---\n' + stringify(metadata) + '---\nExternal body.\n');
   const actual = await vi.importActual<typeof filesystem>('node:fs/promises');
   let injected = false;
-  vi.mocked(filesystem.writeFile).mockImplementation(async (...arguments_) => {
-    const result = await actual.writeFile(...arguments_);
-    if (String(arguments_[0]).includes('deckmate.md.') && String(arguments_[0]).endsWith('.tmp') && !injected) {
+  // 2026-11-09: the manifest is published through the shared guarded writer, whose temporary file is opened in tasks/.
+  vi.mocked(filesystem.open).mockImplementation(async (...arguments_) => {
+    const result = await actual.open(...arguments_);
+    const target = String(arguments_[0]);
+    if (path.basename(path.dirname(target)) === 'tasks' && target.endsWith('.tmp') && !injected) {
       injected = true;
       await actual.writeFile(path.join(root, relative), bytes);
     }

@@ -11,6 +11,7 @@ import { QuickSettingsList, QuickSettingsPopover, type QuickSettingsChoice } fro
 import { defineText, textNow, useText } from '../i18n.ts';
 import { priorityLabel } from '../locales/common.ts';
 import { orderedRunChoices, runChoiceLabel } from '../run-label.ts';
+import { AgentQueueHint } from './AgentQueueHint.tsx';
 import '../card-quick-settings.css';
 
 const text = defineText({
@@ -140,6 +141,7 @@ export function CardQuickSettings({ card, catalog, source, projectName, tab, onT
           current={currentChoice(tab, value, catalog)} disabled={unavailable || propertyUnavailable} searchDisabled={unavailable} onChoose={key => void choose(key)} />
       </div>
       {propertyUnavailable && <p className="card-quick-message">{t.docProperties}</p>}
+      {tab === 'owner' && catalog.members?.some(member => member.kind === 'agent') && <AgentQueueHint />}
       {error && <p className="card-quick-message" role="alert">{error}</p>}
     </div>
   </QuickSettingsPopover>;

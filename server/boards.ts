@@ -9,10 +9,9 @@ import { projectLanguage } from './project-language.ts';
 import type { DataSource } from '../src/workspace-contracts.ts';
 import { boardAccessOf, boardCardIdOf, type BoardAccess, type BoardDocument, type BoardScene, type BoardSummary } from '../src/board-contracts.ts';
 import { assertCatalogCoverFile, decodeCatalogCover, storeCatalogCover } from './catalog-covers.ts';
+import { BoardSceneSafetyError, boardImageMimeTypes, boardSafetyText, maximumBoardBytes, maximumBoardImageBytes, sanitizeBoardScene, type BoardSafetyIssue } from '../src/board-scene-safety.ts';
 
 const messages = defineText({
-  invalidScene: "Invalid Excalidraw scene.",
-  duplicateElementIds: "Board elements must have unique IDs.",
   boardRootChanged: "The project root changed or contains a symbolic link.",
   boardDirectoryLink: "The boards directory cannot be a symbolic link.",
   invalidBoardId: "Invalid board ID.",
@@ -26,8 +25,6 @@ const messages = defineText({
   boardDirectoryChanged: "The board directory changed.",
   boardChangedOnSave: "The board changed while saving. Your drawing remains in the editor.",
 }, {
-  invalidScene: "Некорректное полотно Excalidraw.",
-  duplicateElementIds: "У элементов доски должны быть уникальные ID.",
   boardRootChanged: "Корень проекта изменился или содержит ссылку.",
   boardDirectoryLink: "Папка boards не может быть ссылкой.",
   invalidBoardId: "Некорректный ID доски.",
@@ -53,17 +50,12 @@ function linkedCards(scene: BoardScene): string[] {
     .filter((cardId): cardId is string => Boolean(cardId)))];
 }
 
-function validateScene(value: unknown): BoardScene {
-  const scene = value as BoardScene;
-  if (!scene || scene.type !== 'excalidraw' || scene.version !== 2 || !Array.isArray(scene.elements)
-    || scene.elements.length > 5000 || !scene.appState || typeof scene.appState !== 'object' || Array.isArray(scene.appState)
-    || !scene.files || typeof scene.files !== 'object' || Array.isArray(scene.files)) throw new CatalogError(422, serverText(messages).invalidScene);
-  const ids = new Set<string>();
-  for (const element of scene.elements) {
-    if (!element || typeof element !== 'object' || typeof element.id !== 'string' || ids.has(element.id)) throw new CatalogError(422, serverText(messages).duplicateElementIds);
-    ids.add(element.id);
+function validateScene(value: unknown, mode: 'read' | 'write') {
+  try { return sanitizeBoardScene(value, mode); }
+  catch (error) {
+    if (error instanceof BoardSceneSafetyError) throw new CatalogError(422, serverText(boardSafetyText)[error.code]);
+    throw error;
   }
-  return scene;
 }
 
 export class Boards {
@@ -87,20 +79,35 @@ export class Boards {
     await this.directory(source);
     const filename = await containedFile(this.root(source), `boards/${id}.excalidraw`);
     if ((await lstat(path.join(this.root(source), `boards/${id}.excalidraw`))).isSymbolicLink()) throw new CatalogError(422, serverText(messages).boardFileLink);
+    if ((await lstat(filename)).size > maximumBoardBytes) throw new CatalogError(422, serverText(messages).boardTooLarge);
     const bytes = await readFile(filename);
     const stored = JSON.parse(bytes.toString('utf8')) as StoredBoard;
-    const scene = validateScene(stored);
+    const { scene, issues } = validateScene(stored, 'read');
     const files: Record<string, unknown> = { ...scene.files };
+    const usedFiles = new Set(scene.elements.filter(element => !element.isDeleted && element.type === 'image').map(element => element.fileId));
+    let imageBytes = bytes.length;
     for (const [fileId, asset] of Object.entries(stored.externalFiles ?? {})) {
+      if (!usedFiles.has(fileId)) continue;
+      if (!asset || !boardImageMimeTypes.includes(asset.mimeType)) { issues.push('files'); continue; }
       await assertCatalogCoverFile(this.root(source), asset.path);
+      const size = (await lstat(path.join(this.root(source), asset.path))).size;
+      imageBytes += Math.ceil(size / 3) * 4;
+      if (size > maximumBoardImageBytes || imageBytes > maximumBoardBytes) throw new CatalogError(422, serverText(boardSafetyText).limit);
       const dataURL = `data:${asset.mimeType};base64,${(await readFile(path.join(this.root(source), asset.path))).toString('base64')}`;
-      decodeCatalogCover(dataURL);
+      try { decodeCatalogCover(dataURL); } catch { issues.push('files'); continue; }
       files[fileId] = { id: fileId, mimeType: asset.mimeType, created: asset.created, dataURL };
     }
+    const hydrated = validateScene({ ...scene, files }, 'read');
+    // 2026-11-10: inline files need the same signature check as external assets, even on read-only boards.
+    for (const [fileId, file] of Object.entries(hydrated.scene.files)) {
+      try { decodeCatalogCover((file as { dataURL: string }).dataURL); }
+      catch { delete hydrated.scene.files[fileId]; issues.push('files'); }
+    }
+    const warnings = [...new Set<BoardSafetyIssue>([...issues, ...hydrated.issues])].map(issue => serverText(boardSafetyText)[issue]);
     const linkedCardIds = linkedCards(scene);
     return { id, title: stored.name || 'Vision', hash: hash(bytes), path: `boards/${id}.excalidraw`, linkedCardIds,
       updatedAt: (await lstat(filename)).mtime.toISOString(), access: boardAccessOf(stored),
-      scene: { type: 'excalidraw', version: 2, elements: scene.elements, appState: scene.appState, files } };
+      ...(warnings.length ? { warnings } : {}), scene: hydrated.scene };
   }
 
   async list(source: DataSource): Promise<BoardSummary[]> {
@@ -122,7 +129,7 @@ export class Boards {
     const operation = this.writes.then(async () => {
       const root = await assertWritable(this.config, source);
       if (!input.title.trim() || input.title.length > 120) throw new CatalogError(422, serverText(messages).invalidBoardTitle);
-      const scene = validateScene(input.scene);
+      const { scene } = validateScene(input.scene, 'write');
       const id = input.id ?? randomUUID();
       if (!identifier.test(id)) throw new CatalogError(400, serverText(messages).invalidBoardId);
       const directory = await this.directory(source, true);

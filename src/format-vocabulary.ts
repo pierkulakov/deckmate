@@ -9,7 +9,7 @@
 export const formatLanguages = ['en', 'ru'] as const;
 export type FormatLanguage = typeof formatLanguages[number];
 
-// 'wont-do' marks work that was decided against; it is not a board column (2026-11-05, kept from the legacy «не делаем» mark).
+// 'wont-do' marks work that was decided against; it is not a board column (2026-11-05, kept from the legacy Russian mark).
 export const cardStates = ['not-started', 'discussing', 'in-iteration', 'started', 'review', 'done', 'wont-do'] as const;
 export type CardState = typeof cardStates[number];
 
@@ -26,7 +26,7 @@ const stateByWord = new Map<string, CardState>([
 
 /** Every accepted heading spelling, including legacy aliases. */
 export function cardStateMarkWords(): string[] {
-  // The old Russian grammar leaves "(план)" in a slice title; an unmarked slice is already not-started.
+  // The legacy Russian not-started marker remains part of a slice title; an unmarked slice is already not-started.
   return [...stateByWord.keys()].filter(word => word !== stateWords.ru['not-started']);
 }
 

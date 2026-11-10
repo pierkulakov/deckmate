@@ -109,29 +109,32 @@ it('journals a created Sub Card in its own and Hero decks, and idempotent retry 
   expect(await readFile(filename)).toEqual(saved);
 });
 
-it('serves the pulse and persists pile changes through the guarded API without duplicate events', async () => {
+it('serves the pulse, rejects the removed pile action and still renders legacy pile history', async () => {
   const { root, app, authorized } = await appFixture();
   const filename = path.join(root, 'tasks/deckmate.md');
   const before = await readFile(filename);
-  const catalog = (await app.inject({ url: '/api/catalog?source=sandbox', headers })).json<CatalogView>();
+  const catalog = await readProjectCatalog(root);
   const request = { action: 'set-deck-pile', source: 'sandbox', deckId: 'audio', piled: true, manifestHash: catalog.manifestHash };
-  const pile = await app.inject({ method: 'POST', url: '/api/catalog', headers: authorized, payload: request });
-  expect(pile.statusCode).toBe(200);
-  expect((await readProjectCatalog(root)).decks.find(deck => deck.id === 'audio')?.piled).toBe(true);
-  expect((await app.inject({ method: 'POST', url: '/api/catalog', headers: authorized, payload: request })).statusCode).toBe(409);
-  const piled = await readProjectCatalog(root);
-  const retry = { ...request, manifestHash: piled.manifestHash };
-  expect((await app.inject({ method: 'POST', url: '/api/catalog', headers: authorized, payload: retry })).statusCode).toBe(200);
-  expect((await readActivity(root, 'audio')).events.filter(event => event.action === 'set-deck-pile')).toHaveLength(1);
-  expect((await app.inject({ method: 'POST', url: '/api/catalog', headers: authorized, payload: { ...retry, source: 'live' } })).statusCode).toBe(403);
-  expect((await app.inject({ method: 'POST', url: '/api/catalog', headers: authorized, payload: { ...retry, piled: 'invalid' } })).statusCode).toBe(400);
-  expect((await app.inject({ method: 'POST', url: '/api/catalog', headers: authorized, payload: { ...retry, deckId: 'missing' } })).statusCode).toBe(422);
-  const shelve = await app.inject({ method: 'POST', url: '/api/catalog', headers: authorized, payload: { ...retry, piled: false } });
-  expect(shelve.statusCode).toBe(200);
-  expect(await readFile(filename)).toEqual(before);
-  const events = (await readActivity(root, 'audio')).events.filter(event => event.action === 'set-deck-pile');
-  expect(events).toHaveLength(2);
-  expect(events[0].summary).not.toBe(events[1].summary);
+  expect((await app.inject({ method: 'POST', url: '/api/catalog', headers: authorized, payload: request })).statusCode).toBe(400);
+
+  const legacy = [
+    { ...activityEvent(1), action: 'set-deck-pile', summary: 'Deck moved to the pile', details: ['“audio” is in the pile at the end of its space'] },
+    { ...activityEvent(2), action: 'set-deck-pile', summary: 'Deck back on the shelf', details: ['“audio” is back on the shelf of its space'] },
+  ];
+  for (const event of legacy) {
+    expect(activityEventGroups(event)).toEqual(new Set(['properties']));
+    await appendActivity(root, event, 'en');
+  }
+  for (const language of ['en', 'ru']) {
+    const response = await app.inject({ url: '/api/activity?source=sandbox&deckId=audio', headers: { ...headers, cookie: `deckmate-lang=${language}` } });
+    expect(response.statusCode).toBe(200);
+    const events = response.json().events as DeckActivityEvent[];
+    expect(events).toHaveLength(2);
+    expect(events.map(event => event.summary)).toEqual(language === 'ru'
+      ? ['Колода возвращена на полку', 'Колода убрана в стопку']
+      : ['Deck back on the shelf', 'Deck moved to the pile']);
+    expect(events.map(event => event.details)).toEqual([legacy[1].details, legacy[0].details]);
+  }
 
   for (const source of ['live', 'sandbox']) {
     const response = await app.inject({ url: `/api/project-pulse?source=${source}`, headers });
@@ -157,6 +160,36 @@ it('journals actual content changes and leaves an unchanged save out of history'
   expect((await service.activity('sandbox', 'concepts')).events[0].id).toBe(page.events[0].id);
   await service.edit({ ...edit, sourceHash: catalog.cards.find(card => card.id === child.id)!.sourceHash!, manifestHash: catalog.manifestHash }, 'sandbox');
   expect((await service.activity('sandbox', 'audio')).events).toHaveLength(1);
+});
+
+it.each(['set-card-state', 'bulk-edit-cards', 'update-status'])(
+  'describes deckless state transitions with return feedback (%s)', async action => {
+    const { root } = await fixture();
+    const card = await seedCard(root, { deckId: null });
+    expect(card.deckId).toBeNull();
+    const catalog = await readProjectCatalog(root);
+    const before = { ...catalog, cards: [{ ...card, state: 'review' as const }] };
+    const after = { ...catalog, cards: [{ ...card, state: 'not-started' as const }] };
+    const reason = 'Исправить проверку результата.';
+    const event = describeActivity(before, after, action, new Set([card.id]), undefined, new Map([[card.id, reason]]));
+    expect(event).toMatchObject({ action, deckIds: [], cards: [{ id: card.id, title: card.title }],
+      transitions: [{ cardId: card.id, from: 'review', to: 'not-started', reason }] });
+    expect(event!.details.join('\n')).toContain(reason);
+    expect(describeActivity(after, after, action, new Set([card.id]))).toBeNull();
+  },
+);
+
+it('reads legacy journal authors and entries without transitions without rewriting their bytes', async () => {
+  const { root } = await fixture();
+  const event = activityEvent(1, []);
+  await appendActivity(root, event, 'ru');
+  const filename = path.join(root, 'tasks/deckmate-activity', event.at.replace(/[-:.]/gu, '') + '-' + event.id + '.md');
+  const legacy = Buffer.from('\uFEFF' + (await readFile(filename, 'utf8')).replace('actor: Deckmate', 'actor: Freetion').replace(/\n/gu, '\r\n'));
+  await writeFile(filename, legacy);
+  const history = await readCardActivity(root, event.cards[0].id);
+  expect(history.warnings).toEqual([]);
+  expect(history.events).toEqual([{ ...event, transitions: undefined }]);
+  expect(await readFile(filename)).toEqual(legacy);
 });
 
 it('moving a Sub Card journals old deck, new deck and Hero deck without changing its parent', async () => {
@@ -269,8 +302,8 @@ it('returns a saved warning when journal persistence fails, without retrying the
   await writeFile(path.join(root, 'tasks/deckmate-activity'), 'A file blocks the journal directory.');
   const result = await service.edit({ action: 'assign-deck', manifestHash: before.manifestHash, sourceHash: child.sourceHash!, cardId: child.id, deckId: 'qa' }, 'sandbox');
   expect(result.cards.find(card => card.id === child.id)?.deckId).toBe('qa');
-  expect(result.warnings.join(' ')).toContain('Changes were saved');
-  expect(result.warnings.join(' ')).toContain('Do not repeat the change');
+  expect(result.savedWarning).toContain('Changes were saved');
+  expect(result.savedWarning).toContain('Do not repeat the change');
   expect((await readProjectCatalog(root)).cards.find(card => card.id === child.id)?.deckId).toBe('qa');
   expect((await readdir(path.join(root, 'cards'))).filter(name => name.endsWith('.md'))).toHaveLength(1);
 });
@@ -308,6 +341,30 @@ it.each(['en', 'ru'] as const)('journals Space order in %s without attributing e
   await service.edit({ action: 'move-space', spaceId: 'archive', beforeSpaceId: 'work', manifestHash: after.manifestHash }, 'sandbox');
   expect(await readdir(path.join(root, 'tasks/deckmate-activity'))).toEqual(journal);
   expect(describeActivity(after, after, 'move-space')).toBeNull();
+  for (const deck of after.decks) expect((await service.activity('sandbox', deck.id)).events).toEqual([]);
+});
+
+it.each(['en', 'ru'] as const)('journals a deleted Space title in %s without changing Deck feeds', async formatLanguage => {
+  const { root, service } = await fixture();
+  const source = await readManifest(root);
+  source.manifest.formatLanguage = formatLanguage;
+  await writeFile(path.join(root, 'tasks/deckmate.md'), renderCatalogManifest(source.manifest));
+  const before = await service.get('sandbox');
+  const after = await service.edit({ action: 'delete-space', spaceId: 'archive', manifestHash: before.manifestHash }, 'sandbox');
+  const event = describeActivity(before, after, 'delete-space');
+  expect(event).toMatchObject({ action: 'delete-space', summary: formatLanguage === 'en' ? 'Space deleted' : 'Пространство удалено',
+    deckIds: [], cards: [], details: ['Archive'] });
+  expect(activityEventGroups(event!)).toEqual(new Set(['properties']));
+  const journal = await readdir(path.join(root, 'tasks/deckmate-activity'));
+  expect(journal).toHaveLength(1);
+  const saved = await readFile(path.join(root, 'tasks/deckmate-activity', journal[0]), 'utf8');
+  expect(saved).toContain(event!.summary);
+  expect(saved).toContain('Archive');
+  expect(after.decks).toEqual(before.decks);
+  expect(after.cards).toEqual(before.cards);
+  expect(describeActivity(after, after, 'delete-space')).toBeNull();
+  await expect(service.edit({ action: 'delete-space', spaceId: 'archive', manifestHash: after.manifestHash }, 'sandbox')).rejects.toMatchObject({ status: 422 });
+  expect(await readdir(path.join(root, 'tasks/deckmate-activity'))).toEqual(journal);
   for (const deck of after.decks) expect((await service.activity('sandbox', deck.id)).events).toEqual([]);
 });
 

@@ -173,6 +173,111 @@ async function shortcut(key: string, code: string, virtualKey: number, modifiers
   }
 }
 
+async function copyText(text: string): Promise<void> {
+  // 2026-11-10: after readText is denied, WebView2 can also refuse later async writes; use real Copy, not a CDP permission grant.
+  await page!.callFunction(`text => {
+    const input = document.createElement('textarea');
+    input.id = 'smoke-clipboard-source'; input.value = text; document.body.append(input);
+    input.focus(); input.select();
+  }`, text);
+  await shortcut('c', 'KeyC', 67);
+  await page!.evaluate(`document.getElementById('smoke-clipboard-source').remove()`);
+}
+
+async function pasteInEditors(boardOrigin: string): Promise<void> {
+  // 2026-11-10: a plain textarea misses the real paste listeners in the card editor and Excalidraw.
+  currentStep = 'b-card-paste';
+  const catalog = await (await fetch(`${boardOrigin}/api/catalog?source=live`)).json() as { cards: { id: string }[] };
+  if (!catalog.cards.length) throw new SmokeFailure('demo has no card for the paste check');
+  await page!.evaluate(`location.href = ${JSON.stringify(`${boardOrigin}/?catalogSource=live&scope=all&card=${encodeURIComponent(catalog.cards[0].id)}`)}`);
+  await poll(async () => (await page!.evaluate(`!!document.querySelector('.card-content-edit-action:not(:disabled)')`)) === true,
+    'the real card editor action to become available', 20000);
+  await page!.send('Emulation.setFocusEmulationEnabled', { enabled: true });
+  await page!.evaluate(`document.querySelector('.card-content-edit-action').click()`);
+  await poll(async () => (await page!.evaluate(`!!document.querySelector('.card-edit-text:not(:disabled)')`)) === true,
+    'the card text editor to open', 10000);
+  await copyText(' deckmate-card-paste');
+  await page!.callFunction(`() => {
+    const editor = document.querySelector('.card-edit-text');
+    editor.focus(); editor.setSelectionRange(editor.value.length, editor.value.length);
+    window.__smokeCardBeforePaste = editor.value;
+  }`);
+  await shortcut('v', 'KeyV', 86);
+  await poll(async () => (await page!.evaluate(`document.querySelector('.card-edit-text').value === window.__smokeCardBeforePaste + ' deckmate-card-paste'`)) === true,
+    'Ctrl+V to paste into the card editor', 5000);
+  await shortcut('z', 'KeyZ', 90);
+  await poll(async () => (await page!.evaluate(`document.querySelector('.card-edit-text').value === window.__smokeCardBeforePaste`)) === true,
+    'Undo to restore the card before closing its editor', 5000);
+  await page!.evaluate(`document.querySelector('.card-edit .is-cancel').click()`);
+  await poll(async () => (await page!.evaluate(`!document.querySelector('.card-edit-text') && !document.querySelector('.global-tabs button:last-child').disabled`)) === true,
+    'the unchanged card editor to close', 5000);
+  pass('b-card-paste', 'CDP Ctrl+V reached the real card editor; Undo restored its text without saving');
+
+  currentStep = 'b-vision-paste';
+  await page!.evaluate(`document.querySelector('.global-tabs button:last-child').click()`);
+  await poll(async () => (await page!.evaluate(`!!document.querySelector('.excalidraw canvas.interactive')`)) === true,
+    'the Vision canvas to mount', 20000);
+  await copyText('deckmate-vision-paste');
+  const point = await page!.evaluate(`(() => {
+    const box = document.querySelector('.excalidraw canvas.interactive').getBoundingClientRect();
+    return { x: box.left + box.width / 2, y: box.top + box.height / 2 };
+  })()`);
+  await page!.send('Input.dispatchMouseEvent', { type: 'mouseMoved', ...point });
+  await page!.send('Input.dispatchMouseEvent', { type: 'mousePressed', ...point, button: 'left', clickCount: 1 });
+  await page!.send('Input.dispatchMouseEvent', { type: 'mouseReleased', ...point, button: 'left', clickCount: 1 });
+  await shortcut('v', 'KeyV', 86);
+  await poll(async () => (await page!.evaluate(`!document.querySelector('.vision-toolbar-actions button:last-child').disabled`)) === true,
+    'Ctrl+V to change the Vision scene', 10000);
+  await page!.evaluate(`document.querySelector('.vision-toolbar-actions button').click()`);
+  await poll(async () => (await page!.evaluate(`!!document.querySelector('.vision-toolbar select').value && document.querySelector('.vision-toolbar-actions button:last-child').disabled`)) === true,
+    'the pasted Vision scene to save in the temporary demo', 10000);
+  const pasted = await page!.callFunction(`async () => {
+    const id = document.querySelector('.vision-toolbar select').value;
+    const response = await fetch('/api/boards/' + encodeURIComponent(id) + '?source=live');
+    const board = await response.json();
+    return response.ok && board.scene.elements.some(element => !element.isDeleted && element.text === 'deckmate-vision-paste');
+  }`);
+  if (pasted !== true) throw new SmokeFailure('the saved Vision scene has no pasted text element');
+  await page!.evaluate(`document.querySelectorAll('.global-tabs button')[1].click()`);
+  await poll(async () => (await page!.evaluate(`!document.querySelector('.vision-workspace')`)) === true,
+    'the clean Vision scene to return to Decks', 5000);
+  pass('b-vision-paste', 'CDP Ctrl+V created a text element in Vision; its saved temporary scene contains the clipboard text');
+}
+
+function switchProjectShortcut(pid: number): void {
+  // 2026-11-09: CDP input reaches only the renderer, so native AcceleratorKeyPressed needs Win32 virtual-key input.
+  execFileSync('powershell', ['-NoProfile', '-NonInteractive', '-Command', `
+    Add-Type -TypeDefinition 'using System; using System.Runtime.InteropServices; public class DeckmateKeys {
+      [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
+      [DllImport("user32.dll")] static extern bool SetForegroundWindow(IntPtr hwnd);
+      [DllImport("user32.dll")] static extern bool ShowWindowAsync(IntPtr hwnd, int command);
+      [DllImport("user32.dll")] static extern uint GetWindowThreadProcessId(IntPtr hwnd, IntPtr process);
+      [DllImport("user32.dll")] static extern bool AttachThreadInput(uint from, uint to, bool attach);
+      [DllImport("kernel32.dll")] static extern uint GetCurrentThreadId();
+      [DllImport("user32.dll")] public static extern void keybd_event(byte key, byte scan, uint flags, UIntPtr extra);
+      public static void Focus(IntPtr hwnd) {
+        ShowWindowAsync(hwnd, 9);
+        uint foreground = GetWindowThreadProcessId(GetForegroundWindow(), IntPtr.Zero);
+        uint current = GetCurrentThreadId();
+        bool attached = foreground != current && AttachThreadInput(current, foreground, true);
+        SetForegroundWindow(hwnd);
+        if (attached) AttachThreadInput(current, foreground, false);
+      }
+    }';
+    $window = (Get-Process -Id ${pid}).MainWindowHandle;
+    if ($window -eq 0) { throw 'Main window not found'; }
+    [DeckmateKeys]::Focus($window);
+    Start-Sleep -Milliseconds 200;
+    if ([DeckmateKeys]::GetForegroundWindow() -ne $window) { throw 'Could not focus the debug window'; }
+    [DeckmateKeys]::keybd_event(0x11, 0, 0, [UIntPtr]::Zero);
+    [DeckmateKeys]::keybd_event(0x10, 0, 0, [UIntPtr]::Zero);
+    [DeckmateKeys]::keybd_event(0x50, 0, 0, [UIntPtr]::Zero);
+    [DeckmateKeys]::keybd_event(0x50, 0, 2, [UIntPtr]::Zero);
+    [DeckmateKeys]::keybd_event(0x10, 0, 2, [UIntPtr]::Zero);
+    [DeckmateKeys]::keybd_event(0x11, 0, 2, [UIntPtr]::Zero);
+  `], { encoding: 'utf8', timeout: 15000, windowsHide: true });
+}
+
 // A failed launch leaves an error status on the launcher and shell events in server.log; both
 // end up in the failure line so a red smoke run points at the cause without rerunning manually.
 async function diagnose(settings: string): Promise<string> {
@@ -329,6 +434,9 @@ async function main(): Promise<number> {
       throw new SmokeFailure(`clipboard write/read policy failed: ${JSON.stringify(clipboard)}`);
     }
     pass('b-clipboard', 'clipboard.writeText resolved; clipboard.readText was denied');
+    const notification = await page!.callFunction(`() => Notification.requestPermission()`);
+    if (notification !== 'denied') throw new SmokeFailure(`notifications were not denied: ${notification}`);
+    pass('b-notifications', 'Notification.requestPermission resolved denied without a prompt');
     currentStep = 'b-keys';
     await page!.evaluate(`(() => {
       window.__smokePrints = 0;
@@ -355,6 +463,7 @@ async function main(): Promise<number> {
     if ((await page!.evaluate(`document.getElementById('smoke-edit').value`)) !== 'editing') throw new SmokeFailure('Ctrl+Y editing failed');
     await page!.evaluate(`document.getElementById('smoke-edit').remove()`);
     pass('b-keys', 'CDP Ctrl+P/F5 did not print/reload; Ctrl+A/C/X/V/Z/Y still edit text');
+    await pasteInEditors(boardOrigin);
     currentStep = 'b';
     // CDP exposes only the document title (Target.getTargetInfo), not the window title, so read
     // the title Win32-side through PowerShell; headless sessions without a window skip with a note.
@@ -465,14 +574,19 @@ async function main(): Promise<number> {
     }
     pass('d', `location.href to https://example.com/ stayed on ${origin}; the link went to the external handler, not the user's browser`);
 
-    // e. showStartScreen returns to the launcher and stops the server process.
+    // e. The native Switch project shortcut works inside a board editor, independently of the keyboard layout.
     currentStep = 'e';
-    await page!.callFunction(`() => { void window.deckmateBoard.showStartScreen(); }`);
+    await page!.evaluate(`(() => {
+      const input = document.createElement('textarea');
+      input.id = 'smoke-switch-edit'; document.body.append(input); input.focus();
+    })()`);
+    await page!.send('Page.bringToFront');
+    switchProjectShortcut(shell.pid!);
     await poll(launcherLoaded,
-      'showStartScreen to return to the launcher', 20000);
+      'Ctrl+Shift+P to return to the launcher', 20000);
     await poll(async () => serverProcesses(needles).length === 0,
       'the demo server process to exit', 15000);
-    pass('e', 'back on the launcher; no node.exe for the demo or the server entry remains');
+    pass('e', 'native Ctrl+Shift+P from a CDP-focused editor returned to the launcher by virtual key; no demo server remains');
 
     currentStep = 'e-workspace';
     const launcherWorkspace = await page!.callFunction(`async folder => {

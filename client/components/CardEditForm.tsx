@@ -9,6 +9,7 @@ import { parseEditorMarkdown, toggleEditorChecklist } from '../editor-checklists
 import { Markdown } from './Markdown.tsx';
 import { EditorCommandMenu, type EditorCommandHandle } from './EditorCommandMenu.tsx';
 import { defineText, useText } from '../i18n.ts';
+import { moveFocus } from '../focus.ts';
 
 const text = defineText({
   commandHintStart: 'Type ',
@@ -92,7 +93,7 @@ export function CardEditForm({ draft, onDraftChange, catalog, source, path, card
   // The strip replaces the footer, so the button focus came from is gone; after Keep the edit continues in the text box.
   const asked = useRef(false);
   useEffect(() => {
-    if (asked.current && !confirmStrip) formRef.current?.querySelector<HTMLTextAreaElement>('.card-edit-text')?.focus({ preventScroll: true });
+    if (asked.current && !confirmStrip) moveFocus(formRef.current?.querySelector<HTMLTextAreaElement>('.card-edit-text'), { preventScroll: true });
     asked.current = Boolean(confirmStrip);
   }, [confirmStrip]);
 
@@ -184,7 +185,7 @@ const minimumTextHeight = 144;
 
 /**
  * The text box grows with the text until the card meets the bottom of its own scroll area (the card preview), then
- * scrolls inside, so Save, the tags and the Effort/Priority strip stay in view (2026-11-05, as in the reference editor).
+ * scrolls inside, so Save, the tags and the Effort/Priority strip stay in view (2026-11-05).
  * Without a scroll area of its own inside the page (narrow screens, New Card at the page end) the box simply grows.
  */
 function useTextFitsCard(formRef: RefObject<HTMLFormElement | null>, draft: string, preview: boolean) {
@@ -194,9 +195,15 @@ function useTextFitsCard(formRef: RefObject<HTMLFormElement | null>, draft: stri
     if (!form || !text) return;
     const scroller = cardScroller(form);
     text.style.maxHeight = '';
+    text.style.minHeight = '';
     if (!scroller) return;
     const excess = scroller.scrollHeight - scroller.clientHeight;
-    if (excess > 0) text.style.maxHeight = `${Math.max(minimumTextHeight, text.offsetHeight - excess)}px`;
+    if (excess > 0) {
+      // 2026-11-10: status text and wrapped card chrome can leave less than 144px; keep Save inside the scrollport.
+      const height = Math.max(0, text.offsetHeight - excess);
+      text.style.minHeight = `${Math.min(minimumTextHeight, height)}px`;
+      text.style.maxHeight = `${height}px`;
+    }
   }, [formRef]);
   useLayoutEffect(fit, [fit, draft, preview]);
   useEffect(() => {

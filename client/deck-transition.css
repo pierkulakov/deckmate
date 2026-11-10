@@ -1,5 +1,11 @@
-/* The frozen gallery of a deck transition (2026-11-05): fixed over the scrollport for one 100–300 ms move, never interactive. */
-.deck-transition-layer { position: fixed; z-index: 25; overflow: hidden; pointer-events: none; }
+/* 2026-11-09: the stage is opaque until the cover reaches the shelf; tools never show through the departing gallery. */
+.deck-transition-layer { position: fixed; z-index: 25; overflow: hidden; pointer-events: none; background: var(--ground); }
 .deck-transition-ghost { position: absolute; margin: 0; will-change: transform; }
 /* The cover's shared light layer handles is-transition-hover; its settings button follows the same handoff. */
 .deck-transition-ghost .catalog-cover-item.is-transition-hover .catalog-cover-settings { opacity: 1; }
+/* 2026-11-09: the row leaves its panel: the glass and the light on it go out while the boxes travel, so the open deck's
+   shelf, which has neither, receives exactly what arrives. */
+.deck-transition-ghost .catalog-space::before { animation: deck-shelf-leave var(--motion-feedback) var(--ease-scroll) forwards; }
+/* 2026-11-10: closing uses the same frozen stage, but its panels return instead of leaving. */
+.deck-transition-ghost.is-transition-returning .catalog-space::before { animation-direction: reverse; }
+@keyframes deck-shelf-leave { to { opacity: 0; } }

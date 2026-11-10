@@ -6,6 +6,8 @@ The logo in `logo/` and the cover illustrations in `deck-art/` were generated wi
 
 The `characters`, `levels`, `story`, `agents`, `releases` and `ideas` covers were generated with OpenAI GPT Image 2 on 2026-11-09 using existing Deckmate covers as style references, then palette-quantized on a 100×70 pixel grid and saved as 600×420 lossless WebP.
 
+The `backend`, `database`, `api`, `tests`, `security`, `pipelines`, `deploy`, `performance`, `mobile` and `analytics` covers were generated with OpenAI GPT Image 2 on 2026-11-10 using existing Deckmate covers as style references, then palette-quantized on a 100×70 pixel grid and saved as 600×420 lossless WebP.
+
 ## Screenshots and social preview
 
 The images in `docs/screenshots/`, `docs/social-cards.png` and `docs/social-preview.png` are captured from Deckmate's fictional Moonwake Studio demo. The people, cards and project shown are sample content. Regenerate them from a fresh build with `npm run shots`; the social composition is defined in `docs/social-preview.html`.

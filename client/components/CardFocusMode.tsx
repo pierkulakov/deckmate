@@ -1,8 +1,11 @@
 import { useEffect, useEffectEvent, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
+import { FocusScope } from '@radix-ui/react-focus-scope';
 import { ChevronLeft, Maximize, Minimize } from 'lucide-react';
 import { defineText, useText } from '../i18n.ts';
+import { moveFocus } from '../focus.ts';
 import '../card-focus-mode.css';
+import { prepareEntrance } from '../prepared-motion.ts';
 
 const text = defineText({
   dialogLabel: (title: string) => `Focus Mode: ${title}`,
@@ -16,23 +19,26 @@ const text = defineText({
   exitFullScreen: 'Выйти из полного экрана',
 });
 
-// Focus Mode fills the viewport with the card face color, Back at top left, Full Screen at top right,
-// and one centered text column; deck navigation and sheet chrome stay outside this view.
-// Not a Radix modal: it would switch off pointer events for the editor's «/» «$» «#» «@» menus, portalled to <body>.
+// 2026-11-10: reuse Radix's Tab loop without its modal focus/pointer trap: editor menus portal into body.
 export function CardFocusMode({ title, onBack, children }: { title: string; onBack: () => void; children: ReactNode }) {
   const t = useText(text);
   const layer = useRef<HTMLDivElement>(null);
   const enteredFullScreen = useRef(false);
   const [fullScreen, setFullScreen] = useState(() => Boolean(document.fullscreenElement));
+  const [returnFocus] = useState(() => ({
+    opener: document.activeElement instanceof HTMLElement ? document.activeElement : null,
+    cardId: new URLSearchParams(location.search).get('card'),
+  }));
 
-  // Layout phase on purpose: the background leaves `inert` before a returning card editor autofocuses its text.
+  // 2026-11-10: restore inert in layout cleanup before the returning editor or Radix restores focus.
   useLayoutEffect(() => {
     const element = layer.current;
     if (!element) return;
+    const releasePreparation = prepareEntrance(element);
     const background = [...document.body.children].filter((child): child is HTMLElement => child instanceof HTMLElement && child !== element && !child.inert);
     for (const child of background) child.inert = true;
-    if (!element.contains(document.activeElement)) element.focus({ preventScroll: true });
     return () => {
+      releasePreparation?.();
       for (const child of background) child.inert = false;
       if (enteredFullScreen.current && document.fullscreenElement) void document.exitFullscreen().catch(() => undefined);
     };
@@ -65,11 +71,23 @@ export function CardFocusMode({ title, onBack, children }: { title: string; onBa
   }
 
   const fullScreenLabel = fullScreen ? t.exitFullScreen : t.fullScreen;
-  return createPortal(<div ref={layer} className="card-focus-mode" role="dialog" aria-modal="true" aria-label={t.dialogLabel(title)} tabIndex={-1}>
+  return createPortal(<FocusScope asChild loop onMountAutoFocus={event => {
+    const editor = layer.current?.querySelector<HTMLElement>('textarea:not(:disabled), [contenteditable="true"], .card-title-edit:not(:disabled)');
+    if (editor) { event.preventDefault(); moveFocus(editor, { preventScroll: true }); }
+  }} onUnmountAutoFocus={event => {
+    event.preventDefault();
+    if (returnFocus.opener?.isConnected && !returnFocus.opener.closest('[inert]')) {
+      moveFocus(returnFocus.opener, { preventScroll: true });
+      return;
+    }
+    if (!returnFocus.cardId) return;
+    const tile = document.querySelector<HTMLElement>(`[data-card-id="${CSS.escape(returnFocus.cardId)}"] .deck-card-open`);
+    moveFocus(tile, { preventScroll: true });
+  }}><div ref={layer} className="card-focus-mode" role="dialog" aria-modal="true" aria-label={t.dialogLabel(title)} tabIndex={-1}>
     <button type="button" className="card-focus-mode-back" aria-label={t.exit} title={t.exit} onClick={onBack}><ChevronLeft size={14} aria-hidden="true" /></button>
     <button type="button" className="card-focus-mode-screen" aria-label={fullScreenLabel} title={fullScreenLabel} onClick={toggleFullScreen}>
       {fullScreen ? <Minimize size={16} aria-hidden="true" /> : <Maximize size={16} aria-hidden="true" />}
     </button>
     <div className="card-focus-mode-column">{children}</div>
-  </div>, document.body);
+  </div></FocusScope>, document.body);
 }

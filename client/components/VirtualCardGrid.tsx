@@ -63,8 +63,8 @@ function gridMetrics(grid: HTMLElement): GridMetrics {
   const columnGap = cssPixels(style.columnGap);
   const rowGap = cssPixels(style.rowGap);
   const tracks = style.gridTemplateColumns.split(/\s+/u).map(track => Number.parseFloat(track)).filter(Number.isFinite);
-  const tileWidth = tracks[0] ?? cssPixels(style.getPropertyValue('--tile-width'), 115);
-  const tileHeight = cssPixels(style.getPropertyValue('--tile-height'), 147);
+  const tileWidth = tracks[0] ?? cssPixels(style.getPropertyValue('--tile-width'));
+  const tileHeight = cssPixels(style.getPropertyValue('--tile-height'));
   const contentWidth = grid.clientWidth - cssPixels(style.paddingLeft) - cssPixels(style.paddingRight);
   // Old cell column positions can create implicit tracks during resize; count only tracks that fit the new width.
   const columns = Math.max(1, Math.floor((contentWidth + columnGap + .5) / (tileWidth + columnGap)));
@@ -125,8 +125,7 @@ function sameWindow(previous: GridWindow, next: GridWindow): boolean {
 
 export function VirtualCardGrid({ cards, enabled, pinnedIds, children }: VirtualCardGridProps) {
   const element = useRef<HTMLDivElement>(null);
-  const [visibleWindow, setVisibleWindow] = useState<GridWindow>({ start: 0, end: 24, columns: 1, tileWidth: 115, tileHeight: 147,
-    columnWidth: 131, rowHeight: 163, insetLeft: 0, insetTop: 0, bottomInset: 0, interactionIds: [] });
+  const [visibleWindow, setVisibleWindow] = useState<GridWindow | null>(null);
 
   useLayoutEffect(() => {
     const grid = element.current;
@@ -154,7 +153,7 @@ export function VirtualCardGrid({ cards, enabled, pinnedIds, children }: Virtual
       const next: GridWindow = { ...metrics, start: firstRow * metrics.columns, end: Math.min(cards.length, lastRow * metrics.columns),
         interactionIds: interactionIds(grid) };
       virtualGrids.set(grid, { ...metrics, cards });
-      setVisibleWindow(previous => sameWindow(previous, next) ? previous : next);
+      setVisibleWindow(previous => previous && sameWindow(previous, next) ? previous : next);
     };
     const schedule = () => { if (active && frame === null) frame = requestAnimationFrame(measure); };
     measure();
@@ -177,6 +176,8 @@ export function VirtualCardGrid({ cards, enabled, pinnedIds, children }: Virtual
   }, [enabled, cards]);
 
   if (!enabled) return <div ref={element} className="deck-grid catalog-card-grid">{cards.map(card => <Fragment key={card.id}>{children(card)}</Fragment>)}</div>;
+  // 2026-11-10: CSS lays out the first batch before measurement, so no JS copy of the tile scale can drift.
+  if (!visibleWindow) return <div ref={element} className="deck-grid catalog-card-grid">{cards.slice(0, 24).map(card => <Fragment key={card.id}>{children(card)}</Fragment>)}</div>;
   const pinned = new Set([...pinnedIds, ...visibleWindow.interactionIds]);
   const rows = Math.ceil(cards.length / visibleWindow.columns);
   const style: CSSProperties = {

@@ -12,11 +12,11 @@
   :root[data-level-panel] .notifications-corner { right: calc(var(--level-panel-width) + 12px); }
   :root[data-level-panel] .deck-gallery .deck-gallery-header,
   :root[data-level-panel] .deck-gallery .catalog-heading-actions,
-  :root[data-level-panel] .deck-gallery .catalog-browser-navigation { flex-wrap: wrap; }
-  :root[data-level-panel] .deck-gallery .catalog-browser-navigation { row-gap: 8px; }
+  :root[data-level-panel] :is(.deck-gallery, .card-scope-view) .catalog-browser-navigation { flex-wrap: wrap; }
+  :root[data-level-panel] :is(.deck-gallery, .card-scope-view) .catalog-browser-navigation { row-gap: 8px; }
 }
 
-.level-panel { position: fixed; top: 52px; right: 0; bottom: 0; z-index: 65; display: flex; flex-direction: column; width: var(--level-panel-width); background: var(--sidebar); border-left: 1px solid var(--line); animation: level-panel-in var(--motion-material) var(--ease-out); }
+.level-panel { position: fixed; top: 52px; right: 0; bottom: 0; z-index: 65; display: flex; flex-direction: column; width: var(--level-panel-width); background: var(--surface); border-left: 1px solid var(--line); box-shadow: var(--shadow); animation: level-panel-in var(--motion-material) var(--ease-out); }
 @keyframes level-panel-in { from { opacity: 0; transform: translateX(20px); } }
 
 /* In windows narrower than 900 px the panel lies over the page instead of squeezing it. */
@@ -25,11 +25,11 @@
   .level-panel { width: min(var(--level-panel-width), calc(100vw - 24px)); box-shadow: var(--shadow); }
 }
 
-.level-panel-head { display: flex; align-items: center; gap: 12px; padding: 14px 12px 10px 16px; }
-.level-panel-card { display: grid; place-items: center; flex: 0 0 auto; width: 40px; height: 50px; border: 1px solid var(--mark-back); border-radius: 5px; background: var(--mark-front); color: var(--count-face); font: 500 20px 'Geist Mono', monospace; }
+.level-panel-head { display: flex; align-items: center; gap: 12px; padding: 14px 12px 10px 16px; border-bottom: 1px solid var(--line); }
+.level-panel-card { display: grid; place-items: center; flex: 0 0 auto; width: 40px; height: 50px; border: 1px solid var(--mark-back); border-radius: 3px; background: var(--mark-front); color: var(--count-face); font: 500 20px 'Geist Mono', monospace; }
 :root.dark .level-panel-card { border-color: var(--mark-front); background: var(--mark-back); }
 .level-panel-heading { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 2px 10px; flex: 1; min-width: 0; }
-.level-panel-heading h2 { margin: 0; font-size: 18px; font-weight: 700; letter-spacing: -.3px; }
+.level-panel-heading h2 { margin: 0; font-size: 18px; font-weight: 600; letter-spacing: -.3px; }
 /* The heading takes focus only so the panel announces itself on open; it is not a control, so no ring. */
 .level-panel-heading h2:focus { outline: none; }
 .level-panel-xp { color: var(--muted); font: 12px 'Geist Mono', monospace; }
@@ -39,7 +39,7 @@
 .level-panel-xpbar i { display: block; height: 100%; border-radius: 3px; background: var(--mint-edge, var(--card-highlight)); transition: width var(--motion-material) var(--ease-out); }
 .level-panel-body { display: flex; flex-direction: column; flex: 1; min-height: 0; padding: 10px 10px 24px 12px; overflow-y: auto; }
 
-.level-chapter-head { display: flex; align-items: center; gap: 9px; width: 100%; min-height: 38px; padding: 7px 9px; border: 0; border-radius: 5px; background: transparent; color: var(--ink); font-size: 14px; font-weight: 600; text-align: left; }
+.level-chapter-head { display: flex; align-items: center; gap: 9px; width: 100%; min-height: 38px; padding: 7px 9px; border: 0; border-radius: var(--control-radius); background: transparent; color: var(--ink); font-size: 14px; font-weight: 600; text-align: left; }
 .level-chapter-head:hover:not(:disabled) { background: var(--hover); }
 .level-chapter-head > svg { flex: 0 0 auto; color: var(--muted); }
 .level-chapter-check { color: var(--level-done); }
@@ -61,7 +61,7 @@
 .level-quest.is-done > svg { flex: 0 0 auto; color: var(--level-done); }
 .level-quest.is-open { border-radius: 5px; color: var(--ink); }
 .level-quest.is-open:has(.level-quest-row[aria-expanded='true']) { background: var(--surface); }
-.level-quest-row { display: flex; align-items: center; gap: 8px; width: 100%; padding: 7px 9px; border: 0; border-radius: 5px; background: transparent; color: inherit; font-size: 13px; font-weight: 500; text-align: left; }
+.level-quest-row { display: flex; align-items: center; gap: 8px; width: 100%; padding: 7px 9px; border: 0; border-radius: var(--control-radius); background: transparent; color: inherit; font-size: 13px; font-weight: 500; text-align: left; }
 .level-quest-row:hover:not(:disabled) { background: var(--hover); }
 .level-quest-row > svg { flex: 0 0 auto; color: var(--muted); transition: rotate var(--motion-feedback) var(--ease-out); }
 .level-quest-row[aria-expanded='true'] > svg { rotate: 90deg; }
@@ -88,7 +88,6 @@
    theme, where the card's own edge already has nearly that color. Plain buttons press 1px like the shared .ui-button. */
 .level-badge:hover .level-badge-card, .level-badge[aria-expanded='true'] .level-badge-card { filter: brightness(1.12); }
 .level-badge:active:not(:disabled), .level-chapter-head:active:not(:disabled), .level-quest-row:active:not(:disabled) { translate: 0 1px; }
-.level-badge:focus-visible, .level-chapter-head:focus-visible, .level-quest-row:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 .level-badge-bar { width: 24px; height: 3px; border-radius: 2px; background: color-mix(in srgb, var(--line) 70%, transparent); overflow: hidden; }
 .level-badge-bar i { display: block; height: 100%; background: var(--mint-edge, var(--card-highlight)); }
 .level-badge-card.is-pop { animation: level-pop var(--motion-material) var(--ease-out); }

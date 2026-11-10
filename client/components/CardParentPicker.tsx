@@ -8,6 +8,7 @@ import { CardOwnerAvatar } from './CardQuickSettings.tsx';
 import { defineText, locale, useLang, useText } from '../i18n.ts';
 import { priorityLabel } from '../locales/common.ts';
 import { failureMessage } from '../failure-message.ts';
+import { moveFocus } from '../focus.ts';
 import '../card-family.css';
 
 const text = defineText({
@@ -199,7 +200,7 @@ export function CardParentPicker({ card, catalog, pending, embedded = false, onC
     if (busy || inFlight.current) return;
     setPromotion(null); setError('');
     setSelected({ id: base.parentId, sourceHash: candidates.find(candidate => candidate.id === base.parentId)?.sourceHash ?? null });
-    requestAnimationFrame(() => searchField.current?.focus());
+    requestAnimationFrame(() => moveFocus(searchField.current));
   }
 
   async function promote() {
@@ -219,7 +220,7 @@ export function CardParentPicker({ card, catalog, pending, embedded = false, onC
     } catch (failure) { setError(failureMessage(failure, t.promoteFailed)); }
     finally {
       inFlight.current = false; setSaving(false);
-      if (!completed) requestAnimationFrame(() => { if (trigger?.isConnected) trigger.focus({ preventScroll: true }); });
+      if (!completed) requestAnimationFrame(() => { if (trigger?.isConnected) moveFocus(trigger, { preventScroll: true }); });
     }
   }
 
@@ -249,7 +250,7 @@ export function CardParentPicker({ card, catalog, pending, embedded = false, onC
       setError(failureMessage(failure, t.chooseError));
     } finally {
       inFlight.current = false; setSaving(false);
-      if (!completed) requestAnimationFrame(() => { if (trigger?.isConnected) trigger.focus({ preventScroll: true }); });
+      if (!completed) requestAnimationFrame(() => { if (trigger?.isConnected) moveFocus(trigger, { preventScroll: true }); });
     }
   }
 
@@ -259,14 +260,14 @@ export function CardParentPicker({ card, catalog, pending, embedded = false, onC
   }
 
   const picker = <Dialog.Content className={'card-parent-picker' + (embedded ? ' is-embedded' : '')} aria-busy={busy}
-      onOpenAutoFocus={event => { event.preventDefault(); searchField.current?.focus(); }}
+      onOpenAutoFocus={event => { event.preventDefault(); moveFocus(searchField.current); }}
       onCloseAutoFocus={event => {
         event.preventDefault();
         // Changing the parent remounts the family panel; its old Select trigger may no longer exist.
         requestAnimationFrame(() => {
           const target = opener.current?.isConnected ? opener.current
             : document.querySelector<HTMLButtonElement>('.card-preview-action-rail button[data-card-family]');
-          target?.focus({ preventScroll: true });
+          moveFocus(target, { preventScroll: true });
         });
       }}
       onEscapeKeyDown={event => { if (busy || inFlight.current) event.preventDefault(); }}

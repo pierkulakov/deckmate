@@ -1,7 +1,7 @@
 import { defineText, serverText } from './i18n.ts';
 import { createHash } from 'node:crypto';
 import { isDeepStrictEqual } from 'node:util';
-import { isMap, isSeq, parseDocument, stringify, type YAMLSeq } from 'yaml';
+import { isMap, isSeq, stringify, type YAMLSeq } from 'yaml';
 import type { MilestoneRecord, RunConfiguration, RunRecord } from '../src/catalog-contracts.ts';
 import type { PlanningEdit } from '../src/planning-files.ts';
 import type { FormatLanguage } from '../src/format-vocabulary.ts';
@@ -13,6 +13,7 @@ import { createManagedMarkdown, readProjectMarkdown, replaceProjectMarkdown } fr
 import { parseRunRegistry } from './runs.ts';
 import { parseMilestones } from './milestones.ts';
 import { invalidPlanning } from './run-model.ts';
+import { parseYamlFrontMatter } from './yaml-front-matter.ts';
 
 const messages = defineText({
   explicitList: (kind: string) => `The ${kind} registry must be an explicit YAML list.`,
@@ -78,14 +79,9 @@ async function assertRevision(root: string, relative: string, expected: string):
 }
 
 function registryMetadata(bytes: Buffer) {
-  const text = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(bytes);
-  const match = /^(?:\uFEFF)?---(\r?\n)([\s\S]*?)^---[ \t]*(?:\r?\n|$)/mu.exec(text);
-  if (!match || match.index !== 0) throw new Error(serverText(messages).frontMatter);
-  const yaml = match[2];
-  const start = text.indexOf('\n') + 1;
-  const document = parseDocument(yaml);
-  if (document.errors.length || !isMap(document.contents)) throw new Error(serverText(messages).invalidYaml);
-  return { text, yaml, start, end: start + yaml.length, newline: match[1], document };
+  return parseYamlFrontMatter(bytes, {
+    headerError: serverText(messages).frontMatter, yamlError: serverText(messages).invalidYaml, aliases: 'preserve',
+  });
 }
 
 function blockItemStart(yaml: string, itemStart: number): number {
@@ -134,7 +130,7 @@ function patchRegistry(bytes: Buffer, kind: RegistryKind, entry: PlanningRecord 
     const position = source.document.contents.range[0] + (source.document.contents.flow ? 1 : 0);
     const inserted = `configurations: ${JSON.stringify([entry])}${source.document.contents.flow ? ', ' : source.newline}`;
     const yaml = source.yaml.slice(0, position) + inserted + source.yaml.slice(position);
-    const next = Buffer.from(source.text.slice(0, source.start) + yaml + source.text.slice(source.end));
+    const next = Buffer.from(source.text.slice(0, source.yamlStart) + yaml + source.text.slice(source.yamlEnd));
     if (!isDeepStrictEqual(registryMetadata(next).document.toJS({ maxAliasCount: 0 }), { ...metadata, configurations: [entry] })) throw new Error(serverText(messages).otherData);
     return next;
   }
@@ -163,7 +159,7 @@ function patchRegistry(bytes: Buffer, kind: RegistryKind, entry: PlanningRecord 
     yaml = removeEntry(source.yaml, sequence, index);
     desired = current.filter(candidate => candidate.id !== removedId);
   }
-  const next = Buffer.from(source.text.slice(0, source.start) + yaml + source.text.slice(source.end));
+  const next = Buffer.from(source.text.slice(0, source.yamlStart) + yaml + source.text.slice(source.yamlEnd));
   const roundtrip = registryMetadata(next).document.toJS({ maxAliasCount: 0 });
   if (!isDeepStrictEqual(roundtrip, { ...metadata, [kind]: desired })) throw new Error(serverText(messages).otherData);
   return next;

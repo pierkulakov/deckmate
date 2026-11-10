@@ -3,6 +3,7 @@ import { useRef } from 'react';
 import type { CatalogAction } from '../../client/useCatalog.ts';
 import type { CatalogCard, CatalogDeck, CatalogView, DeckKind } from '../../src/catalog-contracts.ts';
 import { CardFamilyComposer } from '../../client/components/CardFamilyComposer.tsx';
+import { QuickCapture } from '../../client/components/QuickCapture.tsx';
 import { Deck, DeckCoverTile, DeckSettingsForm } from '../../client/components/Deck.tsx';
 import { catalogStore } from '../../client/catalog-store.ts';
 import { DocumentPreviewProvider } from '../../client/components/DocumentPreview.tsx';
@@ -22,15 +23,18 @@ const root = createRoot(document.getElementById('root')!);
 let instance = 0;
 const actions: CatalogAction[] = [];
 const created: Array<{ cardId: string; deckId: string }> = [];
+const opened: string[] = [];
+const capture = { response: 'success', failReads: false, holdReads: false, reads: 0, releaseRead: () => {} };
+const gallery = { response: 'success', catalog: null as CatalogView | null };
 const noop = () => {};
 const realFetch = window.fetch.bind(window);
 
-interface DeckSpec { id: string; title: string; kind: DeckKind }
+interface DeckSpec { id: string; title: string; kind: DeckKind; spaceId?: string }
 
 function catalogOf(decks: DeckSpec[], inboxDeckId: string | null | undefined, parent?: CatalogCard): CatalogView {
   return { rootIdentity: 'inbox-flows', documents: [], cards: parent ? [parent] : [], spaces: [{ id: 'space:one', title: 'Work' }],
-    decks: decks.map(deck => ({ id: deck.id, title: deck.title, kind: deck.kind, spaceId: 'space:one', description: '', color: '#878787', icon: 'layers' })),
-    tracks: [], warnings: [], formatLanguage: 'en', manifestHash: 'manifest-hash', configured: true, indexedAt: '', inboxDeckId } as CatalogView;
+    decks: decks.map(deck => ({ id: deck.id, title: deck.title, kind: deck.kind, spaceId: deck.spaceId ?? 'space:one', description: '', color: '#878787', icon: 'layers' })),
+    tracks: [], warnings: [], formatLanguage: 'en', manifestHash: 'manifest-hash', optionsHash: '', configured: true, indexedAt: '', inboxDeckId } as CatalogView;
 }
 
 const parent: CatalogCard = { id: 'card:hero', kind: 'hero', title: 'Hero card', path: 'cards/hero.md', version: null,
@@ -43,11 +47,53 @@ function SettingsShell({ catalog, source }: { catalog: CatalogView; source: 'san
     onSubmit={async action => { actions.push(action); return true; }} onDirtyChange={noop} />;
 }
 
-function render(scene: 'family' | 'cover' | 'settings' | 'gallery', options: Record<string, unknown> = {}) {
+function render(scene: 'family' | 'cover' | 'settings' | 'gallery' | 'capture', options: Record<string, unknown> = {}) {
   setLang(options.lang === 'ru' ? 'ru' : 'en');
   window.fetch = realFetch;
   actions.length = 0;
   created.length = 0;
+  opened.length = 0;
+  if (scene === 'capture') {
+    document.documentElement.classList.toggle('dark', options.theme !== 'light');
+    Object.assign(capture, { response: options.response ?? 'success', failReads: Boolean(options.failReads), holdReads: false, reads: 0 });
+    const catalog = catalogOf((options.decks as DeckSpec[]) ?? [{ id: 'deck:inbox', title: 'Inbox', kind: 'task' }], 'deck:inbox');
+    if (options.spaces) catalog.spaces = options.spaces as CatalogView['spaces'];
+    window.fetch = async (input, init) => {
+      const url = new URL(String(input), location.origin);
+      if (url.pathname !== '/api/catalog') return realFetch(input, init);
+      if (init?.method !== 'POST') {
+        capture.reads++;
+        if (capture.holdReads) await new Promise<void>(resolve => { capture.releaseRead = resolve; });
+        if (capture.failReads) throw new TypeError('Failed to fetch');
+        return Response.json(structuredClone(catalog));
+      }
+      const action = JSON.parse(String(init.body)) as CatalogAction;
+      actions.push(action);
+      if (capture.response === 'rejected') return Response.json({ message: 'Capture rejected by server' }, { status: 400 });
+      if (capture.response === 'lost-unsaved') throw new TypeError('Failed to fetch');
+      if (action.action === 'create-card' && !catalog.cards.some(card => card.id === action.cardId)) {
+        catalog.cards.push({ id: action.cardId, kind: 'task', title: action.title, markdown: action.markdown,
+          path: `cards/${action.cardId}.md`, state: null, owner: null, version: null, range: null, sourceHash: 'saved-hash',
+          deckId: action.deckId, trackIds: [], parentId: null });
+        created.push({ cardId: action.cardId, deckId: action.deckId ?? '' });
+      }
+      if (action.action === 'create-deck') catalog.decks.push({ id: 'deck:inbox', title: action.title, kind: action.kind,
+        spaceId: action.spaceId, description: '', color: '#5258b9', icon: 'tasks' });
+      catalog.manifestHash += '-saved';
+      if (capture.response === 'lost') throw new TypeError('Failed to fetch');
+      const warning = 'Часть изменений записана, но индекс не обновлён. Перечитайте проект перед продолжением.';
+      if (capture.response === 'saved-error') return Response.json({ saved: true, message: warning }, { status: 503 });
+      if (capture.response === 'saved-warning') return Response.json({ ...structuredClone(catalog), savedWarning: warning });
+      return Response.json(structuredClone(catalog));
+    };
+    const snapshot: WorkspaceSnapshot & { token: string } = { source: 'sandbox', token: 'capture-' + ++instance,
+      projectName: 'Capture test', writable: options.writable !== false, editMode: options.writable === false ? 'read-only' : 'direct',
+      iteration: { number: 1, goal: '', start: '' } };
+    root.render(<div key={instance} className="capture-fixture" data-instance={instance}>
+      <QuickCapture snapshot={snapshot} refreshKey={0} onOpenCard={id => opened.push(id)} />
+    </div>);
+    return instance;
+  }
   if (scene === 'family') {
     const decks = (options.decks as DeckSpec[]) ?? [{ id: 'deck:trips', title: 'Trips', kind: 'task' }];
     try { localStorage.setItem('deckmate:recent-decks:inbox-flows', JSON.stringify(options.recent ?? [])); } catch { /* storage is optional */ }
@@ -66,8 +112,10 @@ function render(scene: 'family' | 'cover' | 'settings' | 'gallery', options: Rec
   }
   if (scene === 'gallery') {
     history.replaceState(null, '', '/');
-    const catalog = catalogOf(options.empty ? [] : Array.from({ length: 8 }, (_, index) => ({ id: `deck:${index}`, title: `Deck ${index}`, kind: 'task' })), null);
+    const generated: DeckSpec[] = options.empty ? [] : Array.from({ length: 8 }, (_, index) => ({ id: `deck:${index}`, title: `Deck ${index}`, kind: 'task' }));
+    const catalog = catalogOf((options.decks as DeckSpec[] | undefined) ?? generated, null);
     if (options.spaces) catalog.spaces = options.spaces as CatalogView['spaces'];
+    Object.assign(gallery, { response: options.response ?? 'success', catalog });
     const pulse: ProjectPulse = { inProgress: { count: 0, ownerIds: [] }, review: { count: 0, oldestSince: null, deckId: null }, accepted: { days: Array(14).fill(0), total: 0 }, run: null, withoutDeck: 0 };
     window.fetch = async (input, init) => {
       const url = String(input);
@@ -76,6 +124,11 @@ function render(scene: 'family' | 'cover' | 'settings' | 'gallery', options: Rec
       if (url === '/api/catalog' && init?.method === 'POST') {
         const action = JSON.parse(String(init.body)) as CatalogAction;
         actions.push(action);
+        if (action.action === 'delete-space') {
+          if (action.manifestHash !== catalog.manifestHash) return Response.json({ message: 'The catalog changed. Reopen the confirmation.' }, { status: 409 });
+          if (gallery.response === 'rejected') return Response.json({ message: 'Space deletion rejected by server' }, { status: 422 });
+          catalog.spaces = catalog.spaces.filter(space => space.id !== action.spaceId);
+        }
         if (action.action === 'move-space') {
           const space = catalog.spaces.find(space => space.id === action.spaceId)!;
           catalog.spaces = catalog.spaces.filter(candidate => candidate !== space);
@@ -83,6 +136,8 @@ function render(scene: 'family' | 'cover' | 'settings' | 'gallery', options: Rec
           catalog.spaces.splice(index, 0, space);
         }
         if (action.action === 'update-space') Object.assign(catalog.spaces.find(space => space.id === action.spaceId)!, { title: action.title, kind: action.kind, icon: action.icon });
+        // 2026-11-10: the popover test creates a space and expects it in the refreshed gallery.
+        if (action.action === 'create-space') catalog.spaces = [...catalog.spaces, { id: `space:created-${catalog.spaces.length}`, title: action.title, kind: action.kind, icon: action.icon }];
         catalog.manifestHash += '-saved';
         return Response.json(structuredClone(catalog));
       }
@@ -101,5 +156,5 @@ function render(scene: 'family' | 'cover' | 'settings' | 'gallery', options: Rec
   root.render(<div style={{ width: 420, padding: 16 }}><SettingsShell key={++instance} catalog={catalogOf([{ id: 'deck:one', title: 'The deck', kind }], options.inboxDeckId as string | null ?? null)} source="sandbox" /></div>);
 }
 
-Object.assign(window, { inboxTest: { render, actions, created } });
+Object.assign(window, { inboxTest: { render, actions, created, opened, capture, gallery, refreshCatalog: () => catalogStore('sandbox').refresh() } });
 render('family');

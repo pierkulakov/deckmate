@@ -1,6 +1,6 @@
 <p align="center">
   <a id="deckmate" href="https://github.com/pierkulakov/deckmate/releases/latest">
-    <img src="docs/social-preview.png" width="1012" alt="Deckmate — все карточки на руках. Светящийся веер настоящих карточек; люди и ИИ-агенты работают с общими Markdown-файлами. Нативное приложение для Windows на Tauri 2 со встроенным Node.js; npx deckmate для агентов и терминала." />
+    <img src="https://raw.githubusercontent.com/pierkulakov/deckmate/main/docs/social-preview.png" width="1012" alt="Deckmate — все карточки на руках. Светящийся веер настоящих карточек; люди и ИИ-агенты работают с общими Markdown-файлами. Нативное приложение для Windows на Tauri 2 со встроенным Node.js; npx deckmate для агентов и терминала." />
   </a>
 </p>
 
@@ -25,7 +25,7 @@
 <p align="center">
   <a href="https://github.com/pierkulakov/deckmate/releases/latest"><img src="https://img.shields.io/github/v/release/pierkulakov/deckmate?style=flat&amp;label=release&amp;color=9258e5&amp;labelColor=27242f" alt="Последний выпуск" /></a>
   <a href="https://github.com/pierkulakov/deckmate/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/pierkulakov/deckmate/ci.yml?branch=main&amp;style=flat&amp;label=CI&amp;labelColor=27242f" alt="Статус CI" /></a>
-  <a href="LICENSE"><img src="https://img.shields.io/badge/license-AGPL--3.0--only-9258e5?style=flat&amp;labelColor=27242f" alt="Лицензия: AGPL-3.0-only" /></a>
+  <a href="https://github.com/pierkulakov/deckmate/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-AGPL--3.0--only-9258e5?style=flat&amp;labelColor=27242f" alt="Лицензия: AGPL-3.0-only" /></a>
 </p>
 
 <p align="center"><sub>Ранний релиз · macOS в планах · Формат файлов проекта (схема 1) может измениться до версии 1.0.</sub></p>
@@ -63,13 +63,13 @@ npx deckmate init deckmate-demo
 npx deckmate --data deckmate-demo
 ```
 
-Чтобы запустить проект из исходников, следуйте [CONTRIBUTING.md](CONTRIBUTING.md): `npm ci && npm run build`, затем `node bin/deckmate.mjs init deckmate-demo` создаст демо, а `node bin/deckmate.mjs --data deckmate-demo` — откроет его.
+Чтобы запустить проект из исходников, следуйте [CONTRIBUTING.md](https://github.com/pierkulakov/deckmate/blob/main/CONTRIBUTING.md): `npm ci && npm run build`, затем `node bin/deckmate.mjs init deckmate-demo` создаст демо, а `node bin/deckmate.mjs --data deckmate-demo` — откроет его.
 
 Доска откроется на `http://127.0.0.1:4317/`. Демо — маленькая вымышленная игровая студия: пять колод, две карточки Hero с Sub Cards, люди и агенты, Journey, Run и доска Vision. Интерфейс в браузере по умолчанию английский, русский включается в меню приложения. Остановить сервер можно клавишами `Ctrl+C`.
 
 ## Стартовый экран
 
-![Стартовый экран Deckmate Desktop: открыть папку, создать проект, недавние проекты](docs/screenshots/desktop-start.png)
+![Стартовый экран Deckmate Desktop: открыть папку, создать проект, недавние проекты](https://raw.githubusercontent.com/pierkulakov/deckmate/main/docs/screenshots/desktop-start.png)
 
 Если проект не открыт, выберите **Открыть папку…** или **Создать проект…**, чтобы добавить пример в пустую или новую папку. В списке недавних проектов указано время последнего открытия; проекты можно убрать из списка. Здесь же доступны переключатели языка EN/RU и темы. При первом запуске язык настольного приложения выбирается по настройкам системы: русский или английский.
 
@@ -116,15 +116,15 @@ npx deckmate
 | **Track** (трек) | Нить, связывающая карточки разных колод, например релиз или область фичи. |
 | **Vision** | Доска Excalidraw с живыми ссылками на карточки. |
 
-Начните с **Decks**: счётчики документов и карточек находятся под названием проекта; из той же строки открываются предупреждения об исходных файлах. Из пульса проекта можно перейти к задачам в работе, приёмке, текущему Run или карточкам без колоды. Компактные обложки показывают число карточек и прогресс задач. Меняйте порядок колод мышью или клавиатурой; редко используемые колоды убирайте через настройки в **стопку** в конце пространства и возвращайте, когда понадобятся. Пространства переставляются стрелками в заголовке или полем «Позиция» в их настройках. Поиск по названиям найдёт колоду и внутри стопки.
+Начните с **Decks**: счётчики документов и карточек находятся под названием проекта; из той же строки открываются предупреждения об исходных файлах. Из пульса проекта можно перейти к задачам в работе, приёмке, текущему Run или карточкам без колоды. Компактные обложки показывают число карточек и прогресс задач. Меняйте порядок колод мышью или клавиатурой. Пространства переставляются стрелками в заголовке или полем «Позиция» в их настройках. Поиск по названиям найдёт колоду даже в свёрнутом пространстве.
 
 Откройте колоду, чтобы работать с карточками, описанием, прогрессом и историей:
 
-![Открытая колода с линиями прогресса Sub Cards на Hero, состояниями задач, исполнителями и оценкой](docs/screenshots/deck.png)
+![Открытая колода с линиями прогресса Sub Cards на Hero, состояниями задач, исполнителями и оценкой](https://raw.githubusercontent.com/pierkulakov/deckmate/main/docs/screenshots/deck.png)
 
 На плитке Hero прогресс Sub Cards показан неброской линией: длина каждого шага зависит от его оценки. Когда у Hero есть учитываемые Sub Cards типа Task и все они переходят в состояние «принято», появляются голографическая фольга, радужная рамка и медальон «выполнено»; задачи `wont-do` не учитываются. Фольга реагирует на указатель; при уменьшении анимации или сенсорном вводе остаётся неподвижной. В семье Hero видны и Sub Cards типа Doc, но в прогресс идут только Sub Cards типа Task; панель Sub Cards отмечает карточки без колоды. Если перетащить Task без Sub Cards в колоду Asset, Deckmate предложит сделать её Hero. Созданную в Deckmate Hero без учитываемых Sub Cards типа Task можно отметить выполненной вручную в её полосе Sub Cards. Карточки Doc выглядят как страница: медная полоса с числом слов и начало текста на плитке.
 
-![Moonwake Lantern с голографической фольгой и медальоном «выполнено»: все Sub Cards в состоянии «принято»](docs/screenshots/deck-accepted.png)
+![Moonwake Lantern с голографической фольгой и медальоном «выполнено»: все Sub Cards в состоянии «принято»](https://raw.githubusercontent.com/pierkulakov/deckmate/main/docs/screenshots/deck-accepted.png)
 
 Все клавиши — по `?` в приложении: `N` создаёт карточку, `/` — поиск, `Shift+1`–`Shift+4` переключают Hand, Decks, Timeline и Vision, а `O`, `E`, `P` или `,` над карточкой меняют исполнителя, оценку, приоритет или Run.
 
@@ -133,21 +133,21 @@ npx deckmate
 <table>
 <tr>
 <td width="50%" valign="top">
-<a href="docs/screenshots/card.png"><img src="docs/screenshots/card.png" alt="Hero Moonwake Lantern со свойствами, шагами Journey и задачами в Sub Cards" width="100%" /></a>
+<a href="https://raw.githubusercontent.com/pierkulakov/deckmate/main/docs/screenshots/card.png"><img src="https://raw.githubusercontent.com/pierkulakov/deckmate/main/docs/screenshots/card.png" alt="Hero Moonwake Lantern со свойствами, шагами Journey и задачами в Sub Cards" width="100%" /></a>
 <strong>Карточки и Journey</strong><br />Markdown с исполнителями, оценкой, зависимостями и прогрессом Journey.
 </td>
 <td width="50%" valign="top">
-<a href="docs/screenshots/timeline.png"><img src="docs/screenshots/timeline.png" alt="Timeline с Run First playable, его карточками и Milestone Harbor playtest" width="100%" /></a>
+<a href="https://raw.githubusercontent.com/pierkulakov/deckmate/main/docs/screenshots/timeline.png"><img src="https://raw.githubusercontent.com/pierkulakov/deckmate/main/docs/screenshots/timeline.png" alt="Timeline с Run First playable, его карточками и Milestone Harbor playtest" width="100%" /></a>
 <strong>Run и Milestone</strong><br />Даты на шкале; незаконченные карточки переходят в следующий Run.
 </td>
 </tr>
 <tr>
 <td width="50%" valign="top">
-<a href="docs/screenshots/hand.png"><img src="docs/screenshots/hand.png" alt="Hand Maya Chen: карточки фокуса, стопка выполненного и вкладка Your Runs" width="100%" /></a>
+<a href="https://raw.githubusercontent.com/pierkulakov/deckmate/main/docs/screenshots/hand.png"><img src="https://raw.githubusercontent.com/pierkulakov/deckmate/main/docs/screenshots/hand.png" alt="Hand Maya Chen: карточки фокуса, стопка выполненного и вкладка Your Runs" width="100%" /></a>
 <strong>Hand у каждого</strong><br />Слоты фокуса, резерв и сделанное — для людей и агентов.
 </td>
 <td width="50%" valign="top">
-<a href="docs/screenshots/vision.png"><img src="docs/screenshots/vision.png" alt="Доска Vision Moonwake: творческое направление, связанные Hero и прогресс Production" width="100%" /></a>
+<a href="https://raw.githubusercontent.com/pierkulakov/deckmate/main/docs/screenshots/vision.png"><img src="https://raw.githubusercontent.com/pierkulakov/deckmate/main/docs/screenshots/vision.png" alt="Доска Vision Moonwake: творческое направление, связанные Hero и прогресс Production" width="100%" /></a>
 <strong>Vision</strong><br />Наброски на доске Excalidraw с живыми узлами карточек и прогресса.
 </td>
 </tr>
@@ -243,13 +243,13 @@ npx deckmate project report <карточка> --file report.md --member <уча
 
 ## Участие
 
-Ждём сообщения об ошибках, идеи и pull request; [SUPPORT.md](SUPPORT.md) подскажет, где задать вопрос и сообщить об ошибке. [CONTRIBUTING.md](CONTRIBUTING.md) — запуск из исходников, тесты и правила проекта; [AGENTS.md](AGENTS.md) — короткая памятка для кодовых агентов. Соблюдайте [Code of Conduct](CODE_OF_CONDUCT.md); об уязвимостях пишите по [SECURITY.md](SECURITY.md), а не в открытые issue. Изменения — в [журнале изменений](CHANGELOG.md).
+Ждём сообщения об ошибках, идеи и pull request; [SUPPORT.md](https://github.com/pierkulakov/deckmate/blob/main/SUPPORT.md) подскажет, где задать вопрос и сообщить об ошибке. [CONTRIBUTING.md](https://github.com/pierkulakov/deckmate/blob/main/CONTRIBUTING.md) — запуск из исходников, тесты и правила проекта; [AGENTS.md](https://github.com/pierkulakov/deckmate/blob/main/AGENTS.md) — короткая памятка для кодовых агентов. Соблюдайте [Code of Conduct](https://github.com/pierkulakov/deckmate/blob/main/CODE_OF_CONDUCT.md); об уязвимостях пишите по [SECURITY.md](SECURITY.md), а не в открытые issue. Изменения — в [журнале изменений](CHANGELOG.md).
 
 Для разработки из исходников `npm run dev` запускает сервер с отслеживанием изменений и Vite с горячей перезагрузкой на `http://127.0.0.1:4318/`; параметры сервера передаются после `--`, например `npm run dev -- --data deckmate-demo`.
 
 ## Лицензия
 
-[AGPL-3.0-only](LICENSE) © 2026 pierkulakov и участники Deckmate. Пользоваться, менять и распространять можно свободно; изменённую версию, запущенную как сетевой сервис, нужно открыть. Правки принимаются по [соглашению участника](CLA.md) (CLA).
+[AGPL-3.0-only](https://github.com/pierkulakov/deckmate/blob/main/LICENSE) © 2026 pierkulakov и участники Deckmate. Пользоваться, менять и распространять можно свободно; изменённую версию, запущенную как сетевой сервис, нужно открыть. Правки принимаются по [соглашению участника](https://github.com/pierkulakov/deckmate/blob/main/CLA.md) (CLA).
 
 ## Благодарности
 

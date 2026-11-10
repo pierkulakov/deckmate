@@ -1,3 +1,4 @@
+import { moveFocus } from '../focus.ts';
 // The bottom-right corner groups notifications into three stacks: Cards you own (others' journal changes),
 // Cards you watch (major changes to cards watched explicitly, through a deck or a live @-mention),
 // and Due Cards (due today; removed automatically). Opening a card dismisses its changes;
@@ -10,14 +11,18 @@ import { onMemberChange, rememberMember, storedMemberId } from '../current-membe
 import { defineText, locale, textNow, useLang, useText } from '../i18n.ts';
 import { relativeTimeAgo } from '../relative-time.ts';
 import { stateLabel } from '../locales/common.ts';
+import { failureMessage } from '../failure-message.ts';
+import { ErrorState } from './ErrorState.tsx';
+import { LoadingState } from './LoadingState.tsx';
 import '../notifications.css';
 
 const text = defineText({
   failure: 'Could not get notifications. Check that Deckmate is running.',
   notifications: 'Notifications',
+  loading: 'Loading notifications…',
   readOnly: 'The original is read-only: notifications can be dismissed in the test copy.',
-  for: 'for',
-  member: 'Whose notifications to show',
+  for: 'Acting as',
+  member: 'Acting member',
   noneFor: (name: string) => `No notifications for ${name}`,
   dueHint: 'A due reminder cannot be dismissed with the button: the card leaves when it is accepted, archived, given another due date or Owner; otherwise it leaves tomorrow.',
   dueAccepted: 'leaves when the card is accepted',
@@ -34,9 +39,10 @@ const text = defineText({
 }, {
   failure: 'Не удалось получить уведомления. Проверьте, что Deckmate запущен.',
   notifications: 'Уведомления',
+  loading: 'Загружаем уведомления…',
   readOnly: 'Оригинал открыт только для чтения: уведомления убираются в тестовой копии.',
-  for: 'для',
-  member: 'Чьи уведомления показать',
+  for: 'От имени',
+  member: 'Действующий участник',
   noneFor: (name: string) => `Нет уведомлений для ${name}`,
   dueHint: 'Напоминание о сроке кнопкой не убирается: карточка уйдёт, когда её примут, уберут в архив, сменят срок или исполнителя; иначе — завтра.',
   dueAccepted: 'уйдёт, когда карточка принята',
@@ -90,11 +96,6 @@ function useCompactNotifications(): boolean {
 
 type DismissTarget = { cardId: string } | { stack: 'owned' | 'watching' };
 
-function failureMessage(failure: unknown): string {
-  if (failure && typeof failure === 'object' && 'message' in failure) return String(failure.message);
-  return textNow(text).failure;
-}
-
 /** 2026-11-05: the corner is fixed over the scrolling views. The height it covers from the window bottom becomes
  *  --notifications-clearance, the bottom padding of the scroll owners (styles.css, workspace.css), so their last rows scroll out from under it. */
 function publishClearance(corner: HTMLElement | null) {
@@ -121,6 +122,8 @@ export function Notifications({ snapshot, refreshKey, onOpenCard }: {
   const [view, setView] = useState<NotificationsView | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [focusWithin, setFocusWithin] = useState(false);
   const requestNumber = useRef(0);
   const currentView = useRef<NotificationsView | null>(null);
   const lastSeen = useRef('');
@@ -133,6 +136,7 @@ export function Notifications({ snapshot, refreshKey, onOpenCard }: {
 
   const load = useCallback(async () => {
     const selectedRequest = ++requestNumber.current;
+    setLoading(true);
     try {
       const member = memberId ? `&member=${encodeURIComponent(memberId)}` : '';
       const response = await fetch(`/api/notifications?source=${snapshot.source}${member}`, { cache: 'no-store' });
@@ -142,10 +146,10 @@ export function Notifications({ snapshot, refreshKey, onOpenCard }: {
       const next = result as NotificationsView;
       setView(next);
       setError(null);
-      // The default member becomes an explicit choice, so page edits are attributed to the same «me».
-      if (!storedMemberId() && next.member) rememberMember(next.member.id);
     } catch (failure) {
-      if (selectedRequest === requestNumber.current) setError(failureMessage(failure));
+      if (selectedRequest === requestNumber.current) setError(failureMessage(failure, textNow(text).failure));
+    } finally {
+      if (selectedRequest === requestNumber.current) setLoading(false);
     }
   }, [snapshot.source, memberId, lang]);
 
@@ -170,7 +174,7 @@ export function Notifications({ snapshot, refreshKey, onOpenCard }: {
       if (!response.ok) throw await response.json();
       if (selectedRequest === requestNumber.current) { await load(); setError(null); }
     } catch (failure) {
-      if (selectedRequest === requestNumber.current) setError(failureMessage(failure));
+      if (selectedRequest === requestNumber.current) setError(failureMessage(failure, textNow(text).failure));
     } finally { setBusy(false); }
   }, [token, load]);
 
@@ -215,7 +219,7 @@ export function Notifications({ snapshot, refreshKey, onOpenCard }: {
   const focusOnMount = (stack: NotificationStackId, target: 'pill' | 'collapse') => (element: HTMLButtonElement | null) => {
     if (!element || focusAfterToggle.current?.stack !== stack || focusAfterToggle.current.target !== target) return;
     focusAfterToggle.current = null;
-    element.focus();
+    moveFocus(element);
   };
 
   const visibleStacks = view?.stacks.filter(stack => stack.total > 0) ?? [];
@@ -223,18 +227,21 @@ export function Notifications({ snapshot, refreshKey, onOpenCard }: {
   // Hide the corner only when the default member has no news.
   const defaultMember = view?.members.find(member => member.kind === 'human') ?? view?.members[0];
   const otherMemberChosen = Boolean(view?.member && defaultMember && view.member.id !== defaultMember.id);
-  if (!visibleStacks.length && !error && !otherMemberChosen) return null;
-  return <section ref={publishClearance} className="notifications-corner" aria-label={t.notifications}>
-    {error && <p className="notifications-error" role="alert">{error}</p>}
+  if (!visibleStacks.length && !error && !otherMemberChosen && (view?.members.length ?? 0) < 2 && !loading && !focusWithin) return null;
+  return <section ref={publishClearance} className="notifications-corner" aria-label={t.notifications}
+    onFocusCapture={() => setFocusWithin(true)}
+    onBlurCapture={event => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setFocusWithin(false); }}>
+    <ErrorState variant="inline" className="notifications-error" message={error} onRetry={load} pending={loading} />
+    <LoadingState variant="keep-data" active={loading} message={t.loading} />
     {visibleStacks.map(stack => viewerId && (collapsedBy[viewerId]?.[stack.id] ?? storedCollapsed(viewerId, stack.id) ?? compact)
       ? <CollapsedStack key={stack.id} stack={stack} buttonRef={focusOnMount(stack.id, 'pill')} onExpand={() => collapseStack(stack.id, false)} />
       : <NotificationStackView key={stack.id} stack={stack} canDismiss={Boolean(view?.writable && token) && !busy}
         onOpen={openCard} onDismiss={() => dismissStack(stack)}
         collapse={viewerId ? { ref: focusOnMount(stack.id, 'collapse'), onCollapse: () => collapseStack(stack.id, true) } : undefined} />)}
-    {!visibleStacks.length && !error && <p className="notifications-note">{t.noneFor(view?.member?.label ?? '')}</p>}
+    {!visibleStacks.length && !error && !loading && <p className="notifications-note" role="status">{t.noneFor(view?.member?.label ?? '')}</p>}
     {view && !view.writable && visibleStacks.some(stack => stack.dismissible) && <p className="notifications-note">{t.readOnly}</p>}
     {view && view.members.length > 1 && <label className="notifications-member"><span>{t.for}</span>
-      <select value={view.member?.id ?? ''} onChange={event => rememberMember(event.target.value)} aria-label={t.member}>
+      <select className="control-field" value={view.member?.id ?? ''} onChange={event => rememberMember(event.target.value)} aria-label={t.member}>
         {view.members.map(member => <option key={member.id} value={member.id}>{member.label}</option>)}
       </select>
     </label>}
@@ -253,16 +260,16 @@ function NotificationStackView({ stack, canDismiss, onOpen, onDismiss, collapse 
   const t = useText(text);
   const lang = useLang();
   const Icon = stackIcons[stack.id];
-  return <section className={`notification-stack notification-stack-${stack.id}`} aria-labelledby={headingId}>
-    <header className="notification-stack-header">
+  return <section className={`notification-stack dialog-panel notification-stack-${stack.id}`} aria-labelledby={headingId}>
+    <header className="notification-stack-header panel-head">
       <Icon size={14} aria-hidden="true" />
       <h3 id={headingId}>{stack.title}</h3>
-      <span className="notification-stack-count">{stack.total.toLocaleString(locale(lang))}</span>
+      <span className="notification-stack-count page-number">{stack.total.toLocaleString(locale(lang))}</span>
       {stack.dismissible
         ? <HoldToDismiss label={stack.title} disabled={!canDismiss || !stack.latestAt} onDismiss={onDismiss} />
         // 2026-11-05: name the condition that removes a due card to avoid implying it will disappear shortly.
         : <span className="notification-stack-hint" title={t.dueHint}>{t.dueAccepted}</span>}
-      {collapse && <button ref={collapse.ref} type="button" className="notification-collapse" aria-expanded={true}
+      {collapse && <button ref={collapse.ref} type="button" className="notification-collapse control control-ghost" aria-expanded={true}
         aria-label={t.collapseStack(stack.title)} title={t.collapseStack(stack.title)} onClick={collapse.onCollapse}>
         <ChevronDown size={14} aria-hidden="true" />
       </button>}
@@ -295,9 +302,9 @@ function CollapsedStack({ stack, buttonRef, onExpand }: {
   const Icon = stackIcons[stack.id];
   const count = stack.total.toLocaleString(locale(lang));
   const label = t.expandStack(stack.title, count);
-  return <button ref={buttonRef} type="button" className="notification-pill" aria-expanded={false} aria-label={label} title={label} onClick={onExpand}>
+  return <button ref={buttonRef} type="button" className="notification-pill control" aria-expanded={false} aria-label={label} title={label} onClick={onExpand}>
     <Icon size={14} aria-hidden="true" />
-    <span className="notification-stack-count">{count}</span>
+    <span className="notification-stack-count page-number">{count}</span>
     <ChevronUp size={12} aria-hidden="true" />
   </button>;
 }
@@ -331,7 +338,7 @@ function HoldToDismiss({ label, disabled, onDismiss }: { label: string; disabled
     timer.current = setTimeout(() => { timer.current = undefined; setHolding(false); onDismiss(); }, holdToDismissMs);
   }
   return <span className="notification-hold-wrap">
-    <button type="button" className={`notification-hold${holding ? ' is-holding' : ''}`} disabled={disabled}
+    <button type="button" className={`notification-hold control${holding ? ' is-holding' : ''}`} disabled={disabled}
       style={{ '--hold-ms': `${holdToDismissMs}ms` } as CSSProperties}
       aria-label={t.dismissStack(label)} title={t.holdTitle}
       onPointerDown={start} onPointerUp={releaseEarly} onPointerLeave={cancel} onPointerCancel={cancel}

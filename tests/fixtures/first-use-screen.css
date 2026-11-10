@@ -1,0 +1,2 @@
+:root { --first-use-installed: ready; }
+#prepared-screen { min-height: 200px; animation: dialog-drop var(--motion-spring-firm) var(--ease-spring-firm); }

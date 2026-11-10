@@ -2,9 +2,10 @@
 // Both matchShortcut and the Available Shortcuts dialog (ShortcutsHelp) read this registry; do not add a second UI list.
 // Each shortcut has a screen scope so the dialog only shows shortcuts available on the current screen (2026-11-05).
 
-import type { CardPriority } from '../src/catalog-contracts.ts';
+import type { CatalogCard, CardPriority } from '../src/catalog-contracts.ts';
 import { defineText, textNow } from './i18n.ts';
 import { priorityLabel, stateLabel } from './locales/common.ts';
+import { resolveCardStateAction, type CardStateAction, type CardStateActionContext, type CardStateTrigger } from './card-state-actions.ts';
 
 const text = defineText({
   general: 'General',
@@ -34,7 +35,7 @@ const text = defineText({
   toggleSubCards: 'Show or hide the Sub Cards of the open card',
   openHero: 'Open the Hero Card of the open Sub Card',
   createSubCard: 'Create a Sub Card for the open Hero Card',
-  toggleWork: 'Assign to me, then start or stop work',
+  toggleWork: 'Assign to me or start work; stop Started; in Review, open the menu without selecting a decision',
   quickOwner: 'Open Quick Settings · Owner',
   quickTags: 'Open quick tag assignment',
   toggleHand: 'Add to or remove from Hand',
@@ -46,7 +47,6 @@ const text = defineText({
   pickHero: 'Open the Hero Card picker',
   toggleArchive: 'Archive or unarchive the card',
   trashCard: 'Move the card to the Trash',
-  toggleState: (state: string) => `Toggle the ${state} state`,
   toggleBookmark: 'Bookmark or unbookmark the card',
   toggleSelection: 'Select or deselect the card',
   effortNumber: 'Pointer over Effort: set 0–9',
@@ -69,7 +69,9 @@ const text = defineText({
   trashSelection: 'Move the selection to the Trash',
   openAttachments: 'Open Attachments; again opens the first image',
   openProperties: 'Open the Properties panel',
-  changeTaskState: (done: string, planned: string) => `Set the task to ${done} or back to ${planned}`,
+  openCardTags: 'Tags for the open card',
+  openFocusMode: 'Open the card in Focus Mode',
+  changeTaskState: 'Mark done or reopen; in Review, focus Accept review',
   trashCardConfirmed: 'Move the card to the Trash, after a confirmation',
   searchMyCards: 'Search my cards; press again to reset',
   arrows: 'Arrows',
@@ -102,7 +104,7 @@ const text = defineText({
   toggleSubCards: 'Показать или скрыть Sub Cards открытой карточки',
   openHero: 'Открыть Hero Card этой Sub Card',
   createSubCard: 'Создать Sub Card для открытой Hero Card',
-  toggleWork: 'Взять на себя и начать или остановить работу',
+  toggleWork: 'Взять на себя или начать работу; остановить начатую; на приёмке — открыть меню без выбора решения',
   quickOwner: 'Быстрые настройки · исполнитель',
   quickTags: 'Быстрая установка тегов',
   toggleHand: 'Добавить в Hand или убрать из неё',
@@ -114,7 +116,6 @@ const text = defineText({
   pickHero: 'Открыть выбор Hero Card',
   toggleArchive: 'Архивировать карточку или вернуть из архива',
   trashCard: 'Переместить карточку в корзину',
-  toggleState: (state: string) => `Переключить состояние «${state}»`,
   toggleBookmark: 'Поставить или снять закладку',
   toggleSelection: 'Выбрать или снять выбор с карточки',
   effortNumber: 'Наведение на оценку: задать 0–9',
@@ -137,7 +138,9 @@ const text = defineText({
   trashSelection: 'Переместить выбранное в корзину',
   openAttachments: 'Открыть вложения; повторно — первое изображение',
   openProperties: 'Открыть панель свойств',
-  changeTaskState: (done: string, planned: string) => `Перевести задачу в «${done}» или обратно в «${planned}»`,
+  openCardTags: 'Теги открытой карточки',
+  openFocusMode: 'Открыть карточку в фокус-режиме',
+  changeTaskState: 'Принять или открыть снова; на приёмке — фокус на «Принять результат»',
   trashCardConfirmed: 'Переместить карточку в корзину после подтверждения',
   searchMyCards: 'Поиск моих карточек; повторное нажатие сбрасывает',
   arrows: 'Стрелки',
@@ -175,6 +178,8 @@ export interface ShortcutDefinition {
   command?: boolean;
   /** Quick Settings tab; handlers reuse this mapping instead of duplicating it. */
   quickTab?: CardQuickSettingsTab;
+  /** Individual-card state keys share the Play resolver; bulk commands deliberately do not. */
+  stateTrigger?: CardStateTrigger;
 }
 
 export interface ShortcutGroup {
@@ -227,7 +232,7 @@ export const SHORTCUT_GROUPS: readonly ShortcutGroup[] = [
     id: 'mini-card',
     get title() { return textNow(text).miniCard; },
     items: [
-      { id: 'hover-work', get label() { return textNow(text).toggleWork; }, get keys() { return textNow(text).space; }, code: 'Space', group: 'mini-card', screen: 'cards', edits: true },
+      { id: 'hover-work', get label() { return textNow(text).toggleWork; }, get keys() { return textNow(text).space; }, code: 'Space', group: 'mini-card', screen: 'cards', edits: true, stateTrigger: 'space' },
       { id: 'hover-owner', get label() { return textNow(text).quickOwner; }, keys: 'O', code: 'KeyO', group: 'mini-card', screen: 'cards', edits: true, quickTab: 'owner' },
       { id: 'hover-tags', get label() { return textNow(text).quickTags; }, keys: 'T', code: 'KeyT', group: 'mini-card', screen: 'cards', edits: true },
       { id: 'hover-hand', get label() { return textNow(text).toggleHand; }, keys: 'H', code: 'KeyH', group: 'mini-card', screen: 'cards', edits: true },
@@ -239,7 +244,7 @@ export const SHORTCUT_GROUPS: readonly ShortcutGroup[] = [
       { id: 'hover-hero', get label() { return textNow(text).pickHero; }, keys: 'Shift+S', code: 'KeyS', shift: true, group: 'mini-card', screen: 'cards', edits: true },
       { id: 'hover-archive', get label() { return textNow(text).toggleArchive; }, keys: 'R', code: 'KeyR', group: 'mini-card', screen: 'cards', edits: true },
       { id: 'hover-delete', get label() { return textNow(text).trashCard; }, keys: 'Backspace', code: 'Backspace', group: 'mini-card', screen: 'cards', edits: true },
-      { id: 'hover-done', get label() { return textNow(text).toggleState(stateLabel("done")); }, keys: 'W', code: 'KeyW', group: 'mini-card', screen: 'cards', edits: true },
+      { id: 'hover-done', get label() { return textNow(text).changeTaskState; }, keys: 'W', code: 'KeyW', group: 'mini-card', screen: 'cards', edits: true, stateTrigger: 'done' },
       { id: 'hover-bookmark', get label() { return textNow(text).toggleBookmark; }, keys: '.', code: 'Period', group: 'mini-card', screen: 'cards', edits: true },
       { id: 'hover-select', get label() { return textNow(text).toggleSelection; }, keys: 'X', code: 'KeyX', group: 'mini-card', screen: 'cards' },
       { id: 'hover-effort-number', get label() { return textNow(text).effortNumber; }, keys: '0–9', codes: digitCodes, group: 'mini-card', screen: 'cards', edits: true },
@@ -272,7 +277,7 @@ export const SHORTCUT_GROUPS: readonly ShortcutGroup[] = [
     id: 'open-card',
     get title() { return textNow(text).card; },
     items: [
-      { id: 'open-card-work', get label() { return textNow(text).toggleWork; }, get keys() { return textNow(text).space; }, code: 'Space', group: 'open-card', screen: 'card', edits: true },
+      { id: 'open-card-work', get label() { return textNow(text).toggleWork; }, get keys() { return textNow(text).space; }, code: 'Space', group: 'open-card', screen: 'card', edits: true, stateTrigger: 'space' },
       { id: 'open-card-owner', get label() { return textNow(text).quickOwner; }, keys: 'O', code: 'KeyO', group: 'open-card', screen: 'card', edits: true, quickTab: 'owner' },
       { id: 'open-card-effort', get label() { return textNow(text).quickEffort; }, keys: 'E', code: 'KeyE', group: 'open-card', screen: 'card', edits: true, quickTab: 'effort' },
       { id: 'open-card-priority', get label() { return textNow(text).quickPriority; }, keys: 'P', code: 'KeyP', group: 'open-card', screen: 'card', edits: true, quickTab: 'priority' },
@@ -282,7 +287,9 @@ export const SHORTCUT_GROUPS: readonly ShortcutGroup[] = [
       { id: 'open-card-priority-number', get label() { return textNow(text).priorityNumber(priorityLabel('low'), priorityLabel('medium'), priorityLabel('high')); }, keys: '0–3', codes: digitCodes.slice(0, 4), group: 'open-card', screen: 'card', edits: true },
       { id: 'open-card-attachments', get label() { return textNow(text).openAttachments; }, keys: 'A', code: 'KeyA', group: 'open-card', screen: 'card' },
       { id: 'open-card-properties', get label() { return textNow(text).openProperties; }, keys: 'Z', code: 'KeyZ', group: 'open-card', screen: 'card' },
-      { id: 'open-card-done', get label() { return textNow(text).changeTaskState(stateLabel("done"), stateLabel("not-started")); }, keys: 'W', code: 'KeyW', group: 'open-card', screen: 'card', edits: true },
+      { id: 'open-card-tags', get label() { return textNow(text).openCardTags; }, keys: 'T', code: 'KeyT', group: 'open-card', screen: 'card' },
+      { id: 'open-card-focus', get label() { return textNow(text).openFocusMode; }, keys: 'F', code: 'KeyF', group: 'open-card', screen: 'card' },
+      { id: 'open-card-done', get label() { return textNow(text).changeTaskState; }, keys: 'W', code: 'KeyW', group: 'open-card', screen: 'card', edits: true, stateTrigger: 'done' },
       { id: 'open-card-archive', get label() { return textNow(text).toggleArchive; }, keys: 'R', code: 'KeyR', group: 'open-card', screen: 'card', edits: true },
       { id: 'open-card-delete', get label() { return textNow(text).trashCardConfirmed; }, keys: 'Backspace', code: 'Backspace', group: 'open-card', screen: 'card', edits: true },
       { id: 'open-card-bookmark', get label() { return textNow(text).toggleBookmark; }, keys: '.', code: 'Period', group: 'open-card', screen: 'card', edits: true },
@@ -301,6 +308,10 @@ export const ALL_SHORTCUTS: readonly ShortcutDefinition[] = SHORTCUT_GROUPS.flat
 export const OPEN_CARD_SHORTCUTS = ALL_SHORTCUTS.filter(shortcut => shortcut.group === 'open-card');
 export const HOVER_CARD_SHORTCUTS = ALL_SHORTCUTS.filter(shortcut => shortcut.group === 'mini-card');
 export const BULK_SHORTCUTS = ALL_SHORTCUTS.filter(shortcut => shortcut.group === 'bulk');
+
+export function resolveCardShortcutAction(shortcut: ShortcutDefinition, card: CatalogCard | undefined, context: CardStateActionContext = {}): CardStateAction | null {
+  return shortcut.stateTrigger ? resolveCardStateAction(card, shortcut.stateTrigger, context) : null;
+}
 
 /** Available Shortcuts groups include only shortcuts supported by `screens` (2026-11-05). */
 export function shortcutGroupsFor(screens: readonly ShortcutScreen[], writable: boolean): ShortcutGroup[] {
@@ -345,6 +356,8 @@ export function shortcutTargetBlocked(event: KeyboardEvent, scope?: 'open-card' 
   if (event.defaultPrevented || event.repeat || event.isComposing) return true;
   const target = event.target instanceof Element ? event.target : null;
   if (target?.closest(textEntrySelector)) return true;
+  // 2026-11-10: a card panel owns Escape before the deck's older capture listener can close the whole card.
+  if (!scope && event.key === 'Escape' && document.querySelector('[data-card-panel-open="true"]')) return true;
   // Hover and bulk actions have their own targets even with another card open; selection takes precedence over both open and hovered cards.
   if (scope !== 'open-card' && scope !== 'hover' && scope !== 'bulk' && openCardTargets > 0 && matchShortcut(event, OPEN_CARD_SHORTCUTS)) return true;
   if (scope !== 'bulk' && scope !== 'selection' && selectionIsActive() && matchShortcut(event, BULK_SHORTCUTS)) return true;

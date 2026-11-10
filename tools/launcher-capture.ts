@@ -1,7 +1,5 @@
-// Launcher start-screen frames for design review: desktop/launcher/index.html in headless Edge/Chrome with the mock bridge
+// Launcher start-screen frames: desktop/launcher/index.html in headless Edge/Chrome with the mock bridge
 // (a plain browser load has no window.deckmateDesktop, so launcher.js serves sample data).
-// Takes over from desktop/capture/capture-launcher.mjs as the shell moves from Electron to Tauri — desktop/README.md,
-// "Development loop" (2026-11-09).
 // Run: npm run capture:launcher — saves .deckmate/launcher-shots/<frame>.png plus frames.json (size, bytes, SHA-256 per frame).
 import { createHash } from 'node:crypto';
 import { realpathSync } from 'node:fs';
@@ -13,9 +11,15 @@ import { openHeadlessBrowser, type HeadlessPage } from './layout-capture.ts';
 const here = path.dirname(fileURLToPath(import.meta.url));
 const pageUrl = pathToFileURL(path.join(here, '..', 'desktop', 'launcher', 'index.html')).href;
 const whatsNewUrl = pathToFileURL(path.join(here, '..', 'desktop', 'launcher', 'whats-new.html')).href;
-const output = path.join(here, '..', '.deckmate', 'launcher-shots');
+const output = process.env.DECKMATE_LAUNCHER_CAPTURE_OUTPUT || path.join(here, '..', '.deckmate', 'launcher-shots');
 
-interface Frame { name: string; theme: 'dark' | 'light'; lang: 'en' | 'ru'; size: [number, number]; page?: 'whats-new'; state?: 'empty' | 'error' | 'hover-row' | 'focus-open' | 'focus-row' | 'focus-workspace' }
+interface Frame {
+  name: string; theme: 'dark' | 'light'; lang: 'en' | 'ru'; size: [number, number]; page?: 'whats-new';
+  state?: 'empty' | 'error' | 'hover-row' | 'focus-open' | 'focus-row' | 'focus-workspace';
+  scenario?: 'empty' | 'many' | 'missing' | 'opening' | 'error' | 'create';
+  error?: string; zoom?: number; reducedMotion?: boolean;
+  expand?: 'templates' | 'details';
+}
 
 const frames: Frame[] = [
   { name: 'dark-en-1280', theme: 'dark', lang: 'en', size: [1280, 820] },
@@ -35,6 +39,29 @@ const frames: Frame[] = [
   { name: 'whats-new-light-en', theme: 'light', lang: 'en', size: [760, 680], page: 'whats-new' },
   { name: 'whats-new-light-ru', theme: 'light', lang: 'ru', size: [760, 680], page: 'whats-new' },
 ];
+
+// 2026-11-10: explicit URL fixtures make the same edge cases reproducible in a normal browser, not just in screenshots.
+const errorCodes = ['invalid-path', 'missing', 'not-empty', 'create-failed', 'start-failed', 'timeout', 'load-failed', 'save-failed'];
+for (const theme of ['dark', 'light'] as const) {
+  for (const lang of ['en', 'ru'] as const) {
+    for (const size of [[960, 600], [1280, 820]] as [number, number][]) {
+      for (const scenario of ['empty', 'many', 'missing', 'opening', 'create'] as const) {
+        frames.push({ name: `${theme}-${lang}-${scenario}-${size[0]}`, theme, lang, size, scenario });
+      }
+    }
+    for (const error of errorCodes) {
+      frames.push({ name: `${theme}-${lang}-error-${error}`, theme, lang, size: [960, 600], scenario: 'error', error });
+      frames.push({ name: `${theme}-${lang}-error-${error}-1280`, theme, lang, size: [1280, 820], scenario: 'error', error });
+    }
+    frames.push({ name: `${theme}-${lang}-templates`, theme, lang, size: [960, 600], scenario: 'empty', expand: 'templates' });
+    frames.push({ name: `${theme}-${lang}-details`, theme, lang, size: [960, 600], scenario: 'error', error: 'start-failed', expand: 'details' });
+  }
+}
+for (const zoom of [0.5, 2]) {
+  for (const scenario of ['many', 'empty', 'create'] as const) {
+    frames.push({ name: `light-ru-${scenario}-zoom-${zoom}`, theme: 'light', lang: 'ru', size: [960, 600], scenario, zoom, reducedMotion: true });
+  }
+}
 
 // Every script sent to the page is a fixed string picked by key: nothing from the frame table is spliced into code.
 const THEME_SCRIPTS: Record<string, string> = {
@@ -61,7 +88,7 @@ const FOCUS_CHECKS: Record<string, string> = {
   'focus-row': `document.activeElement === document.querySelector('#recent-list .recent-open')`,
   'focus-workspace': `document.activeElement === document.querySelector('#workspace-list .recent-open')`,
 };
-const MAX_TAB_PRESSES = 24;
+const MAX_TAB_PRESSES = 48;
 
 // The launcher CSP allows inline styles (style-src 'unsafe-inline'), so page-state overrides enter as <style> elements.
 const INJECT_STYLE = 'css => { const style = document.createElement("style"); style.textContent = css; document.head.append(style); return true; }';
@@ -113,23 +140,71 @@ async function tabUntilFocused(page: HeadlessPage, matches: string, frameName: s
   if (!(await page.evaluate(matches))) throw new Error(`${frameName}: target not focused after ${MAX_TAB_PRESSES} Tab presses`);
 }
 
-interface Shot { name: string; width: number; height: number; bytes: number; sha256: string }
+async function verifyLauncherInteractions(page: HeadlessPage): Promise<void> {
+  await navigateAndWait(page, 'keyboard checks');
+  await waitForPageReady(page, 'keyboard checks');
+  await page.evaluate(`window.__launcherCalls = []; window.__launcherPending = [];
+    bridge.openProject = folder => { window.__launcherCalls.push(folder); return new Promise(resolve => window.__launcherPending.push(resolve)); };
+    document.querySelector('#last-list .recent-open').focus();`);
+  const key = async (name: string, code: number) => {
+    for (const type of ['keyDown', 'keyUp']) await page.send('Input.dispatchKeyEvent', {
+      type, key: name, code: name, windowsVirtualKeyCode: code,
+      text: type === 'keyDown' && name === 'Enter' ? '\r' : undefined,
+    });
+  };
+  await key('Enter', 13);
+  await key('ArrowDown', 40);
+  await key('Enter', 13);
+  const switched = await page.evaluate(`window.__launcherCalls.length === 2 && window.__launcherCalls[0] !== window.__launcherCalls[1] && !page.openFolder.disabled`);
+  if (!switched) {
+    const details = await page.evaluate(`JSON.stringify({calls:window.__launcherCalls, focus:document.activeElement.outerHTML, status:page.statusText.textContent, busy, opening})`);
+    throw new Error(`Keyboard: Enter/ArrowDown must open another project while the first is starting: ${details}`);
+  }
+  await page.evaluate(`window.__launcherPending[0]({ok:false, code:'missing'})`);
+  await sleep(30);
+  if (!await page.evaluate(`page.status.dataset.phase === 'starting'`)) throw new Error('Keyboard: stale result replaced current progress');
+  await page.evaluate(`window.__launcherPending[1]({ok:false, code:'timeout'})`);
+  if (!await pollPage(page, `page.status.dataset.phase === 'error'`, 2000)) throw new Error('Keyboard: timeout has no recovery');
+  await page.evaluate(`document.querySelector('[data-lang="ru"]').click()`);
+  if (!await pollPage(page, `page.statusText.textContent.includes('20 секунд')`, 2000)) throw new Error('Language switch cleared the error');
+  await page.evaluate(`page.createProject.click()`);
+  if (!await pollPage(page, `!page.createPanel.hidden`, 2000)) throw new Error('Create confirmation did not open');
+  await key('Escape', 27);
+  if (!await page.evaluate(`page.createPanel.hidden && document.activeElement === page.createProject`)) throw new Error('Escape did not restore creation focus');
+  await page.evaluate(`document.querySelector('#recent-list .recent-open').focus()`);
+  await key('Delete', 46);
+  if (!await pollPage(page, `page.statusText.textContent.includes('не удалены')`, 2000)) throw new Error('Delete did not confirm files were retained');
+  console.log('keyboard: Enter, arrows, superseding launch, translated recovery, Escape and Delete passed');
+}
+
+interface Shot { name: string; width: number; height: number; bytes: number; sha256: string; zoom?: number }
 
 async function captureFrame(page: HeadlessPage, frame: Frame, destination: string): Promise<Shot> {
   const [width, height] = frame.size;
-  await page.send('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile: false });
+  const zoom = frame.zoom ?? 1;
+  await page.send('Emulation.setDeviceMetricsOverride', { width: width / zoom, height: height / zoom, deviceScaleFactor: zoom, mobile: false });
+  await page.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: frame.reducedMotion ? 'reduce' : 'no-preference' }] });
   // The settings are written on the loaded page; the reload below re-runs theme.js and launcher.js against them.
   await page.evaluate(scriptFor(THEME_SCRIPTS, frame.theme, 'theme'));
   await page.evaluate(scriptFor(LANG_SCRIPTS, frame.lang, 'language'));
-  await navigateAndWait(page, frame.name, frame.page === 'whats-new' ? whatsNewUrl : pageUrl);
+  const url = new URL(frame.page === 'whats-new' ? whatsNewUrl : pageUrl);
+  if (frame.scenario) url.searchParams.set('scenario', frame.scenario);
+  if (frame.error) url.searchParams.set('error', frame.error);
+  await navigateAndWait(page, frame.name, url.href);
   await page.callFunction(INJECT_STYLE, NO_MOTION);
   await waitForPageReady(page, frame.name, frame.page === 'whats-new' ? 'whats-new' : 'launcher');
 
   const state = frame.state ?? 'list';
   if (frame.page !== 'whats-new') await page.evaluate(scriptFor(STATE_SCRIPTS, state, 'state'));
-  if (state === 'error') {
+  if (state === 'error' || frame.scenario === 'error') {
     const failed = await pollPage(page, `document.getElementById('status').dataset.phase === 'error'`, 4000);
     if (!failed) throw new Error(`${frame.name}: the status phase is not 'error' after 4 s`);
+  }
+  if (frame.scenario === 'opening' && !await pollPage(page, `document.getElementById('status').dataset.phase === 'starting'`, 2000)) {
+    throw new Error(`${frame.name}: no opening feedback`);
+  }
+  if (frame.scenario === 'create' && !await pollPage(page, `!document.getElementById('create-panel').hidden`, 2000)) {
+    throw new Error(`${frame.name}: no creation confirmation`);
   }
   if (Object.hasOwn(FOCUS_CHECKS, state)) await tabUntilFocused(page, FOCUS_CHECKS[state], frame.name);
   await sleep(250);
@@ -137,6 +212,15 @@ async function captureFrame(page: HeadlessPage, frame: Frame, destination: strin
     await page.callFunction(INJECT_STYLE, HOVER_DEMO);
     await sleep(150);
   }
+  if (frame.page !== 'whats-new') {
+    const overflow = await page.evaluate(`document.documentElement.scrollWidth > innerWidth`);
+    if (overflow) throw new Error(`${frame.name}: horizontal overflow`);
+    if (frame.scenario === 'opening' && await page.evaluate(`document.getElementById('open-folder').disabled`)) {
+      throw new Error(`${frame.name}: choosing another project is blocked`);
+    }
+  }
+  if (frame.expand === 'templates') await page.evaluate(`document.querySelector('.template-help').open = true`);
+  if (frame.expand === 'details') await page.evaluate(`document.getElementById('status-details').open = true`);
   const shot = await page.send('Page.captureScreenshot', { format: 'png' });
   const png = Buffer.from(shot.result.data, 'base64');
   const [pngWidth, pngHeight] = [png.readUInt32BE(16), png.readUInt32BE(20)];
@@ -145,10 +229,10 @@ async function captureFrame(page: HeadlessPage, frame: Frame, destination: strin
   }
   await writeFile(destination, png);
   console.log(`${frame.name}: ${pngWidth}x${pngHeight}, ${png.length} bytes`);
-  return { name: frame.name, width: pngWidth, height: pngHeight, bytes: png.length, sha256: createHash('sha256').update(png).digest('hex') };
+  return { name: frame.name, width: pngWidth, height: pngHeight, bytes: png.length, sha256: createHash('sha256').update(png).digest('hex'), zoom };
 }
 
-// 2026-11-09: README captures must follow release versions without changing the launcher's standalone design-review mock.
+// 2026-11-09: README captures must follow release versions without changing the launcher's standalone browser mock.
 export async function captureLauncherReadme(destination: string): Promise<Shot> {
   const root = path.join(here, '..');
   const [deckmate, desktop] = await Promise.all(['package.json', 'desktop/package.json'].map(async file =>
@@ -204,6 +288,7 @@ async function main(): Promise<void> {
   try {
     await mkdir(output, { recursive: true });
     await navigateAndWait(page, 'initial load');
+    await verifyLauncherInteractions(page);
     const shots: Shot[] = [];
     for (const frame of frames) shots.push(await captureFrame(page, frame, path.join(output, `${frame.name}.png`)));
     await sleep(300);

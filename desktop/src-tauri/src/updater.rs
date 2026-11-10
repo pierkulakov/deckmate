@@ -17,6 +17,8 @@ use tauri_plugin_updater::{RemoteRelease, Update, Updater, UpdaterExt};
 const CHECK_INTERVAL: Duration = Duration::from_secs(24 * 60 * 60);
 const RETRY_INTERVAL: Duration = Duration::from_secs(60 * 60);
 const CACHE: &str = "update-cache";
+// 2026-11-10: the installer is about 33 MB; leave release headroom without trusting unsigned sizes.
+const MAX_UPDATE_BYTES: u64 = 512 * 1024 * 1024;
 
 pub struct ReadyUpdate {
     pub update: Update,
@@ -148,7 +150,24 @@ pub fn toggle_auto_check(app: &AppHandle) {
         settings.updates.auto_check = !settings.updates.auto_check;
         Ok(settings.updates.auto_check)
     });
-    let enabled = saved.unwrap_or_else(|_| shell.settings.lock().unwrap().updates.auto_check);
+    let enabled = match saved {
+        Ok(enabled) => enabled,
+        Err(error) => {
+            let app = app.clone();
+            tauri::async_runtime::spawn(async move {
+                let language = app::state(&app).language();
+                menu::dialog(
+                    &app,
+                    texts::text(&language, "saveFailedTitle"),
+                    &error.message,
+                    MessageDialogButtons::OkCustom(texts::text(&language, "ok").into()),
+                    MessageDialogKind::Error,
+                )
+                .await;
+            });
+            shell.settings.lock().unwrap().updates.auto_check
+        }
+    };
     shell
         .log
         .write(format!("updater automatic checks: {enabled}"));
@@ -168,8 +187,14 @@ pub fn start(app: AppHandle) {
         let shell = app::state(&app);
         let guard = shell.updates.operation.lock().await;
         menu::rebuild(&app);
+        let pending = shell.settings.lock().unwrap().updates.pending.clone();
+        cleanup_temporary(
+            &std::env::temp_dir(),
+            pending.as_ref(),
+            &shell.directory.join(CACHE).join("package.bin"),
+            &shell.log,
+        );
         after_start(&app).await;
-        cleanup_temporary(&std::env::temp_dir(), &shell.log);
         if portable().unwrap_or(true) {
             clear_cache(&shell);
         } else {
@@ -337,30 +362,28 @@ async fn check_inner(app: &AppHandle, manual: bool) -> Result<(), String> {
             .log
             .write(format!("updater downloading {}", update.version));
         update.timeout = Some(Duration::from_secs(10 * 60));
-        let mut downloaded = 0u64;
         let mut percentage = None;
-        let bytes = update
-            .download(
-                |chunk, total| {
-                    downloaded = downloaded.saturating_add(chunk as u64);
-                    if manual {
-                        let next = total.filter(|total| *total > 0).map(|total| {
-                            downloaded
-                                .saturating_mul(100)
-                                .checked_div(total)
-                                .unwrap_or(0)
-                                .min(100)
-                        });
-                        if next != percentage {
-                            progress(app, ProgressBarStatus::Normal, next);
-                            percentage = next;
-                        }
+        let bytes = download_bounded(
+            &update,
+            &shell.language(),
+            &shell.log,
+            |downloaded, total| {
+                if manual {
+                    let next = total.filter(|total| *total > 0).map(|total| {
+                        downloaded
+                            .saturating_mul(100)
+                            .checked_div(total)
+                            .unwrap_or(0)
+                            .min(100)
+                    });
+                    if next != percentage {
+                        progress(app, ProgressBarStatus::Normal, next);
+                        percentage = next;
                     }
-                },
-                || {},
-            )
-            .await
-            .map_err(|error| error.to_string())?;
+                }
+            },
+        )
+        .await?;
         shell.log.write(format!(
             "updater downloaded and signature/version verified: {} ({} bytes)",
             update.version,
@@ -378,6 +401,105 @@ async fn check_inner(app: &AppHandle, manual: bool) -> Result<(), String> {
         notify_or_offer(app, &ready.update, false, manual).await;
     }
     Ok(())
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum DownloadLimit {
+    Declared,
+    Received,
+}
+
+fn download_size(received: u64, chunk: u64, declared: Option<u64>) -> Result<u64, DownloadLimit> {
+    if declared.is_some_and(|size| size > MAX_UPDATE_BYTES) {
+        return Err(DownloadLimit::Declared);
+    }
+    received
+        .checked_add(chunk)
+        .filter(|size| *size <= MAX_UPDATE_BYTES)
+        .ok_or(DownloadLimit::Received)
+}
+
+fn declared_download_size(raw: &Value, download_url: &str) -> Option<u64> {
+    std::iter::once(&raw["size"])
+        .chain(
+            raw["platforms"]
+                .as_object()
+                .into_iter()
+                .flat_map(|platforms| platforms.values())
+                .filter(|artifact| {
+                    artifact["url"]
+                        .as_str()
+                        .and_then(|url| url.parse::<tauri::Url>().ok())
+                        .is_some_and(|url| url.as_str() == download_url)
+                })
+                .map(|artifact| &artifact["size"]),
+        )
+        .filter_map(|size| {
+            size.as_u64().or_else(|| {
+                size.as_f64()
+                    .filter(|size| *size > MAX_UPDATE_BYTES as f64)
+                    .map(|_| MAX_UPDATE_BYTES + 1)
+            })
+        })
+        .max()
+}
+
+fn download_limit_error(language: &str, log: &Log, reason: DownloadLimit) -> String {
+    log.write(format!(
+        "updater download size limit exceeded ({reason:?}); limit: {MAX_UPDATE_BYTES} bytes"
+    ));
+    texts::format(language, "updateTooLarge", "limit", MAX_UPDATE_BYTES)
+}
+
+async fn download_bounded(
+    update: &Update,
+    language: &str,
+    log: &Log,
+    mut on_progress: impl FnMut(u64, Option<u64>),
+) -> Result<Vec<u8>, String> {
+    download_size(
+        0,
+        0,
+        declared_download_size(&update.raw_json, update.download_url.as_str()),
+    )
+    .map_err(|reason| download_limit_error(language, log, reason))?;
+    let (sender, mut exceeded) = tokio::sync::oneshot::channel();
+    let mut sender = Some(sender);
+    let mut received = 0;
+    let result = {
+        let download = update.download(
+            |chunk, total| {
+                if sender.is_none() {
+                    return;
+                }
+                match download_size(received, chunk as u64, total) {
+                    Ok(size) => {
+                        received = size;
+                        on_progress(received, total);
+                    }
+                    Err(reason) => {
+                        if let Some(sender) = sender.take() {
+                            let _ = sender.send(reason);
+                        }
+                    }
+                }
+            },
+            || {},
+        );
+        tokio::pin!(download);
+        // 2026-11-10: on_chunk returns (), not Result. Prefer cancellation at the next yield,
+        // dropping the plugin future (HTTP stream and buffer), without replacing verification/install.
+        tokio::select! {
+            biased;
+            Ok(reason) = &mut exceeded => Err(download_limit_error(language, log, reason)),
+            result = &mut download => result.map_err(|error| error.to_string()),
+        }
+    };
+    // 2026-11-10: even if EOF/verification completes in the same poll as on_chunk, reject the bytes.
+    if let Ok(reason) = exceeded.try_recv() {
+        return Err(download_limit_error(language, log, reason));
+    }
+    result
 }
 
 fn missing_manifest(error: &tauri_plugin_updater::Error) -> bool {
@@ -788,36 +910,141 @@ fn clear_ready(shell: &app::Shell) {
     clear_cache(shell);
 }
 
-fn updater_temporary_name(name: &str) -> bool {
-    name.strip_prefix("Deckmate-")
-        .and_then(|name| name.split_once("-updater-"))
-        .is_some_and(|(version, suffix)| !version.is_empty() && !suffix.is_empty())
+fn updater_temporary_name(name: &str) -> Option<&str> {
+    let (version, suffix) = name.strip_prefix("Deckmate-")?.rsplit_once("-updater-")?;
+    if suffix.len() != 6 || !suffix.bytes().all(|byte| byte.is_ascii_alphanumeric()) {
+        return None;
+    }
+    static SEMVER: std::sync::OnceLock<Option<regex::Regex>> = std::sync::OnceLock::new();
+    let semver = SEMVER.get_or_init(|| regex::Regex::new(
+        r"\A(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(?:-(?:0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*))*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?\z"
+    ).ok()).as_ref()?;
+    let captures = semver.captures(version)?;
+    if (1..=3).any(|index| captures[index].parse::<u64>().is_err()) {
+        return None;
+    }
+    Some(version)
 }
 
-fn cleanup_temporary(directory: &Path, log: &Log) {
-    let entries = match fs::read_dir(directory) {
+fn plain_metadata(path: &Path) -> io::Result<fs::Metadata> {
+    let metadata = fs::symlink_metadata(path)?;
+    let linked = metadata.file_type().is_symlink();
+    #[cfg(windows)]
+    let linked = {
+        use std::os::windows::fs::MetadataExt;
+        // 2026-11-09: junctions are reparse points too, but need not report is_symlink().
+        linked || metadata.file_attributes() & 0x400 != 0
+    };
+    if linked {
+        return Err(io::Error::other("link or reparse point"));
+    }
+    Ok(metadata)
+}
+
+fn matches_cached_package(installer: &Path, cached_package: &Path) -> io::Result<bool> {
+    use std::io::Read;
+    let installer_metadata = plain_metadata(installer)?;
+    let cache_metadata = plain_metadata(cached_package)?;
+    if !installer_metadata.is_file()
+        || !cache_metadata.is_file()
+        || cache_metadata.len() == 0
+        || installer_metadata.len() != cache_metadata.len()
+    {
+        return Ok(false);
+    }
+    // 2026-11-09: compare in bounded chunks, since a foreign file can be arbitrarily large.
+    let mut installer = fs::File::open(installer)?;
+    let mut cache = fs::File::open(cached_package)?;
+    let mut left = [0; 8192];
+    let mut right = [0; 8192];
+    loop {
+        let length = installer.read(&mut left)?;
+        if length == 0 {
+            return Ok(cache.read(&mut right)? == 0);
+        }
+        cache.read_exact(&mut right[..length])?;
+        if left[..length] != right[..length] {
+            return Ok(false);
+        }
+    }
+}
+
+fn remove_temporary(path: &Path, version: &str, cached_package: &Path) -> io::Result<()> {
+    if !plain_metadata(path)?.is_dir() {
+        return Err(io::Error::other("not a plain directory"));
+    }
+    let entries = fs::read_dir(path)?
+        .take(2)
+        .collect::<io::Result<Vec<_>>>()?;
+    if entries.len() > 1 {
+        return Err(io::Error::other("unexpected updater contents"));
+    }
+    if let Some(entry) = entries.first() {
+        let expected = format!("Deckmate-{version}-installer.exe");
+        let installer = entry.path();
+        if entry.file_name() != std::ffi::OsStr::new(&expected)
+            || !matches_cached_package(&installer, cached_package)?
+        {
+            return Err(io::Error::other(
+                "installer does not match this installation's cached package",
+            ));
+        }
+        fs::remove_file(installer)?;
+    }
+    // 2026-11-09: never recurse into shared temp; unexpected or newly added contents must survive.
+    fs::remove_dir(path)
+}
+
+fn cleanup_temporary(
+    directory: &Path,
+    pending: Option<&PendingUpdate>,
+    cached_package: &Path,
+    log: &Log,
+) {
+    let entries = match plain_metadata(directory).and_then(|metadata| {
+        if !metadata.is_dir() {
+            return Err(io::Error::other("not a plain temporary directory"));
+        }
+        fs::read_dir(directory)
+    }) {
         Ok(entries) => entries,
         Err(error) => {
             log.write(format!("updater temporary cleanup failed: {error}"));
             return;
         }
     };
-    for entry in entries.flatten() {
-        if !updater_temporary_name(&entry.file_name().to_string_lossy())
-            || !entry
-                .file_type()
-                .is_ok_and(|kind| kind.is_dir() && !kind.is_symlink())
-        {
+    for entry in entries {
+        let entry = match entry {
+            Ok(entry) => entry,
+            Err(error) => {
+                log.write(format!("updater temporary entry retained: {error}"));
+                continue;
+            }
+        };
+        let name = entry.file_name();
+        let name = name.to_string_lossy();
+        if !name.starts_with("Deckmate-") || !name.contains("-updater-") {
             continue;
         }
         let path = entry.path();
-        match fs::remove_dir_all(&path) {
+        let Some(version) = updater_temporary_name(&name)
+            .filter(|version| pending.is_some_and(|pending| pending.version == *version))
+        else {
+            log.write(format!(
+                "updater temporary folder retained (unrecognized or not pending): {}",
+                path.display()
+            ));
+            continue;
+        };
+        // 2026-11-09: the plugin keeps private temp paths; pending version plus exact cached bytes
+        // is the available provenance. Old/unattributed folders are deliberately left alone.
+        match remove_temporary(&path, version, cached_package) {
             Ok(()) => log.write(format!(
                 "updater temporary folder removed: {}",
                 path.display()
             )),
             Err(error) => log.write(format!(
-                "updater temporary cleanup failed: {}: {error}",
+                "updater temporary folder retained: {}: {error}",
                 path.display()
             )),
         }
@@ -828,6 +1055,64 @@ fn cleanup_temporary(directory: &Path, log: &Log) {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn download_budget_handles_boundaries_unknown_lengths_and_overflow() {
+        assert_eq!(download_size(0, 0, None), Ok(0));
+        assert_eq!(
+            download_size(0, 33 * 1024 * 1024, None),
+            Ok(33 * 1024 * 1024)
+        );
+        assert_eq!(
+            download_size(MAX_UPDATE_BYTES - 1, 1, Some(MAX_UPDATE_BYTES)),
+            Ok(MAX_UPDATE_BYTES)
+        );
+        assert_eq!(
+            download_size(MAX_UPDATE_BYTES, 1, None),
+            Err(DownloadLimit::Received)
+        );
+        assert_eq!(
+            download_size(0, MAX_UPDATE_BYTES + 1, None),
+            Err(DownloadLimit::Received)
+        );
+        assert_eq!(
+            download_size(0, 0, Some(MAX_UPDATE_BYTES + 1)),
+            Err(DownloadLimit::Declared)
+        );
+        assert_eq!(
+            download_size(u64::MAX, 1, None),
+            Err(DownloadLimit::Received)
+        );
+        assert_eq!(
+            download_size(MAX_UPDATE_BYTES - 1, 2, Some(1)),
+            Err(DownloadLimit::Received)
+        );
+    }
+
+    #[test]
+    fn manifest_size_checks_the_downloaded_artifact_and_top_level() {
+        let raw = json!({"platforms": {
+            "windows-x86_64-nsis": {"url":"https://EXAMPLE.com/setup.exe", "size":MAX_UPDATE_BYTES + 1},
+            "linux-x86_64": {"url":"https://example.com/other", "size":u64::MAX}
+        }});
+        assert_eq!(
+            declared_download_size(&raw, "https://example.com/setup.exe"),
+            Some(MAX_UPDATE_BYTES + 1)
+        );
+        assert_eq!(
+            declared_download_size(&raw, "https://example.com/missing"),
+            None
+        );
+        assert_eq!(
+            declared_download_size(&json!({"size":MAX_UPDATE_BYTES + 1}), "unused"),
+            Some(MAX_UPDATE_BYTES + 1)
+        );
+        assert_eq!(declared_download_size(&json!({"size":-1}), "unused"), None);
+        assert_eq!(
+            declared_download_size(&json!({"size":1e100}), "unused"),
+            Some(MAX_UPDATE_BYTES + 1)
+        );
+    }
 
     fn release(version: &str) -> RemoteRelease {
         serde_json::from_value(
@@ -994,23 +1279,146 @@ mod tests {
     }
 
     #[test]
-    fn temporary_cleanup_only_removes_deckmate_updater_directories() {
-        let root = std::env::temp_dir().join(format!(
-            "deckmate-updater-cleanup-test-{}",
-            std::process::id()
-        ));
-        fs::create_dir_all(root.join("Deckmate-0.6.0-updater-test")).unwrap();
-        fs::create_dir_all(root.join("Other-0.6.0-updater-test")).unwrap();
-        fs::create_dir_all(root.join("Deckmate-updater-test")).unwrap();
-        fs::write(root.join("Deckmate-0.6.0-updater-file"), []).unwrap();
-        let log = Log::open(&root);
-        cleanup_temporary(&root, &log);
-        assert!(!root.join("Deckmate-0.6.0-updater-test").exists());
-        assert!(root.join("Other-0.6.0-updater-test").exists());
-        assert!(root.join("Deckmate-updater-test").exists());
-        assert!(root.join("Deckmate-0.6.0-updater-file").exists());
+    fn temporary_names_require_semver_and_six_alphanumeric_characters() {
+        for version in [
+            "0.6.0",
+            "1.0.0-rc.2",
+            "1.0.0+build.3",
+            "1.0.0-beta-updater-x",
+        ] {
+            let name = format!("Deckmate-{version}-updater-aB09xZ");
+            assert_eq!(updater_temporary_name(&name), Some(version));
+        }
+        for name in [
+            "Deckmate-notes-updater-backup",
+            "Other-0.6.0-updater-aB09xZ",
+            "Deckmate-01.6.0-updater-aB09xZ",
+            "Deckmate-1.0.0-01-updater-aB09xZ",
+            "Deckmate-1.0-updater-aB09xZ",
+            "Deckmate-1.0.0-updater-abcde",
+            "Deckmate-1.0.0-updater-abcdefg",
+            "Deckmate-1.0.0-updater-abc_de",
+            "Deckmate-1.0.0-updater-аbcdef",
+            "Deckmate-1.0.0-updater-abcde\n",
+        ] {
+            assert_eq!(updater_temporary_name(name), None, "{name}");
+        }
+    }
+
+    #[test]
+    fn temporary_cleanup_preserves_foreign_contents_and_requires_pending_provenance() {
+        let sandbox = app::tests::Sandbox::new();
+        let root = &sandbox.0;
+        let pending = PendingUpdate {
+            version: "0.6.0".into(),
+            from: "0.5.0".into(),
+            extra: Default::default(),
+        };
+        let cache = root.join("package.bin");
+        fs::write(&cache, b"verified package fixture").unwrap();
+        let empty = root.join("Deckmate-0.6.0-updater-EMPTY1");
+        let owned = root.join("Deckmate-0.6.0-updater-OWNED1");
+        fs::create_dir(&empty).unwrap();
+        fs::create_dir(&owned).unwrap();
+        fs::write(
+            owned.join("Deckmate-0.6.0-installer.exe"),
+            fs::read(&cache).unwrap(),
+        )
+        .unwrap();
+        let foreign = [
+            "Deckmate-notes-updater-backup",
+            "Deckmate-0.6.0-updater-FOREI1",
+            "Deckmate-0.6.0-updater-WRONG1",
+            "Deckmate-0.7.0-updater-OTHER1",
+            "Deckmate-0.6.0-updater-SUBDI1",
+            "Deckmate-0.6.0-updater-EXTRA1",
+        ];
+        for name in foreign {
+            fs::create_dir(root.join(name)).unwrap();
+        }
+        fs::write(root.join(foreign[0]).join("notes.md"), b"keep notes").unwrap();
+        fs::write(root.join(foreign[1]).join("notes.md"), b"keep notes").unwrap();
+        fs::write(
+            root.join(foreign[2]).join("Deckmate-0.6.0-installer.exe"),
+            b"foreign exe",
+        )
+        .unwrap();
+        fs::create_dir(root.join(foreign[4]).join("nested")).unwrap();
+        fs::write(
+            root.join(foreign[5]).join("Deckmate-0.6.0-installer.exe"),
+            fs::read(&cache).unwrap(),
+        )
+        .unwrap();
+        fs::write(root.join(foreign[5]).join("notes.md"), b"keep notes").unwrap();
+        let log = Log::open(root);
+        cleanup_temporary(root, None, &cache, &log);
+        assert!(empty.exists() && owned.exists());
+        cleanup_temporary(root, Some(&pending), &cache, &log);
+        assert!(!empty.exists() && !owned.exists());
+        for name in foreign {
+            assert!(root.join(name).exists(), "{name}");
+        }
+        assert_eq!(
+            fs::read(root.join(foreign[1]).join("notes.md")).unwrap(),
+            b"keep notes"
+        );
+        assert_eq!(
+            fs::read(root.join(foreign[2]).join("Deckmate-0.6.0-installer.exe")).unwrap(),
+            b"foreign exe"
+        );
+        assert!(fs::read_to_string(root.join("server.log"))
+            .unwrap()
+            .contains("retained"));
+        let missing_cache = root.join("Deckmate-0.6.0-updater-NOCAC1");
+        fs::create_dir(&missing_cache).unwrap();
+        fs::write(
+            missing_cache.join("Deckmate-0.6.0-installer.exe"),
+            fs::read(&cache).unwrap(),
+        )
+        .unwrap();
+        fs::remove_file(&cache).unwrap();
+        cleanup_temporary(root, Some(&pending), &cache, &log);
+        assert!(missing_cache.join("Deckmate-0.6.0-installer.exe").exists());
         drop(log);
-        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn temporary_cleanup_does_not_follow_junctions() {
+        let sandbox = app::tests::Sandbox::new();
+        let target = sandbox.0.join("foreign");
+        fs::create_dir(&target).unwrap();
+        let junction = sandbox.0.join("Deckmate-0.6.0-updater-LINK01");
+        assert!(std::process::Command::new("cmd")
+            .args(["/C", "mklink", "/J"])
+            .arg(&junction)
+            .arg(&target)
+            .output()
+            .unwrap()
+            .status
+            .success());
+        let pending = PendingUpdate {
+            version: "0.6.0".into(),
+            from: "0.5.0".into(),
+            extra: Default::default(),
+        };
+        let nested = target.join("Deckmate-0.6.0-updater-NEST01");
+        fs::create_dir(&nested).unwrap();
+        cleanup_temporary(
+            &junction,
+            Some(&pending),
+            &sandbox.0.join("package.bin"),
+            &Log::open(&sandbox.0),
+        );
+        assert!(nested.exists());
+        cleanup_temporary(
+            &sandbox.0,
+            Some(&pending),
+            &sandbox.0.join("package.bin"),
+            &Log::open(&sandbox.0),
+        );
+        assert!(junction.exists() && target.exists());
+        fs::remove_dir(&junction).unwrap();
     }
 
     #[test]

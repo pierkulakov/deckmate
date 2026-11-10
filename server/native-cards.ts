@@ -1,6 +1,6 @@
 import { defineText, serverText, serverLang } from './i18n.ts';
 import { createHash, randomUUID } from 'node:crypto';
-import { link, lstat, mkdir, open, readFile, readdir, realpath, rename, unlink } from 'node:fs/promises';
+import { link, lstat, open, readFile, readdir, realpath, rename, unlink } from 'node:fs/promises';
 import type { BigIntStats } from 'node:fs';
 import path from 'node:path';
 import { catalogFileChanged } from './catalog-snapshot.ts';
@@ -12,6 +12,8 @@ import type { CardKind, CardPriority, CatalogCard, CatalogDocument } from '../sr
 import { canonicalDataPath } from '../src/brand-compat.ts';
 import { resolveDataPath } from './data-paths.ts';
 import { cardStates, cardStateWords, readCardState, writeCardState, type CardState, type FormatLanguage } from '../src/format-vocabulary.ts';
+import { checkDirectories as checkGuard, checkGuardedFile, guardedDirectory as walkGuardedDirectory,
+  removeGuardedFile, sameIdentity, writeGuardedNewFile, type DirectoryGuard } from './guarded-files.ts';
 
 const messages = defineText({
   explicitYamlRequired: (field: string) => `The ${field} field must have an explicit YAML value.`,
@@ -106,6 +108,7 @@ const uuid = '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}';
 const nativePath = new RegExp('^cards/(' + uuid + ')\\.md$', 'i');
 const journeyPath = new RegExp('^tasks/(?:journeys|journey-templates)/(' + uuid + ')/(index\\.md|steps/[a-zA-Z0-9][a-zA-Z0-9_-]{0,79}\\.md)$', 'i');
 const journeyDirectory = new RegExp('^tasks/(?:journeys|journey-templates)/(' + uuid + ')(/steps)?$', 'i');
+const journeyOperationPath = new RegExp('^tasks/journeys/(' + uuid + ')/\\.deckmate-operation\\.json$', 'u');
 const activityPath = new RegExp('^tasks/(?:deckmate|freetion)-activity/([0-9]{8}T[0-9]{9}Z)-(' + uuid + ')\\.md$', 'i');
 const nativeId = new RegExp('^card:(' + uuid + ')$', 'iu');
 const digest = (bytes: Uint8Array) => createHash('sha256').update(bytes).digest('hex');
@@ -143,14 +146,8 @@ export interface NativeCardFile extends ManagedMarkdownFile {
   document: CatalogDocument;
 }
 
-interface DirectoryIdentity { filename: string; stat: BigIntStats }
-interface DirectoryGuard { root: string; directory: string; parents: DirectoryIdentity[] }
 interface TemporaryFile { filename: string; stat: BigIntStats }
 
-function sameIdentity(first: BigIntStats, second: BigIntStats): boolean {
-  return first.dev === second.dev && first.ino === second.ino;
-}
-function samePath(first: string, second: string): boolean { return path.relative(first, second) === ''; }
 function missing(error: unknown): boolean { return (error as NodeJS.ErrnoException).code === 'ENOENT'; }
 
 function checkedPath(relativePath: string): { directory: string; id: string } {
@@ -167,21 +164,13 @@ function checkedPath(relativePath: string): { directory: string; id: string } {
   if (activity) return { directory: actualDirectory, id: activity[2] };
   const card = nativePath.exec(relativePath);
   if (card) return { directory: 'cards', id: card[1] };
+  const operation = journeyOperationPath.exec(relativePath);
+  if (operation) return { directory: actualDirectory, id: operation[1] };
   const journey = journeyPath.exec(relativePath);
   if (!journey) throw new Error(serverText(messages).invalidManagedPath);
   const basename = path.posix.basename(relativePath).replace(/\.md$/iu, '');
   if (/^(con|prn|aux|nul|com[1-9]|lpt[1-9])$/iu.test(basename)) throw new Error(serverText(messages).reservedStepName);
   return { directory: path.posix.dirname(relativePath), id: journey[1] };
-}
-
-async function checkGuard(guard: DirectoryGuard): Promise<void> {
-  for (const parent of guard.parents) {
-    const current = await lstat(parent.filename, { bigint: true });
-    if (!current.isDirectory() || current.isSymbolicLink() || !sameIdentity(current, parent.stat)
-      || !samePath(await realpath(parent.filename), parent.filename)) {
-      throw new Error(serverText(messages).markdownDirectoryChanged);
-    }
-  }
 }
 
 async function managedDirectory(root: string, relative: string, create: boolean): Promise<DirectoryGuard | null> {
@@ -196,44 +185,18 @@ function canonicalRelativePath(relative: string): boolean {
 
 async function guardedDirectory(root: string, relative: string, create: boolean): Promise<DirectoryGuard | null> {
   if (!canonicalRelativePath(relative)) throw new Error(serverText(messages).invalidDirectoryPath);
-  const absoluteRoot = path.resolve(root);
-  const rootStat = await lstat(absoluteRoot, { bigint: true });
-  if (!rootStat.isDirectory() || rootStat.isSymbolicLink() || !samePath(await realpath(absoluteRoot), absoluteRoot)) {
-    throw new Error(serverText(messages).invalidProjectRoot);
-  }
-  const guard: DirectoryGuard = { root: absoluteRoot, directory: absoluteRoot, parents: [{ filename: absoluteRoot, stat: rootStat }] };
-  for (const part of relative.split('/')) {
-    await checkGuard(guard);
-    const directory = path.join(guard.directory, part);
-    let stat: BigIntStats;
-    try { stat = await lstat(directory, { bigint: true }); }
-    catch (error) {
-      if (!missing(error)) throw error;
-      if (!create) return null;
-      // 2026-11-03: each ancestor is checked before mkdir; recursive mkdir could follow a junction.
-      await checkGuard(guard);
-      try { await mkdir(directory); }
-      catch (error) { if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error; }
-      stat = await lstat(directory, { bigint: true });
-    }
-    if (!stat.isDirectory() || stat.isSymbolicLink() || !samePath(await realpath(directory), directory)) {
-      throw new Error(serverText(messages).markdownDirectoryLink);
-    }
-    guard.parents.push({ filename: directory, stat });
-    guard.directory = directory;
-    await checkGuard(guard);
-  }
-  return guard;
+  return walkGuardedDirectory(root, relative, {
+    create, missing: 'null', rootReference: 'none',
+    messages: () => ({ invalidRoot: serverText(messages).invalidProjectRoot,
+      pathChanged: serverText(messages).markdownDirectoryChanged, directoryLink: serverText(messages).markdownDirectoryLink }),
+  });
 }
 
 async function checkFile(guard: DirectoryGuard, filename: string, expected?: BigIntStats): Promise<BigIntStats> {
-  await checkGuard(guard);
-  if (!samePath(path.dirname(filename), guard.directory)) throw new Error(serverText(messages).fileOutsideManagedDirectory);
-  const stat = await lstat(filename, { bigint: true });
-  if (!stat.isFile() || stat.isSymbolicLink() || !samePath(await realpath(filename), filename)
-    || (expected && !sameIdentity(stat, expected))) throw new Error(serverText(messages).markdownFileChanged);
-  await checkGuard(guard);
-  return stat;
+  return checkGuardedFile(guard, filename, {
+    expected, outsideDirectory: () => serverText(messages).fileOutsideManagedDirectory,
+    invalidFile: () => serverText(messages).markdownFileChanged,
+  });
 }
 
 async function readBytes(guard: DirectoryGuard, filename: string): Promise<Buffer> {
@@ -271,12 +234,10 @@ async function readingGuard(root: string, relative: string): Promise<DirectoryGu
  * Bytes come from the open descriptor; publishing rechecks the file before writing (publishBytes -> readBytes).
  */
 async function readBytesOnce(guard: DirectoryGuard, filename: string): Promise<Buffer> {
-  await checkGuard(guard);
-  if (!samePath(path.dirname(filename), guard.directory)) throw new Error(serverText(messages).fileOutsideManagedDirectory);
-  const expected = await lstat(filename, { bigint: true });
-  if (!expected.isFile() || expected.isSymbolicLink() || !samePath(await realpath(filename), filename)) {
-    throw new Error(serverText(messages).markdownFileChanged);
-  }
+  const expected = await checkGuardedFile(guard, filename, {
+    checkAfter: false, outsideDirectory: () => serverText(messages).fileOutsideManagedDirectory,
+    invalidFile: () => serverText(messages).markdownFileChanged,
+  });
   const handle = await open(filename, 'r');
   try {
     const opened = await handle.stat({ bigint: true });
@@ -305,9 +266,15 @@ function parseManaged(bytes: Buffer): ManagedMarkdownFile & { yamlRange: ByteRan
   };
 }
 
-/** 2026-11-05: create a new project's managed-data directory with the same junction-safe walk as card folders. */
-export async function ensureManagedDirectory(root: string, relative: 'tasks'): Promise<void> {
-  await managedDirectory(root, relative, true);
+export { parseManaged as parseManagedMarkdown };
+
+/** 2026-11-09: operation snapshots need exact bytes without interpreting service JSON as Markdown. */
+export async function readManagedBytes(root: string, relativePath: string): Promise<Buffer | null> {
+  const target = checkedPath(relativePath);
+  const guard = await readingGuard(root, target.directory);
+  if (!guard) return null;
+  try { return await readBytesOnce(guard, path.join(guard.root, relativePath)); }
+  catch (error) { if (missing(error)) return null; throw error; }
 }
 
 export async function readManagedMarkdown(root: string, relativePath: string): Promise<ManagedMarkdownFile | null> {
@@ -367,30 +334,23 @@ export async function listManagedMarkdown(root: string, requestedDirectory: 'car
 }
 
 async function removeTemporary(guard: DirectoryGuard, temporary: TemporaryFile): Promise<void> {
-  try { await checkFile(guard, temporary.filename, temporary.stat); }
-  catch (error) { if (missing(error)) { await checkGuard(guard); return; } throw error; }
-  await unlink(temporary.filename);
+  await removeGuardedFile(guard, temporary.filename, temporary.stat, {
+    checkFile: expected => checkFile(guard, temporary.filename, expected),
+    replaced: () => serverText(messages).markdownFileChanged, missing: 'ignore',
+  });
 }
 
 async function writeTemporary(guard: DirectoryGuard, bytes: Buffer): Promise<TemporaryFile> {
-  await checkGuard(guard);
-  const filename = path.join(guard.directory, '.' + randomUUID() + '.tmp');
-  const handle = await open(filename, 'wx');
-  let temporary: TemporaryFile | undefined;
-  try {
-    temporary = { filename, stat: await handle.stat({ bigint: true }) };
-    await checkFile(guard, filename, temporary.stat);
-    await handle.writeFile(bytes);
-    await checkFile(guard, filename, temporary.stat);
-    return temporary;
-  } catch (error) {
-    await handle.close();
-    if (temporary) {
-      try { await removeTemporary(guard, temporary); }
-      catch (cleanupError) { throw new AggregateError([error, cleanupError], serverText(messages).markdownCleanupFailed); }
-    }
-    throw error;
-  } finally { await handle.close(); }
+  const relativePath = `${guard.relativeDirectory}/.${randomUUID()}.tmp`;
+  const filename = path.join(guard.root, relativePath);
+  const temporary = await writeGuardedNewFile(guard, relativePath, bytes, {
+    checkFile: expected => checkFile(guard, filename, expected), missing: 'ignore', close: 'temporary-finally',
+    replaced: () => serverText(messages).markdownFileChanged,
+    beforeWrite: () => serverText(messages).markdownFileChanged,
+    afterWrite: () => serverText(messages).markdownFileChanged,
+    cleanupFailed: () => serverText(messages).markdownCleanupFailed,
+  });
+  return { filename: temporary.filename, stat: temporary.stat };
 }
 
 function savedError(error: unknown, saved: boolean): Error {
@@ -526,6 +486,12 @@ export async function createManagedMarkdown(root: string, relativePath: string, 
   if (target.id === 'manifest' && metadata.formatLanguage === undefined) metadata = { ...metadata, formatLanguage: 'en' };
   if (target.directory === 'cards') validateNativeCardMetadata(metadata, target.id);
   const bytes = Buffer.from('---\n' + stringify(metadata, { lineWidth: 0 }) + '---\n' + markdown);
+  return createManagedBytes(root, relativePath, bytes, beforePublish);
+}
+
+/** 2026-11-09: prepared Journey bytes and service JSON share the existing no-overwrite publisher. */
+export async function createManagedBytes(root: string, relativePath: string, bytes: Buffer, beforePublish?: () => Promise<void>): Promise<boolean> {
+  const target = checkedPath(relativePath);
   const guard = (await managedDirectory(root, target.directory, true))!;
   const temporary = await writeTemporary(guard, bytes);
   const filename = path.join(guard.root, relativePath);
@@ -588,22 +554,51 @@ export async function readProjectMarkdown(root: string, relativePath: string): P
   return readBytesOnce(guard, path.join(guard.root, relativePath));
 }
 
-export async function replaceProjectMarkdown(root: string, relativePath: string, sourceHash: string, bytes: Buffer, beforePublish?: () => Promise<void>): Promise<void> {
+interface PublicationOptions { conflict?: string; retryWindowsRename?: boolean }
+
+/** 2026-11-09: cleanup must reject replaced directories/files just like publication, and invalidate snapshots. */
+export async function removeManagedFile(root: string, relativePath: string, sourceHash: string, beforeRemove?: () => Promise<void>): Promise<void> {
+  const guard = await managedDirectory(root, checkedPath(relativePath).directory, false);
+  if (!guard) return;
+  const filename = path.join(guard.root, relativePath);
+  await beforeRemove?.();
+  try {
+    if (digest(await readBytes(guard, filename)) !== sourceHash) throw new Error('JOURNEY_CONFLICT');
+    await unlink(filename);
+    catalogFileChanged(root, relativePath);
+  } catch (error) { if (!missing(error)) throw error; }
+}
+
+export async function replaceProjectMarkdown(root: string, relativePath: string, sourceHash: string, bytes: Buffer, beforePublish?: () => Promise<void>, options?: PublicationOptions): Promise<void> {
   relativePath = await resolveDataPath(root, relativePath);
   const guard = await guardedDirectory(root, checkedProjectMarkdownPath(relativePath), false);
   if (!guard) throw new Error(serverText(messages).cardFileNotFound);
-  await publishBytes(guard, path.join(guard.root, relativePath), sourceHash, bytes, beforePublish);
+  await publishBytes(guard, path.join(guard.root, relativePath), sourceHash, bytes, beforePublish, options);
 }
 
-async function publishBytes(guard: DirectoryGuard, filename: string, sourceHash: string, bytes: Buffer, beforePublish?: () => Promise<void>): Promise<void> {
+async function renameChecked(guard: DirectoryGuard, filename: string, sourceHash: string, temporary: TemporaryFile,
+  beforePublish?: () => Promise<void>, options: PublicationOptions = {}): Promise<void> {
+  for (let attempt = 0; ; attempt += 1) {
+    await beforePublish?.();
+    if (digest(await readBytes(guard, filename)) !== sourceHash) throw new Error(options.conflict ?? 'CARD_CONFLICT');
+    await checkFile(guard, temporary.filename, temporary.stat);
+    try { await rename(temporary.filename, filename); return; }
+    catch (error) {
+      const code = (error as NodeJS.ErrnoException).code;
+      if (!options.retryWindowsRename || process.platform !== 'win32'
+        || !['EPERM', 'EBUSY', 'EACCES'].includes(code ?? '') || attempt >= 4) throw error;
+      // 2026-11-09: manifest readers can briefly hold the file; every retry rechecks identities and hashes.
+      await new Promise(resolve => setTimeout(resolve, 25 * (attempt + 1)));
+    }
+  }
+}
+
+async function publishBytes(guard: DirectoryGuard, filename: string, sourceHash: string, bytes: Buffer, beforePublish?: () => Promise<void>, options?: PublicationOptions): Promise<void> {
   const temporary = await writeTemporary(guard, bytes);
   let saved = false;
   let failure: unknown;
   try {
-    await beforePublish?.();
-    if (digest(await readBytes(guard, filename)) !== sourceHash) throw new Error('CARD_CONFLICT');
-    await checkFile(guard, temporary.filename, temporary.stat);
-    await rename(temporary.filename, filename);
+    await renameChecked(guard, filename, sourceHash, temporary, beforePublish, options);
     saved = true;
     catalogFileChanged(guard.root, path.relative(guard.root, filename));
     await checkFile(guard, filename, temporary.stat);
@@ -616,7 +611,7 @@ async function publishBytes(guard: DirectoryGuard, filename: string, sourceHash:
 }
 
 /** Replace one YAML-header scalar while preserving other keys, comments, and bytes. */
-function patchNativeScalar(parsed: ManagedMarkdownFile & { yamlRange: ByteRange; newline: string }, key: string, value: string | number | string[] | null): Buffer {
+function patchNativeScalar(parsed: ManagedMarkdownFile & { yamlRange: ByteRange; newline: string }, key: string, value: unknown): Buffer {
   const yamlText = parsed.bytes.subarray(parsed.yamlRange.start, parsed.yamlRange.end).toString('utf8');
   const document = parseDocument(yamlText);
   if (document.errors.length > 0 || !isMap(document.contents) || !document.contents.range) throw new Error(serverText(messages).cardHeaderParseFailed);
@@ -645,6 +640,33 @@ function patchNativeScalar(parsed: ManagedMarkdownFile & { yamlRange: ByteRange;
     throw new Error(serverText(messages).yamlFieldsChanged(key));
   }
   return Buffer.concat([parsed.bytes.subarray(0, parsed.yamlRange.start), yamlBytes, parsed.bytes.subarray(parsed.yamlRange.end)]);
+}
+
+/** 2026-11-09: Journey edits reuse YAML value spans, retaining unknown fields, comments, BOM and EOL. */
+export function patchManagedMarkdown(existing: ManagedMarkdownFile, changes: Record<string, unknown>, markdown = existing.markdown,
+  renameKey?: { from: string; to: string }): Buffer {
+  let bytes = existing.bytes;
+  if (renameKey) {
+    const parsed = parseManaged(bytes);
+    const yamlText = bytes.subarray(parsed.yamlRange.start, parsed.yamlRange.end).toString('utf8');
+    const document = parseDocument(yamlText);
+    if (!isMap(document.contents) || document.has(renameKey.to)) throw new Error(serverText(messages).cardHeaderParseFailed);
+    const key = document.contents.items.find(pair => isScalar(pair.key) && pair.key.value === renameKey.from)?.key;
+    if (!isScalar(key) || !key.range) throw new Error(serverText(messages).cardHeaderParseFailed);
+    const start = parsed.yamlRange.start + Buffer.byteLength(yamlText.slice(0, key.range[0]));
+    const end = parsed.yamlRange.start + Buffer.byteLength(yamlText.slice(0, key.range[1]));
+    bytes = Buffer.concat([bytes.subarray(0, start), Buffer.from(renameKey.to), bytes.subarray(end)]);
+  }
+  for (const [key, value] of Object.entries(changes)) {
+    const parsed = parseManaged(bytes);
+    if (isDeepStrictEqual(parsed.metadata[key], value)) continue;
+    bytes = patchNativeScalar(parsed, key, value);
+  }
+  if (markdown !== existing.markdown) {
+    const parsed = parseManaged(bytes);
+    bytes = Buffer.concat([bytes.subarray(0, parsed.bodyRange.start), Buffer.from(markdown)]);
+  }
+  return bytes;
 }
 
 /** 2026-11-03: Plan all fields before publishing; only their YAML value spans change. dependsOn — 2026-11-04. */

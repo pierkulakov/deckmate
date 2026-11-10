@@ -4,10 +4,12 @@ import type { DeckActivityEvent, DeckActivityPage } from '../../src/activity-con
 import { activityEventGroups, activityGroupChips, eventMatchesGroups, type ActivityEventGroup } from '../../src/activity-groups.ts';
 import type { DataSource } from '../../src/workspace-contracts.ts';
 import { Button } from './ui/button.tsx';
+import { EmptyState } from './EmptyState.tsx';
 import '../deck-activity.css';
 import { defineText, formatNumber, locale, textNow, useLang, useText } from '../i18n.ts';
 import { stateLabel } from '../locales/common.ts';
 import { emitSignal } from '../onboarding/signals.ts';
+import { ActivityAttribution } from './ActivityAttribution.tsx';
 
 const text = defineText({
   loadFailedStatus: (status: number) => `Could not load activity (${status}).`,
@@ -181,39 +183,38 @@ export function DeckActivity({ deckId, source, refreshKey, disabled, onOpen }: D
     groups.set(minute, events);
   }
 
-  return <section className="deck-activity" aria-labelledby={headingId} aria-busy={loading}>
-    <header className="deck-activity-heading"><h2 id={headingId}>{t.heading}</h2>
-      <Button variant="ghost" size="icon" disabled={disabled || loading} onClick={() => void load(null)} aria-label={t.refresh} title={t.refresh}><RefreshCw size={14} className={refreshing ? 'spin' : undefined} /></Button>
+  return <section className="deck-activity glass-panel" aria-labelledby={headingId} aria-busy={loading}>
+    <header className="deck-activity-heading panel-head"><h2 className="panel-title" id={headingId}>{t.heading}</h2>
+      <div className="panel-actions"><Button variant="ghost" size="icon"  disabled={disabled || loading} onClick={() => void load(null)} aria-label={t.refresh} title={t.refresh}><RefreshCw size={14} className={refreshing ? 'spin' : undefined} /></Button></div>
     </header>
-    <div className="deck-activity-filters" role="group" aria-label={t.filters}>
+    {current.events.length > 0 && <div className="deck-activity-filters" role="group" aria-label={t.filters}>
       {activityGroupChips.map(chip => {
         const active = groupFilter.has(chip.id);
-        return <button type="button" key={chip.id} className="deck-activity-chip" aria-pressed={active}
+        return <button type="button" key={chip.id} className="deck-activity-chip control" aria-pressed={active}
           disabled={disabled} onClick={() => setGroupFilter(previous => {
             const next = new Set(previous);
             if (next.has(chip.id)) next.delete(chip.id); else next.add(chip.id);
             return next;
           })}>
-          {chip.id === 'done' ? stateLabel('done', lang) : t[chip.id]}{loadedCounts.get(chip.id) !== undefined && <span>{formatNumber(loadedCounts.get(chip.id)!, 3, lang)}</span>}
+          {chip.id === 'done' ? stateLabel('done', lang) : t[chip.id]}{loadedCounts.get(chip.id) !== undefined && <span className="page-number">{formatNumber(loadedCounts.get(chip.id)!, 3, lang)}</span>}
         </button>; })}
-      {groupFilter.size > 0 && <button type="button" className="deck-activity-chip deck-activity-chip-clear" disabled={disabled} onClick={() => setGroupFilter(new Set())}>{t.reset}</button>}
-    </div>
+      {groupFilter.size > 0 && <button type="button" className="deck-activity-chip deck-activity-chip-clear control" disabled={disabled} onClick={() => setGroupFilter(new Set())}>{t.reset}</button>}
+    </div>}
     {[...groups].map(([minute, events]) => <div className="deck-activity-day" key={minute}>
       <h3><time dateTime={events[0].at} title={fullTimeFormat.format(new Date(events[0].at))}>{minute}</time></h3>
-      <ol>{events.map(event => <ActivityEntry key={event.id} event={event} disabled={disabled} onOpen={onOpen} />)}</ol>
+      <ol>{events.map(event => <ActivityEntry key={event.id} event={event} source={source} disabled={disabled} onOpen={onOpen} />)}</ol>
     </div>)}
-    {current.status === 'ready' && visibleEvents.length === 0 && <p className="deck-activity-empty">
-      {groupFilter.size > 0 && current.events.length > 0
-        ? t.noMatches
-        : emptyMessage(current)}</p>}
+    {current.status === 'ready' && visibleEvents.length === 0 && (groupFilter.size > 0 && current.events.length > 0
+      ? <EmptyState className="deck-activity-empty" variant="filtered" message={t.noMatches} onReset={() => setGroupFilter(new Set())} />
+      : <EmptyState className="deck-activity-empty" message={emptyMessage(current)} />)}
     {current.warnings.length > 0 && <details className="deck-activity-warnings"><summary>{t.warnings} · {formatNumber(current.warnings.length, 3, lang)}</summary><ul>{current.warnings.map(warning => <li key={warning}>{warning}</li>)}</ul></details>}
-    {loading && !refreshing && <p className="deck-activity-loading" role="status"><LoaderCircle size={14} className="spin" />{current.requestCursor !== null ? t.loadingMore : t.loading}</p>}
-    {current.error && <div className="deck-activity-error"><p role="alert">{current.error}</p><Button variant="outline" size="sm" disabled={disabled} onClick={() => void load(current.requestCursor)}>{t.retry}</Button></div>}
+    {loading && !refreshing && <EmptyState className="deck-activity-loading" message={<><LoaderCircle size={14} className="spin" aria-hidden="true" />{current.requestCursor !== null ? t.loadingMore : t.loading}</>} />}
+    {current.error && <div className="deck-activity-error"><div role="alert"><EmptyState message={current.error} action={{ label: t.retry, disabled, onClick: () => void load(current.requestCursor) }} /></div></div>}
     {current.nextCursor && (current.status === 'ready' || refreshing) && <div className="deck-activity-more"><Button variant="outline" size="sm" disabled={disabled || loading} onClick={() => void load(current.nextCursor)}>{t.more}</Button></div>}
   </section>;
 }
 
-function ActivityEntry({ event, disabled, onOpen }: { event: DeckActivityEvent; disabled: boolean; onOpen: (cardId: string) => void }) {
+function ActivityEntry({ event, source, disabled, onOpen }: { event: DeckActivityEvent; source: DataSource; disabled: boolean; onOpen: (cardId: string) => void }) {
   const t = useText(text);
   const [expanded, setExpanded] = useState(false);
   const [detailLimit, setDetailLimit] = useState(20);
@@ -228,6 +229,7 @@ function ActivityEntry({ event, disabled, onOpen }: { event: DeckActivityEvent; 
   return <li className="deck-activity-event">
     <span className="deck-activity-avatar" role="img" aria-label={actorLabel} title={actorLabel}>{actor.slice(0, 1).toUpperCase()}</span>
     <div className="deck-activity-event-body">
+      <ActivityAttribution event={event} source={source} />
       <div className="deck-activity-event-line">
         <span className="deck-activity-icon" aria-hidden="true"><Icon size={16} /></span>
         <div className="deck-activity-description">

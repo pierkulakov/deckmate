@@ -5,7 +5,7 @@ import type { CardState } from './format-vocabulary.ts';
 /** Dependencies can connect any cards. */
 export type SetCardDependenciesEdit = Extract<CatalogEdit, { action: 'set-card-dependencies' }>;
 
-/** Incoming dependencies block until accepted; archived, deleted, and missing cards do not block. */
+/** 2026-11-09: only existing, active, unaccepted prerequisites block; hidden links remain context. */
 export function openDependencies(dependencyIds: readonly string[] | undefined, cardsById: ReadonlyMap<string, CatalogCard>): CatalogCard[] {
   const open: CatalogCard[] = [];
   for (const id of dependencyIds ?? []) {

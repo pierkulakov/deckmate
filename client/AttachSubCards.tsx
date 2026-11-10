@@ -1,4 +1,5 @@
 import { useMemo, useRef, useState } from 'react';
+import { failureMessage } from './failure-message.ts';
 import * as Dialog from '@radix-ui/react-dialog';
 import { ArrowRight, Check, Crown, Layers, Link2, LoaderCircle, RefreshCw, Search, UserRound, X } from 'lucide-react';
 import type { CatalogCard, CatalogView } from '../src/catalog-contracts.ts';
@@ -6,6 +7,7 @@ import { shortReference } from '../src/references.ts';
 import { StatusBadge } from './components/StatusMenu.tsx';
 import { Button } from './components/ui/button.tsx';
 import { defineText, locale, useLang, useText } from './i18n.ts';
+import { moveFocus } from './focus.ts';
 import './attach-subcards.css';
 
 const text = defineText({
@@ -242,7 +244,7 @@ export function AttachSubCards({ hero, catalog, pending, writable, onAttach, onC
     } catch (failure) {
       setRefreshRequired(true);
       setConfirmation(null);
-      setError(failure instanceof Error ? failure.message : t.failed);
+      setError(failureMessage(failure, t.failed));
     } finally {
       inFlight.current = false;
       setRunning(false);
@@ -253,8 +255,8 @@ export function AttachSubCards({ hero, catalog, pending, writable, onAttach, onC
     <Dialog.Portal>
       <Dialog.Overlay className="attach-subcards-overlay" />
       <Dialog.Content className="attach-subcards-dialog" aria-busy={busy}
-        onOpenAutoFocus={event => { event.preventDefault(); searchField.current?.focus(); }}
-        onCloseAutoFocus={event => { event.preventDefault(); if (opener.current?.isConnected) opener.current.focus(); }}
+        onOpenAutoFocus={event => { event.preventDefault(); moveFocus(searchField.current); }}
+        onCloseAutoFocus={event => { event.preventDefault(); if (opener.current?.isConnected) moveFocus(opener.current); }}
         onEscapeKeyDown={event => { if (busy || inFlight.current) event.preventDefault(); }}
         onPointerDownOutside={event => { if (busy || inFlight.current) event.preventDefault(); }}>
         <header className="attach-subcards-header">

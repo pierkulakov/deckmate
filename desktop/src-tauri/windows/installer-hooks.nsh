@@ -219,9 +219,81 @@ LangString DeckmateOldUninstallerExited 1049 "Предыдущий деинст�
 ; (multiUser.nsh setInstallModePerAllUsers:62-71), so the user is told before
 ; Windows pops the consent dialog, and a declined or failed removal ends in a
 ; clear message instead of a silent second entry.
+; 2026-11-10: a surviving uninstall key may be the only location left. Never execute
+; its command line: extract one executable and require the legacy name and layout.
+!macro DECKMATE_OLD_MACHINE_DIRECTORY_FROM_UNINSTALL
+  StrCpy $R2 ""
+  StrCpy $1 0
+  StrCpy $2 $0 1
+  ${If} $2 == '$\"'
+    StrCpy $1 1
+  ${EndIf}
+  ${Do}
+    StrCpy $R9 $0 1 $1
+    ${If} $R9 == ""
+      ${If} $2 == '$\"'
+        !insertmacro DECKMATE_OLD_ABORT_UNINSTALL
+      ${EndIf}
+      ${ExitDo}
+    ${EndIf}
+    ${If} $2 == '$\"'
+    ${AndIf} $R9 == '$\"'
+      ${ExitDo}
+    ${EndIf}
+    ${If} $R9 == "*"
+    ${OrIf} $R9 == "?"
+    ${OrIf} $R9 == '$\"'
+      !insertmacro DECKMATE_OLD_ABORT_UNINSTALL
+    ${EndIf}
+    StrCpy $R2 "$R2$R9"
+    IntOp $1 $1 + 1
+    ${If} $2 != '$\"'
+      StrCpy $R9 $R2 4 -4
+      ${If} $R9 == ".exe"
+        StrCpy $R9 $0 1 $1
+        ${If} $R9 == ""
+        ${OrIf} $R9 == " "
+          ${ExitDo}
+        ${EndIf}
+      ${EndIf}
+    ${EndIf}
+  ${Loop}
+  ${GetFileName} "$R2" $R9
+  ${If} $R9 != "${DECKMATE_OLD_UNINSTALLER}"
+    !insertmacro DECKMATE_OLD_ABORT_UNINSTALL
+  ${EndIf}
+  ; 2026-11-10: relative/network paths must not resolve against the installer's cwd
+  ; or run an elevated executable from an untrusted network share.
+  StrCpy $R9 $R2 2 1
+  ${If} $R9 != ":\"
+    !insertmacro DECKMATE_OLD_ABORT_UNINSTALL
+  ${EndIf}
+  ${GetParent} "$R2" $R9
+  ClearErrors
+  GetFullPathName $R9 "$R9"
+  ${If} ${Errors}
+    !insertmacro DECKMATE_OLD_ABORT_UNINSTALL
+  ${EndIf}
+  ${If} $R9 != "$PROGRAMFILES64\Deckmate"
+  ${AndIf} $R9 != "$PROGRAMFILES32\Deckmate"
+    ${IfNot} ${FileExists} "$R9\${DECKMATE_OLD_APP_EXE}"
+      !insertmacro DECKMATE_OLD_ABORT_UNINSTALL
+    ${EndIf}
+    ${IfNot} ${FileExists} "$R9\resources\app.asar"
+      !insertmacro DECKMATE_OLD_ABORT_UNINSTALL
+    ${EndIf}
+  ${EndIf}
+!macroend
+
 !macro DECKMATE_OLD_REPLACE_PER_MACHINE
   ReadRegStr $R9 HKLM "${DECKMATE_OLD_INSTALL_KEY}" "InstallLocation"
+  ReadRegStr $0 HKLM "${DECKMATE_OLD_UNINSTALL_KEY}" "UninstallString"
   ${If} $R9 != ""
+  ${OrIf} $0 != ""
+    ${If} $R9 == ""
+      StrCpy $R6 0
+      !insertmacro DECKMATE_OLD_MACHINE_DIRECTORY_FROM_UNINSTALL
+    ${EndIf}
     UserInfo::GetAccountType
     Pop $0
     ${If} $0 == "Admin"

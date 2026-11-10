@@ -47,7 +47,7 @@ export function deckCanBeInbox(deck: DeckKind): boolean {
 }
 
 /**
- * Where a new card lands when the request names no deck (`deckId: null`), following the Codecks flow (2026-11-08):
+ * Where a new card lands when the request names no deck (`deckId: null`, 2026-11-08):
  * the project's Inbox when it accepts the card's kind, otherwise no deck at all (Unassigned). Creation never fails
  * for want of a deck; an explicit deckId still has to accept the card's kind. Server and client both use this.
  */
@@ -157,6 +157,8 @@ export interface CatalogJourney {
   steps: CatalogJourneyStep[];
   description?: string;
   zones?: CatalogJourneyZone[];
+  /** 2026-11-09: pending shows verified source bytes; conflict/invalid shows disk bytes so external edits stay visible. */
+  pendingOperation?: { id: string | null; journalHash: string; state: 'pending' | 'conflict' | 'invalid'; file?: string };
 }
 
 // Journey templates are independent of a specific deck.
@@ -248,9 +250,6 @@ export interface CatalogDeck {
   // Disabling auto-tagging does not remove tags already assigned to cards.
   autoTag?: string | null;
   autoTagKeep?: boolean;
-  // 2026-11-06: a piled deck leaves the shelf for the pile at the end of its space on the Decks home screen; it keeps
-  // its cards, order and settings. Set by hand only (set-deck-pile); absent means on the shelf.
-  piled?: boolean;
   // Template Card supplies default content and properties for new cards in the deck.
   templateMarkdown?: string | null;
   templateOwner?: string | null;
@@ -394,6 +393,8 @@ export interface CatalogView extends ProjectCatalog {
   tagsHash?: string;
   projectTags?: ProjectTag[];
   bulkOutcome?: import('./bulk-contracts.ts').BulkOutcome;
+  /** 2026-11-10: mutation feedback is separate from project-content warnings and absent on ordinary reads. */
+  savedWarning?: string;
   configured: boolean;
   indexedAt: string;
 }
@@ -454,6 +455,7 @@ export type CatalogEdit = { manifestHash: string; sourceHash?: string } & (
   | { action: 'configure-members'; members: CatalogMember[] }
   | { action: 'create-space'; title: string; kind?: SpaceKind; icon?: string }
   | { action: 'update-space'; spaceId: string; title: string; kind: SpaceKind; icon: string }
+  | { action: 'delete-space'; spaceId: string; optionsHash?: string }
   /** deckId (2026-11-06): New Deck names the deck itself so a cover chosen before creation can upload right after it. */
   | { action: 'create-deck'; deckId?: string; title: string; spaceId: string; kind: DeckKind; icon: string; color: string; description: string; style?: DeckStyle; coverPosition?: number }
   | { action: 'set-deck-kind'; deckId: string; kind: DeckKind }
@@ -463,7 +465,6 @@ export type CatalogEdit = { manifestHash: string; sourceHash?: string } & (
   | { action: 'move-space'; spaceId: string; beforeSpaceId: string | null }
   // Deck watching replaces the full watcher list.
   | { action: 'set-deck-watchers'; deckId: string; watcherIds: string[] }
-  | { action: 'set-deck-pile'; deckId: string; piled: boolean }
   // Only deck guardians can accept cards in the deck.
   | { action: 'set-deck-guardians'; deckId: string; guardianIds: string[] }
   // Deck automation combines auto-tagging and Template Card; null or empty values disable that part.
@@ -476,6 +477,7 @@ export type CatalogEdit = { manifestHash: string; sourceHash?: string } & (
   | { action: 'apply-journey'; cardId: string; journeyId: string; journeyHash: string; stepIds: string[]; deckAssignments: Record<string, string> }
   // Whole-template save from the Journey editor: version + 1; removed step files are deleted, kept ones rewritten only if changed.
   | { action: 'update-journey'; journeyId: string; journeyHash: string; title: string; description: string; zones: CatalogJourneyZone[]; steps: CatalogJourneyStep[] }
+  | { action: 'abandon-journey-operation'; journeyId: string; journalHash: string }
   // "Add N steps" (mode add, into the deck's journey or a new one) or "Replace with N steps" (mode replace).
   | { action: 'apply-project-template'; templateId: string; templateHash: string; samples: boolean }
   | { action: 'import-journey-template'; deckId: string; templateId: string; templateSource: JourneyTemplateSource; templateHash: string; mode: 'add' | 'replace'; journeyId: string | null; journeyHash: string | null; roleMapping: Record<string, JourneyRoleTarget> }

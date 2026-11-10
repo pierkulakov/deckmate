@@ -277,7 +277,7 @@ it('shows open questions and recorded answers after resolution without inventing
 });
 
 it('shows answers recorded under an English “Decided” heading', async () => {
-  // 2026-11-09: the brief matched only «Решено», so every answer in an English project vanished from it.
+  // 2026-11-09: matching only the Russian heading made every answer in an English project vanish from the brief.
   const { root, config } = await fixture();
   offline();
   const manifestPath = path.join(root, 'tasks/deckmate.md');

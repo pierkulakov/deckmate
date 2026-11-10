@@ -87,6 +87,10 @@ pub fn text(language: &str, key: &str) -> &'static str {
             "Could not check for updates",
             "Не удалось проверить обновления",
         ),
+        "updateTooLarge" => (
+            "The update download exceeds the {limit} byte safety limit.",
+            "Размер загружаемого обновления превышает безопасный предел {limit} байт.",
+        ),
         "updateFailed" => ("Could not install the update", "Не удалось установить обновление"),
         "installUnavailable" => (
             "Automatic installation is unavailable in this build. Download the installer from the release page.",
@@ -116,6 +120,10 @@ pub fn text(language: &str, key: &str) -> &'static str {
         "whatsNewFailed" => (
             "Could not read the changelog: {error}",
             "Не удалось прочитать список изменений: {error}",
+        ),
+        "whatsNewOpenFailed" => (
+            "Could not open What's new: {error}",
+            "Не удалось открыть окно «Что нового»: {error}",
         ),
         "about" => ("About Deckmate", "О программе Deckmate"),
         "ok" => ("OK", "ОК"),
@@ -207,6 +215,16 @@ pub fn text(language: &str, key: &str) -> &'static str {
             "Project initialization exited with code {code}.",
             "Создание проекта завершилось с кодом {code}.",
         ),
+        "initTimeout" => (
+            "Project creation did not finish in 60 s and was stopped. Check the folder and try again.",
+            "Создание проекта не завершилось за 60 с и было остановлено. Проверьте папку и повторите попытку.",
+        ),
+        "createFailedTitle" => ("Could not create the project", "Не удалось создать проект"),
+        "initPartial" => (
+            "The folder may have been created partially and has not been deleted: {path}",
+            "Папка могла быть создана частично и не была удалена: {path}",
+        ),
+        "openInExplorer" => ("Open folder in Explorer", "Открыть папку в Проводнике"),
         _ => ("Deckmate", "Deckmate"),
     };
     if language == "ru" {

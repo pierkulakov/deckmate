@@ -12,9 +12,10 @@
 // so the repository keeps one browser driver (desktop/README.md, "Development loop").
 // 2026-11-09: every CDP request has a deadline, error replies reject, and a dead socket fails all waiting calls —
 // a browser that stops answering ends the run instead of hanging it forever.
-import { spawn } from 'node:child_process';
+import { spawn, type ChildProcess } from 'node:child_process';
 import { environmentValue } from '../server/environment.ts';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
+import { rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -49,9 +50,11 @@ const REQUEST_TIMEOUT_MS = 30_000;
 /** Polls a CDP endpoint on 127.0.0.1:<port> until it exposes a page target.
  * 2026-11-09: a wall-clock deadline and a 2 s abort per /json/list request (the pattern of
  * tests/browser-target.ts, waitForPageTarget) — an endpoint that never answers fails fast. */
-async function pageTargetUrl(port: number, timeoutMs = 45_000): Promise<string> {
+async function pageTargetUrl(port: number, timeoutMs = 45_000, launchFailure?: () => Error | undefined): Promise<string> {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
+    const failure = launchFailure?.();
+    if (failure) throw failure;
     try {
       const list = await (await fetch(`http://127.0.0.1:${port}/json/list`, { signal: AbortSignal.timeout(2000) })).json() as { type: string; webSocketDebuggerUrl: string }[];
       const page = list.find(item => item.type === 'page');
@@ -179,11 +182,35 @@ export async function connectToHeadlessBrowser(port: number, requestTimeoutMs = 
   return { ...page, close };
 }
 
-export async function openHeadlessBrowser(viewport: { width: number; height: number; scale: number }, requestTimeoutMs = REQUEST_TIMEOUT_MS): Promise<HeadlessPage> {
-  const browser = findHeadlessBrowser();
+export interface HeadlessBrowserOptions {
+  // 2026-11-10: tests keep their authoritative requireBrowser discovery and Chromium feature flags.
+  browserPath?: string;
+  extraArgs?: string[];
+}
+
+function waitForExit(child: ChildProcess, timeoutMs: number): Promise<void> {
+  if (child.exitCode !== null || child.signalCode !== null) return Promise.resolve();
+  return new Promise(resolve => {
+    const done = () => { clearTimeout(timer); child.off('exit', done); child.off('error', done); resolve(); };
+    const timer = setTimeout(done, timeoutMs);
+    child.once('exit', done);
+    child.once('error', done);
+  });
+}
+
+export async function openHeadlessBrowser(viewport?: { width: number; height: number; scale: number }, requestTimeoutMs = REQUEST_TIMEOUT_MS, options: HeadlessBrowserOptions = {}): Promise<HeadlessPage> {
+  const browser = options.browserPath ?? findHeadlessBrowser();
   const port = 9300 + Math.floor(Math.random() * 500);
   const profile = mkdtempSync(path.join(tmpdir(), 'deckmate-capture-'));
-  const child = spawn(browser, ['--headless=new', '--disable-gpu', '--no-first-run', '--no-default-browser-check', `--remote-debugging-port=${port}`, `--user-data-dir=${profile}`, `--window-size=${viewport.width},${viewport.height}`, 'about:blank'], { stdio: 'ignore' });
+  const windowArgs = viewport ? [`--window-size=${viewport.width},${viewport.height}`] : [];
+  const child = spawn(browser, ['--headless=new', '--disable-gpu', '--no-first-run', '--no-default-browser-check', ...windowArgs, ...(options.extraArgs ?? []), `--remote-debugging-port=${port}`, `--user-data-dir=${profile}`, 'about:blank'], { stdio: 'ignore', detached: process.platform !== 'win32' });
+  let launchError: Error | undefined;
+  child.on('error', error => { launchError = error; });
+  const launchFailure = () => {
+    if (launchError) return launchError;
+    if (child.exitCode !== null || child.signalCode !== null)
+      return new Error(`Browser process exited early with code ${child.exitCode} (signal ${child.signalCode}) on port ${port}`);
+  };
   // 2026-11-04: finally does not run when only this process is killed (TaskStop, an agent's timeout) and the headless tree stayed
   // alive; a detached watchdog waits for this process and ends the browser tree, checking the PID still belongs to a browser.
   if (process.platform === 'win32' && child.pid) {
@@ -191,29 +218,42 @@ export async function openHeadlessBrowser(viewport: { width: number; height: num
     spawn('powershell', ['-NoProfile', '-NonInteractive', '-Command', watch], { detached: true, stdio: 'ignore', windowsHide: true }).unref();
   }
   let socket: WebSocket | undefined;
-  let closed = false;
-  const close = async () => {
-    if (closed) return;
-    closed = true;
+  let closing: Promise<void> | undefined;
+  const close = () => closing ??= (async () => {
     // 2026-11-04: child.kill() on Windows ends only the launcher; the headless browser tree stayed alive (98 orphans, 10 GB).
     // Ask the browser to close over CDP first, then kill the whole process tree.
     if (socket && socket.readyState === WebSocket.OPEN) {
       try { socket.send(JSON.stringify({ id: 1_000_000, method: 'Browser.close' })); } catch { /* the page may already be gone */ }
-      await sleep(500);
+      await waitForExit(child, 500);
     }
-    socket?.close();
-    if (process.platform === 'win32' && child.pid) spawn('taskkill', ['/T', '/F', '/PID', String(child.pid)], { stdio: 'ignore' });
-    else child.kill();
-    await sleep(300);
-    try { rmSync(profile, { recursive: true, force: true }); } catch { /* the browser may still hold the profile briefly */ }
-  };
+    try {
+      socket?.close();
+    } finally {
+      // 2026-11-10: wait for tree termination before retrying profile removal; cleanup failure must not look successful.
+      try {
+        if (process.platform === 'win32' && child.pid) {
+          const killer = spawn('taskkill', ['/T', '/F', '/PID', String(child.pid)], { stdio: 'ignore' });
+          await waitForExit(killer, 5000);
+        } else if (child.pid) {
+          try { process.kill(-child.pid, 'SIGKILL'); } catch (error) {
+            if ((error as NodeJS.ErrnoException).code !== 'ESRCH') throw error;
+          }
+        }
+        if (child.pid) await waitForExit(child, 2000);
+      } finally {
+        await rm(profile, { recursive: true, force: true, maxRetries: 15, retryDelay: 100 });
+      }
+    }
+  })();
   try {
-    socket = await openPageSocket(await pageTargetUrl(port));
+    socket = await openPageSocket(await pageTargetUrl(port, 45_000, launchFailure));
     const page = wirePage(socket, requestTimeoutMs);
     await enablePage(page, viewport);
     return { ...page, close };
   } catch (error) {
-    await close();
+    try { await close(); } catch (cleanupError) {
+      throw new AggregateError([error, cleanupError], 'Browser startup and cleanup failed');
+    }
     throw error;
   }
 }

@@ -71,8 +71,8 @@ export function parseDocument(relativePath: string, bytes: Uint8Array, lang: Lan
   const slices: SliceRecord[] = [];
   let insideFence = false;
   for (const [index, line] of lines.entries()) {
-    // The reference toggles only on backtick fences, including four backticks (2026-11-03).
-    // Keep its grammar; an unaddressable mdast heading is rejected, never patched by guesswork.
+    // The legacy grammar toggles only on backtick fences, including four backticks (2026-11-03).
+    // An unaddressable mdast heading is rejected, never patched by guesswork.
     if (line.body.trimStart().startsWith('```')) insideFence = !insideFence;
     if (insideFence) continue;
     const match = sliceHeading.exec(line.body);

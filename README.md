@@ -1,6 +1,6 @@
 <p align="center">
   <a id="deckmate" href="https://github.com/pierkulakov/deckmate/releases/latest">
-    <img src="docs/social-preview.png" width="1012" alt="Deckmate — you hold all the cards. A glowing hand of real cards; people and AI agents share Markdown files. Native Windows app on Tauri 2 with Node.js included; npx deckmate for agents and terminals." />
+    <img src="https://raw.githubusercontent.com/pierkulakov/deckmate/main/docs/social-preview.png" width="1012" alt="Deckmate — you hold all the cards. A glowing hand of real cards; people and AI agents share Markdown files. Native Windows app on Tauri 2 with Node.js included; npx deckmate for agents and terminals." />
   </a>
 </p>
 
@@ -25,7 +25,7 @@
 <p align="center">
   <a href="https://github.com/pierkulakov/deckmate/releases/latest"><img src="https://img.shields.io/github/v/release/pierkulakov/deckmate?style=flat&amp;label=release&amp;color=9258e5&amp;labelColor=27242f" alt="Latest release" /></a>
   <a href="https://github.com/pierkulakov/deckmate/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/pierkulakov/deckmate/ci.yml?branch=main&amp;style=flat&amp;label=CI&amp;labelColor=27242f" alt="CI status" /></a>
-  <a href="LICENSE"><img src="https://img.shields.io/badge/license-AGPL--3.0--only-9258e5?style=flat&amp;labelColor=27242f" alt="License: AGPL-3.0-only" /></a>
+  <a href="https://github.com/pierkulakov/deckmate/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-AGPL--3.0--only-9258e5?style=flat&amp;labelColor=27242f" alt="License: AGPL-3.0-only" /></a>
 </p>
 
 <p align="center"><sub>Early release · macOS planned · Project file format (schema 1) may change before 1.0.</sub></p>
@@ -63,13 +63,13 @@ npx deckmate init deckmate-demo
 npx deckmate --data deckmate-demo
 ```
 
-To run from source instead, follow [CONTRIBUTING.md](CONTRIBUTING.md): `npm ci && npm run build`, then `node bin/deckmate.mjs init deckmate-demo` creates the demo and `node bin/deckmate.mjs --data deckmate-demo` opens it.
+To run from source instead, follow [CONTRIBUTING.md](https://github.com/pierkulakov/deckmate/blob/main/CONTRIBUTING.md): `npm ci && npm run build`, then `node bin/deckmate.mjs init deckmate-demo` creates the demo and `node bin/deckmate.mjs --data deckmate-demo` opens it.
 
 The board opens at `http://127.0.0.1:4317/`. The sample is a small fictional game studio: five decks, two Heroes with Sub Cards, people and agents, a Journey, a Run and a Vision board. The browser interface defaults to English; switch to Russian in the app menu. Stop the server with `Ctrl+C`.
 
 ## Start screen
 
-![Deckmate Desktop start screen: open a folder, create a project, recent projects](docs/screenshots/desktop-start.png)
+![Deckmate Desktop start screen: open a folder, create a project, recent projects](https://raw.githubusercontent.com/pierkulakov/deckmate/main/docs/screenshots/desktop-start.png)
 
 Without a project, choose **Open folder…** to select a folder, or **Create project…** to put the sample in an empty or new folder. Recent projects show their last-opened time and can be removed from the list; language (EN/RU) and theme controls are also available. Desktop initially follows the system locale for English or Russian.
 
@@ -116,15 +116,15 @@ These CLI settings can also live in `.env.local` in the folder you start from �
 | **Track** | A thread that links cards across decks, such as a release or a feature area. |
 | **Vision** | An Excalidraw canvas with live links to cards. |
 
-Start on **Decks**: document and card counts sit under the project name; source warnings open from the same line. Jump from the project pulse to work in progress, reviews, the current Run or cards that need a deck. Compact covers show card counts and task progress. Arrange decks with the mouse or keyboard; move less-used decks into a **pile** at the end of their space from deck settings, and bring them back when needed. Reorder spaces with the arrows in their headers or the Position field in space settings. Search deck names to find a deck even inside a pile.
+Start on **Decks**: document and card counts sit under the project name; source warnings open from the same line. Jump from the project pulse to work in progress, reviews, the current Run or cards that need a deck. Compact covers show card counts and task progress. Arrange decks with the mouse or keyboard. Reorder spaces with the arrows in their headers or the Position field in space settings. Search deck names to find a deck even inside a collapsed space.
 
 Open a deck to work with its cards, description, progress and activity:
 
-![An open Deck with Hero Sub Card progress strips, task states, owners and effort](docs/screenshots/deck.png)
+![An open Deck with Hero Sub Card progress strips, task states, owners and effort](https://raw.githubusercontent.com/pierkulakov/deckmate/main/docs/screenshots/deck.png)
 
 A Hero tile shows Sub Card progress as a quiet line, with each step sized by its effort. When it has eligible Task Sub Cards and all of them are accepted, the Hero gains holographic foil, an iridescent rim and a done medallion; `wont-do` tasks are excluded. The foil follows the pointer; with reduced motion or touch it stays still. Doc Sub Cards appear in the Hero's family too, but only Task Sub Cards count towards its progress; the Sub Cards panel flags those without a deck. Drop a Task that has no Sub Cards into an Asset deck and Deckmate offers to make it a Hero. A native Hero without eligible Task Sub Cards can be marked done by hand from its Sub Cards bar. Doc Cards read as pages: a copper band with the word count, and the start of the text on the tile.
 
-![Moonwake Lantern with holographic foil and a done medallion after its Sub Cards are accepted](docs/screenshots/deck-accepted.png)
+![Moonwake Lantern with holographic foil and a done medallion after its Sub Cards are accepted](https://raw.githubusercontent.com/pierkulakov/deckmate/main/docs/screenshots/deck-accepted.png)
 
 Press `?` in the app for all keyboard shortcuts: `N` creates a card, `/` searches, `Shift+1`–`Shift+4` switch between Hand, Decks, Timeline and Vision, and hovering a card with `O`, `E`, `P` or `,` changes its owner, effort, priority or Run.
 
@@ -133,21 +133,21 @@ On an open card, use its properties for quick settings and click a tag to open p
 <table>
 <tr>
 <td width="50%" valign="top">
-<a href="docs/screenshots/card.png"><img src="docs/screenshots/card.png" alt="Moonwake Lantern Hero with properties, Journey steps and task Sub Cards" width="100%" /></a>
+<a href="https://raw.githubusercontent.com/pierkulakov/deckmate/main/docs/screenshots/card.png"><img src="https://raw.githubusercontent.com/pierkulakov/deckmate/main/docs/screenshots/card.png" alt="Moonwake Lantern Hero with properties, Journey steps and task Sub Cards" width="100%" /></a>
 <strong>Cards and Journeys</strong><br />Markdown with owners, effort, dependencies and a Journey's progress.
 </td>
 <td width="50%" valign="top">
-<a href="docs/screenshots/timeline.png"><img src="docs/screenshots/timeline.png" alt="Timeline with the First playable Run, its cards and the Harbor playtest Milestone" width="100%" /></a>
+<a href="https://raw.githubusercontent.com/pierkulakov/deckmate/main/docs/screenshots/timeline.png"><img src="https://raw.githubusercontent.com/pierkulakov/deckmate/main/docs/screenshots/timeline.png" alt="Timeline with the First playable Run, its cards and the Harbor playtest Milestone" width="100%" /></a>
 <strong>Runs and Milestones</strong><br />Dates on a timeline; unfinished cards carry into the next Run.
 </td>
 </tr>
 <tr>
 <td width="50%" valign="top">
-<a href="docs/screenshots/hand.png"><img src="docs/screenshots/hand.png" alt="Maya Chen's Hand with focus cards, a done pile and the Your Runs tab" width="100%" /></a>
+<a href="https://raw.githubusercontent.com/pierkulakov/deckmate/main/docs/screenshots/hand.png"><img src="https://raw.githubusercontent.com/pierkulakov/deckmate/main/docs/screenshots/hand.png" alt="Maya Chen's Hand with focus cards, a done pile and the Your Runs tab" width="100%" /></a>
 <strong>A Hand for each teammate</strong><br />Focus slots, reserve and done pile, for people and agents alike.
 </td>
 <td width="50%" valign="top">
-<a href="docs/screenshots/vision.png"><img src="docs/screenshots/vision.png" alt="Moonwake Vision canvas with creative direction, linked Heroes and Production progress" width="100%" /></a>
+<a href="https://raw.githubusercontent.com/pierkulakov/deckmate/main/docs/screenshots/vision.png"><img src="https://raw.githubusercontent.com/pierkulakov/deckmate/main/docs/screenshots/vision.png" alt="Moonwake Vision canvas with creative direction, linked Heroes and Production progress" width="100%" /></a>
 <strong>Vision</strong><br />Sketch on an Excalidraw canvas with live card and progress nodes.
 </td>
 </tr>
@@ -243,13 +243,13 @@ Deckmate also ships an agent skill in the open Agent Skills format. Once the pro
 
 ## Contributing
 
-Bug reports, ideas and pull requests are welcome; [SUPPORT.md](SUPPORT.md) explains where to ask questions and report bugs. [CONTRIBUTING.md](CONTRIBUTING.md) covers running from source, tests and project rules; [AGENTS.md](AGENTS.md) is the short guide for coding agents. Please follow the [Code of Conduct](CODE_OF_CONDUCT.md) and report vulnerabilities through [SECURITY.md](SECURITY.md), not public issues. Changes are listed in the [changelog](CHANGELOG.md).
+Bug reports, ideas and pull requests are welcome; [SUPPORT.md](https://github.com/pierkulakov/deckmate/blob/main/SUPPORT.md) explains where to ask questions and report bugs. [CONTRIBUTING.md](https://github.com/pierkulakov/deckmate/blob/main/CONTRIBUTING.md) covers running from source, tests and project rules; [AGENTS.md](https://github.com/pierkulakov/deckmate/blob/main/AGENTS.md) is the short guide for coding agents. Please follow the [Code of Conduct](https://github.com/pierkulakov/deckmate/blob/main/CODE_OF_CONDUCT.md) and report vulnerabilities through [SECURITY.md](SECURITY.md), not public issues. Changes are listed in the [changelog](CHANGELOG.md).
 
 For source development, `npm run dev` starts the watched server and Vite with hot reload at `http://127.0.0.1:4318/`; pass server options after `--`, for example `npm run dev -- --data deckmate-demo`.
 
 ## License
 
-[AGPL-3.0-only](LICENSE) © 2026 pierkulakov and Deckmate contributors. You may use, change and share Deckmate; if you offer a modified version as a network service, you must publish its source. Contributions are accepted under the [Contributor License Agreement](CLA.md).
+[AGPL-3.0-only](https://github.com/pierkulakov/deckmate/blob/main/LICENSE) © 2026 pierkulakov and Deckmate contributors. You may use, change and share Deckmate; if you offer a modified version as a network service, you must publish its source. Contributions are accepted under the [Contributor License Agreement](https://github.com/pierkulakov/deckmate/blob/main/CLA.md).
 
 ## Acknowledgements
 

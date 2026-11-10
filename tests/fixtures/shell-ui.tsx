@@ -3,10 +3,12 @@ import { flushSync } from 'react-dom';
 import App from '../../client/App.tsx';
 import { BulkActions } from '../../client/components/BulkActions.tsx';
 import { setLang, type Lang } from '../../client/i18n.ts';
+import { beginSave } from '../../client/save-activity.ts';
 import type { CatalogCard, CatalogView } from '../../src/catalog-contracts.ts';
 import type { NotificationStack, NotificationsView } from '../../src/notification-contracts.ts';
 import type { DesktopRecentProject, DesktopWorkspaceProject, DesktopWorkspaceResult } from '../../client/desktop-bridge.ts';
 import '../../client/styles.css';
+import '../../client/surface.css';
 import '../../client/motion.css';
 import '../../client/card-material.css';
 
@@ -20,6 +22,8 @@ const catalog: CatalogView = { rootIdentity: 'shell-ui', formatLanguage: 'en', m
   configured: true, indexedAt: '', documents: [], cards, spaces: [{ id: 'work', title: 'Work' }],
   decks: ['tasks', 'neighbors'].map(id => ({ id, title: id, kind: 'task', spaceId: 'work', description: '', color: '#9258e5', icon: 'layers' })),
   tracks: [], warnings: [], members: [], runs: [], milestones: [] };
+// 2026-11-10: simulate a manifest written before deck piles were removed; the public CatalogDeck type no longer carries the key.
+Object.assign(catalog.decks[1], { piled: true });
 const recent: DesktopRecentProject[] = [
   { path: 'D:\\Work\\Shared\\Игровая-команда\\Подготовка-первого-релиза', name: 'Подготовка-первого-релиза', lastOpened: new Date(Date.now() - 7200000).toISOString(), current: false },
   { path: 'D:\\WWWWWWWWWWWWWWWWWWWW\\WWWWWWWWWWWWWWWWWWWWWWWWWWWWWW', name: 'Wide glyphs', lastOpened: new Date(Date.now() - 86400000).toISOString(), current: false },
@@ -137,7 +141,7 @@ window.fetch = async (input, init) => {
   return Response.json({ entries: [], warnings: [] });
 };
 
-function render(scene: 'app' | 'bulk' = 'app', options: { lang?: Lang; theme?: string; view?: string; deck?: boolean; failShutdown?: boolean; notifications?: boolean; workspace?: boolean | DesktopWorkspaceProject[]; partialBridge?: boolean } = {}) {
+function render(scene: 'app' | 'bulk' = 'app', options: { lang?: Lang; theme?: string; view?: string; deck?: boolean; layout?: string; failShutdown?: boolean; notifications?: boolean; workspace?: boolean | DesktopWorkspaceProject[]; partialBridge?: boolean } = {}) {
   flushSync(() => root.render(null));
   snapshotFails = false;
   shutdownFails = options.failShutdown ?? false;
@@ -148,13 +152,14 @@ function render(scene: 'app' | 'bulk' = 'app', options: { lang?: Lang; theme?: s
   setLang(options.lang ?? 'en');
   localStorage.setItem('deckmate-theme', options.theme ?? 'dark');
   document.documentElement.classList.toggle('dark', options.theme !== 'light');
-  history.replaceState(null, '', `/?view=${options.view ?? 'deck'}&catalogSource=sandbox${options.deck ? '&deck=tasks&layout=table' : ''}`);
+  history.replaceState(null, '', `/?view=${options.view ?? 'deck'}&catalogSource=sandbox${options.deck ? '&deck=tasks&layout=' + (options.layout ?? 'table') : ''}`);
   if (scene === 'bulk') {
     root.render(<div style={{ width: '100%', padding: 16 }}><BulkActions cards={[cards[0]]} catalog={catalog} source="sandbox" pending={false} onAction={async () => true} /></div>);
   } else root.render(<App />);
 }
 Object.assign(window, { shellTest: {
   render,
+  startSave: () => { const finish = beginSave(); setTimeout(() => finish(true), 200); },
   disconnect: () => { snapshotFails = true; sockets.forEach(socket => socket.disconnect()); },
   get shutdownCalls() { return shutdownCalls; },
   get notificationCalls() { return notificationCalls; },

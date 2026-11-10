@@ -70,7 +70,7 @@ function ready(selector: string, application = true): string {
     await document.fonts.ready;
     await Promise.all([...document.images].map(image => image.decode()));
     ${application ? `if (!document.documentElement.classList.contains('dark')) throw new Error('Expected dark theme');
-    if (document.querySelector('.readonly-banner, .error-banner, .source-switch')) throw new Error('Expected direct, error-free demo');` : ''}
+    if (document.querySelector('.readonly-banner, .error-banner:not([hidden]), .source-switch')) throw new Error('Expected direct, error-free demo');` : ''}
     if (document.documentElement.lang !== 'en') throw new Error('Expected English interface');
     if (/[\\u0400-\\u04ff]/u.test(document.body.innerText)) throw new Error('Unexpected Cyrillic text in screenshot');
     if (document.documentElement.scrollWidth > innerWidth) throw new Error('Screenshot overflows horizontally');
@@ -164,9 +164,9 @@ async function captureDemo(): Promise<void> {
   await capture('card', url({ view: 'deck', deck: hero.deckId, card: hero.id }), '.card-family-panel',
     [ready('[aria-label="Properties"]'), 'click:Hero and Sub Cards'], { width: 1280, height: 1240, dpr: 1.25, after: [scrollToTop] });
   await capture('timeline', url({ view: 'sprint' }), '.timeline-run',
-    [ready('.planning-cards'), 'click:Description and stats'], { width: 1280, height: 928, dpr: 1.25 });
+    [ready('.planning-cards'), 'click:Description and stats'], { width: 1280, height: 1220, dpr: 1.25 });
   await capture('hand', url({ view: 'hand', handMember: 'maya' }), '[aria-labelledby="hand-tab-runs"]',
-    [ready('.hand-view .deck-card'), 'click:Your Runs'], { width: 1280, height: 840, dpr: 1.25 });
+    [ready('.hand-view .deck-card'), 'click:Your Runs'], { width: 1280, height: 940, dpr: 1.25 });
   await capture('vision', url({ view: 'vision', board: board.replace('.excalidraw', '') }), '.excalidraw',
     [ready('.excalidraw'), 'click:Zoom in', 'click:Zoom in'], { width: 1280, height: 900, dpr: 1.25 });
   // 2026-11-07: a complete row keeps card footers visible in the link preview, with no clipped second row.

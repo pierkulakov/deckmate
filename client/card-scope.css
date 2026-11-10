@@ -1,0 +1,27 @@
+/* 2026-11-10: the card scopes (All cards, Unassigned, a track) sit between the Decks home and an open deck: the shared
+   title row (surface.css) with the home's search, scope controls and track select (catalog-header.css), above the open deck's
+   workbench (deck-workbench.css: the 36px rail, one left column for Ordering, Tags and the card sheet, the cards to its
+   right) on the open deck's plain ground; under the page light the sheet's sticky header and the lane names read as
+   dark slabs (2026-11-10). Switching scopes keeps the title where the home's project name is, and
+   a list of cards reads the same with or without a deck around it. */
+.catalog-view.card-scope-view { --shelf-inset: var(--space-6); max-width: none; padding: 20px 16px 0; }
+/* The tools end where the home's do, 24px from the edge; caption parts wrap whole at the separator. */
+.card-scope-header { padding-inline-end: var(--space-2); }
+.card-scope-header .page-caption > span { white-space: nowrap; }
+/* Up to 1100px the tools take their own line from the left edge, as on the home. */
+@media (max-width: 1100px) { .card-scope-header > .page-tools { flex-basis: 100%; justify-content: flex-start; margin-inline-start: 0; } }
+
+/* 2026-11-10: the track context shares the flat panel edge under the header, on the cards' left edge. */
+.card-scope-view .catalog-track-context { align-items: center; gap: var(--space-3); margin: 0 0 var(--space-4); padding: var(--space-3) var(--space-4); border: 0; border-radius: var(--glass-radius); background: var(--glass-face); box-shadow: var(--glass-rim), var(--glass-lift); font-size: 13px; }
+.card-scope-view .catalog-track-context > svg { flex-shrink: 0; color: var(--mint-edge); }
+.card-scope-view .catalog-track-context strong { font-size: 14px; font-weight: 600; }
+.card-scope-view .catalog-track-context span { font-size: 12px; }
+
+/* An empty list in the workbench (a card scope, or an open deck whose cards are hidden) sits where the open deck puts
+   its first-card state; the scene layout is EmptyState's (states.css), and this rule only outranks the workbench's
+   one-line empty row. */
+.catalog-workbench.has-action-rail .catalog-results-body > .ui-empty.ui-empty-scene { display: flex; align-items: center; min-height: 0; padding: clamp(48px, 16vh, 160px) var(--space-4) var(--space-6); }
+
+@media (max-width: 420px) {
+  .catalog-view.card-scope-view { --shelf-inset: var(--space-2); padding-inline: var(--space-2); }
+}

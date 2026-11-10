@@ -1,4 +1,4 @@
-// Journey lessons live at the end of the step text under the lessons marker («Lessons»/«Грабли»), without a separate field.
+// Journey lessons live at the end of the step text under the localized lessons marker, without a separate field.
 // Each item is `- <text> — <author>, <YYYY-MM-DD> ($c-<source card>)`.
 // The step panel shows the section as written; apply-journey copies it to each new Task for that step.
 import type { Root } from 'mdast';

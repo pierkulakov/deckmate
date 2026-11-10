@@ -27,7 +27,7 @@ Rust holds only what needs the OS: window, menu, dialogs, the server process, se
 
 `npm run desktop:smoke` drives the real debug window over CDP through the page bridges — the same path a person takes, without a person looking at the window: the launcher bridge and `getState()`, the window staying hidden until the first load, opening a project, the board bridge and its refusals, the navigation guard, returning to the start screen, creating a project, the Job Object reaping the server when the shell dies, and the saved `desktop.json`. It builds nothing itself (it wants the cargo debug build and `npm run build`) and keeps all state in a temporary settings folder.
 
-The smoke also checks dirty-state refusals through the board bridge and native Quit menu, stable board origin/localStorage after restart, settings-save failures in commands and the launcher, renderer-crash recovery, and CDP keyboard input (printing/reloading disabled; editing shortcuts available).
+The smoke also checks dirty-state refusals through the board bridge and native Quit menu, stable board origin/localStorage after restart, settings-save failures in commands and the launcher, renderer-crash recovery, CDP keyboard input (printing/reloading disabled; editing shortcuts available), notification denial, clipboard paste in the card editor and Vision, and native Ctrl+Shift+P from a CDP-focused board editor.
 
 `npm run capture:launcher` renders start-screen frames into `.deckmate/launcher-shots/` with the same mock bridge.
 
@@ -37,7 +37,7 @@ On Windows with WebView2, build with `cargo build --manifest-path desktop/src-ta
 
 The check copies the debug shell to a temporary folder, generates disposable keys, signs inert bytes with `--app-version`, generates `latest.json` through `scripts/updater-manifest.mjs`, and serves it over loopback HTTP. PID-scoped Win32/UI Automation drives the real Help menu and dialogs; CDP checks responsiveness. An adjacent empty `uninstall.exe` selects the installed path; its absence exercises portable detection.
 
-Output has an `ok` line for **a** 9.9.9 + verified dry run, **b** current version, **c** damaged signature, **d** foreign key, **e** persisted Skip respected by the startup scheduler and manual checks, **f** Russian `notes_ru`, **g** portable notification/download-page link without downloading a package, plus **signed-version** mismatch rejection. Failures print logs/requests and exit nonzero.
+Output has an `ok` line for **a** 9.9.9 + verified dry run, **b** current version, **c** damaged signature, **d** foreign key, **e** persisted Skip respected by the startup scheduler and manual checks, **f** Russian `notes_ru`, **g** portable notification/download-page link without downloading a package, plus **signed-version** mismatch rejection. The **oversized-header** and **oversized-stream** cases serve an excessive Content-Length and an endless chunked response without Content-Length respectively: both must disconnect, show the ordinary check-failed dialog, leave no cached package/pending installation, and allow another check. The stream case transfers slightly over the production 512 MiB limit per check without allocating the entire fixture on the server. **oversized-manifest-size** verifies that an excessive artifact `size` prevents the package request altogether. Failures print logs/requests and exit nonzero.
 
 Debug-only `DECKMATE_DESKTOP_UPDATER_ENDPOINT` enables/redirects checks; `DECKMATE_DESKTOP_UPDATER_PUBKEY` overrides the key. `DECKMATE_DESKTOP_UPDATER_DRY_RUN=1` exercises save/stop/pending handling, logs `updater dry run verified <version> <bytes>` instead of launching an installer, then clears pending state and restores the project. Release never reads these overrides. Settings, WebView2 profile and external-link log are isolated; `finally` terminates child trees by PID and deletes keys/fixtures. The real `%APPDATA%\Deckmate` is not used.
 
@@ -70,12 +70,12 @@ Debug-only `DECKMATE_DESKTOP_UPDATER_ENDPOINT` enables/redirects checks; `DECKMA
 
 - **Program.** A release build runs the bundled `node.exe` (next to `Deckmate.exe`) on `deckmate/dist/server/main.js`; the CLI is `deckmate/bin/deckmate.mjs`, also next to the executable. A debug build runs `DECKMATE_DESKTOP_NODE` (default `node` from `PATH`) on `DECKMATE_DESKTOP_SERVER` (default `<repo>/dist/server/main.js`, resolved from `CARGO_MANIFEST_DIR`); the CLI is `<repo>/bin/deckmate.mjs`. No packing is needed to run the shell from a checkout.
 - **Environment.** The inherited environment without any `DECKMATE_*`, `FREETION_*`, `NODE_*` or `OPENSSL_*` variable (case-insensitive — `NODE_OPTIONS` or `OPENSSL_CONF` from a parent shell must not load code into the bundled Node), plus `DECKMATE_DATA=<folder>`, `DECKMATE_PORT=<chosen port>`, `DECKMATE_HOST=127.0.0.1`, `DECKMATE_INDEX=<settings dir>\index` and `DECKMATE_SHUTDOWN_STDIN=1`. The working directory is the settings folder, not the project folder: Windows refuses a working directory longer than 260 characters, and the server reads its folder from `DECKMATE_DATA`. The process starts with `CREATE_NO_WINDOW`.
-- **Port.** The shell probes the saved `serverPort` first, keeping the board origin and its localStorage across project switches and restarts. If the port is occupied (or no port is saved), it binds `127.0.0.1:0`, reads the free port, releases it and saves the new port. Other probe errors are reported. Self-test always uses a free port. A fallback changes the origin; data stored under the occupied origin remains there.
+- **Port.** The shell probes the saved `serverPort` first, keeping the board origin and its localStorage across project switches and restarts. If the port is occupied (or no port is saved), it binds `127.0.0.1:0`, reads the free port, releases it and saves the new port. If another process takes that port before startup, project startup retries up to three times with fresh ports only when stderr contains the exact Node error line `Error: listen EADDRINUSE: address already in use 127.0.0.1:<port>` for the chosen port (surrounding whitespace is allowed), saving each through the same settings path; only the final failure is shown. An unrelated early exit remains `start-failed` without changing the port, even if it is occupied by then; diagnostic mentions and adjacent port numbers do not count. Other probe errors are reported. Self-test always uses a free port. A fallback changes the origin; data stored under the occupied origin remains there.
 - **Ready.** The first stdout match of `Deckmate: http://127.0.0.1:<port>` for exactly the port the shell chose — a further digit invalidates the match, so port 4318 never matches 43180 — within 20 s; the match survives chunk boundaries and a trailing path or query. An exit before that is `start-failed`, no match in time is `timeout`; both carry the last 12 stderr lines.
 - **Shutdown.** The shell writes `{"type":"shutdown"}\n` to the server's stdin and waits up to 3 s, then kills it; a server that never became ready is killed outright. The server, started with `DECKMATE_SHUTDOWN_STDIN=1`, also shuts down at the end of stdin, so it never outlives the shell. The stdin handle is taken out of the tokio `Child` and held by the run loop: `Child::wait()` would close stdin while waiting, and the server would read that as the shell going away.
 - **Job Object.** The server and the project-init CLI run inside a Windows Job Object with kill-on-close, so they die with the shell even on a hard kill.
 - **Log.** `<settings dir>\server.log`: shell events (`start <folder> on port <p>`, `stop <folder>`, unexpected exit with code), every server output line prefixed `[stdout] ` or `[stderr] `, and renderer warnings and errors as `[renderer …]`. Above 5 MB it rotates to `server.log.1`, keeping one previous file; `token=` secrets are masked. Panics include a backtrace and show a native error before exit; startup errors use the same path, with a Microsoft download link when WebView2 Runtime is missing.
-- **Creating a project.** `node <cli> init <folder>`, run from the nearest existing parent directory. Exit code 0 is success; otherwise the result is `create-failed` with the stderr tail. The folder then opens as a trusted path.
+- **Creating a project.** `node <cli> init <folder>`, run from the CLI's own short directory. Exit code 0 is success; otherwise the result is `create-failed` with the stderr tail. Initialization is limited to 60 s (a timeout is also `create-failed` with a localized explanation). Quit or a superseding launch cancels initialization with `closed` or `superseded`; the CLI is killed and reaped, and its Job is closed, before releasing the lifecycle lock. Failure, timeout and cancellation include a localized warning that the target folder may have been created partially and has not been deleted, with its full path. The warning dialog offers **Open folder in Explorer** (the nearest existing parent if the target does not exist); it is shown only after releasing the lifecycle lock and is suppressed during shutdown, so quit never waits for acknowledgement. Failed initialization does not add the folder to `recent` or `lastProject`, and revokes its folder-dialog trust; partial user contents are never removed. A successful folder then opens as a trusted path.
 
 ### Settings and logs
 
@@ -89,9 +89,13 @@ Everything lives in `%APPDATA%\Deckmate\` — the same folder Electron used as `
 
 ### Updates and What's new
 
-Release builds check for updates on startup and periodically while running; automatic checks are enabled by default and can be disabled in **Help**. A manual check is also available there. Installed builds download the update and verify its updater signature and version before offering **Restart and update**, **Skip this version** or **Later**. A dirty editor is checked before installation. The updater signature does not replace Windows code signing.
+Release builds check for updates on startup and periodically while running; automatic checks are enabled by default and can be disabled in **Help**. If saving this preference fails, the menu keeps the saved value and shows the same localized settings-save error dialog as clearing recent projects. A manual check is also available there. Installed builds download the update and verify its updater signature and version before offering **Restart and update**, **Skip this version** or **Later**. A dirty editor is checked before installation. The updater signature does not replace Windows code signing.
 
-Portable builds do not download or install an update: they notify the user and offer to open the release download page. After a successful in-app update, the bundled **What's new** window shows changes since the previous version; **Help → What's new** opens it on demand. The window reads the bundled English or Russian changelog, falling back to English if the Russian file is absent.
+Package downloads have a 512 MiB safety limit (the installer is about 33 MB). An optional manifest `size`, at the top level or on an artifact with the selected download URL, is checked before requesting the package. Actual bytes are counted even without Content-Length or with a false smaller size. The plugin exposes Content-Length only in its first chunk callback: an excessive header is rejected there rather than buffering the response. Since `on_chunk` cannot return an error, a one-shot signal makes a biased `tokio::select!` drop the download future at its next yield, releasing the HTTP stream and in-memory buffer; there can be in-flight chunks beyond the limit before that yield. A same-poll completion is rejected too. The reason is logged and manual checks show the usual localized check-failed dialog. Signature/version verification, cache, installer preparation/launch and temporary-directory cleanup remain on the existing plugin path. Limitation: plugin 2.14.1 reads the manifest with `response.json()` and exposes no response-size hook, so the manifest itself has no byte cap (the existing 30-second request timeout still applies).
+
+Portable builds do not download or install an update: they notify the user and offer to open the release download page. After a successful in-app update, the bundled **What's new** window shows changes since the previous version; **Help → What's new** opens it on demand. The window reads the bundled English or Russian changelog, falling back to English if the Russian file is absent. Failure to create or reopen the window is logged and shown in a nonfatal native error dialog in the shell's current language.
+
+The pinned `tauri-plugin-updater` 2.14.1 creates Windows temporary directories named `Deckmate-<semver>-updater-<6 ASCII alphanumeric characters>` (the suffix comes from `tempfile` 3.27.0), containing `Deckmate-<semver>-installer.exe` for our raw NSIS package. The plugin does not expose these paths to the shell, and `desktop.json` pending updates record only versions. Before clearing pending/cache state, startup cleanup considers only directories for that pending version: empty ones, or a single exactly named installer whose bytes match this installation's cached package. Cleanup never recurses or follows symlinks/junctions/reparse points; unrecognized, unattributed or unexpected contents are retained and logged, even with automatic checks disabled. This deliberately leaves uncertain old leftovers rather than risking user files.
 
 ### Bridges
 
@@ -136,6 +140,30 @@ Rust checks again on every command (`bridge.rs`): launcher commands answer only 
 
 The main window may navigate only to the bundled launcher (`http://tauri.localhost/index.html`) and the current server origin; iframes only to the current server origin. Any other `http(s)` target opens in the system browser and is canceled in the app; every other scheme is canceled outright. Page-initiated new-window requests do not create app windows: an `http(s)` target goes to the system browser, anything else is dropped. The shell itself may open the separate What's new window. Navigating back to the launcher URL while a project is open is intercepted and routed through the shell, which stops the server before the start screen appears.
 
+### WebView2 permissions
+
+As of 2026-11-10, the main window's `PermissionRequested` handler denies every kind, without prompting or notification exceptions. These are all kinds in the pinned WebView2 bindings; unknown future kinds are denied too. The client has no system Notification API or service worker usage.
+
+| Kind / operation | Handler decision |
+|---|---|
+| `MICROPHONE` | Deny |
+| `CAMERA` | Deny |
+| `GEOLOCATION` | Deny |
+| `NOTIFICATIONS` | Deny |
+| `OTHER_SENSORS` | Deny |
+| `CLIPBOARD_READ` (programmatic read) | Deny |
+| `MULTIPLE_AUTOMATIC_DOWNLOADS` | Deny |
+| `FILE_READ_WRITE` | Deny |
+| `AUTOPLAY` | Deny |
+| `LOCAL_FONTS` | Deny |
+| `MIDI_SYSTEM_EXCLUSIVE_MESSAGES` | Deny |
+| `WINDOW_MANAGEMENT` | Deny |
+| `UNKNOWN_PERMISSION` and future kinds | Deny |
+| Clipboard write and user-initiated Paste / Ctrl+V | Not a read-permission grant; normal editing remains available |
+| Individual downloads | Not a `PermissionRequested` kind; this handler does not intercept `DownloadStarting` |
+| Page fullscreen | Not a `PermissionRequested` kind; this handler does not intercept fullscreen changes |
+| Native View → Full screen / F11 | Shell command, unaffected by page permissions |
+
 ### Network folders
 
 UNC and device paths (`\\server\share`, `\\?\C:\`, `\\.\`), mapped network drives and paths that reach the network through a junction are accepted only when the folder came from the shell's folder dialog: the dialog result is remembered for that one folder, and typing such a path into the start screen is refused with `invalid-path`. Clicking a network folder in the recent list or workspace is allowed: workspace entries entered through the dialog, current project or recent list are trusted. The startup auto-open never opens a network `lastProject` by itself.
@@ -146,7 +174,7 @@ The main window is 1280×820 by default and at least 960×600. Saved bounds are 
 
 ### Zoom
 
-WebView2 browser accelerator keys (F5, Ctrl+P, Alt+Left, Ctrl+Shift+I) are disabled. Application menu accelerators and text-editing shortcuts remain available. The browser context menu retains only Cut, Copy, Paste, Select all and spellcheck entries. Renderer crashes are logged and reload the current page; an unresponsive renderer asks **Reload / Wait**; a browser-process exit stops the server and restarts Deckmate.
+WebView2 browser accelerator keys (F5, Ctrl+P, Alt+Left, Ctrl+Shift+I) are disabled. When WebView2 has focus, application menu accelerators are dispatched by the shell through the same native menu handler; text-editing shortcuts remain available. The browser context menu retains only Cut, Copy, Paste, Select all and spellcheck entries. Renderer crashes are logged and reload the current page; an unresponsive renderer asks **Reload / Wait**; a browser-process exit stops the server and restarts Deckmate.
 
 0.5–2 with step 0.1: Ctrl+=, Ctrl+− and Ctrl+0 (numpad keys included) and the View menu; WebView2's built-in zoom hotkeys are off, the shell handles the keys itself. The factor is clamped, stored in `zoomFactor` and applied after every page load; a WebView2 zoom change (Ctrl+wheel) is captured and persisted too.
 
@@ -162,6 +190,7 @@ The Node compile cache remains disabled. On 2026-11-09, five debug `Deckmate.exe
 
 ## Security notes and known limitations
 
+- **No embedded board HTML.** Server and client filter Vision scenes: `iframe`/unknown element types are hidden with warnings on read and rejected on save; AI generation data, executable links, non-raster scene files and unsupported app state are removed. Only project nodes and canonical HTTPS YouTube embeds are allowed; scene/image sizes are bounded, and reads never rewrite project files.
 - **Same-origin iframes can reach the board bridge.** Vision renders project content in same-origin iframes on the board, and such an iframe can invoke the eight board commands: WebView2 IPC does not identify the calling frame, so the top-frame check Electron made cannot be repeated on the Rust side. The bridge remains restricted to listing workspace/recent projects, explicit workspace mutations, dirty-state reporting, switching to a listed project and showing the start screen. Every command passes the current-origin check; additions are restricted to the native dialog, current project or recent list. Same-origin content can change workspace membership/order, dirty state or trigger navigation, but cannot add or open an arbitrary caller-provided path.
 - **DevTools are off in release builds.** The tauri crate is built without the `devtools` feature. The menu item remains visible but is disabled in release builds; its handler is compiled only with debug assertions.
 - **Debug-only hooks.** `DECKMATE_DESKTOP_NODE`, `DECKMATE_DESKTOP_SERVER`, `DECKMATE_DESKTOP_CDP_PORT` (the smoke's CDP port), `DECKMATE_DESKTOP_SETTINGS_DIR` (the smoke's throwaway settings folder), `DECKMATE_DESKTOP_DIRTY_POLICY=refuse` (cancels dirty navigation/quit without opening a native dialog), and `DECKMATE_DESKTOP_EXTERNAL_LOG` (records external links instead of opening the user's browser) are honored only by debug builds; release builds never read them.
@@ -188,7 +217,8 @@ Versions 0.5.0 and earlier shipped an Electron shell; recent projects, language,
 `npm run desktop:smoke` covers the pages and the server: launcher, board, both bridges, the navigation guard, the server lifetime. What it cannot drive stays manual:
 
 - Native menu items in both languages: open, recent, workspace ordering and missing-folder disabling, add current project, reveal project folder, switch and close project, zoom, full screen, open logs folder, About; Ctrl+Shift+P and Ctrl+1…9.
-- The folder dialog — opening and creating a project through it.
+- The folder dialog — opening and creating a project through it; failure/timeout/cancellation warnings in both languages, **Open folder in Explorer**, preserved partial contents and unchanged recent/last-project entries. Quit during init must reap the CLI without opening a warning, and quit with a warning already open must not wait for its acknowledgement.
+- Automatic-update preference save failure: the localized settings error appears and the menu keeps its previous value. Run the isolated updater e2e size cases to verify response cancellation and a responsive shell; no installer is launched by these checks.
 - A second launch focuses the running window.
 - Zoom keys and menu items, and the factor surviving a restart.
 - Native Leave/Stay and Reload/Wait choices, browser-process restart, panic/startup error boxes and startup without WebView2 Runtime; CDP cannot answer these dialogs. Context-menu spelling entries and physical menu accelerators also require a manual check.

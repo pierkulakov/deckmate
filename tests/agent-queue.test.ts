@@ -76,7 +76,7 @@ async function snapshot(root: string): Promise<Record<string, string>> {
   return files;
 }
 
-it('selects the first explicit hand slot with every prerequisite accepted, excluding review and inactive cards', async () => {
+it('selects the first explicit hand slot without active unfinished prerequisites, excluding review and inactive cards', async () => {
   const hand = { handMemberIds: ['fable'] };
   const cards = [card('owner-only', { owner: 'Claude' }), card('later', { ...hand, handOrder: { fable: 9 } }),
     card('missing-dependency', { ...hand, dependsOn: ['card:missing'], handOrder: { fable: 0 } }),
@@ -88,7 +88,7 @@ it('selects the first explicit hand slot with every prerequisite accepted, exclu
     card('ready', { ...hand, dependsOn: ['card:accepted'], handOrder: { fable: 6 } })];
   const context = await fixture(cards);
   const before = JSON.stringify(cards);
-  expect((await nextAgentCard(context.catalog, context.root, 'fable')).card?.id).toBe('card:ready');
+  expect((await nextAgentCard(context.catalog, context.root, 'fable')).card?.id).toBe('card:missing-dependency');
   expect(JSON.stringify(cards)).toBe(before);
 });
 

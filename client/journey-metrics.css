@@ -1,7 +1,7 @@
 /* Journey pitfalls and metrics use a quiet step-card icon and a table opened by Metrics. Use theme tokens only. */
 .journey-mini-metrics { position: absolute; right: 8px; bottom: 33px; display: inline-flex; align-items: center; height: 14px; color: var(--card-muted); font-size: 11px; font-weight: 700; line-height: 14px; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .journey-mini-metrics > span[aria-hidden="true"] { display: inline-flex; align-items: center; gap: 3px; }
-.journey-metrics { margin: 8px 0 12px; padding: 10px 12px; border-radius: 4px; background: color-mix(in srgb, var(--ink) 6%, transparent); font-size: 12px; line-height: 1.5; }
+.journey-metrics { margin: 8px 0 12px; padding: 10px 12px; border-radius: var(--glass-radius); background: color-mix(in srgb, var(--ink) 6%, transparent); font-size: 12px; line-height: 1.5; }
 .journey-metrics table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
 .journey-metrics th, .journey-metrics td { padding: 5px 8px; border-bottom: 1px solid color-mix(in srgb, var(--ink) 14%, transparent); text-align: left; vertical-align: top; overflow-wrap: anywhere; }
 .journey-metrics thead th { color: var(--muted); font-weight: 500; white-space: nowrap; }
@@ -13,4 +13,6 @@
 .journey-metrics-error { margin: 0 0 8px; color: var(--warning-ink); }
 /* 2026-11-06: .ui-button lifts the pressed rule above the editor's outline rule (journey-editor.css loads later with equal
    weight), which had hidden the open state: Metrics looked the same open and closed. */
-.journey-editor-actions .ui-button.journey-metrics-toggle[aria-pressed="true"] { background: color-mix(in srgb, var(--focus) 45%, transparent); }
+.journey-metrics.glass-panel { padding: var(--space-4); background: transparent; }
+.journey-metrics-scroll { max-width: 100%; overflow-x: auto; }
+.journey-metrics-scroll:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }

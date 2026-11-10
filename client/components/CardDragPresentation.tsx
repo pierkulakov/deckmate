@@ -8,6 +8,7 @@ import type { CatalogDeck, CatalogView } from '../../src/catalog-contracts.ts';
 import { cardTransferTargetIssue, type CardTransferBaseline } from '../card-transfer.ts';
 import { defineText, useText } from '../i18n.ts';
 import { Button } from './ui/button.tsx';
+import '../card-transfer.css';
 
 export const cardDragText = defineText({
   hand: 'Add to hand', decks: 'Change deck', timeline: 'Timeline', vision: 'Vision',
@@ -20,12 +21,12 @@ export const cardDragText = defineText({
   promoteHeroDescription: (deck: string) => `The card will become a Hero in “${deck}”. Its text, ID and links will be preserved; its Task state will be removed.`,
   promoteHeroConfirm: 'Make Hero',
 }, {
-  hand: 'Добавить в руку', decks: 'Сменить колоду', timeline: 'Календарь', vision: 'Полотно',
+  hand: 'Добавить в Hand', decks: 'Сменить колоду', timeline: 'Календарь', vision: 'Полотно',
   drop: (value: string) => `Отпустите, чтобы задать: ${value}`, groups: 'Группа карточек',
   noDeck: 'Без колоды', cancel: 'Отмена', chooseDeck: 'Выберите колоду для переносимых карточек',
   sameDeck: 'Все переносимые карточки уже здесь', incompatible: 'Колода не принимает все переносимые типы карточек',
   high: 'Высокий', medium: 'Средний', low: 'Низкий', noPriority: 'Без приоритета',
-  handFor: (member: string) => `Добавить в руку: ${member}`,
+  handFor: (member: string) => `Добавить в Hand: ${member}`,
   promoteHeroTitle: 'Сделать Hero?',
   promoteHeroDescription: (deck: string) => `Карточка станет Hero в колоде «${deck}». Её текст, ID и ссылки сохранятся; состояние задачи будет убрано.`,
   promoteHeroConfirm: 'Сделать Hero',
@@ -33,10 +34,10 @@ export const cardDragText = defineText({
 
 export interface CardDragPreview { html: string; width: number; height: number; table: boolean }
 
-export function captureCardDragPreview(event: DragStartEvent): CardDragPreview | null {
+export function captureCardDragPreview(event: DragStartEvent, selector = '[data-card-transfer-enabled]'): CardDragPreview | null {
   if (event.activatorEvent instanceof KeyboardEvent) return null;
   const target = event.activatorEvent.target;
-  const source = target instanceof Element ? target.closest<HTMLElement>('[data-card-transfer-enabled]') : null;
+  const source = target instanceof Element ? target.closest<HTMLElement>(selector) : null;
   if (!source) return null;
   const rectangle = event.active.rect.current.initial ?? source.getBoundingClientRect();
   const clone = source.cloneNode(true) as HTMLElement;

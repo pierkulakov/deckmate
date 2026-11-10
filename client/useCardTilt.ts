@@ -1,14 +1,14 @@
 import { useEffect, useRef, type PointerEvent } from 'react';
 
-// 2026-11-08: the author's reference ("макетный референс") moves one rigid ribbon of metal across a tile's bands:
+// 2026-11-08: one rigid ribbon of metal moves across a tile's bands:
 // it sweeps in once on enter, follows the tilt while hovered — against the pointer horizontally, with it vertically —
 // and sweeps out on leave. The ribbon's hot cut is measured in band widths at the tile's mid-height; the numbers are
-// fitted to the reference video, and card-material.css mirrors RIBBON_REST as --glare-rest.
+// tuned for the motion, and card-material.css mirrors RIBBON_REST as --glare-rest.
 const RIBBON_REST = 1.39;
 const RIBBON_CENTER = 0.377;
 const RIBBON_PER_ACROSS = -0.522;
 const RIBBON_PER_DOWN = 0.485;
-// Each 33 ms of the reference closes 35% of the remaining distance: an exponential follow with a 77 ms time constant.
+// Each 33 ms closes 35% of the remaining distance: an exponential follow with a 77 ms time constant.
 const RIBBON_FOLLOW_MS = 77;
 const RIBBON_SETTLED = 0.0005;
 

@@ -10,7 +10,7 @@ import { ProjectIndex } from './project-index.ts';
 import { attachSearchHits, SearchSourceChangedError, type SearchCard, type SearchHit } from './search-hits.ts';
 import { editProjectCatalog, readProjectCatalog, readFreshProjectCatalog, refreshProjectCatalog } from './catalog.ts';
 import { catalogFileChanged, withCatalogSnapshot } from './catalog-snapshot.ts';
-import { addJourneyStepLesson, updateJourney } from './journeys.ts';
+import { abandonJourneyOperation, addJourneyStepLesson, readJourney, recoverJourneyOperation, updateJourney } from './journeys.ts';
 import { saveJourneyTemplate } from './journey-templates.ts';
 import { editCatalogBulk } from './catalog-bulk.ts';
 import { prepareCardOptionsPatch, readCardOptions, type CardOptionsPatch } from './card-options.ts';
@@ -38,6 +38,8 @@ function clientMessage(error: unknown, fallback: string): string {
   return fallback;
 }
 
+const sourceConflictCodes = ['CATALOG_CONFLICT', 'CARD_CONFLICT', 'PARENT_CONFLICT', 'JOURNEY_CONFLICT', 'TEMPLATE_CONFLICT', 'CARD_OPTIONS_CONFLICT', 'PROJECT_TAGS_CONFLICT'];
+
 const serviceText = defineText({
   watchStopped: "File watching has stopped. The catalog is reread on every request; restart Deckmate to restore automatic updates.",
   autoArchive: "Auto-archive accepted cards",
@@ -53,6 +55,7 @@ const serviceText = defineText({
   cardIdConflict: "A card with this ID already exists with different content. Refresh the catalog and create it again with a new ID.",
   sourceChanged: "The source changed in the files. Refresh the catalog and try again.",
   partialSave: "Some changes were saved. Refresh the data before continuing.",
+  journeyRecovered: "An unfinished Journey save has now been completed. Check the Journey and repeat your action.",
   projectTemplatePartial: "Project template partly applied",
   editFailed: "Could not update the catalog.",
   carryOverFailed: (reason: (error: unknown) => string, error: unknown) => `Expired Runs were not carried over: ${reason(error)}. Will retry on the next refresh.`,
@@ -80,6 +83,7 @@ const serviceText = defineText({
   cardIdConflict: "Карточка с этим идентификатором уже существует с другим содержимым. Обновите каталог и создайте её заново с новым ID.",
   sourceChanged: "Источник изменился в файлах. Обновите каталог и повторите действие.",
   partialSave: "Часть изменений сохранена. Обновите данные перед продолжением.",
+  journeyRecovered: "Незавершённое сохранение Journey сейчас завершено. Проверьте Journey и повторите действие.",
   projectTemplatePartial: "Шаблон проекта применён частично",
   editFailed: "Не удалось изменить каталог.",
   carryOverFailed: (reason: (error: unknown) => string, error: unknown) => `Перенос завершившихся Run не выполнен: ${reason(error)}. Повторим при следующем обновлении.`,
@@ -160,6 +164,10 @@ function autoArchiveCandidates(view: CatalogView, archiveAfterDays: number): Cat
     return card.kind === 'task' && card.state === 'done' && !card.archived && !card.deleted
       && typeof doneAt === 'string' && doneAt < deadline && !openQuestionTargets.has(card.id);
   });
+}
+
+function savedFailure(error: unknown): boolean {
+  return Boolean(error && typeof error === 'object' && 'saved' in error && error.saved === true);
 }
 
 export class CatalogError extends Error {
@@ -448,6 +456,16 @@ export class CatalogService {
   }
 
   /** Rebuild the board after a mechanics edit; source data is already saved and cannot be rolled back. */
+  /** 2026-11-09: completes an unfinished Journey save; a recovery stopped by a foreign edit is a conflict that names the file. */
+  private async recoverJourney(root: string, journeyId: string): Promise<boolean> {
+    try { return await recoverJourneyOperation(root, journeyId); }
+    catch (error) {
+      if (savedFailure(error)) throw new CatalogError(409, clientMessage(error, serverText(serviceText).partialSave), true);
+      if (error instanceof Error && sourceConflictCodes.includes(error.message)) throw new CatalogError(409, serverText(serviceText).sourceChanged);
+      throw new CatalogError(422, clientMessage(error, serverText(serviceText).editFailed));
+    }
+  }
+
   private async rebuildBoard(root: string): Promise<void> {
     let script: string;
     try { script = await containedFile(root, 'Tools/board.py'); }
@@ -470,6 +488,9 @@ export class CatalogService {
   }
 
   edit(edit: CatalogEdit, source: DataSource, actorMemberId: string | null = null): Promise<CatalogView> {
+    // 2026-11-10: a decision explicitly confirms a human; its journal author must match the Markdown signature,
+    // including when the ambient UI/CLI actor is an agent. readRuleCard validates the chosen human before saving.
+    if (edit.action === 'record-decision') actorMemberId = edit.memberId;
     const operation = this.writes.then(async () => {
       const cached = this.entry(source);
       await cached.loading;
@@ -481,9 +502,21 @@ export class CatalogService {
         return await withCatalogSnapshot(root, before, refreshProjectCatalog, async () => {
           let savedWarning: string | null = null;
           let bulkOutcome: BulkOutcome | undefined;
+          // 2026-11-09: recovery consumes its own prepared bytes, before the new request's manifest/target checks (including imports).
+          // It runs outside the edit's own error handling: a recovery that stops halfway must answer 409, not pass for a completed request.
+          if ('journeyId' in edit && edit.journeyId && edit.action !== 'abandon-journey-operation') {
+            const recovered = await this.recoverJourney(root, edit.journeyId);
+            if (recovered) this.invalidate(source);
+            const current = await readJourney(root, edit.journeyId);
+            if (!current || current.journey.fileHash !== edit.journeyHash) {
+              throw new CatalogError(409, serverText(serviceText)[recovered ? 'journeyRecovered' : 'sourceChanged']);
+            }
+          }
           try {
             let changedPaths: string[];
-            if (edit.action === 'bulk-edit-cards') {
+            if (edit.action === 'abandon-journey-operation') {
+              changedPaths = await abandonJourneyOperation(root, edit.journeyId, edit.journalHash);
+            } else if (edit.action === 'bulk-edit-cards') {
               const result = await editCatalogBulk(root, edit, actorMemberId);
               changedPaths = result.changedPaths; bulkOutcome = result.outcome;
               if (bulkOutcome.warnings.length) savedWarning = bulkOutcome.warnings.join(' ');
@@ -493,7 +526,9 @@ export class CatalogService {
               if (catalog.manifestHash !== edit.manifestHash) throw new Error('CATALOG_CONFLICT');
               if (edit.action === 'update-journey') changedPaths = await updateJourney(root, catalog, edit);
               else if (edit.action === 'add-journey-step-lesson') changedPaths = await addJourneyStepLesson(root, catalog, edit, actorMemberId, localIsoDate());
-              else changedPaths = await saveJourneyTemplate(root, catalog, edit);
+              else {
+                changedPaths = await saveJourneyTemplate(root, catalog, edit);
+              }
             } else if (edit.action === 'set-card-dependencies') {
               // 2026-11-04: dependencies live in native-card YAML and do not change the manifest.
               changedPaths = await setCardDependencies(root, edit);
@@ -505,15 +540,18 @@ export class CatalogService {
             if (changedPaths.some(relative => isMechanicPath(relative))) await this.rebuildBoard(root);
           }
           catch (error) {
-            if (error instanceof Error && error.message === 'CARD_ID_CONFLICT') throw new CatalogError(409, serverText(serviceText).cardIdConflict);
-            if (error instanceof Error && ['CATALOG_CONFLICT', 'CARD_CONFLICT', 'PARENT_CONFLICT', 'JOURNEY_CONFLICT', 'TEMPLATE_CONFLICT', 'CARD_OPTIONS_CONFLICT', 'PROJECT_TAGS_CONFLICT'].includes(error.message)) throw new CatalogError(409, serverText(serviceText).sourceChanged);
+            // 2026-11-09: a later-stage conflict must not make an already saved mutation look safe to repeat.
             if (error && typeof error === 'object' && 'saved' in error && error.saved === true) {
-              savedWarning = error instanceof Error ? clientMessage(error, serverText(serviceText).partialSave) : serverText(serviceText).partialSave;
+              // 2026-11-09: a conflict code is an internal marker, not text for the person; show the partial-save notice instead.
+              const readable = error instanceof Error && !sourceConflictCodes.includes(error.message) && error.message !== 'CARD_ID_CONFLICT';
+              savedWarning = readable ? clientMessage(error, serverText(serviceText).partialSave) : serverText(serviceText).partialSave;
               if (edit.action === 'bulk-assign-deck' || edit.action === 'bulk-add-track') {
                 const updated = 'updated' in error && Array.isArray(error.updated) ? error.updated.filter((id): id is string => typeof id === 'string') : [];
                 bulkOutcome = membershipOutcome(before, edit, updated, [savedWarning]);
               }
             }
+            else if (error instanceof Error && error.message === 'CARD_ID_CONFLICT') throw new CatalogError(409, serverText(serviceText).cardIdConflict);
+            else if (error instanceof Error && sourceConflictCodes.includes(error.message)) throw new CatalogError(409, serverText(serviceText).sourceChanged);
             else throw new CatalogError(422, clientMessage(error, serverText(serviceText).editFailed));
           }
           // 2026-11-03: Journal is secondary; a logging failure must never turn a successful write into a retryable failure.
@@ -542,7 +580,13 @@ export class CatalogService {
             else affected = new Set();
             if (edit.action === 'bulk-edit-cards' && edit.change.kind === 'promote-parent') affected.add(edit.change.cardId);
             // Record the review return reason in this card's journal transition (2026-11-04).
-            const returnReasons = edit.action === 'set-card-state' && edit.returnReason?.trim() ? new Map([[edit.cardId, edit.returnReason.trim()]]) : undefined;
+            let returnReasons: Map<string, string> | undefined;
+            if (edit.action === 'set-card-state' && edit.returnReason?.trim()) returnReasons = new Map([[edit.cardId, edit.returnReason.trim()]]);
+            if (edit.action === 'bulk-edit-cards' && edit.change.kind === 'state' && edit.change.returnReason?.trim()) {
+              const reason = edit.change.returnReason.trim();
+              returnReasons = new Map(before.cards.filter(card => affected.has(card.id) && card.state === 'review')
+                .map(card => [card.id, reason]));
+            }
             const warning = await this.journal(before, after, edit.action, affected, 'deckId' in edit ? edit.deckId ?? undefined : undefined, actorMemberId, returnReasons, savedWarning);
             if (warning) savedWarning = [savedWarning, warning].filter(Boolean).join(' ');
             // 2026-11-04: watching, guardian, and automation changes need events that describeActivity cannot distinguish.
@@ -561,15 +605,14 @@ export class CatalogService {
               cached.revision += 1;
               return readProjectCatalog(root);
             });
-            if (savedWarning) return { ...view, ...(bulkOutcome ? { bulkOutcome } : {}), warnings: [...view.warnings, savedWarning] };
+            if (savedWarning) return { ...view, ...(bulkOutcome ? { bulkOutcome } : {}), savedWarning };
             return { ...view, ...(bulkOutcome ? { bulkOutcome } : {}) };
           }
           catch (error) {
             const message = serverText(serviceText).indexFailed(savedWarning, error);
             try {
               const view = await readProjectCatalog(root);
-              view.warnings.push(message);
-              return { ...view, ...(bulkOutcome ? { bulkOutcome } : {}) };
+              return { ...view, ...(bulkOutcome ? { bulkOutcome } : {}), savedWarning: message };
             } catch { throw new CatalogError(503, serverText(serviceText).doNotCreateAgain(message), true); }
           }
         });

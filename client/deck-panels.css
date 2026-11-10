@@ -1,45 +1,49 @@
-/* Ordering and Tags use narrow columns of 24px bordered buttons to the right of the action rail. */
+/* 2026-11-10: Ordering and Tags share the home's flat sections and 30px Foil controls beside the rail. */
 .catalog-content-layout.has-narrow-panel { grid-template-columns: max-content minmax(0, 1fr); gap: 16px; }
 @media (max-width: 760px) { .catalog-content-layout.has-narrow-panel { grid-template-columns: minmax(0, 1fr); } }
-/* The scrolling column clips overflow: 8px on the right preserves Multi Sort rank badges, while a negative margin keeps cards at 16px. */
-.deck-summary.deck-narrow-panel { margin-right: -8px; padding: 0 8px 0 0; scrollbar-width: none; }
+.deck-summary.deck-narrow-panel { margin: 0; padding: 0 0 16px; scrollbar-width: thin; border: 0; }
 
-.deck-panel { display: flex; flex-direction: column; gap: 12px; min-width: 0; padding: 6px 0 12px; color: var(--ink); font-size: 12px; line-height: 14px; }
-/* 2026-11-06: both panels start 6 px down like the rail, and their 32 px heading row is the first rail button's row, so the heading
-   centers on that button and on the first lane heading beside it; the body starts with the second button. */
-.deck-panel > h3, .card-ordering-heading { display: flex; align-items: center; gap: 4px; height: 32px; }
-.deck-panel h3 { margin: 0; font-size: 14px; font-weight: 700; line-height: 16px; }
+.deck-panel { display: flex; flex-direction: column; min-width: 0; color: var(--ink); font-size: 12px; line-height: 16px; }
+.deck-panel.glass-panel { padding: var(--space-3) var(--space-4) var(--space-4); }
+/* 2026-11-10: the first panel's heading row takes the workbench's first row (deck-workbench.css). */
+.deck-narrow-panel > .deck-panel.glass-panel:first-child { padding-top: var(--workbench-row-inset, var(--space-3)); }
+.deck-panel .panel-head { align-items: flex-start; }
+.deck-panel .panel-title { flex: 1; padding-top: var(--space-1); }
+.deck-panel .panel-count { position: relative; padding-top: var(--space-2); }
+.deck-panel :is(.panel-count, .deck-tag-count) { border-radius: var(--control-radius); background: transparent; font-family: 'Geist Mono', monospace; font-weight: 500; font-variant-numeric: tabular-nums; }
+/* 2026-11-10: the heading's baseline inset stays outside its count cell, preserving the first workbench row. */
 .deck-panel fieldset { min-width: 0; margin: 0; padding: 0; border: 0; }
 
-/* Both panels share 24px buttons, a 1px violet edge and 4px radius; pressed buttons are mint. */
-.deck-panel-button { position: relative; display: inline-flex; flex-shrink: 0; align-items: center; justify-content: center; gap: 4px; height: 24px; min-width: 24px; padding: 0 7px; border: 1px solid var(--button-line, var(--line)); border-radius: 4px; background: transparent; color: var(--button-ink, var(--ink)); font-size: 12px; font-weight: 700; line-height: 14px; letter-spacing: .12px; white-space: nowrap; }
-.deck-panel-button:hover:not(:disabled):not([aria-pressed="true"]) { background: var(--hover); }
-.deck-panel-button[aria-pressed="true"] { border-color: var(--mint-edge, var(--accent)); background: var(--mint, var(--accent-soft)); color: var(--mint-ink, var(--accent)); }
-.deck-panel-button[aria-pressed="true"]:hover:not(:disabled) { background: var(--mint-hover, var(--accent-soft)); }
-.deck-panel-button.is-icon { width: 24px; padding: 0 3px; }
-.deck-panel-button.is-narrow { width: auto; min-width: 18px; padding: 0 3px; }
+/* 2026-11-10: accent denotes selection; mint stays with the header's creating action. */
+.deck-panel-button { position: relative; display: inline-flex; flex-shrink: 0; align-items: center; justify-content: center; gap: 6px; min-height: 30px; min-width: 30px; max-width: 100%; padding: 5px 8px; font-size: 12px; line-height: 16px; white-space: normal; overflow-wrap: anywhere; }
+.deck-panel-button.is-icon { width: 30px; padding: 0 3px; }
+.deck-panel-button.is-narrow { width: auto; min-width: 24px; padding: 0 3px; }
 .deck-panel-button.is-wide { width: 100%; }
 .deck-panel-button svg { flex-shrink: 0; }
 /* 2026-11-06: pressed panel buttons move 1 px like every .ui-button; the global button transition has no transform. */
 .deck-panel-button, .card-ordering-help { transition: background-color var(--motion-feedback), color var(--motion-feedback), border-color var(--motion-feedback), opacity var(--motion-feedback), transform var(--motion-feedback) var(--ease-out); }
 .deck-panel-button:active:not(:disabled), .card-ordering-help:active { transform: translateY(1px); }
 
-.deck-panel-switch-row { display: flex; align-items: center; gap: 4px; height: 14px; font-weight: 700; letter-spacing: .12px; }
+.deck-panel-switch-row { display: flex; align-items: center; gap: 4px; height: 14px; font-weight: 500; letter-spacing: .01em; }
 .deck-panel-switch-row > label { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
+/* 2026-11-10: only panel labels wrap; the shared switch keeps its composer/planning geometry. */
+.deck-panel .deck-panel-switch-row { gap: 8px; height: auto; min-height: 24px; font-weight: 500; letter-spacing: .01em; }
+.deck-panel .deck-panel-switch-row > label { overflow: visible; white-space: normal; overflow-wrap: anywhere; }
 .deck-panel-switch-row:has(:disabled) > label { cursor: default; }
+/* 2026-11-10: a switch keeps its own track (DESIGN.md «Controls»: round ends belong to switch tracks), not the hairline. */
 .deck-panel-switch { flex-shrink: 0; width: 28px; height: 12px; padding: 1px; border: 0; border-radius: 999px; background: var(--toggle-off); }
-.deck-panel-switch > span { display: block; width: 10px; height: 10px; border-radius: 50%; background: var(--toggle-knob, var(--surface)); box-shadow: var(--toggle-knob-shadow, none); transition: transform var(--motion-feedback) var(--ease-out); }
 .deck-panel-switch[aria-checked="true"] { background: var(--toggle-on, var(--accent)); }
+.deck-panel-switch > span { display: block; width: 10px; height: 10px; border-radius: 50%; background: var(--toggle-knob, var(--surface)); transition: transform var(--motion-feedback) var(--ease-out); }
 .deck-panel-switch[aria-checked="true"] > span { transform: translateX(16px); }
 
-/* Ordering: 120px column; heading with the help button, then sorts (gap 8), one-tap orders, switches, Default View. */
-.card-ordering { width: 120px; }
+/* 2026-11-10: the wider text column lets Russian labels wrap without clipping or shrinking controls. */
+.card-ordering { width: 232px; max-width: 100%; }
 .card-ordering-heading h3 { flex: 1 1 auto; min-width: 0; }
-.card-ordering-help { display: grid; flex-shrink: 0; place-items: center; width: 24px; height: 24px; padding: 0; border: 0; border-radius: 4px; background: none; color: var(--button-ink, var(--ink)); }
-.card-ordering-help:hover { background: var(--hover); }
+.card-ordering-help { display: grid; flex-shrink: 0; place-items: center; width: 30px; height: 30px; padding: 0; color: var(--muted); }
+@media (hover: hover) { .card-ordering-help:hover:not(:disabled) { background: var(--hover); } }
 
 /* Help tooltip of the Ordering panel: primary order, secondary orders, deck default. */
-.card-ordering-help-card { z-index: 160; width: 240px; padding: 10px 12px; border-radius: 8px; background: var(--surface); color: var(--ink); box-shadow: var(--shadow), 0 0 0 1px var(--line); font-size: 12px; line-height: 1.4; transform-origin: var(--radix-tooltip-content-transform-origin); }
+.card-ordering-help-card { z-index: 160; width: 240px; padding: 10px 12px; border-radius: var(--glass-radius); background: var(--surface); color: var(--ink); box-shadow: var(--shadow), inset 0 0 0 1px var(--line); font-size: 12px; line-height: 1.4; transform-origin: var(--radix-tooltip-content-transform-origin); }
 .card-ordering-help-card p { margin: 0; }
 .card-ordering-help-card p + p { margin-top: 4px; }
 .card-ordering-help-card[data-state='delayed-open'], .card-ordering-help-card[data-state='instant-open'] { animation: card-ordering-help-in var(--motion-feedback) var(--ease-out); }
@@ -48,29 +52,35 @@
 .card-ordering-body { display: flex; flex-direction: column; gap: 24px; }
 .card-ordering-blocks { display: flex; flex-direction: column; gap: 16px; }
 .card-ordering-rows, .card-ordering-list, .card-ordering-switches { display: flex; flex-direction: column; gap: 8px; }
-.card-ordering-row { display: flex; align-items: center; gap: 4px; height: 24px; }
-.card-ordering-row > span { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.card-ordering-row { display: flex; align-items: center; gap: 8px; min-height: 30px; }
+.card-ordering-row > span { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; }
 .card-ordering-pair { display: flex; gap: 4px; }
-.card-ordering-rank { position: absolute; top: -6px; right: -6px; min-width: 13px; height: 13px; padding: 0 3px; border-radius: 7px; background: var(--violet-fill, var(--accent)); color: var(--violet-fill-ink, var(--surface)); font-size: 9px; line-height: 13px; letter-spacing: 0; }
-.card-ordering-default { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 8px 12px; border: 1px solid var(--panel-box-line, var(--line)); border-radius: 4px; font-weight: 700; letter-spacing: .12px; }
-.card-ordering-default > div { display: flex; gap: 8px; }
+.card-ordering-rank { position: absolute; top: -6px; right: -6px; min-width: 13px; height: 13px; padding: 0 3px; border-radius: var(--control-radius); background: var(--violet-fill, var(--accent)); color: var(--violet-fill-ink, var(--surface)); font-size: 9px; line-height: 13px; letter-spacing: 0; }
+.card-ordering-default { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; padding-top: var(--space-3); border-top: 1px solid var(--glass-seam); }
+.card-ordering-default > div { display: flex; flex-wrap: wrap; gap: 8px; }
 
-/* Tags: 128px column; «and» / «or», then Not tagged and every tag with its count; project tags are filled chips. */
-.deck-tags-panel { width: 128px; }
+.deck-tags-panel { width: 232px; max-width: 100%; }
 .deck-tags-body { display: flex; flex-direction: column; gap: 12px; }
 .deck-tags-modes { display: flex; gap: 4px; }
 .deck-tags-list { display: flex; flex-direction: column; gap: 8px; }
 .deck-tag-row { justify-content: space-between; }
-.deck-tag-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.deck-tag-name { min-width: 0; overflow-wrap: anywhere; text-align: left; }
 .deck-tag-count { flex-shrink: 0; }
-.deck-tag-row[aria-pressed="true"] { --tag-personal-foreground: var(--tag-personal-on-tint); }
+.deck-tag-row[aria-pressed="true"] { --tag-personal-foreground: var(--mark); }
+.deck-tag-row[aria-pressed="true"] .page-number { color: inherit; }
+.deck-tags-panel .tag-badge { height: auto; min-height: var(--tag-height); }
+.deck-tags-panel .tag-badge-name { white-space: normal; overflow-wrap: anywhere; }
+.deck-tags-panel .tag-badge-glyph { align-self: stretch; height: auto; min-height: var(--tag-height); }
+.deck-tags-panel .ui-empty { margin: 0; padding: 0; font-size: 12px; line-height: 18px; overflow-wrap: anywhere; }
+.deck-tags-panel .ui-empty p { margin: 0; }
+@media (max-width: 760px) { .deck-panel.glass-panel { width: 100%; } }
 
 @media (prefers-reduced-motion: reduce) { .deck-panel-switch > span { transition: none; } }
 
 /* 2026-11-05: the lane label filters; its separate checkbox selects, revealed by hover or keyboard focus. */
 .catalog-card-group-heading .catalog-group-label { display: inline-flex; align-items: center; gap: 8px; min-width: 0; font-weight: 400; line-height: 14px; }
-.catalog-group-filter { display: inline-flex; align-items: center; gap: 4px; min-width: 0; padding: 5px 0; margin: -5px 0; border: 0; background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer; }
-.catalog-group-filter:hover:not(:disabled) { color: var(--ink); text-decoration: underline; text-underline-offset: 3px; }
+.catalog-group-filter { display: inline-flex; align-items: center; gap: 4px; min-width: 0; padding: 5px 0; margin: -5px 0; border: 0; border-radius: var(--control-radius); background: transparent; color: inherit; font: inherit; font-weight: 500; letter-spacing: .01em; text-align: left; cursor: pointer; }
+@media (hover: hover) { .catalog-group-filter:hover:not(:disabled) { color: var(--ink); text-decoration: underline; text-underline-offset: 3px; } }
 .catalog-group-filter:disabled { cursor: default; }
 .catalog-group-select { display: inline-flex; align-items: center; opacity: 0; cursor: pointer; }
 .catalog-card-group-heading:hover .catalog-group-select,
@@ -83,7 +93,5 @@
 .deck-table .deck-table-effort.is-empty [data-shortcut-property] > svg { opacity: .15; }
 .deck-table .catalog-group-select:has(input:checked) input,
 .deck-table .catalog-group-select:has(input:indeterminate) input { opacity: 1; }
-.deck-lane-search { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
-.deck-open-tools .deck-archive-toggle { flex-shrink: 0; height: 30px; color: var(--muted); }
-.deck-open-tools .deck-archive-toggle[aria-pressed="true"] { background: var(--accent-soft); color: var(--ink); box-shadow: inset 0 0 0 1px var(--focus); }
+.deck-open-tools .deck-archive-toggle { flex-shrink: 0; height: 30px; }
 @media (hover: none) { .catalog-group-select, .deck-table .catalog-group-select input[type="checkbox"] { opacity: 1; } }

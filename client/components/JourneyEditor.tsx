@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { prepareEntrance } from '../prepared-motion.ts';
 import * as Dialog from '@radix-ui/react-dialog';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import { ChartNoAxesColumn, ChevronDown, Copy, Info, LayoutGrid, Layers, LoaderCircle, Plus, X } from 'lucide-react';
@@ -7,6 +8,7 @@ import type { DataSource } from '../../src/workspace-contracts.ts';
 import type { CatalogAction } from '../useCatalog.ts';
 import { readFreshCatalog } from '../catalog-store.ts';
 import { JourneyCatalog, JourneySaveTemplateDialog } from './JourneyCatalog.tsx';
+import { JourneyOperationBadge, JourneyOperationNotice, JourneyOption } from './JourneyOperationNotice.tsx';
 import { JourneyStepPanel } from './JourneyStepPanel.tsx';
 import { JourneyZones } from './JourneyZones.tsx';
 import { JourneyBulkActions } from './JourneyBulkActions.tsx';
@@ -39,6 +41,7 @@ const text = defineText({
   closeJourney: 'Close Journey',
   addZone: 'Add step zone',
   allSaved: 'All changes saved',
+  unfinishedSave: 'Journey save is unfinished',
   addJourneyStep: 'Add a Journey step',
   readOnly: 'Read only',
   conflictStatus: 'Autosave paused: resolve the conflict',
@@ -101,6 +104,7 @@ const text = defineText({
   closeJourney: 'Закрыть Journey',
   addZone: 'Добавить зону шагов',
   allSaved: 'Все изменения сохранены',
+  unfinishedSave: 'Сохранение Journey не завершено',
   addJourneyStep: 'Добавьте шаг Journey',
   readOnly: 'Только чтение',
   conflictStatus: 'Автосохранение приостановлено: разрешите конфликт',
@@ -180,6 +184,7 @@ export function JourneyEditor({ catalog, deck, source, initialJourneyId, writabl
   const [discardTo, setDiscardTo] = useState<Destination | null>(null);
   const [navigation, setNavigation] = useState<Destination | null>(null);
   const [saving, setSaving] = useState(false);
+  const [operationBusy, setOperationBusy] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [conflict, setConflict] = useState<JourneySnapshot | null>(null);
@@ -190,15 +195,18 @@ export function JourneyEditor({ catalog, deck, source, initialJourneyId, writabl
   const latestBase = useRef(base);
   latestCatalog.current = catalog; latestDraft.current = draft; latestBase.current = base;
   const dirty = !sameDraft(draft, base.draft);
-  const busy = pending || saving;
-  const editable = writable && (deck.kind === 'asset' || deck.kind === 'mixed');
+  const busy = pending || saving || operationBusy;
   const currentJourney = journeys.find(journey => journey.id === base.journey?.id);
+  const operationJourney = currentJourney ?? base.journey;
+  const operationBlocked = !!operationJourney?.pendingOperation && operationJourney.pendingOperation.state !== 'pending';
+  const editable = writable && !operationBlocked && (deck.kind === 'asset' || deck.kind === 'mixed');
   const inspected = draft.steps.find(step => step.id === inspectedId);
   const invalid = draftError(draft, catalog);
   const cloneTargets = catalog.decks.filter(candidate => candidate.id !== deck.id && (candidate.kind === 'asset' || candidate.kind === 'mixed'));
   const locked = busy || !!unconfirmedCreate;
   let saveStatus = base.journey ? t.allSaved : t.addJourneyStep;
-  if (!editable) saveStatus = t.readOnly;
+  if (operationJourney?.pendingOperation) saveStatus = t.unfinishedSave;
+  else if (!editable) saveStatus = t.readOnly;
   else if (conflict) saveStatus = t.conflictStatus;
   else if (unconfirmedCreate) saveStatus = t.createConfirmation;
   else if (error && dirty) saveStatus = t.autosavePaused;
@@ -257,7 +265,11 @@ export function JourneyEditor({ catalog, deck, source, initialJourneyId, writabl
     if (mutation.current || pending || !editable) return false;
     mutation.current = true; setSaving(true); setError('');
     try { return await work(); }
-    catch (failure) { setError(failureMessage(failure, t.saveFailed)); return false; }
+    catch (failure) {
+      setError(failureMessage(failure, t.saveFailed));
+      try { await readCatalog(); } catch { /* 2026-11-10: preserve the original server explanation when rereading fails. */ }
+      return false;
+    }
     finally { mutation.current = false; setSaving(false); }
   }
 
@@ -310,7 +322,7 @@ export function JourneyEditor({ catalog, deck, source, initialJourneyId, writabl
       await onEdit({ action: 'update-journey', manifestHash: before.manifestHash, journeyId: before.journey.id, journeyHash: before.journey.fileHash, ...sent });
       const fresh = await readCatalog();
       const saved = fresh.journeys?.find(journey => journey.id === before.journey!.id) ?? null;
-      if (saved && sameDraft(journeyDraft(saved, deck, catalog.formatLanguage), sent)) {
+      if (saved && !saved.pendingOperation && sameDraft(journeyDraft(saved, deck, catalog.formatLanguage), sent)) {
         // Keep the live draft: typing can continue while the request is pending.
         replaceBase(snapshot(saved, fresh.manifestHash)); return true;
       }
@@ -432,25 +444,27 @@ export function JourneyEditor({ catalog, deck, source, initialJourneyId, writabl
     {dirty && !conflict && !unconfirmedCreate && screen === 'editor' && <Button variant="outline" size="sm" disabled={busy} onClick={() => { setError(''); void save(); }}>{t.retryAutosave}</Button>}
     {!dirty && !unconfirmedCreate && <Button variant="ghost" size="sm" onClick={() => setError('')}>{t.closeMessage}</Button>}
   </div>;
+  const operationFeedback = operationJourney && <JourneyOperationNotice key={operationJourney.id} journey={operationJourney} catalog={catalog} source={source}
+    writable={writable} disabled={busy} onEdit={onEdit} onBusyChange={setOperationBusy} />;
 
   return <Dialog.Root open onOpenChange={open => { if (!open) requestNavigation('close'); }}><Dialog.Portal>
-    <Dialog.Overlay className="journey-editor-overlay" />
-    <Dialog.Content className="journey-editor-dialog" aria-busy={busy} onCloseAutoFocus={event => { event.preventDefault(); onRestoreFocus?.(); }}
+    <Dialog.Overlay ref={prepareEntrance} className="journey-editor-overlay" />
+      <Dialog.Content ref={prepareEntrance} className="journey-editor-dialog dialog-panel" aria-busy={busy} onCloseAutoFocus={event => { event.preventDefault(); onRestoreFocus?.(); }}
       onEscapeKeyDown={event => { event.preventDefault(); if (selectedIds.length) setSelectedIds([]); else requestNavigation('close'); }} onPointerDownOutside={event => event.preventDefault()}
       onKeyDown={event => {
         if (screen !== 'editor' || inspectedId || !editable || (event.target instanceof HTMLElement && event.target.closest('input,textarea,select,[contenteditable="true"],[role="menu"]'))) return;
-        if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'a') { event.preventDefault(); event.stopPropagation(); setSelectedIds(draft.steps.map(step => step.id)); }
+        if ((event.ctrlKey || event.metaKey) && event.code === 'KeyA') { event.preventDefault(); event.stopPropagation(); setSelectedIds(draft.steps.map(step => step.id)); }
       }}>
       <Dialog.Title className="visually-hidden">{t.prepareJourney}{deck.title}</Dialog.Title>
       <Dialog.Description className="visually-hidden">{t.editorDescription}</Dialog.Description>
       <div className="journey-editor-shell">
         {screen === 'editor' ? <>
           {selectedIds.length > 0 ? <JourneyBulkActions count={selectedIds.length} total={draft.steps.length} disabled={locked || !editable || dirty || !!conflict} targets={duplicateTargets} onSelectAll={() => setSelectedIds(draft.steps.map(step => step.id))} onClear={() => setSelectedIds([])} onChain={chainSteps} onDuplicate={target => void duplicateSteps(target)} onDelete={() => deleteSteps(selectedIds)} /> :
-          <header className="journey-editor-heading"><h2>{t.prepareJourney}<span className="journey-deck-chip" title={deck.title}><span className="journey-deck-icon" aria-hidden="true"><Layers size={11} /></span><span className="journey-deck-name">{deck.title}</span></span></h2>
+          <header className="journey-editor-heading dialog-head"><h2 className="dialog-title">{t.prepareJourney}<span className="journey-deck-chip" title={deck.title}><span className="journey-deck-icon" aria-hidden="true"><Layers size={11} /></span><span className="journey-deck-name">{deck.title}</span></span></h2>
             <Button variant="ghost" size="icon" className="journey-editor-info" aria-pressed={settings} aria-label={t.aboutAria} title={t.aboutTitle} onClick={() => setSettings(previous => !previous)}><Info size={15} /></Button>
             <div className="journey-editor-actions">{metricsAvailable && <Button variant="outline" size="sm" className="journey-metrics-toggle" aria-pressed={metricsOpen} title={t.metricsTitle} onClick={() => setMetricsOpen(previous => !previous)}><ChartNoAxesColumn size={13} />{t.metrics}</Button>}
               <Button variant="outline" size="sm" className="journey-browse-button" disabled={locked} onClick={() => requestNavigation('catalog')}><LayoutGrid size={13} />{t.browseTemplates}</Button>
-              <Button variant="outline" size="sm" disabled={locked || !editable || !base.journey || dirty || !!conflict} title={dirty ? t.saveTemplateWaiting : t.saveTemplateTitle} onClick={() => setSaveTemplate(true)}>{t.saveAsTemplate}</Button>
+              <Button variant="outline" size="sm" disabled={locked || !editable || !!operationJourney?.pendingOperation || !base.journey || dirty || !!conflict} title={dirty ? t.saveTemplateWaiting : t.saveTemplateTitle} onClick={() => setSaveTemplate(true)}>{t.saveAsTemplate}</Button>
               <DropdownMenu.Root><DropdownMenu.Trigger asChild><Button variant="ghost" size="sm" className="journey-clone-button" disabled={locked || !editable || !base.journey || dirty || !!conflict || cloneTargets.length === 0}>{t.cloneJourney}<ChevronDown size={13} /></Button></DropdownMenu.Trigger><DropdownMenu.Portal><DropdownMenu.Content className="journey-editor-menu" align="end" sideOffset={6}>
                 <DropdownMenu.Label className="journey-editor-menu-label">{t.copyJourney}</DropdownMenu.Label>
                 {cloneTargets.map(target => <DropdownMenu.Item key={target.id} onSelect={() => void cloneTo(target)}><Copy size={13} />{target.title}</DropdownMenu.Item>)}
@@ -458,16 +472,17 @@ export function JourneyEditor({ catalog, deck, source, initialJourneyId, writabl
             </div><Button variant="ghost" size="icon" className="journey-editor-close" aria-label={t.closeJourney} onClick={() => requestNavigation('close')}><X size={18} /></Button>
           </header>}
           <div className="journey-editor-body">
-            {settings && <div className="journey-editor-settings"><label>{t.journeyTitle}<input maxLength={120} value={draft.title} disabled={!editable} onChange={event => changeDraft({ title: event.target.value })} /></label><label>{t.journeyDescription}<textarea rows={2} maxLength={2000} value={draft.description} disabled={!editable} onChange={event => changeDraft({ description: event.target.value })} /></label>
-              {journeys.length > 1 && <label>{t.deckJourney}<select value={base.journey?.id ?? ''} disabled={locked} onChange={event => requestNavigation({ journeyId: event.target.value })}>{journeys.map(journey => <option key={journey.id} value={journey.id}>{journey.title}</option>)}</select></label>}
+            {!inspected && operationFeedback}
+            {settings && <div className="journey-editor-settings"><label>{t.journeyTitle}<input className="control-field" maxLength={120} value={draft.title} disabled={!editable} onChange={event => changeDraft({ title: event.target.value })} /></label><label>{t.journeyDescription}<textarea className="control-field" rows={2} maxLength={2000} value={draft.description} disabled={!editable} onChange={event => changeDraft({ description: event.target.value })} /></label>
+              {journeys.length > 1 && <label>{t.deckJourney}<select className="control-field" value={base.journey?.id ?? ''} disabled={locked} onChange={event => requestNavigation({ journeyId: event.target.value })}>{journeys.map(journey => <JourneyOption key={journey.id} journey={journey} />)}</select>{operationJourney && <JourneyOperationBadge journey={operationJourney} />}</label>}
               {base.journey && <CatalogReferenceLink kind="p" id={base.journey.id} source={source} />}</div>}
-            {!editable && <p className="journey-editor-notice">{writable ? t.assetMixedOnly : t.readOnlySandbox}</p>}
+            {!editable && !operationBlocked && <p className="journey-editor-notice">{writable ? t.assetMixedOnly : t.readOnlySandbox}</p>}
             {!inspected && conflictFeedback}
             {metricsOpen && metricsAvailable && <JourneyMetricsTable metrics={metrics} error={metricsError} steps={draft.steps} />}
             <JourneyZones zones={draft.zones} steps={draft.steps} decks={catalog.decks} disabled={!editable || !!unconfirmedCreate} selectedIds={selectedIds} onSelectionChange={setSelectedIds} metrics={metricsByStep} onZonesChange={zones => changeDraft({ zones })} onStepsChange={steps => changeDraft({ steps })} onOpen={setInspectedId} onAdd={addStep} />
-            <button type="button" className="journey-add-zone" disabled={!editable || !!unconfirmedCreate || draft.zones.length >= 20} onClick={() => changeDraft({ zones: [...draft.zones, { id: nextJourneyId('zone', draft.zones), title: formatText[catalog.formatLanguage].newZoneTitle }] })}><Plus size={14} />{t.addZone}</button>
+            <button type="button" className="journey-add-zone control" disabled={!editable || !!unconfirmedCreate || draft.zones.length >= 20} onClick={() => changeDraft({ zones: [...draft.zones, { id: nextJourneyId('zone', draft.zones), title: formatText[catalog.formatLanguage].newZoneTitle }] })}><Plus size={14} />{t.addZone}</button>
           </div>
-        </> : <JourneyCatalog catalog={catalog} deck={deck} journey={base.journey} source={source} disabled={locked || !editable} onImport={importTemplate} onBack={() => { setScreen('editor'); setError(''); }} />}
+        </> : <JourneyCatalog catalog={catalog} deck={deck} journey={operationJourney} source={source} disabled={locked || !writable} onEdit={onEdit} onOperationBusyChange={setOperationBusy} onImport={importTemplate} onBack={() => { setScreen('editor'); setError(''); }} />}
         {screen === 'catalog' && <Button className="journey-catalog-close" variant="ghost" size="icon" aria-label={t.closeJourney} onClick={() => requestNavigation('close')}><X size={18} /></Button>}
         {!inspected && errorFeedback}
         {screen === 'editor' && <footer className="journey-editor-footer"><span role="status">{saveStatus}{busy && <LoaderCircle size={14} className="spin" />}</span>
@@ -476,11 +491,11 @@ export function JourneyEditor({ catalog, deck, source, initialJourneyId, writabl
       </div>
     </Dialog.Content></Dialog.Portal>
     {inspected && <JourneyStepPanel key={inspected.id} step={inspected} steps={draft.steps} catalog={catalog} source={source} path={base.journey?.path.replace(/index\.md$/, `steps/${inspected.id}.md`)} disabled={!editable}
-      feedback={<>{conflictFeedback}{errorFeedback}<p className="journey-step-save-state" role="status">{saveStatus}{invalid && dirty ? `. ${invalid}` : ''}</p></>}
+      feedback={<>{operationFeedback}{conflictFeedback}{errorFeedback}<p className="journey-step-save-state" role="status">{saveStatus}{invalid && dirty ? `. ${invalid}` : ''}</p></>}
       onChange={patch => changeDraft({ steps: latestDraft.current.steps.map(step => step.id === inspected.id ? { ...step, ...patch } : step) })} onClose={() => setInspectedId(null)} onRemove={() => deleteSteps([inspected.id])} />}
     {saveTemplate && base.journey && <JourneySaveTemplateDialog journey={base.journey} categories={[...new Set((catalog.journeyTemplates ?? []).map(template => template.category))]} disabled={busy} onSave={saveAsTemplate} onClose={() => { if (!busy) setSaveTemplate(false); }} />}
-    <Dialog.Root open={discardTo !== null} onOpenChange={open => { if (!open) setDiscardTo(null); }}><Dialog.Portal><Dialog.Overlay className="journey-confirm-overlay" /><Dialog.Content className="journey-confirm-dialog">
-      <Dialog.Title>{t.discardTitle}</Dialog.Title><Dialog.Description>{unconfirmedCreate ? t.discardCreateDescription : t.discardDescription}</Dialog.Description><div><Button variant="ghost" onClick={() => { setDiscardTo(null); setNavigation(null); }}>{t.continueEditing}</Button><Button onClick={() => { if (discardTo) { replaceDraft(base.draft); setConflict(null); setUnconfirmedCreate(null); navigate(discardTo); } }}>{t.discardChanges}</Button></div>
+    <Dialog.Root open={discardTo !== null} onOpenChange={open => { if (!open) setDiscardTo(null); }}><Dialog.Portal><Dialog.Overlay className="journey-confirm-overlay" /><Dialog.Content className="journey-confirm-dialog dialog-panel">
+      <header className="dialog-head"><Dialog.Title className="dialog-title">{t.discardTitle}</Dialog.Title></header><Dialog.Description className="dialog-body">{unconfirmedCreate ? t.discardCreateDescription : t.discardDescription}</Dialog.Description><div className="dialog-foot"><Button variant="ghost" onClick={() => { setDiscardTo(null); setNavigation(null); }}>{t.continueEditing}</Button><Button onClick={() => { if (discardTo) { replaceDraft(base.draft); setConflict(null); setUnconfirmedCreate(null); navigate(discardTo); } }}>{t.discardChanges}</Button></div>
     </Dialog.Content></Dialog.Portal></Dialog.Root>
   </Dialog.Root>;
 }

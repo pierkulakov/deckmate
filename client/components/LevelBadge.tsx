@@ -1,3 +1,4 @@
+import { moveFocus } from '../focus.ts';
 import { useCallback, useEffect, useMemo, useRef, useState, type AnimationEvent as ReactAnimationEvent } from 'react';
 import type { WorkspaceSnapshot } from '../../src/workspace-contracts.ts';
 import { defineText, locale, useLang, useText } from '../i18n.ts';
@@ -34,7 +35,7 @@ export function LevelBadge({ snapshot, refreshKey, onNavigate }: LevelBadgeProps
   const [gain, setGain] = useState<{ total: number } | null>(null);
   // Counts level rises and never resets: the card <span> is never replaced (2026-11-05). A keyed remount
   // removed an element that had just run the pop's transform animation, and its last composited frame could
-  // stay painted beside the fresh card — the «second badge» in the bar. One element, one badge, always.
+  // stay painted beside the fresh card, making a second badge appear in the bar. One element, one badge, always.
   const [pop, setPop] = useState(0);
   const cardRef = useRef<HTMLSpanElement>(null);
 
@@ -42,7 +43,7 @@ export function LevelBadge({ snapshot, refreshKey, onNavigate }: LevelBadgeProps
     const sum = quests.reduce((total, quest) => total + quest.xp, 0);
     setGain(previous => previous ? { total: previous.total + sum } : { total: sum });
   }, []);
-  const { refreshFacts } = useQuestEngine(projectKey, refreshKey, onCompleted);
+  const { refreshFacts, factsFailed, factsLoading } = useQuestEngine(projectKey, refreshKey, onCompleted);
 
   const progress = useQuestProgress(projectKey);
   const done = useMemo(() => new Set(Object.keys(progress)), [progress]);
@@ -81,7 +82,7 @@ export function LevelBadge({ snapshot, refreshKey, onNavigate }: LevelBadgeProps
   }
   function closePanel() {
     setPanelOpen(false);
-    badgeRef.current?.focus();
+    moveFocus(badgeRef.current);
   }
 
   return <>
@@ -92,6 +93,7 @@ export function LevelBadge({ snapshot, refreshKey, onNavigate }: LevelBadgeProps
       {gain !== null && <span className="level-badge-toast" role="status"
         onAnimationEnd={() => setGain(null)}>+{format(gain.total)} XP</span>}
     </button>
-    {panelOpen && <LevelPanel projectKey={projectKey} onClose={closePanel} onNavigate={onNavigate} />}
+    {panelOpen && <LevelPanel projectKey={projectKey} onClose={closePanel} onNavigate={onNavigate}
+      factsFailed={factsFailed} factsLoading={factsLoading} onRefreshFacts={refreshFacts} />}
   </>;
 }

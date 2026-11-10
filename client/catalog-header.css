@@ -1,0 +1,33 @@
+/* 2026-11-10: the Decks tab's header tools, shared by the Decks home (deck-gallery.css) and the card scopes (All cards,
+   Unassigned, a track; card-scope.css), so switching scopes keeps the search, the controls and the track select in
+   place: a 260px search field, the scope choices without their stacked labels and the track select. They are the app's
+   Foil controls (DESIGN.md «Controls»): flat, 2px-cornered choices whose current state carries the mark.
+   The title row itself comes from surface.css on the card scopes. */
+:is(.deck-gallery, .card-scope-view) .deck-gallery-search { flex: 0 1 260px; min-width: 150px; }
+:is(.deck-gallery, .card-scope-view) .deck-gallery-search .catalog-search { height: 30px; padding-inline: 10px 4px; }
+:is(.deck-gallery, .card-scope-view) .deck-gallery-search input { height: 28px; font-size: 13px; }
+:is(.deck-gallery, .card-scope-view) .deck-gallery-search input::-webkit-search-cancel-button { display: none; }
+:is(.deck-gallery, .card-scope-view) .deck-gallery-search button { display: grid; place-items: center; flex: 0 0 24px; width: 24px; height: 24px; padding: 0; border: 0; border-radius: var(--control-radius); background: transparent; color: var(--muted); }
+@media (hover: hover) { :is(.deck-gallery, .card-scope-view) .deck-gallery-search button:hover:not(:disabled) { background: var(--hover); color: var(--ink); } }
+:is(.deck-gallery, .card-scope-view) .deck-gallery-search button:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
+/* 2026-11-10: compact scope controls stay in the project row so filtering does not introduce another panel. */
+:is(.deck-gallery, .card-scope-view) .catalog-browser-navigation { display: flex; align-items: center; gap: 4px; margin: 0; padding: 0; border: 0; }
+:is(.deck-gallery, .card-scope-view) .catalog-nav-section { display: flex; align-items: center; gap: 4px; }
+:is(.deck-gallery, .card-scope-view) .catalog-nav-section > div { display: flex; gap: 4px; }
+:is(.deck-gallery, .card-scope-view) .catalog-nav-section > .catalog-nav-label { display: none; }
+:is(.deck-gallery, .card-scope-view) .catalog-nav-section button { min-height: 30px; padding: 4px 9px; font-size: 13px; }
+:is(.deck-gallery, .card-scope-view) .catalog-track-picker { display: flex; align-items: center; gap: 6px; margin-left: 8px; }
+:is(.deck-gallery, .card-scope-view) .catalog-track-picker .catalog-nav-label { display: none; }
+:is(.deck-gallery, .card-scope-view) .catalog-track-picker > div { display: flex; align-items: center; gap: 4px; min-width: 150px; max-width: 220px; }
+:is(.deck-gallery, .card-scope-view) .catalog-track-picker select { height: 30px; font-size: 13px; }
+/* 2026-11-06: the select takes width: 100%, which squeezed the New track button to 25×30; it keeps the row's 30px square. */
+:is(.deck-gallery, .card-scope-view) .catalog-track-picker .ui-button { flex: 0 0 30px; }
+@media (max-width: 1100px) {
+  /* 2026-11-10: under ~510px the scope controls and the track picker no longer share a line; the picker wraps whole
+     instead of pushing its New track button past the window edge. */
+  :is(.deck-gallery, .card-scope-view) .catalog-browser-navigation { flex-wrap: wrap; row-gap: 8px; }
+}
+@media (max-width: 420px) {
+  :is(.deck-gallery, .card-scope-view) .deck-gallery-search { flex-basis: 100%; }
+  :is(.deck-gallery, .card-scope-view) .catalog-track-picker { margin-left: 0; }
+}

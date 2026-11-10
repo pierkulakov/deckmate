@@ -3,33 +3,29 @@
   top: var(--catalog-content-offset, 0px);
   min-width: 0;
   max-height: calc(var(--catalog-scroll-height, 100dvh) - var(--catalog-content-offset, 0px) - 12px);
-  padding: 0 14px 16px 2px;
   overflow: auto;
   scrollbar-width: thin;
   color: var(--ink);
 }
-.deck-overview-intro { display: flex; align-items: flex-start; justify-content: flex-end; gap: 4px; margin-bottom: 12px; }
-/* 2026-11-07: the description chip carries the deck's own color (DeckSummary sets --overview-accent), with the theme
-   accent as the fallback; 14% over --surface keeps the ink readable in both themes whatever the deck color is. */
-.deck-overview-intro.has-description {
-  padding: 16px;
-  border: .67px solid color-mix(in srgb, var(--overview-accent, var(--accent)) 62%, var(--line));
-  border-radius: 4px;
-  background: color-mix(in srgb, var(--overview-accent, var(--accent)) 14%, var(--surface));
-}
+/* 2026-11-10: the first section's heading row takes the workbench's first row (deck-workbench.css). */
+.deck-overview > :first-child { padding-top: var(--workbench-row-inset, var(--space-3)); }
+/* 2026-11-10: description, metrics, tracks, history and files are sections of one flat sheet split by seams
+   (surface.css .glass-sheet); as separate panels they stacked into capsules. */
+.deck-overview-intro { display: block; }
+.deck-overview-intro:not(.has-description) .panel-head { margin-bottom: 0; }
+.deck-overview-intro.has-description p { padding-left: var(--space-3); border-left: 2px solid color-mix(in srgb, var(--overview-accent, var(--accent)) 62%, var(--line)); }
 .deck-overview-intro p { flex: 1; min-width: 0; margin: 0; font-size: 14px; line-height: 20.6px; white-space: pre-wrap; overflow-wrap: anywhere; }
-.deck-overview .deck-overview-collapse { flex-shrink: 0; width: 25px; height: 25px; padding: 4px; color: var(--muted); }
-.deck-overview-intro.has-description .deck-overview-collapse { margin-top: -3px; }
+.deck-overview .deck-overview-collapse { flex-shrink: 0; width: 30px; height: 30px; padding: 4px; color: var(--muted); }
 /* Deck metrics show six 19×20 state chips with 6 px color bars, priority icons with 3 px share bars (up to 32 px), effort and completion, a 5 px progress bar, card count and owner columns above avatars. */
-:root { --overview-track: #cdc8dc; --overview-bar: #968db6; }
-:root.dark { --overview-track: #645c7e; --overview-bar: #645c7e; }
-.deck-overview-stats { padding: 20px 16px 16px; border: .67px solid var(--line); border-radius: 4px; background: var(--canvas); font-variant-numeric: tabular-nums; }
-.deck-overview-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.deck-overview-stats { --overview-track: var(--line); --overview-bar: var(--muted); font-variant-numeric: tabular-nums; }
+.deck-overview .deck-overview-empty { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.6; }
+.deck-overview-empty p { margin: 0; }
+.deck-overview-row { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 12px; }
 .deck-overview-states { display: flex; gap: 5px; }
 /* 2026-11-07: the state bars share the status badge tokens from styles.css (previously a private palette without a dark
    branch); the accepted progress takes the accepted-metal both themes already use for accepted counters. */
 .deck-overview-state { --state-color: var(--status-planned); display: flex; flex-direction: column; width: 19px; }
-.deck-overview-state strong { display: grid; place-items: center; height: 20px; color: var(--ink); font-size: 12px; font-weight: 700; line-height: 1; }
+.deck-overview-state strong { display: grid; place-items: center; height: 20px; color: var(--ink); font: 500 11px/16px 'Geist Mono', monospace; }
 .deck-overview-state.is-empty strong { color: var(--muted); font-weight: 400; }
 .deck-overview-state::after { content: ""; height: 6px; border-radius: 1px; background: var(--state-color); }
 .deck-overview-state.state-accepted { --state-color: var(--status-accepted); }
@@ -40,45 +36,40 @@
 .deck-overview-state.state-cancelled { --state-color: var(--status-cancelled); }
 .deck-overview-priorities { display: flex; gap: 22px; padding-top: 2px; color: var(--muted); }
 .deck-overview-priority { display: flex; flex-direction: column; align-items: center; gap: 4px; min-width: 18px; }
-.deck-overview-priority > i { display: block; height: 3px; border-radius: 999px; background: var(--overview-bar); }
-.deck-overview-effort { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 18px; color: var(--ink); font-size: 12px; font-weight: 700; }
+.deck-overview-priority > i { display: block; height: 3px; border-radius: var(--control-radius); background: var(--overview-bar); }
+.deck-overview-effort { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 18px; color: var(--ink); font-size: 12px; font-weight: 500; }
 .deck-overview-effort > span { display: inline-flex; align-items: center; gap: 4px; }
 .deck-overview-effort svg { color: var(--muted); }
-.deck-overview-progress { display: block; appearance: none; width: 100%; height: 5px; margin: 6px 0 0; border: 0; border-radius: 999px; overflow: hidden; background: var(--overview-track); }
-.deck-overview-progress::-webkit-progress-bar { background: var(--overview-track); border-radius: 999px; }
-.deck-overview-progress::-webkit-progress-value { background: var(--accepted-metal); border-radius: 999px; }
-.deck-overview-progress::-moz-progress-bar { background: var(--accepted-metal); border-radius: 999px; }
-.deck-overview-count { display: flex; align-items: center; gap: 6px; margin-top: 8px; color: var(--ink); font-size: 12px; }
+.deck-overview-effort strong { font: 500 11px/16px 'Geist Mono', monospace; }
+.deck-overview-progress { display: block; appearance: none; width: 100%; height: 5px; margin: 6px 0 0; border: 0; border-radius: var(--control-radius); overflow: hidden; background: var(--overview-track); }
+.deck-overview-progress::-webkit-progress-bar { background: var(--overview-track); border-radius: var(--control-radius); }
+.deck-overview-progress::-webkit-progress-value { background: var(--accepted-metal); border-radius: var(--control-radius); }
+.deck-overview-progress::-moz-progress-bar { background: var(--accepted-metal); border-radius: var(--control-radius); }
+.deck-overview-count { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 8px; color: var(--ink); font-size: 12px; }
 .deck-overview-count svg { color: var(--muted); }
 .deck-overview-count strong { font-weight: 700; }
 .deck-overview-count > span { color: var(--muted); }
-.deck-overview-owners { display: flex; align-items: flex-end; gap: 6px; min-height: 104px; margin: 16px -16px 0; padding: 16px 16px 0; border-top: .67px solid var(--line); overflow-x: auto; scrollbar-width: thin; }
+.deck-overview-owners { display: flex; align-items: flex-end; gap: 6px; min-height: 104px; margin: 16px -16px 0; padding: 16px 16px 0; border-top: 1px solid var(--glass-seam); overflow-x: auto; scrollbar-width: thin; }
 .deck-overview-owner { display: flex; flex-direction: column; align-items: center; gap: 4px; flex: 0 0 auto; }
-.deck-overview-owner > i { display: block; width: 4px; border-radius: 2px; background: var(--overview-bar); }
+.deck-overview-owner > i { display: block; width: 4px; border-radius: var(--control-radius); background: var(--overview-bar); }
 .deck-overview-owner .card-owner-avatar { width: 24px; height: 24px; }
-.deck-overview-unassigned { display: grid; place-items: center; width: 24px; height: 24px; border-radius: 50%; background: var(--ground); color: var(--ink); font-size: 12px; font-weight: 700; }
+.deck-overview-unassigned { display: grid; place-items: center; width: 24px; height: 24px; border-radius: 50%; background: var(--ground); color: var(--ink); font-size: 12px; font-weight: 500; }
 .deck-overview-note { margin: 10px 0 0; color: var(--muted); font-size: 11px; line-height: 1.5; }
-.deck-overview-tracks { display: flex; flex-wrap: wrap; gap: 4px 10px; margin-top: 13px; }
-.deck-overview-tracks button { display: inline-flex; align-items: center; gap: 5px; max-width: 100%; padding: 4px 0; border: 0; background: none; color: var(--muted); font-size: 11px; text-align: left; }
+.deck-overview-tracks { display: flex; flex-wrap: wrap; gap: 4px 10px; }
+.deck-overview-tracks button { display: inline-flex; align-items: center; gap: 5px; max-width: 100%; padding: 4px 0; border: 0; border-radius: var(--control-radius); background: none; color: var(--muted); font-size: 11px; font-weight: 500; letter-spacing: .01em; text-align: left; }
 .deck-overview-tracks button svg { flex-shrink: 0; }
 .deck-overview-tracks button span { overflow-wrap: anywhere; }
 /* 2026-11-06: the panel scrolls and clips 2 px left of the tracks; a ring at offset 0 stays whole. */
 .deck-overview-tracks button:focus-visible { outline-offset: 0; }
-.deck-overview-tracks button:hover:not(:disabled) { color: var(--ink); text-decoration: underline; text-underline-offset: 3px; }
-.deck-overview > .deck-activity { margin-top: 25px; }
-.deck-overview .deck-activity-heading { margin-bottom: 13px; }
-.deck-overview .deck-activity-heading p { font-size: 10px; }
-.deck-overview .deck-activity-event { gap: 7px; }
-.deck-overview .deck-activity-summary { font-size: 11px; }
-.deck-overview .deck-activity-cards button { padding: 2px 5px; border-color: transparent; background: var(--hover); }
-.deck-overview-files { margin-top: 23px; padding-top: 12px; border-top: 1px solid var(--line); color: var(--muted); font-size: 10px; }
-.deck-overview-files summary { cursor: pointer; }
+@media (hover: hover) { .deck-overview-tracks button:hover:not(:disabled) { color: var(--ink); text-decoration: underline; text-underline-offset: 3px; } }
+.deck-overview-files { color: var(--muted); font-size: 12px; }
+.deck-overview-files summary { border-radius: var(--control-radius); font-weight: 500; cursor: pointer; }
 .deck-overview-files summary > span { margin-left: 5px; font-variant-numeric: tabular-nums; }
 .deck-overview-files > div { display: grid; gap: 3px; padding-top: 8px; }
-.deck-overview-files button { display: flex; align-items: flex-start; gap: 5px; min-width: 0; padding: 5px 0; border: 0; background: none; color: var(--muted); font: inherit; text-align: left; }
+.deck-overview-files button { display: flex; align-items: flex-start; gap: 5px; min-width: 0; padding: 5px 0; border: 0; border-radius: var(--control-radius); background: none; color: var(--muted); font: inherit; font-weight: 500; letter-spacing: .01em; text-align: left; }
 .deck-overview-files button svg { flex-shrink: 0; margin-top: 1px; }
 .deck-overview-files button span { overflow-wrap: anywhere; }
-.deck-overview-files button:hover:not(:disabled) { color: var(--ink); text-decoration: underline; text-underline-offset: 3px; }
+@media (hover: hover) { .deck-overview-files button:hover:not(:disabled) { color: var(--ink); text-decoration: underline; text-underline-offset: 3px; } }
 @media (max-width: 760px) {
   .deck-overview { position: static; max-height: none; overflow: visible; margin-bottom: 12px; padding: 0 0 16px; }
 }

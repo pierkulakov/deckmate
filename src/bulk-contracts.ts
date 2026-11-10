@@ -30,7 +30,7 @@ export interface BulkOutcome {
 export type CopyProperty = 'owner' | 'effort' | 'priority' | 'tags' | 'run' | 'milestone' | 'dueDate' | 'tracks';
 export type BulkChange =
   | { kind: 'properties'; owner?: string | null; effort?: number | null; priority?: CardPriority | null }
-  | { kind: 'state'; state: CardState | (string & {}) }
+  | { kind: 'state'; state: CardState | (string & {}); returnReason?: string | null }
   | { kind: 'create-parent'; cardId: string; title: string; deckId: string | null }
   | { kind: 'promote-parent'; cardId: string; sourceHash: string; expectedParentId: string | null; deckId: string | null }
   | { kind: 'parent'; parentId: string | null; parentSourceHash: string | null }

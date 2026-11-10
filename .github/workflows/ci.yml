@@ -21,6 +21,15 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest]
+        include:
+          - os: ubuntu-latest
+            browser: /usr/bin/google-chrome
+          - os: windows-latest
+            browser: C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe
+    # 2026-11-10: runner-images documents both browsers as installed; a missing executable must fail, never skip UI coverage.
+    env:
+      DECKMATE_BROWSER: ${{ matrix.browser }}
+      DECKMATE_REQUIRE_BROWSER: '1'
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -123,5 +132,7 @@ jobs:
         # Drives the debug shell end to end (launcher, board, bridges, server lifetime) through
         # the page bridges over CDP (2026-11-09). Kept optional: it needs a working WebView2 in
         # the runner's desktop session, and a red smoke must not mask the required checks above.
+        # 2026-11-10: d45d635 introduced this as an environment prerequisite, not a known sleep race;
+        # provision/verify WebView2 and an interactive session before making the window smoke required.
         continue-on-error: true
         run: npm run desktop:smoke

@@ -3,44 +3,41 @@
    In light mode, mint text mixes with ink to reach 4.5:1 on --canvas and --ground. Run bars stay dark in both themes; light-theme state tones mix halfway to bar ink to reach 3:1 (--planning-run-tone). */
 :root { --planning-mint: var(--card-highlight); --planning-mint-text: color-mix(in srgb, var(--card-highlight) 65%, var(--ink)); --planning-idle: var(--muted); --planning-run-fill: var(--accent); --planning-run-ink: var(--surface); --planning-run-tone: 50%; }
 :root.dark { --planning-mint: var(--mint-edge); --planning-mint-text: var(--mint-edge); --planning-idle: var(--tab-idle); --planning-run-fill: var(--violet-fill); --planning-run-ink: var(--violet-fill-ink); --planning-run-tone: 100%; }
-.planning-view.planning-parity { padding: 0 0 40px; min-width: 0; }
-/* Timeline actions use App's global bar portal: a filled violet 32×32 add button, outlined calendar and statistics buttons, 8 px gaps and radius 4. */
+.planning-view.planning-parity { --shelf-inset: var(--space-6); padding: 20px 24px 56px 16px; min-width: 0; }
+/* 2026-11-10: toolbar actions remain in the shared app bar to preserve navigation and focus. */
 .topbar-view-actions { display: contents; }
 .timeline-actions { display: flex; align-items: center; gap: 8px; }
-.timeline-actions .ui-button { width: 32px; height: 32px; min-height: 32px; padding: 0; border-radius: 4px; }
-.timeline-actions .timeline-create { border: 0; background: var(--violet-fill, var(--accent)); color: var(--violet-fill-ink, var(--surface)); }
-.timeline-actions .timeline-create:hover:not(:disabled) { filter: brightness(1.12); }
-.timeline-actions .timeline-tool { border: .67px solid var(--button-line, color-mix(in srgb, var(--accent) 60%, var(--line))); background: transparent; color: var(--button-ink, var(--accent)); }
-.timeline-actions .timeline-tool:hover:not(:disabled) { background: var(--hover); }
-.timeline-actions .timeline-tool[aria-pressed='true'] { border-color: var(--mint-edge, var(--planning-mint)); background: var(--mint, var(--accent-soft)); color: var(--mint-ink, var(--planning-mint-text)); }
-.timeline-actions .ui-button:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.timeline-actions .ui-button { width: 30px; height: 30px; min-height: 30px; padding: 0; border-radius: var(--control-radius); }
+/* 2026-11-10: the Timeline's creating action is the shared mint line and label (the Foil Rule), like Create space and Journey. */
+.timeline-actions .timeline-create { border: var(--control-hairline) solid var(--action-mint-line); background: transparent; color: var(--action-mint-ink); }
+@media (hover: hover) { .timeline-actions .timeline-create:hover:not(:disabled) { border-color: var(--action-mint-line); background: var(--action-mint-hover); color: var(--action-mint-ink); } }
+.timeline-actions .timeline-tool { width: 30px; height: 30px; }
 .planning-order label { display: flex; gap: 10px; align-items: center; color: var(--muted); font-size: 12px; }
-.planning-create-menu { z-index: 120; width: max-content; max-width: calc(100vw - 24px); max-height: var(--radix-dropdown-menu-content-available-height); overflow: auto; padding: 5px; border: 1px solid var(--line); border-radius: 7px; background: var(--surface); color: var(--ink); box-shadow: var(--shadow); animation: overlay-pop var(--motion-spring-quick) var(--ease-spring-quick); }
+.planning-create-menu { z-index: 120; width: max-content; max-width: calc(100vw - 24px); max-height: var(--radix-dropdown-menu-content-available-height); overflow: auto; padding: 5px; border: 1px solid var(--line); border-radius: var(--glass-radius); background: var(--surface); color: var(--ink); box-shadow: var(--shadow); animation: overlay-pop var(--motion-spring-quick) var(--ease-spring-quick); }
 .planning-create-menu [role='menuitem'] { display: flex; align-items: center; min-height: 34px; padding: 7px 10px; border-radius: 4px; outline: none; font-size: 13px; cursor: pointer; }
 .planning-create-menu [role='menuitem'][data-highlighted] { background: var(--hover); }
 .planning-create-menu [role='menuitem']:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
-.planning-parity select { max-width: 100%; padding: 6px 10px; border: 1px solid var(--line); border-radius: 4px; background: var(--ground); color: var(--ink); font: inherit; }
-.planning-parity button:focus-visible, .planning-parity select:focus-visible, .timeline-scroll:focus-visible { outline: 2px solid var(--focus); outline-offset: 3px; }
+.planning-parity select { max-width: 100%; padding: 6px 10px; border: 1px solid var(--control-line); border-radius: var(--control-radius); background: var(--ground); color: var(--ink); font: inherit; }
+.timeline-scroll:focus-visible { outline: 2px solid var(--focus); outline-offset: 3px; }
 /* 2026-11-06: the scale runs edge to edge under the top bar, where an outer ring was cut on the left and top. */
 .timeline-scroll:focus-visible { outline-offset: -2px; }
 .planning-parity .notice, .planning-parity .error-banner { margin: 10px 24px; }
-.planning-empty { padding: 28px 24px; margin: 0; color: var(--muted); font-size: 13px; }
-.planning-collection { background: var(--ground); border-top: 1px solid var(--line); min-width: 0; }
-.planning-collection-header { display: flex; align-items: center; gap: 24px; min-height: 65px; padding: 12px 24px; background: var(--sidebar); }
+.timeline-scope-panel { margin-top: var(--space-4); padding: 0; }
+.planning-collection { min-width: 0; }
+.planning-collection-header { display: flex; align-items: center; flex-wrap: wrap; gap: 12px 24px; min-height: 65px; padding: 12px 24px; }
 .planning-collection-header > div:first-child { min-width: 0; }
-.planning-collection-header h2 { margin: 0; overflow: hidden; font-size: 20px; line-height: 1.3; text-overflow: ellipsis; white-space: nowrap; }
-.planning-collection-header p { margin: 3px 0 0; overflow: hidden; color: var(--muted); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+.planning-collection-header h2 { margin: 0; font-size: 17px; font-weight: 600; line-height: 24px; overflow-wrap: anywhere; }
+.planning-collection-header p { margin: 3px 0 0; color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
 .planning-count { flex-shrink: 0; font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
-/* «My cards» before the plan search: a 24 px outlined chip that turns mint while it filters (2026-11-05). */
-.planning-mine { flex-shrink: 0; height: 24px; margin-left: auto; padding: 0 7px; border: .67px solid var(--button-line, var(--accent)); border-radius: 4px; background: transparent; color: var(--button-ink, var(--accent)); font-size: 12px; font-weight: 700; line-height: 14px; cursor: pointer; }
-.planning-mine:hover { background: var(--hover); }
-.planning-mine[aria-pressed='true'] { border-color: var(--mint-edge, var(--planning-mint)); background: var(--mint, var(--accent-soft)); color: var(--mint-ink, var(--planning-mint-text)); }
-.planning-mine:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+/* 2026-11-10: the active filter uses the shared mark instead of a filled chip. */
+.planning-mine { flex-shrink: 0; height: 24px; margin-left: auto; padding: 0 7px; border: .67px solid var(--control-line); border-radius: var(--control-radius); background: transparent; color: var(--button-ink, var(--accent)); font-size: 12px; font-weight: 500; line-height: 14px; cursor: pointer; }
+@media (hover: hover) { .planning-mine:hover { border-color: var(--button-line); background: var(--hover); } .planning-mine[aria-pressed="true"]:hover { border-color: var(--mark); background: var(--mark-tint-strong); } }
 /* 2026-11-06: plain buttons of the plan press 1px like the shared .ui-button. */
 .planning-mine:active:not(:disabled), .planning-overview-title:active:not(:disabled) { translate: 0 1px; }
 .planning-mine + .planning-search { margin-left: 0; }
-.planning-search { display: flex; align-items: center; gap: 8px; width: min(350px, 30vw); margin-left: auto; padding: 5px 9px; background: var(--ground); border: 1px solid var(--line); border-radius: 4.8px; color: var(--muted); }
-.planning-search:focus-within { outline: 2px solid var(--focus); }
+.planning-mine[aria-pressed="true"] { border-color: var(--mark); background: var(--mark-tint); color: var(--mark); }
+.planning-search { border: var(--control-hairline) solid var(--control-field-line); border-radius: var(--control-radius); background: var(--control-field); display: flex; align-items: center; gap: 8px; width: min(350px, 30vw); margin-left: auto; padding: 5px 9px; color: var(--muted); }
+.planning-search:focus-within { border-color: var(--focus); box-shadow: inset 0 0 0 1px var(--focus); }
 .planning-search input { width: 100%; min-width: 0; border: 0; outline: 0; color: var(--ink); background: transparent; font-size: 12px; }
 .planning-search input::placeholder { color: var(--muted); }
 .planning-progress { display: flex; width: 100%; height: 6px; overflow: hidden; background: var(--planning-idle); }
@@ -48,18 +45,15 @@
 .planning-progress > span { height: 100%; background: currentColor; }
 .planning-progress > .status-accepted { background: var(--accepted-metal); }
 .planning-collection-body { display: flex; gap: 24px; align-items: flex-start; padding: 20px 24px 32px 12px; }
-.planning-rail { width: 32px; flex-shrink: 0; display: flex; flex-direction: column; gap: 10px; }
-.planning-rail button { width: 32px; height: 32px; border-radius: 4px; }
-.planning-rail button[aria-pressed='true'] { background: var(--accent-soft); color: var(--focus); }
+.planning-rail { width: 36px; flex-shrink: 0; }
 .planning-details { width: min(31vw, 440px); flex-shrink: 0; min-width: 260px; }
 .planning-cards { flex: 1; min-width: 0; }
 .planning-order { display: flex; gap: 16px; align-items: center; justify-content: space-between; margin-bottom: 16px; color: var(--muted); font-size: 12px; }
 .planning-card-group { padding: 0 0 24px; min-height: 64px; }
 .planning-card-group h3 { display: flex; gap: 12px; margin: 0 0 14px; font-size: 12px; font-weight: 400; color: var(--muted); }
 .planning-card-group h3 span { font-variant-numeric: tabular-nums; }
-.planning-card-grid { display: grid; grid-template-columns: repeat(auto-fill, 115px); gap: 16px; }
+.planning-card-grid { display: grid; grid-template-columns: repeat(auto-fill, var(--tile-width)); gap: var(--tile-gap); }
 .planning-card-grid > div { min-width: 0; }
-.planning-card-grid .deck-card { width: 115px; }
 /* 2026-11-06: light mode fills the bar with the pale doc band, so it takes the page ink; the done-band white read at 1.7:1. */
 .planning-selection { display: flex; align-items: center; gap: 12px; min-height: 44px; padding: 0 16px; background: var(--mint, var(--doc-metal)); color: var(--mint-ink, var(--ink)); }
 .planning-selection > span { flex-shrink: 0; font-size: 12px; white-space: nowrap; }
@@ -91,11 +85,12 @@
    A #bababa multiply layer dims the past up to the current hour. Today's label ends at a 4 px mint edge and reserves 34 px so its marker cannot cover the date. Both scroll edges fade over 48 px. */
 :root { --timeline-axis-ink: var(--muted); --timeline-week-edge: var(--line); --timeline-week-current: var(--planning-mint-text); --timeline-past: #ebe6f0; --timeline-now-fade: color-mix(in srgb, var(--canvas) 70%, var(--muted)); --timeline-plate: var(--accent-soft); --timeline-plate-edge: color-mix(in srgb, var(--accent) 62%, var(--line)); --timeline-plate-ink: var(--ink); --timeline-plate-title: var(--ink); }
 :root.dark { --timeline-axis-ink: #e3dff0; --timeline-week-edge: #645c7e; --timeline-week-current: #4cc9b0; --timeline-past: #bababa; --timeline-now-fade: var(--panel-box-line); --timeline-plate: #381d4e; --timeline-plate-edge: var(--button-line); --timeline-plate-ink: var(--button-ink); --timeline-plate-title: #faf8ff; }
-.timeline-band { position: relative; background: var(--canvas); border-bottom: 1px solid var(--line); }
+.timeline-axis-panel { padding: 0; overflow: hidden; }
+.timeline-band { position: relative; overflow: hidden; border-radius: inherit; }
 .timeline-band::before, .timeline-band::after { content: ""; position: absolute; z-index: 5; top: 8px; bottom: 18px; width: 48px; pointer-events: none; }
 .timeline-band::before { left: 0; background: linear-gradient(90deg, color-mix(in srgb, var(--canvas) 75%, var(--sidebar)), transparent); }
 .timeline-band::after { right: 0; background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--canvas) 75%, var(--sidebar))); }
-.timeline-scroll { width: 100%; padding: 8px 0; overflow-x: auto; overflow-y: hidden; touch-action: pan-x; cursor: grab; }
+.timeline-scroll { width: 100%; padding: 8px 0; overflow-x: auto; overflow-y: hidden; background: var(--canvas); touch-action: pan-x; cursor: grab; }
 .timeline-scroll:active { cursor: grabbing; }
 .timeline-canvas { position: relative; user-select: none; }
 .timeline-past { position: absolute; inset: 0 auto 0 0; background: var(--timeline-past); mix-blend-mode: multiply; pointer-events: none; }
@@ -110,11 +105,13 @@
 .timeline-milestone-marker > span { width: 21px; height: 21px; border: 2px solid color-mix(in srgb, currentColor 60%, var(--ink)); border-radius: 4px; transform: rotate(45deg); background: currentColor; }
 .timeline-milestone-marker.is-past > span { background: var(--canvas); border-color: currentColor; }
 .timeline-milestone-marker[aria-pressed='true'] > span { outline: 2px solid var(--planning-mint); outline-offset: 3px; }
-/* 2026-11-05 (layout B): Milestones and due dates keep a row each; marks that would touch merge into the earliest, which
+/* 2026-11-05: Milestones and due dates keep a row each; marks that would touch merge into the earliest, which
    carries a mint «+N» and opens a list. Today is also a thin mint line from below the month names to the bottom, under the Run bars. */
 .timeline-mark { display: contents; }
 /* 2026-11-06: light text on the light-mode mint reached 3.2:1; the deeper mint text tone carries it at 5.4:1 (the same mint in dark). */
-.timeline-milestone-marker .timeline-cluster-count, .timeline-due-marker .timeline-cluster-count { position: absolute; top: -6px; right: -9px; min-width: 18px; padding: 0 4px; border-radius: 9px; background: var(--planning-mint-text); color: var(--mint-ink, var(--surface)); font-size: 10px; font-weight: 700; line-height: 16px; text-align: center; }
+.timeline-milestone-marker .timeline-cluster-count, .timeline-due-marker .timeline-cluster-count { position: absolute; top: -6px; right: -9px; min-width: 18px; padding: 0 4px; border-radius: var(--control-radius); background: var(--planning-mint-text); color: var(--planning-cluster-ink); font: 500 11px/16px 'Geist Mono', monospace; text-align: center; }
+/* 2026-11-10: mint-ink on the light theme's deep teal read at 1.6:1; white reads at 5.5:1. The dark mint keeps mint-ink. */
+:root { --planning-cluster-ink: #ffffff; } :root.dark { --planning-cluster-ink: var(--mint-ink); }
 .timeline-now-line { position: absolute; bottom: 0; width: 2px; margin-left: -1px; background: var(--planning-mint); opacity: .6; pointer-events: none; }
 .timeline-cluster-menu [role='menuitem'] { gap: 8px; }
 .timeline-cluster-menu [role='menuitem'] small { margin-left: auto; padding-left: 16px; color: var(--muted); font-size: 11px; }
@@ -133,7 +130,7 @@
 .timeline-run[aria-pressed='true'] { outline: 2px solid var(--planning-mint); outline-offset: 1px; }
 .timeline-run.is-active:where(:not([aria-pressed='true'])) { outline: 1px dashed var(--planning-mint); outline-offset: 1px; }
 .timeline-run.is-past { background: var(--accent-soft); color: var(--ink); }
-.planning-overview { padding: 24px; }
+.planning-overview { margin-top: var(--space-4); padding: var(--space-4) var(--shelf-inset); }
 .planning-overview-row { display: grid; grid-template-columns: 180px minmax(0, 1fr); gap: 24px; padding: 20px 0; border-bottom: 1px solid var(--line); }
 .planning-overview-title { display: flex; flex-direction: column; align-items: flex-start; gap: 9px; padding: 0; background: transparent; border: 0; color: var(--ink); text-align: left; }
 .planning-overview-title .planning-overview-name { font-size: 16px; overflow-wrap: anywhere; }
@@ -146,18 +143,17 @@
 .planning-overview-row .planning-stats-section { margin: 0; }
 .planning-diamond { display: inline-block; width: 12px; height: 12px; margin: 3px; border: 1px solid currentColor; border-radius: 2px; background: currentColor; transform: rotate(45deg); flex-shrink: 0; }
 .planning-calendar-overlay { position: fixed; inset: 0; z-index: 110; background: color-mix(in srgb, var(--sidebar) 75%, transparent); animation: backdrop-fade var(--motion-spring-firm) ease-out; }
-.planning-calendar { position: fixed; z-index: 111; top: 50%; left: 50%; transform: translate(-50%, -50%); width: min(840px, calc(100vw - 32px)); max-height: calc(100dvh - 32px); overflow: auto; padding: 22px; border: 1px solid var(--line); border-radius: 8px; background: var(--canvas); color: var(--ink); animation: dialog-drop var(--motion-spring-firm) var(--ease-spring-firm); }
+.planning-calendar { position: fixed; z-index: 111; top: 50%; left: 50%; transform: translate(-50%, -50%); width: min(840px, calc(100vw - 32px)); max-height: calc(100dvh - 32px); overflow: auto; padding: 22px; border: 1px solid var(--line); border-radius: var(--glass-radius); background: var(--canvas); color: var(--ink); animation: dialog-drop var(--motion-spring-firm) var(--ease-spring-firm); }
 .planning-calendar > header { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
 .planning-calendar h2 { margin: 0; font-size: 20px; }
 .planning-calendar > p { margin: 8px 0 20px; color: var(--muted); font-size: 12px; }
 /* Timeline creation and Milestone header actions, 2026-11-05. */
 .planning-scope-actions { display: flex; flex-shrink: 0; align-items: center; gap: 8px; }
 .planning-scope-actions button[aria-pressed='true'] { color: var(--planning-mint-text); background: var(--accent-soft); }
-.planning-calendar button:focus-visible, .planning-calendar input:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 .planning-calendar-editing, .planning-delete-dialog { width: min(480px, calc(100vw - 32px)); }
 .planning-create-form fieldset { display: flex; flex-direction: column; gap: 18px; padding: 0; margin: 0; border: 0; min-width: 0; }
 .planning-create-form label:not(.planning-checkbox) { display: flex; flex-direction: column; gap: 6px; font-size: 13px; }
-.planning-create-form input:not([type='checkbox']) { width: 100%; min-width: 0; height: 36px; padding: 6px 10px; border: 1px solid var(--line); border-radius: 5px; background: var(--ground); color: var(--ink); font: inherit; }
+.planning-create-form input:not([type='checkbox']) { width: 100%; min-width: 0; height: 36px; padding: 6px 10px; border: 1px solid var(--control-line); border-radius: var(--control-radius); background: var(--ground); color: var(--ink); font: inherit; }
 .planning-form-dates { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
 .planning-checkbox { display: flex; flex-direction: row; align-items: center; gap: 8px; min-width: 0; color: var(--ink); font-size: 13px; cursor: pointer; }
 .planning-checkbox:has(input:disabled) { color: var(--muted); cursor: default; }
@@ -171,13 +167,9 @@
 .planning-delete-confirm { color: var(--danger); }
 .planning-calendar .error-banner { margin: 0 0 16px; }
 .planning-diamond.is-past { background: transparent; }
-/* The empty-selection notice uses 24 px margin, 16 px padding, a .67 px edge and radius 4. A 20 px info icon sits 12 px before the text; a 16/700 title sits 4 px above 14/400 body text. */
-.timeline-nothing { display: flex; align-items: flex-start; gap: 12px; margin: 24px; padding: 16px; border: .67px solid var(--timeline-plate-edge); border-radius: 4px; background: var(--timeline-plate); color: var(--timeline-plate-ink); }
-.timeline-nothing > svg { flex: 0 0 auto; }
-.timeline-nothing > div { display: flex; flex-direction: column; gap: 4px; min-width: 0; padding-top: 1px; }
-.timeline-nothing h2 { margin: 0; color: var(--timeline-plate-title); font-size: 16px; font-weight: 700; line-height: 18px; }
-.timeline-nothing p { margin: 0; font-size: 14px; line-height: 18px; }
-.timeline-nothing p svg { display: inline-block; vertical-align: -3px; }
+/* 2026-11-10: the selection placeholder is a shared empty state on the same glass as the axis. */
+.timeline-nothing { margin-top: var(--space-4); }
+.timeline-nothing h2 { overflow-wrap: anywhere; }
 .timeline-run, .timeline-milestone-marker, .timeline-due-marker { transition: filter var(--motion-feedback) var(--ease-out); }
 .timeline-run:hover:not(:disabled), .timeline-milestone-marker:hover:not(:disabled), .timeline-due-marker:hover:not(:disabled) { filter: brightness(1.12); }
 .timeline-run:active:not(:disabled), .timeline-milestone-marker:active:not(:disabled), .timeline-due-marker:active:not(:disabled) { filter: brightness(.96); }
@@ -188,9 +180,10 @@
   .planning-overview-row .planning-stats { grid-template-columns: repeat(2, minmax(100px, 1fr)); }
 }
 @media (max-width: 760px) {
+  .planning-view.planning-parity { --shelf-inset: var(--space-3); padding: 16px 12px 40px; }
   .planning-collection-header { padding: 12px 16px; flex-wrap: wrap; gap: 12px; }
   .planning-collection-header > div:first-child { flex-basis: 100%; }
-  .planning-collection-header h2, .planning-collection-header p { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; white-space: normal; overflow-wrap: anywhere; }
+  .planning-collection-header h2, .planning-collection-header p { white-space: normal; overflow-wrap: anywhere; }
   .planning-search { width: 100%; margin-left: 0; }
   .planning-collection-body { display: grid; grid-template-columns: 32px minmax(0, 1fr); padding: 16px 12px; }
   .planning-details { width: 100%; }

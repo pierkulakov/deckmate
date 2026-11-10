@@ -7,7 +7,7 @@
 `NSIS_HOOK_PREINSTALL` runs inside Tauri's Install section, before Tauri copies files, writes registry keys or creates shortcuts:
 
 1. **Per-user Electron install** (the electron-builder default): if `HKCU\Software\<GUID>` `InstallLocation` or the uninstall key says one exists, close a running `Deckmate.exe` (ask first, like Tauri does for its own app; kill it when the installer is silent; abort with a message if it will not close), then run the old `Uninstall Deckmate.exe` silently (`/S /currentuser _?=<folder>`), wait for it and record its exit code.
-2. **Per-machine Electron install** (user picked "all users" back then): same, with `/S /allusers`. Elevated: the old uninstaller runs in place and synchronously. Not elevated: the user is told first, then the old uninstaller raises the UAC prompt itself. If its executable or registration survives, installation stops instead of creating a second Apps entry.
+2. **Per-machine Electron install** (user picked "all users" back then): detects either `InstallLocation` or `UninstallString`, then uses the same removal path with `/S /allusers`. If only `UninstallString` survives, the hook extracts the executable path (quoted paths and unquoted paths with spaces are supported), checks the exact `Uninstall Deckmate.exe` filename and a local absolute path, and normalizes its parent directory. The directory must be the old default `%ProgramFiles%\Deckmate` (32- or 64-bit), or contain both `Deckmate.exe` and `resources\app.asar` as evidence of a custom Electron installation. Unknown paths, wildcards and malformed quotes abort without executing anything or removing registration. Registry arguments are never executed: the hook constructs its own command with only the known switches. Elevated: the old uninstaller runs in place and synchronously. Not elevated: the user is told first, then the old uninstaller raises the UAC prompt itself. If its executable or registration survives, installation stops instead of creating a second Apps entry.
 3. **A failed uninstall is never masked as a stale install**: when the old `Deckmate.exe` still exists, the hook keeps the old registry registration, shows a bilingual error and aborts before Tauri writes anything. The old uninstaller's exit code is printed in the install log. Only when no old executable remains is the registration considered stale: its uninstall/install keys and shortcuts into the old folder are removed and installation continues. This also covers a missing uninstaller with binaries still present — that case aborts rather than leaving unregistered binaries. **Validation precedes cleanup in every branch**: per-user and elevated per-machine runs call `DECKMATE_OLD_CHECK_UNINSTALL` before deleting the in-place uninstaller or its empty folder; the non-elevated branch additionally rejects a surviving uninstall registration before that cleanup. A failed run therefore leaves the old uninstaller, registration and shortcuts available for a retry or removal from Windows Settings instead of making every retry fail on the same surviving binary.
 4. **User data is never touched by installation or update**: the hook never passes `--delete-app-data`, so `%APPDATA%\Deckmate` (`desktop.json` with recent projects, language, zoom, window bounds, plus the index) survives the replacement; `RMDir` calls take only empty folders. The only way the folder ever goes is an explicit "delete app data" uninstall — item 6.
 5. **Over-the-air updates skip all of this** (2026-11-09): when the in-app updater runs the installer with `/UPDATE` (`$UpdateMode = 1`), the hook does nothing. The first Tauri installation already removed Electron, and repeating the per-machine branch would show its notice and a UAC prompt on every update.
@@ -53,10 +53,23 @@ Add this to `desktop/src-tauri/tauri.release.conf.json` (it is merged over `taur
 
 ## Testing
 
+Detection/removal cases (2026-11-10):
+
+| Registration / files | Expected result |
+|---|---|
+| HKCU: either legacy key remains | Existing per-user removal and stale-registration cleanup |
+| HKLM: `InstallLocation` remains | Existing per-machine removal path |
+| HKLM: only `UninstallString`, valid legacy path | Recover directory and run the same per-machine checks/removal |
+| HKLM: only `UninstallString`, default directory, binaries already gone | Elevated cleanup of stale keys and matching shortcuts |
+| HKLM: custom directory with spaces, quoted or unquoted executable | Accept only the exact uninstaller name plus `Deckmate.exe` and `resources\app.asar` |
+| HKLM: foreign filename/directory, relative/UNC path, wildcard, broken quote or insufficient custom-install evidence | Abort; preserve keys and files; repair/remove the old installation manually |
+| Old app survives uninstall, or unelevated HKLM registration survives | Abort; leave registration and uninstaller available for retry |
+| `/UPDATE` | Skip migration; preserve user data |
+
 Syntax check, no build needed:
 
 ```sh
-"%LOCALAPPDATA%\tauri\NSIS\makensis.exe" desktop/src-tauri/windows/hooks-syntax-check.nsi
+"%LOCALAPPDATA%\tauri\NSIS\makensis.exe" -INPUTCHARSET UTF8 desktop/src-tauri/windows/hooks-syntax-check.nsi
 ```
 
 The check script stubs the `nsis_tauri_utils` plugin and `IsShortcutTarget` (both come from the bundler in a real build), declares the `UpdateMode` and `DeleteAppDataCheckboxState` variables the bundler's installer.nsi provides, and compiles both hooks — the install one in a plain section, the uninstall one in an `un.` section; success means they parse. Nothing runs.
@@ -70,3 +83,5 @@ By hand, on a scratch machine or VM:
 5. Variant: delete both the old `Deckmate.exe` and `Uninstall Deckmate.exe` before step 2 — the installer must finish, with the stale entry and the old shortcuts gone.
 6. Variant: make the old uninstaller fail while leaving `Deckmate.exe` behind (or delete only the uninstaller) — installation must abort with the current language's clear error, retain the old Apps entry and leave the old binary untouched; a retry must remain possible.
 7. Variant: uninstall Deckmate with the "delete app data" checkbox checked — `%APPDATA%\Deckmate` is removed; unchecked, or a silent `/S` uninstall — it survives, and an in-app update keeps it too.
+8. On the admin VM, export the old HKLM keys for rollback, delete only `InstallLocation`, and leave `UninstallString`. Repeat with a normal install and with both old executables deleted in the default directory. Run the new installer elevated: expect one Apps entry, matching old shortcuts removed and `desktop.json` unchanged. Without elevation, declining UAC or leaving an undeletable registration must stop installation, not create a second entry.
+9. Repeat the `UninstallString`-only case in a custom directory containing spaces and the Electron markers, with both quoted and unquoted executable paths and trailing `/allusers` arguments. Expect removal through the same validated directory. Replace the command with a harmless foreign executable, a wrong basename, a directory without markers, a relative/UNC path, a wildcard or a missing closing quote: installation must abort, the foreign executable must never run, and registration/files/settings must remain intact. A fully stripped custom directory without identifying markers deliberately needs manual repair/removal rather than guessed cleanup.

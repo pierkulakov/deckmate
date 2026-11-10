@@ -5,6 +5,7 @@ import type { CatalogCard, CatalogJourneyStep, CatalogMember } from '../../src/c
 import { openDependencies } from '../../src/dependency-contracts.ts';
 import { subCardStateLabel, subCardVisualState } from '../sub-card-state.ts';
 import { useLang, useText, type Lang } from '../i18n.ts';
+import { moveFocus } from '../focus.ts';
 import { journeyStepTitle } from './journey-step-title.ts';
 import { JourneyTrackMenu, journeyTrackText, type JourneyTrackStepModel } from './JourneyTrackMenu.tsx';
 
@@ -115,7 +116,7 @@ function JourneyTrackList({ steps, label, disabled, onOpen }: {
   }, [disabled]);
   const register = useCallback((index: number, button: HTMLButtonElement | null) => { buttons.current[index] = button; }, []);
   const count = steps.length;
-  const moveFocus = useCallback((event: KeyboardEvent<HTMLButtonElement>, index: number) => {
+  const moveTrackFocus = useCallback((event: KeyboardEvent<HTMLButtonElement>, index: number) => {
     let target = index;
     if (event.key === 'ArrowRight') target = Math.min(count - 1, index + 1);
     else if (event.key === 'ArrowLeft') target = Math.max(0, index - 1);
@@ -123,7 +124,7 @@ function JourneyTrackList({ steps, label, disabled, onOpen }: {
     else if (event.key === 'End') target = count - 1;
     else return;
     event.preventDefault();
-    buttons.current[target]?.focus();
+    moveFocus(buttons.current[target]);
   }, [count]);
   const entry = steps.find(step => step.next) ?? steps.find(step => step.state === 'blocked') ?? steps.at(-1);
   const tabStop = steps.find(step => step.card.id === focusedId) ?? entry;
@@ -131,7 +132,7 @@ function JourneyTrackList({ steps, label, disabled, onOpen }: {
     if (!event.currentTarget.contains(event.relatedTarget)) setFocusedId(null);
   }}>
     {steps.map((step, index) => <JourneyTrackStep key={step.card.id} step={step} index={index} tabStop={step === tabStop} disabled={disabled}
-      mayOpen={mayOpen} register={register} onFocus={setFocusedId} onKeyDown={moveFocus} onOpen={onOpen} />)}
+      mayOpen={mayOpen} register={register} onFocus={setFocusedId} onKeyDown={moveTrackFocus} onOpen={onOpen} />)}
   </ol>;
 }
 
@@ -152,7 +153,7 @@ export function JourneyTrack({ title, version, description, members, cards, step
   const blocked = models.find(model => model.state === 'blocked');
   const waitingTitle = blocked && (openDependencies(blocked.card.dependsOn, cardsById)[0]?.title ?? blocked.card.dependsOn?.[0] ?? blocked.card.title);
   const instanceId = models[0]?.card.journey?.instanceId ?? '';
-  // 2026-11-08, author: a soft plate with two rows — the Journey (menu), version and counter; then the run with Next.
+  // 2026-11-08: a soft plate with two rows — the Journey (menu), version and counter; then the run with Next.
   return <section className="card-preview-journey-progress" aria-label={t.progress}>
       <header className="journey-track-header">
         <JourneyTrackMenu title={title} version={version} description={description} members={members} steps={models}

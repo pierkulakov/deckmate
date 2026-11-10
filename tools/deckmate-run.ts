@@ -7,9 +7,38 @@ import remarkParse from 'remark-parse';
 import { launcherInvocation, markdownHeader, readAgentsConfig, type AgentsConfig } from '../server/agents-config.ts';
 import { spawnLauncher, type LauncherInvocation } from '../server/launch-process.ts';
 import { runAsScript, type ExitCodeError } from '../server/cli-entry.ts';
+import { defineText, serverText } from '../server/i18n.ts';
 import { guardProjectPath, projectDeckmateHome } from './deckmate-skills.ts';
 import { markerWords } from '../src/format-vocabulary.ts';
 import { localIsoDate } from '../src/catalog-hand.ts';
+
+const messages = defineText({
+  agentsHelp: `Usage: deckmate agents run <workflow> <area> [--project <folder>] [--dry] [--roles research,code] [--lens <file>] [--out <folder>]
+
+Writes a tz-<role>.md assignment for every "## Assignment:" section of the workflow and starts the launchers
+configured in tasks/deckmate-agents.md; --dry writes and prints them without launching anything.
+
+Options: --project <folder> · --dry · --roles <research,code> · --lens <file> · --out <folder>
+Example: deckmate agents run analyze fx --dry --project <folder>
+
+Other Deckmate entry points: deckmate · deckmate init <folder> · deckmate project <command> · deckmate skills <install|status>
+See deckmate --help for the full overview.`,
+  usage: 'Usage: deckmate agents run <workflow> <area> [--project <folder>] [--dry] [--roles research,code] [--lens <file>] [--out <folder>]',
+  rolesValue: '--roles: expected a comma-separated list of roles',
+}, {
+  agentsHelp: `Использование: deckmate agents run <workflow> <area> [--project <папка>] [--dry] [--roles research,code] [--lens <файл>] [--out <папка>]
+
+Записывает tz-<роль>.md для каждой секции "## Assignment:" сценария и запускает лаунчеры, настроенные в
+tasks/deckmate-agents.md; --dry записывает и печатает задания, ничего не запуская.
+
+Опции: --project <папка> · --dry · --roles <research,code> · --lens <файл> · --out <папка>
+Пример: deckmate agents run analyze fx --dry --project <папка>
+
+Другие входы Deckmate: deckmate · deckmate init <папка> · deckmate project <команда> · deckmate skills <install|status>
+Полный обзор: deckmate --help.`,
+  usage: 'Использование: deckmate agents run <workflow> <area> [--project <папка>] [--dry] [--roles research,code] [--lens <файл>] [--out <папка>]',
+  rolesValue: '--roles: ожидается список ролей через запятую',
+});
 
 export interface RunOptions {
   project?: string;
@@ -235,12 +264,15 @@ export function runSummary(run: Awaited<ReturnType<typeof runWorkflow>>): string
 export async function agentsCli(args = process.argv.slice(2)): Promise<number> {
   const { values, positionals } = parseArgs({ args, allowPositionals: true,
     options: { project: { type: 'string' }, dry: { type: 'boolean' }, roles: { type: 'string' },
-      lens: { type: 'string' }, out: { type: 'string' } } });
+      lens: { type: 'string' }, out: { type: 'string' }, help: { type: 'boolean', short: 'h' } } });
+  // 2026-11-09: --help and -h answer with usage before the positional check, like the other entries.
+  if (values.help) { console.log(serverText(messages).agentsHelp); return 0; }
+  const text = serverText(messages);
   if (positionals.length !== 3 || positionals[0] !== 'run') {
-    throw new Error('Usage: deckmate agents run <workflow> <area> [--project <folder>] [--dry] [--roles research,code] [--lens <file>] [--out <folder>]');
+    throw new Error(text.usage);
   }
   const roles = values.roles?.split(',').map(role => role.trim());
-  if (roles?.some(role => !role)) throw new Error('--roles: expected a comma-separated list of roles');
+  if (roles?.some(role => !role)) throw new Error(text.rolesValue);
   const run = await runWorkflow(positionals[1], positionals[2], {
     project: values.project, dry: values.dry, roles, lens: values.lens, out: values.out,
   });

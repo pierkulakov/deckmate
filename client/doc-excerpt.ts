@@ -5,7 +5,7 @@ import { cardBody, rememberByRevision } from './card-word-count.ts';
 
 export type DocExcerptBlock = { heading: boolean; text: string };
 
-// 2026-11-09: a Doc tile opens on its own text (the author's choice «Страница»). A face shows about six short lines, so
+// 2026-11-09: a Doc tile opens on its own text. A face shows about six short lines, so
 // only the start of the body is parsed and a few hundred characters are kept.
 const sourceLimit = 1600;
 const textLimit = 320;

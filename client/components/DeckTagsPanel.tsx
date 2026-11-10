@@ -2,16 +2,21 @@ import { useId, useMemo } from 'react';
 import type { CatalogCard } from '../../src/catalog-contracts.ts';
 import type { ProjectTag } from '../../src/project-tags.ts';
 import { TagBadge } from './CardTags.tsx';
+import { EmptyState } from './EmptyState.tsx';
 import '../deck-panels.css';
 import { defineText, locale, useLang, useText } from '../i18n.ts';
 
 const text = defineText({
   heading: 'Tags', selectByTags: 'Display and select by tags', match: 'Tag match',
+  empty: 'No tags on these cards yet. Add #tags in card text.',
+  noVisibleCards: 'No cards are shown, so there are no tags to pick.',
   allTags: 'Cards with all selected tags', anyTag: 'Cards with any selected tag',
   selectUntagged: 'Select cards without tags', notTagged: 'Not tagged',
   selectTag: (name: string) => `Select cards tagged #${name}`,
 }, {
   heading: 'Теги', selectByTags: 'Показ и выбор по тегам', match: 'Совпадение тегов',
+  empty: 'Тегов на этих карточках пока нет. Добавляйте #теги в тексте карточек.',
+  noVisibleCards: 'Карточки не показаны, поэтому выбирать теги не из чего.',
   allTags: 'Карточки со всеми выбранными тегами', anyTag: 'Карточки с любым из выбранных тегов',
   selectUntagged: 'Выбрать карточки без тегов', notTagged: 'Без тегов',
   selectTag: (name: string) => `Выбрать карточки с тегом #${name}`,
@@ -79,24 +84,25 @@ export function DeckTagsPanel({ cards, projectTags = [], pick, active, disabled 
     onPick({ ...current, tags });
   }
 
-  return <section className="deck-panel deck-tags-panel" aria-labelledby={headingId}>
-    <h3 id={headingId}>{t.heading}</h3>
+  return <section className="deck-panel deck-tags-panel glass-panel" aria-labelledby={headingId}>
+    <header className="panel-head"><h3 className="panel-title" id={headingId}>{t.heading}</h3><span className="panel-count page-number">{numberFormat.format(rows.tags.length)}</span></header>
     <fieldset className="deck-tags-body" disabled={disabled}>
       <legend className="visually-hidden">{t.selectByTags}</legend>
       <div className="deck-tags-modes" role="group" aria-label={t.match}>
-        {(['and', 'or'] as const).map(mode => <button key={mode} type="button" className="deck-panel-button" disabled={!combinable}
+        {(['and', 'or'] as const).map(mode => <button key={mode} type="button" className="deck-panel-button control" disabled={!combinable}
           aria-pressed={combinable && current.mode === mode} title={mode === 'and' ? t.allTags : t.anyTag}
           onClick={() => onPick({ ...current, mode })}>{mode}</button>)}
       </div>
       <div className="deck-tags-list">
-        <button type="button" className="deck-panel-button is-wide deck-tag-row" aria-pressed={current.notTagged} disabled={rows.notTagged === 0}
+        {rows.tags.length === 0 && <EmptyState message={cards.length === 0 ? t.noVisibleCards : t.empty} />}
+        <button type="button" className="deck-panel-button control is-wide deck-tag-row" aria-pressed={current.notTagged} disabled={rows.notTagged === 0}
           title={t.selectUntagged} onClick={() => onPick({ ...current, notTagged: !current.notTagged })}>
-          <span className="deck-tag-name">{t.notTagged}</span><span className="deck-tag-count">{numberFormat.format(rows.notTagged)}</span>
+          <span className="deck-tag-name">{t.notTagged}</span><span className="deck-tag-count page-number">{numberFormat.format(rows.notTagged)}</span>
         </button>
-        {rows.tags.map(tag => <button key={tag.name} type="button" className={'deck-panel-button is-wide deck-tag-row' + (tag.project ? ' is-project' : '')}
+        {rows.tags.map(tag => <button key={tag.name} type="button" className={'deck-panel-button control is-wide deck-tag-row' + (tag.project ? ' is-project' : '')}
           aria-pressed={current.tags.includes(tag.name)} title={t.selectTag(tag.name)} onClick={() => toggleTag(tag.name)}>
           <TagBadge name={tag.name} definition={tag.project} />
-          <span className="deck-tag-count">{numberFormat.format(tag.count)}</span>
+          <span className="deck-tag-count page-number">{numberFormat.format(tag.count)}</span>
         </button>)}
       </div>
     </fieldset>

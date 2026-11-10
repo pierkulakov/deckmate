@@ -35,6 +35,7 @@ Deckmate is a local project board over Markdown. The files in the user's project
 - **Legacy names** (`FREETION_*` variables, `freetion` keys, `tasks/freetion*.md`) are read for compatibility; new data is written with `deckmate` names.
 - **Dependencies.** No new package without a maintainer's approval; OSI-approved licenses only. Never commit secrets or `.env.local`.
 - **Comments** explain why, not what, and use absolute dates (2026-11-05), never "today" or "for now".
+- **Comments and docs** state reasons directly; never attribute decisions to people or conversations, quote chats, cite design sketches or mock-ups, or name competitors or the AI tools that wrote the code.
 - Readable names, short functions, no nested ternaries.
 
 ## Checks
@@ -52,6 +53,8 @@ npm run quiet -- npm run build
 The desktop shell has its own tests: `cargo test --manifest-path desktop/src-tauri/Cargo.toml`; they need Rust, and `npm test` does not build them. `npm run desktop:smoke` additionally drives the real debug shell end to end over CDP (Windows only; needs `cargo build` first).
 
 Run the full `npm test` before opening a pull request. The running app serves `dist/`: client changes need `npm run build` and a page reload; server changes need `npm run build` and a restart.
+
+Vitest runs `unit` (at most four workers) before `browser` (one file at a time); Vitest 5 schedules different worker budgets in separate groups. Use `npx vitest run --project browser` for all browser files; normal file filters still work. Browser fixtures share one temporary build/preview server per invocation, not `dist/` or a dev dependency cache; profiles and project data stay isolated per file. Add browser fixtures to `tests/browser-files.ts`. Set `DECKMATE_BROWSER` to an installed Chrome/Edge/Chromium executable if discovery fails. Local absence prints one skipped-case count; `CI=true` or `DECKMATE_REQUIRE_BROWSER=1` requires a browser and fails if it is missing. Do not increase worker limits or setup timeouts to hide contention.
 
 ## Commits and pull requests
 

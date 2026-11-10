@@ -207,9 +207,11 @@ it('rejects a legacy scan directory replaced by an outside link after listing', 
   await writeFile(path.join(outside, 'unrelated.md'), '# ExternalSecret\nOutsideContentMustNotLeak\n');
   const directory = path.join(root, 'docs');
   const readdir = vi.mocked(filesystem.readdir).getMockImplementation()!;
+  let injected = false;
   const listing = vi.mocked(filesystem.readdir).mockImplementation(async (...args: Parameters<typeof filesystem.readdir>) => {
     const entries = await readdir(...args);
     if (args[0] === directory) {
+      injected = true;
       await rename(directory, path.join(root, 'original-docs'));
       await symlink(outside, directory, process.platform === 'win32' ? 'junction' : 'dir');
     }
@@ -217,6 +219,7 @@ it('rejects a legacy scan directory replaced by an outside link after listing', 
   });
   try {
     const catalog = await readFreshProjectCatalog(root);
+    expect(injected).toBe(true);
     expect(catalog.cards.some(card => card.path === 'docs/unrelated.md')).toBe(false);
     expect(catalog.documents.some(document => document.path === 'docs/unrelated.md')).toBe(false);
     expect(catalog.warnings.join('\n')).toContain('docs/unrelated.md');

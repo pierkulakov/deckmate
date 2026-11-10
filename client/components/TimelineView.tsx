@@ -1,7 +1,8 @@
+import { moveFocus } from '../focus.ts';
 import { readStoredValue } from '../storage.ts';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { BarChart3, Bell, CalendarDays, Info, Plus } from 'lucide-react';
+import { BarChart3, Bell, CalendarDays, Plus } from 'lucide-react';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import type { CatalogCard, CatalogView, RunRecord } from '../../src/catalog-contracts.ts';
 import type { WorkspaceSnapshot } from '../../src/workspace-contracts.ts';
@@ -21,6 +22,10 @@ import { ShortcutsHelp } from './ShortcutsHelp.tsx';
 import { Button } from './ui/button.tsx';
 import { defineText, locale, useLang, useText, type Lang } from '../i18n.ts';
 import { stateLabel } from '../locales/common.ts';
+import { failureMessage } from '../failure-message.ts';
+import { EmptyState } from './EmptyState.tsx';
+import { LoadingState } from './LoadingState.tsx';
+import { ErrorState } from './ErrorState.tsx';
 
 // Timeline has no shortcuts of its own: the overview lists the app-wide ones, as in Hand.
 const timelineShortcutScreens: readonly ShortcutScreen[] = ['app'];
@@ -31,7 +36,6 @@ const text = defineText({
   dueDates: (date: string) => `Due dates · ${date}`,
   myCards: 'My cards',
   saveError: 'Could not save the plan. Try again.',
-  connectionError: 'Not saved: Deckmate is not responding. Check that it is running, then try again.',
   overview: 'Milestones overview',
   calendar: 'Calendar',
   createPlan: 'Create a Milestone or Run schedule',
@@ -43,6 +47,7 @@ const text = defineText({
   openRun: (label: string) => `Open ${label}`,
   runTitle: (goal: string, start: string, end: string, count: number) => `${goal} · ${start} — ${end} · ${count.toLocaleString(locale())} ${new Intl.PluralRules(locale('en')).select(count) === 'one' ? 'card' : 'cards'}`,
   noMilestones: 'The project has no Milestones yet.',
+  readOnlyPlanHint: 'Runs and Milestones appear here once the plan has them.',
   selectPrompt: 'Select a Run, Milestone diamond, or due-date bell on the axis.',
   setupRuns: 'Set up recurring Runs',
   nothingSelected: 'Nothing selected',
@@ -57,7 +62,6 @@ const text = defineText({
   dueDates: (date: string) => `Сроки · ${date}`,
   myCards: 'Мои карточки',
   saveError: 'Не удалось сохранить план. Повторите действие.',
-  connectionError: 'Не сохранено: Deckmate не отвечает. Проверьте, что он запущен, и повторите.',
   overview: 'Обзор Milestone',
   calendar: 'Открыть календарь',
   createPlan: 'Создать Milestone или расписание Run',
@@ -69,6 +73,7 @@ const text = defineText({
   openRun: (label: string) => `Открыть ${label}`,
   runTitle: (goal: string, start: string, end: string, count: number) => `${goal} · ${start} — ${end} · карточек: ${count.toLocaleString(locale())}`,
   noMilestones: 'В проекте ещё нет Milestone.',
+  readOnlyPlanHint: 'Run и Milestone появятся здесь, когда они будут в плане.',
   selectPrompt: 'Выберите Run, ромб Milestone или колокольчик срока на оси.',
   setupRuns: 'Настроить повторяющиеся Run',
   nothingSelected: 'Ничего не выбрано',
@@ -146,6 +151,7 @@ export function TimelineView({ snapshot, refreshKey, selectCurrentRun = false, o
   const [planningPending, setPlanningPending] = useState(false);
   const [planningError, setPlanningError] = useState<string | null>(null);
   const savingPlanning = useRef(false);
+  const retryPlanning = useRef<() => Promise<unknown>>(async () => undefined);
   const [locked, setLocked] = useState(false);
   const [scopeDirty, setScopeDirty] = useState(false);
   const [selection, setSelection] = useState<PlanningTarget | null>(null);
@@ -263,6 +269,8 @@ export function TimelineView({ snapshot, refreshKey, selectCurrentRun = false, o
   const maximum = Math.max(1, ...milestones.map(milestone => metrics(cards.filter(card => card.milestone === milestone.id)).tasks));
   const maximumEffort = Math.max(1, ...milestones.map(milestone => metrics(cards.filter(card => card.milestone === milestone.id)).effort));
   const writable = snapshot.source === 'sandbox' && snapshot.writable;
+  let emptyMessage = t.selectPrompt;
+  if (!hasDates && writable) emptyMessage = `${t.createHintBefore} + ${t.createHintAfter}`;
   function openCalendar(draft: CalendarDraft | null) {
     if (calendarOpen && calendarDirty) { setCalendarRequest({ id: ++calendarRequestId.current, draft }); return; }
     setPlanningError(null);
@@ -271,7 +279,7 @@ export function TimelineView({ snapshot, refreshKey, selectCurrentRun = false, o
   }
   function hideCalendar() {
     // 2026-11-06: focus inside the closing panel would fall to <body>; it returns to the Calendar button that opened it.
-    if (document.activeElement?.closest('.planning-calendar-panel')) calendarButton.current?.focus({ preventScroll: true });
+    if (document.activeElement?.closest('.planning-calendar-panel')) moveFocus(calendarButton.current, { preventScroll: true });
     setCalendarDraft(null);
     setCalendarOpen(false);
   }
@@ -286,6 +294,7 @@ export function TimelineView({ snapshot, refreshKey, selectCurrentRun = false, o
     setPlanningPending(true);
     setPlanningError(null);
     try {
+      retryPlanning.current = () => savePlanning(action);
       const token = (snapshot as WorkspaceSnapshot & { token?: string }).token;
       const response = await fetch('/api/planning', {
         method: 'POST',
@@ -293,6 +302,7 @@ export function TimelineView({ snapshot, refreshKey, selectCurrentRun = false, o
         body: JSON.stringify({ ...action, source: snapshot.source }),
       });
       const result = await response.json();
+      if (response.ok || result.saved) retryPlanning.current = refresh;
       if (!response.ok) {
         let revisions: CatalogView | undefined;
         if (response.status === 409 || result.saved) {
@@ -306,7 +316,7 @@ export function TimelineView({ snapshot, refreshKey, selectCurrentRun = false, o
       return { ok: true, revisions: result as CatalogView };
     } catch (failure) {
       // 2026-11-06: a stopped server rejects fetch with a TypeError whose browser wording ("Failed to fetch") explains nothing.
-      const message = failure instanceof Error && !(failure instanceof TypeError) ? failure.message : t.connectionError;
+      const message = failureMessage(failure, t.saveError);
       setPlanningError(message);
       return { ok: false, message };
     } finally {
@@ -318,8 +328,8 @@ export function TimelineView({ snapshot, refreshKey, selectCurrentRun = false, o
   // 2026-11-06: a modal menu traps focus while its items open the non-modal calendar form; the two scopes passed focus
   // back and forth until the form saw focus outside and closed, so «Create Milestone» and «Set up recurring Runs» showed no form.
   // A non-modal menu, as in the bulk «More» menu, lets the form take focus.
-  const actions = <div className="timeline-actions">
-      {writable && <DropdownMenu.Root modal={false}><DropdownMenu.Trigger asChild><Button variant="default" size="icon" className="timeline-create" aria-label={t.createPlan} title={t.createPlan} disabled={locked || planningPending}><Plus size={18} /></Button></DropdownMenu.Trigger>
+  const actions = <div className="timeline-actions page-tools">
+      {writable && <DropdownMenu.Root modal={false}><DropdownMenu.Trigger asChild><Button variant="default" size="icon" className="timeline-create action-mint" aria-label={t.createPlan} title={t.createPlan} disabled={locked || planningPending}><Plus size={18} /></Button></DropdownMenu.Trigger>
         <DropdownMenu.Portal><DropdownMenu.Content className="planning-create-menu" align="end" sideOffset={6} collisionPadding={12} onCloseAutoFocus={event => { if (openingFromMenu.current) { event.preventDefault(); openingFromMenu.current = false; } }}>
           <DropdownMenu.Item onSelect={() => { openingFromMenu.current = true; openCalendar({ kind: 'milestone', date: today }); }}>{t.createMilestone}</DropdownMenu.Item>
           <DropdownMenu.Item onSelect={() => { openingFromMenu.current = true; openCalendar({ kind: 'configuration' }); }}>{t.setupRuns}</DropdownMenu.Item>
@@ -329,14 +339,14 @@ export function TimelineView({ snapshot, refreshKey, selectCurrentRun = false, o
       <Button disabled={locked} variant="outline" size="icon" className="timeline-tool" aria-label={t.overview} title={t.overview} aria-pressed={overview} onClick={() => setOverview(value => !value)}><BarChart3 size={16} /></Button>
     </div>;
 
-  return <section className="planning-view planning-parity">
-    <h1 className="visually-hidden">{t.timeline}</h1>
+  return <section className="planning-view planning-parity page-light">
+    <header className="page-head"><div className="page-head-main"><div className="page-title-block"><h1 className="page-title">{t.timeline}</h1></div></div></header>
     {actionSlot && createPortal(actions, actionSlot)}
-    {error && <div className="error-banner" role="alert">{error}</div>}{warning && <div className="notice" role="status">{warning}</div>}
-    {planningError && !calendarOpen && <div className="error-banner" role="alert">{planningError}</div>}
+    <ErrorState message={error} onRetry={refresh} />{warning && <div className="notice" role="status">{warning}</div>}
+    <ErrorState variant="saved-input" message={calendarOpen ? null : planningError} pending={planningPending} onRetry={() => retryPlanning.current()} />
     {catalog?.warnings.filter(message => /(?:deckmate|freetion)-(runs|milestones)/u.test(message)).map(message => <div key={message} className="notice">{message}</div>)}
-    {!catalog && !error && <p className="planning-empty" role="status">{t.loading}</p>}
-    {catalog && <div className="timeline-band"><div className="timeline-scroll" ref={scrollRef} tabIndex={0} role="region" aria-label={t.axisLabel}
+    {!catalog && !error && <LoadingState message={t.loading} />}
+    {catalog && <div className="timeline-axis-panel glass-panel"><div className="timeline-band"><div className="timeline-scroll" ref={scrollRef} tabIndex={0} role="region" aria-label={t.axisLabel}
       onKeyDown={event => { if (event.target !== event.currentTarget) return; if (event.key === 'ArrowRight' || event.key === 'ArrowLeft') { event.preventDefault(); event.currentTarget.scrollLeft += event.key === 'ArrowRight' ? dayWidth * 7 : -dayWidth * 7; } if (event.key === 'Home') { event.preventDefault(); event.currentTarget.scrollLeft = model.today - event.currentTarget.clientWidth * .22; } }}
       onPointerDown={event => { if (event.button !== 0 || (event.target as Element).closest('button')) return; drag.current = { pointer: event.pointerId, start: event.clientX, left: event.currentTarget.scrollLeft }; event.currentTarget.setPointerCapture(event.pointerId); }}
       onPointerMove={event => { if (drag.current?.pointer === event.pointerId) event.currentTarget.scrollLeft = drag.current.left - (event.clientX - drag.current.start); }}
@@ -378,15 +388,17 @@ export function TimelineView({ snapshot, refreshKey, selectCurrentRun = false, o
           return <button disabled={locked} key={run.id} className={`timeline-run${active ? ' is-active' : ''}${run.finishedAt || run.end < today ? ' is-past' : ''}`} style={{ left: offset(run.start) + 3, width: dayDistance(run.start, addDays(run.end, 1)) * dayWidth - 6, top: runsTop + lane * band.lane, borderColor: configuration?.color }} aria-label={t.openRun(bandRunLabel(run))} aria-pressed={selection?.kind === 'run' && selection.id === run.id} title={t.runTitle(run.goal, formatPlanningDate(run.start, lang), formatPlanningDate(run.end, lang), runCards.length)} onClick={() => choose({ kind: 'run', id: run.id })}><span>{bandRunLabel(run)}</span><small>{(runCards.length).toLocaleString(locale(lang))}</small><PlanningProgress cards={runCards} /></button>;
         })}
       </div>
-    </div></div>}
-    {catalog && overview && <section className="planning-overview" aria-label={t.overview}>{milestones.map(milestone => <article className="planning-overview-row" key={milestone.id}>
+    </div></div></div>}
+    {catalog && overview && <section className="planning-overview glass-panel" aria-label={t.overview}>{milestones.map(milestone => <article className="planning-overview-row" key={milestone.id}>
       <button className="planning-overview-title" onClick={() => choose({ kind: 'milestone', id: milestone.id })}><span className="planning-diamond" style={{ color: milestone.color }} /><strong className="planning-overview-name">{milestone.title}</strong><span>{formatPlanningDate(milestone.date, lang)}</span><small>{countdown(milestone.date, today, lang)}</small></button>
       <PlanningStats cards={cards.filter(card => card.milestone === milestone.id)} catalog={catalog} comparisonTotal={maximum} comparisonEffort={maximumEffort} />
-    </article>)}{!milestones.length && <p className="planning-empty">{t.noMilestones}</p>}</section>}
-    {catalog && validSelection && !overview && selection && <PlanningScope key={`${selection.kind}:${selection.id}:${selection.kind === 'dueDate' ? member?.id : ''}`} title={title} subtitle={subtitle} retainedPlan={retainedPlan} target={selection.kind === 'dueDate' ? undefined : selection} cards={selectedCards} catalog={catalog} snapshot={snapshot} pending={pending || planningPending} onEdit={edit} onOpenCard={onOpenCard} onLockChange={setLocked} onDirtyChange={setScopeDirty} onPlanningEdit={savePlanning} planningError={planningError} onDeleted={() => { setSelection(null); if (storageKey) { try { localStorage.removeItem(storageKey); } catch { /* 2026-11-05: navigation memory is optional. */ } } }} />}
-    {catalog && !validSelection && !overview && <aside className="timeline-nothing"><Info size={20} aria-hidden="true" /><div><h2>{t.nothingSelected}</h2>
-      {hasDates && <p>{t.selectPrompt}</p>}
-      {!hasDates && writable && <p>{t.createHintBefore} <Plus size={16} aria-hidden="true" /><span className="visually-hidden">+</span> {t.createHintAfter}</p>}</div></aside>}
+    </article>)}{!milestones.length && (writable
+      ? <EmptyState variant="first-run" title={t.noMilestones} art="milestone"
+          message={t.createHintBefore + ' + ' + t.createHintAfter} action={{ label: t.createMilestone, onClick: () => openCalendar({ kind: 'milestone', date: today }) }} />
+      : <EmptyState variant="first-run" art="milestone" title={t.noMilestones} message={t.readOnlyPlanHint} />)}</section>}
+    {catalog && validSelection && !overview && selection && <div className="timeline-scope-panel glass-panel"><PlanningScope key={`${selection.kind}:${selection.id}:${selection.kind === 'dueDate' ? member?.id : ''}`} title={title} subtitle={subtitle} retainedPlan={retainedPlan} target={selection.kind === 'dueDate' ? undefined : selection} cards={selectedCards} catalog={catalog} snapshot={snapshot} pending={pending || planningPending} onEdit={edit} onOpenCard={onOpenCard} onLockChange={setLocked} onDirtyChange={setScopeDirty} onPlanningEdit={savePlanning} planningError={planningError} onDeleted={() => { setSelection(null); if (storageKey) { try { localStorage.removeItem(storageKey); } catch { /* 2026-11-05: navigation memory is optional. */ } } }} /></div>}
+    {catalog && !validSelection && !overview && <aside className="timeline-nothing glass-panel"><EmptyState variant="first-run" title={t.nothingSelected} art="milestone"
+      message={emptyMessage} /></aside>}
     {catalog && <PlanningCalendar open={calendarOpen} onClose={hideCalendar} draft={calendarDraft} onDraftChange={setCalendarDraft} onDirtyChange={setCalendarDirty}
       viewRequest={calendarRequest} onViewRequestHandled={() => setCalendarRequest(null)}
       catalog={catalog} cards={cards} today={today} writable={writable} pending={pending || planningPending} error={planningError} onSave={savePlanning} onChoose={target => { setSelection(target); setOverview(false); remember(target); }} />}

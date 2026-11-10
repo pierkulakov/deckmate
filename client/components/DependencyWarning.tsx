@@ -1,5 +1,6 @@
 import { AlertTriangle } from 'lucide-react';
 import type { CatalogCard } from '../../src/catalog-contracts.ts';
+import type { SliceStatus } from '../../src/workspace-contracts.ts';
 import { dependencyConflicts, stateNeedsDependencyWarning, type DependencyConflict } from '../../src/dependency-contracts.ts';
 import { StatusBadge } from './StatusMenu.tsx';
 import { Button } from './ui/button.tsx';
@@ -9,21 +10,24 @@ import '../card-dependencies.css';
 const text = defineText({
   waiting: 'waiting on:',
   inProgress: 'The change is already in progress.',
-  single: (title: string, total: number) => {
-    const dependency = new Intl.PluralRules('en-US').select(total) === 'one' ? 'dependency' : 'dependencies';
-    return `"${title}" is waiting on ${total} open ${dependency}. Change the card state anyway?`;
-  },
-  multiple: (cards: number, total: number) => `${cards} cards have open incoming dependencies (${total} total). Change their state anyway?`,
+  single: (total: number) => `Unfinished dependencies: ${total}.`,
+  multiple: (cards: number, total: number) => `Unfinished dependencies: ${total}, across ${cards} cards.`,
   cancel: 'Cancel',
-  anyway: 'Continue',
+  startAnyway: 'Start work anyway',
+  acceptAnyway: 'Accept anyway',
+  reviewAnyway: 'Send to review anyway',
+  changeAnyway: 'Change state anyway',
   noStatus: 'no status',
 }, {
   waiting: 'ждёт:',
   inProgress: 'Изменение уже выполняется.',
-  single: (title: string, total: number) => `«${title}» ждёт ${total} незакрыты${total === 1 ? 'й' : 'х'} зависимост${total === 1 ? 'ь' : 'и'}. Перевести карточку в новое состояние всё равно?`,
-  multiple: (cards: number, total: number) => `У ${cards} карточек есть незакрытые входящие зависимости (всего ${total}). Перевести их всё равно?`,
+  single: (total: number) => `Не завершены зависимости: ${total}.`,
+  multiple: (cards: number, total: number) => `Не завершены зависимости: ${total}. Карточек: ${cards}.`,
   cancel: 'Отмена',
-  anyway: 'Всё равно',
+  startAnyway: 'Начать работу всё равно',
+  acceptAnyway: 'Принять всё равно',
+  reviewAnyway: 'Отправить на приёмку всё равно',
+  changeAnyway: 'Изменить состояние всё равно',
   noStatus: 'без статуса',
 });
 
@@ -36,7 +40,7 @@ export function DependencyConflictList({ conflicts, disabled = false }: { confli
   const t = useText(text);
   return <ul className="dependency-warning-list">
     {conflicts.map(({ card, waiting }) => <li key={card.id}>
-      <strong>{card.title}</strong>
+      {conflicts.length > 1 && <strong>{card.title}</strong>}
       <span>{t.waiting} {waiting.map(dependency => dependency.title).join(', ')}</span>
     </li>)}
     {disabled && <li className="dependency-warning-note">{t.inProgress}</li>}
@@ -47,22 +51,27 @@ export function DependencyConflictList({ conflicts, disabled = false }: { confli
  * Warning shared by the open card, tile shortcut, and bulk actions:
  * explanatory content with Proceed Anyway and Cancel buttons.
  */
-export function DependencyStateWarning({ conflicts, busy = false, onConfirm, onCancel }: {
+export function DependencyStateWarning({ conflicts, busy = false, state, onConfirm, onCancel }: {
   conflicts: readonly DependencyConflict[];
   busy?: boolean;
+  state?: SliceStatus;
   onConfirm: () => void;
   onCancel: () => void;
 }) {
   const total = conflicts.reduce((sum, conflict) => sum + conflict.waiting.length, 0);
   const t = useText(text);
+  let action = t.changeAnyway;
+  if (state === 'done') action = t.acceptAnyway;
+  if (state === 'started') action = t.startAnyway;
+  if (state === 'review') action = t.reviewAnyway;
   return <div className="dependency-warning" role="alert">
     <p className="dependency-warning-title"><AlertTriangle size={14} />
-      {conflicts.length === 1 ? t.single(conflicts[0].card.title, total) : t.multiple(conflicts.length, total)}
+      {conflicts.length === 1 ? t.single(total) : t.multiple(conflicts.length, total)} {action}?
     </p>
     <DependencyConflictList conflicts={conflicts} disabled={busy} />
     <div className="dependency-warning-actions">
       <Button type="button" variant="ghost" size="sm" disabled={busy} onClick={onCancel}>{t.cancel}</Button>
-      <Button type="button" variant="outline" size="sm" disabled={busy} onClick={onConfirm}>{t.anyway}</Button>
+      <Button type="button" variant="outline" size="sm" disabled={busy} onClick={onConfirm}>{action}</Button>
     </div>
   </div>;
 }

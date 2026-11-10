@@ -1,3 +1,4 @@
+import { moveFocus } from './focus.ts';
 import { useEffect, useId, useLayoutEffect, useRef, useState, type RefObject } from 'react';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import { DndContext, MouseSensor, TouchSensor, closestCenter, useSensor, useSensors } from '@dnd-kit/core';
@@ -94,7 +95,7 @@ function Workspace({ board, open, disabled }: { board: DesktopWorkspaceBridge; o
     focusAfterChange.current = null;
     const row = Array.from(list.current?.querySelectorAll<HTMLButtonElement>('.mission-control-workspace-open') ?? [])
       .find(button => button.dataset.path === path);
-    (row ?? addButton.current)?.focus();
+    moveFocus(row ?? addButton.current);
   });
 
   async function change(action: () => Promise<DesktopWorkspaceResult>, success: (next: DesktopWorkspaceProject[]) => string) {
@@ -208,7 +209,7 @@ function WorkspaceRow({ project, disabled, switching, shortcut, hintId, onSwitch
       {shortcut && <kbd className="shortcuts-panel-key" aria-hidden="true">Ctrl+{shortcut}</kbd>}
       {project.current && <Check className="mission-control-workspace-current" size={14} aria-label={t.current} />}
     </button>
-    <button type="button" className="mission-control-workspace-remove" disabled={disabled} title={t.remove} aria-label={t.removeNamed(project.name)} onClick={onRemove}><X size={14} aria-hidden="true" /></button>
+    <button type="button" className="mission-control-workspace-remove control control-ghost" disabled={disabled} title={t.remove} aria-label={t.removeNamed(project.name)} onClick={onRemove}><X size={14} aria-hidden="true" /></button>
   </li>;
 }
 
@@ -235,7 +236,7 @@ function WorkspaceAddMenu({ board, projects, disabled, triggerRef, onAdd }: {
   const available = recent?.filter(project => !project.current && !paths.has(pathKey(project.path))) ?? [];
   const select = (source: DesktopWorkspaceSource) => { setOpen(false); onAdd(source); };
   return <DropdownMenu.Root modal={false} open={open} onOpenChange={next => setOpen(next && !disabled)}>
-    <DropdownMenu.Trigger ref={triggerRef} type="button" className="mission-control-workspace-add" disabled={disabled}>
+    <DropdownMenu.Trigger ref={triggerRef} type="button" className="mission-control-workspace-add control" disabled={disabled}>
       <Plus size={15} aria-hidden="true" />{t.add}<ChevronDown size={13} aria-hidden="true" />
     </DropdownMenu.Trigger>
     {/* Keep the menu inside the sheet's modal focus boundary. Popper still positions it over the rows. */}

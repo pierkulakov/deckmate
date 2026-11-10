@@ -1,40 +1,35 @@
 /* The Journey editor uses a 1200×800 sea panel inside a hazard-tape frame. */
 .journey-editor-overlay { position: fixed; inset: 0; z-index: 110; background: var(--journey-scrim, color-mix(in srgb, var(--sidebar) 58%, transparent)); animation: backdrop-fade var(--motion-spring-firm) ease-out; }
-.journey-editor-dialog { position: fixed; z-index: 111; top: 50%; left: 50%; transform: translate(-50%, -50%); width: min(1200px, calc(100vw - 32px)); height: min(800px, calc(100dvh - 32px)); padding: 5px; border: 0; border-radius: 8px; color: var(--ink); background: repeating-linear-gradient(135deg, var(--journey-stripe, var(--champagne)) 0 12px, var(--sidebar) 12px 24px); box-shadow: var(--shadow); animation: dialog-drop var(--motion-spring-firm) var(--ease-spring-firm); }
-.journey-editor-shell { position: relative; display: flex; flex-direction: column; height: 100%; min-height: 0; overflow: hidden; background: var(--journey-sea, var(--ground)); border-radius: 4px; }
+.journey-editor-dialog { position: fixed; z-index: 111; top: 50%; left: 50%; transform: translate(-50%, -50%); width: min(1200px, calc(100vw - 32px)); height: min(800px, calc(100dvh - 32px)); padding: 5px; border: 0; border-radius: var(--glass-radius); color: var(--ink); background: repeating-linear-gradient(135deg, var(--journey-stripe, var(--champagne)) 0 12px, var(--sidebar) 12px 24px); box-shadow: var(--shadow); animation: dialog-drop var(--motion-spring-firm) var(--ease-spring-firm); }
+.journey-editor-shell { position: relative; display: flex; flex-direction: column; height: 100%; min-height: 0; overflow: hidden; background: var(--journey-sea, var(--ground)); border-radius: var(--control-radius); }
 .journey-editor-heading { flex-shrink: 0; display: flex; align-items: center; gap: 6px; height: 48px; padding: 0 22px 0 24px; background: var(--journey-bar, var(--surface)); }
 .journey-editor-heading h2 { display: flex; align-items: center; gap: 8px; min-width: 0; margin: 0; font-size: 14px; font-weight: 500; line-height: 17px; white-space: nowrap; }
 /* 2026-11-06: text-overflow does nothing on a flex box, so a long deck name was cut without dots; the name has its own
    truncating span and the chip carries the full name as a tooltip. */
-.journey-deck-chip { display: inline-flex; align-items: center; gap: 6px; min-width: 0; color: var(--ink); font-weight: 700; overflow: hidden; }
+.journey-deck-chip { display: inline-flex; align-items: center; gap: 6px; min-width: 0; color: var(--ink); font-weight: 500; overflow: hidden; }
 .journey-deck-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* 2026-11-06: only the title gives way to a long name: the info and close buttons shrank to 19 and 21 px wide before it did. */
 .journey-editor-heading > .ui-button, .journey-editor-actions { flex-shrink: 0; }
-.journey-deck-icon { display: inline-grid; place-items: center; flex: 0 0 16px; height: 16px; border-radius: 3px; background: var(--accent-soft); color: var(--focus); }
-.journey-editor-heading .journey-editor-info { width: 24px; height: 24px; min-height: 24px; color: var(--muted); }
-.journey-editor-heading .journey-editor-info[aria-pressed="true"] { color: var(--ink); background: color-mix(in srgb, var(--ink) 12%, transparent); }
+.journey-deck-icon { display: inline-grid; place-items: center; flex: 0 0 16px; height: 16px; border-radius: var(--control-radius); background: var(--accent-soft); color: var(--focus); }
+.journey-editor-heading .journey-editor-info { width: 24px; height: 24px; min-height: 24px; }
 .journey-editor-actions { display: flex; gap: 10px; align-items: center; margin-left: auto; }
-.journey-editor-actions .ui-button { height: 24px; min-height: 24px; padding: 0 7px; gap: 5px; border: .67px solid transparent; border-radius: 4px; font-size: 12px; font-weight: 700; line-height: 14px; letter-spacing: .12px; color: var(--ink); }
-.journey-editor-actions .journey-browse-button { background: color-mix(in srgb, var(--focus) 45%, transparent); color: var(--edit-link, var(--ink)); }
-.journey-editor-actions .button-outline:not(.journey-browse-button) { background: color-mix(in srgb, var(--ink) 12%, transparent); border-color: color-mix(in srgb, var(--ink) 38%, transparent); }
-.journey-editor-actions .journey-clone-button { background: color-mix(in srgb, var(--ink) 8%, transparent); }
-.journey-editor-actions .ui-button:hover:not(:disabled) { background: color-mix(in srgb, var(--focus) 30%, transparent); border-color: color-mix(in srgb, var(--ink) 45%, transparent); }
+.journey-editor-actions .ui-button { height: 24px; min-height: 24px; padding: 0 7px; gap: 5px; font-size: 12px; font-weight: 500; line-height: 14px; letter-spacing: .12px; }
 .journey-editor-heading .journey-editor-close { width: 26px; height: 26px; min-height: 26px; margin-left: 4px; color: var(--ink); }
 .journey-editor-body { flex: 1; min-height: 0; overflow: auto; padding: 7px 24px 16px; scrollbar-width: thin; }
 .journey-editor-settings { display: grid; grid-template-columns: minmax(160px, 1fr) minmax(240px, 2fr); gap: 12px 16px; padding: 14px 0; border-bottom: 1px solid color-mix(in srgb, var(--ink) 16%, transparent); }
 .journey-editor-settings label { display: flex; flex-direction: column; gap: 6px; color: var(--muted); font-size: 12px; }
-.journey-editor-settings input, .journey-editor-settings textarea, .journey-editor-settings select, .journey-zone-heading input { color: var(--ink); background: var(--journey-field, var(--canvas)); border: .67px solid color-mix(in srgb, var(--ink) 22%, transparent); padding: 6px 9px; border-radius: 4px; font-size: 14px; resize: vertical; }
+.journey-editor-settings input, .journey-editor-settings textarea, .journey-editor-settings select, .journey-zone-heading input { padding: 6px 9px; border-radius: var(--control-radius); font-size: 14px; resize: vertical; }
 .journey-editor-settings input, .journey-editor-settings textarea, .journey-editor-settings select { width: 100%; }
 /* Step zone: 36 px heading row, then the sea box — 16 px padding and gap, 115×146 cards, waves under the cards. */
 .journey-zone + .journey-zone { margin-top: 4px; }
 .journey-zone-heading { display: flex; align-items: center; gap: 6px; height: 36px; padding: 0 4px; color: var(--ink); }
 .journey-zone-heading > svg { flex-shrink: 0; }
-.journey-zone-heading h3 { margin: 0; font-size: 14px; font-weight: 700; line-height: 17px; color: var(--ink); overflow-wrap: anywhere; }
+.journey-zone-heading h3 { margin: 0; font-size: 15px; font-weight: 600; line-height: 17px; color: var(--ink); overflow-wrap: anywhere; }
 .journey-zone-heading input { max-width: min(360px, 45vw); height: 28px; }
 .journey-zone-tools { display: flex; gap: 2px; margin-left: 6px; opacity: 0; transition: opacity var(--motion-feedback); }
 .journey-zone:hover .journey-zone-tools, .journey-zone-tools:focus-within { opacity: 1; }
 .journey-zone-tools .ui-button { width: 24px; height: 24px; min-height: 24px; color: var(--muted); }
-.journey-zone-cards { isolation: isolate; position: relative; display: flex; flex-wrap: wrap; align-items: flex-start; gap: 16px; min-height: 178px; padding: 16px; overflow: hidden; border-radius: 4px; background: var(--journey-zone, var(--sidebar)); transition: background-color var(--motion-feedback); }
+.journey-zone-cards { isolation: isolate; position: relative; display: flex; flex-wrap: wrap; align-items: flex-start; gap: 16px; min-height: 178px; padding: 16px; overflow: hidden; border-radius: var(--glass-radius); background: var(--journey-zone, var(--sidebar)); transition: background-color var(--motion-feedback); }
 .journey-zone-cards.is-over { background: color-mix(in srgb, var(--journey-zone, var(--sidebar)) 82%, var(--focus)); }
 .journey-waves { position: absolute; z-index: -1; inset: auto 0 0; width: 100%; height: 96px; pointer-events: none; }
 .journey-wave-back { fill: var(--journey-wave-back, color-mix(in srgb, var(--muted) 16%, transparent)); }
@@ -55,32 +50,31 @@ button.journey-mini:focus-visible { outline: 2px solid var(--focus); outline-off
 .journey-mini-effort { display: inline-flex; align-items: center; gap: 5px; color: var(--card-muted); }
 .journey-mini-effort > b { color: var(--card-ink); font-size: 12px; font-weight: 700; line-height: 14px; font-variant-numeric: tabular-nums; }
 .journey-priority-icon { display: inline-flex; color: var(--card-muted); }
-.journey-drag-handle { position: absolute; top: 4px; right: 4px; display: grid; place-items: center; width: 22px; height: 22px; padding: 0; border: 0; border-radius: 3px; color: var(--card-muted); background: var(--card-face); opacity: 0; cursor: grab; touch-action: none; }
+.journey-drag-handle { position: absolute; top: 4px; right: 4px; display: grid; place-items: center; width: 22px; height: 22px; padding: 0; border: 0; border-radius: var(--control-radius); color: var(--card-muted); background: var(--card-face); opacity: 0; cursor: grab; touch-action: none; }
 .journey-drag-handle:focus-visible { opacity: 1; }
-.journey-add-step { position: relative; z-index: 1; display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 6px; width: 115px; height: 146px; padding: 10px; border: 1px solid color-mix(in srgb, var(--ink) 22%, transparent); border-radius: 5px; color: var(--ink); background: transparent; font-size: 12px; font-weight: 700; line-height: 14px; }
-.journey-add-step:hover:not(:disabled) { background: color-mix(in srgb, var(--ink) 8%, transparent); border-color: color-mix(in srgb, var(--ink) 40%, transparent); }
-.journey-add-zone { display: inline-flex; align-items: center; gap: 6px; margin: 14px 0 0; padding: 4px 4px; border: 0; border-radius: 4px; color: var(--ink); background: transparent; font-size: 12px; font-weight: 700; line-height: 14px; }
-.journey-add-zone:hover:not(:disabled) { background: color-mix(in srgb, var(--ink) 8%, transparent); }
+.journey-add-step { position: relative; z-index: 1; display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 6px; width: 115px; height: 146px; padding: 10px; border: var(--control-hairline) solid var(--control-line); border-radius: var(--control-radius); color: var(--ink); background: transparent; font-size: 12px; font-weight: 500; line-height: 14px; }
+.journey-add-step:hover:not(:disabled) { background: var(--hover); border-color: var(--button-line); }
+.journey-add-zone { display: inline-flex; align-items: center; gap: 6px; margin: 14px 0 0; padding: 4px 4px;  font-size: 12px; font-weight: 500; line-height: 14px; }
 .journey-editor-footer { flex-shrink: 0; display: flex; align-items: center; gap: 16px; min-height: 56px; padding: 0 24px 4px; }
 .journey-editor-footer > span:first-child { display: flex; gap: 10px; align-items: center; margin-right: auto; color: var(--muted); font-size: 12px; }
 .journey-save-help { font-size: 12px; color: var(--warning-ink); }
 /* 2026-11-07: --card-ink is dark in light theme and reached ~2.2:1 on the violet fill; the shared button ink restores ≥4.5:1. */
-.journey-confirm-dialog .button-default { height: 32px; min-height: 32px; padding: 0 10px; border-radius: 4px; color: var(--violet-fill-ink, var(--surface)); background: var(--violet-fill, var(--accent)); font-size: 14px; font-weight: 700; }
+.journey-confirm-dialog .button-default { height: 32px; min-height: 32px; padding: 0 10px; border-radius: var(--control-radius); color: var(--violet-fill-ink, var(--surface)); background: var(--violet-fill, var(--accent)); font-size: 14px; font-weight: 600; }
 .journey-editor-error, .journey-editor-notice { flex-shrink: 0; margin: 0; padding: 12px 24px; font-size: 12px; line-height: 1.6; overflow-wrap: anywhere; }
-.journey-editor-body > .journey-editor-error, .journey-editor-body > .journey-editor-notice { margin: 12px 0 0; border-radius: 4px; padding: 10px 12px; }
+.journey-editor-body > .journey-editor-error, .journey-editor-body > .journey-editor-notice { margin: 12px 0 0; border-radius: var(--glass-radius); padding: 10px 12px; }
 .journey-editor-error { color: var(--warning-ink); background: var(--warning-bg); }
 .journey-editor-notice { color: var(--muted); background: color-mix(in srgb, var(--ink) 6%, transparent); }
 .journey-editor-error > button { margin-left: 10px; }
-.journey-editor-menu { z-index: 130; min-width: 220px; max-width: min(400px, 90vw); max-height: var(--radix-dropdown-menu-content-available-height); overflow: auto; padding: 5px; background: var(--surface); border: 1px solid var(--line); border-radius: 4px; box-shadow: var(--shadow); font-size: 14px; animation: overlay-pop var(--motion-spring-quick) var(--ease-spring-quick); }
-.journey-editor-menu-label { padding: 6px 9px 4px; color: var(--muted); font-size: 12px; font-weight: 700; }
-.journey-editor-menu [role="menuitem"] { display: flex; gap: 8px; align-items: center; padding: 8px 9px; border-radius: 3px; cursor: pointer; outline: none; }
+.journey-editor-menu { z-index: 130; min-width: 220px; max-width: min(400px, 90vw); max-height: var(--radix-dropdown-menu-content-available-height); overflow: auto; padding: 5px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--glass-radius); box-shadow: var(--shadow); font-size: 14px; animation: overlay-pop var(--motion-spring-quick) var(--ease-spring-quick); }
+.journey-editor-menu-label { padding: 6px 9px 4px; color: var(--muted); font-size: 12px; font-weight: 500; }
+.journey-editor-menu [role="menuitem"] { display: flex; gap: 8px; align-items: center; padding: 8px 9px; border-radius: var(--control-radius); cursor: pointer; outline: none; font-weight: 500; }
 .journey-editor-menu [data-highlighted] { background: var(--hover); box-shadow: inset 0 0 0 1px var(--focus); }
 /* 2026-11-06: the shell prefix outweighs .button-size-icon, which had made this close 30 px and 2 px below the 48 px row's centre;
    now it is the editor's 26 px close in the same spot. */
 .journey-editor-shell > .journey-catalog-close { position: absolute; right: 22px; top: 11px; z-index: 2; width: 26px; height: 26px; min-height: 26px; color: var(--ink); }
 /* 2026-11-06: the discard question enters like every other dialog instead of appearing at once. */
 .journey-confirm-overlay { position: fixed; inset: 0; z-index: 150; background: color-mix(in srgb, var(--sidebar) 70%, transparent); animation: backdrop-fade var(--motion-spring-firm) ease-out; }
-.journey-confirm-dialog { position: fixed; z-index: 151; top: 50%; left: 50%; transform: translate(-50%, -50%); width: min(490px, calc(100vw - 32px)); padding: 24px; background: var(--surface); color: var(--ink); border: 1px solid var(--line); border-radius: 6px; box-shadow: var(--shadow); animation: dialog-drop var(--motion-spring-firm) var(--ease-spring-firm); }
+.journey-confirm-dialog { position: fixed; z-index: 151; top: 50%; left: 50%; transform: translate(-50%, -50%); width: min(490px, calc(100vw - 32px)); padding: 24px; background: var(--surface); color: var(--ink); border: 1px solid var(--line); border-radius: var(--glass-radius); box-shadow: var(--shadow); animation: dialog-drop var(--motion-spring-firm) var(--ease-spring-firm); }
 .journey-confirm-dialog h2 { margin: 0 0 12px; font-size: 18px; }
 .journey-confirm-dialog p { color: var(--muted); line-height: 1.6; }
 .journey-confirm-dialog > div { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 8px; margin-top: 24px; }
@@ -92,8 +86,7 @@ button.journey-mini:focus-visible { outline: 2px solid var(--focus); outline-off
 .journey-bulk-heading { flex-shrink: 0; display: flex; align-items: center; gap: 6px; height: 48px; padding: 0 22px 0 24px; background: var(--journey-bar, var(--surface)); }
 .journey-bulk-count { display: inline-flex; align-items: baseline; gap: 5px; min-width: 0; margin: 0 8px 0 0; color: var(--ink); font-size: 14px; font-weight: 500; line-height: 17px; white-space: nowrap; }
 .journey-bulk-count > span { font-variant-numeric: tabular-nums; }
-.journey-bulk-heading .ui-button { height: 24px; min-height: 24px; padding: 0 7px; gap: 5px; border: .67px solid transparent; border-radius: 4px; color: var(--ink); font-size: 12px; font-weight: 700; line-height: 14px; letter-spacing: .12px; }
-.journey-bulk-heading .ui-button:hover:not(:disabled), .journey-bulk-heading .ui-button[data-state="open"] { background: color-mix(in srgb, var(--focus) 30%, transparent); border-color: color-mix(in srgb, var(--ink) 45%, transparent); }
+.journey-bulk-heading .ui-button { height: 24px; min-height: 24px; padding: 0 7px; gap: 5px;  font-size: 12px; font-weight: 500; line-height: 14px; letter-spacing: .12px; }
 .journey-bulk-heading .journey-bulk-clear { width: 26px; height: 26px; min-height: 26px; margin-left: 4px; padding: 0; color: var(--ink); }
 .journey-bulk-delete { color: var(--danger); }
 .journey-bulk-divider { flex-shrink: 0; width: 1px; height: 22px; background: color-mix(in srgb, var(--ink) 22%, transparent); }
@@ -106,3 +99,18 @@ button.journey-mini:focus-visible { outline: 2px solid var(--focus); outline-off
 @media (hover: none) { .journey-step-select { opacity: 1; } }
 @media (max-width: 900px) { .journey-bulk-heading { height: auto; min-height: 48px; flex-wrap: wrap; padding: 10px 12px; } .journey-bulk-buttons { order: 3; width: 100%; margin-left: 0; flex-wrap: wrap; } }
 @media (prefers-reduced-motion: reduce) { .journey-step-select { transition: none !important; } }
+
+/* 2026-11-10, the Foil Rule: the frame follows the shared 4px dialog grammar; the striped Journey identity remains. */
+.journey-editor-dialog.dialog-panel { border-radius: var(--glass-radius); }
+.journey-editor-shell { border-radius: var(--control-radius); }
+.journey-editor-heading.dialog-head { height: auto; min-height: 56px; }
+.journey-editor-heading h2.dialog-title { font-size: 18px; font-weight: 600; line-height: 24px; }
+.journey-editor-actions .ui-button { height: auto; min-height: 30px; }
+.journey-confirm-dialog.dialog-panel { padding: 0; border-radius: var(--glass-radius); }
+.journey-confirm-dialog h2.dialog-title { margin: 0; }
+.journey-confirm-dialog p.dialog-body { margin: 0; }
+.journey-confirm-dialog > .dialog-foot { margin: 0; }
+@media (max-width: 900px) {
+  .journey-editor-heading h2.dialog-title { flex-wrap: wrap; white-space: normal; }
+  .journey-editor-actions .ui-button { white-space: normal; text-align: left; }
+}

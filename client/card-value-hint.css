@@ -1,0 +1,2 @@
+.card-value-hint { display: contents; }
+.card-value-tooltip { z-index: 160; max-width: min(380px, calc(100vw - var(--space-6))); padding: var(--space-2) var(--space-3); border: 1px solid var(--line); border-radius: var(--glass-radius); color: var(--ink); background: var(--surface); box-shadow: var(--shadow); font: 13px/1.5 var(--font-sans); overflow-wrap: anywhere; }

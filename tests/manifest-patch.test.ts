@@ -68,7 +68,6 @@ const operations: Operation[] = [
   { name: 'append deck', edit: { action: 'create-deck', deckId: added.id, ...added }, change: m => { const { cover: _cover, ...value } = added; m.decks.push(value); } },
   { name: 'append space', edit: { action: 'create-space', title: 'Next' }, change: m => { m.spaces.push({ id: added.id, title: 'Next', kind: 'custom', icon: '' }); }, repeat: false },
   { name: 'delete deck', edit: { action: 'delete-deck', deckId: 'audio' }, change: m => { m.decks.splice(0, 1); }, repeat: false },
-  { name: 'pile', edit: { action: 'set-deck-pile', deckId: 'audio', piled: true }, change: m => { m.decks[0].piled = true; } },
 ];
 const fields = Object.entries(deck).map(([key, value]) => `${key}: ${key === 'title' ? value : JSON.stringify(value)}`);
 const layouts = [
@@ -104,6 +103,35 @@ for (const newline of ['\n', '\r\n']) for (const flow of [false, true]) {
     const suffix = Buffer.from(data.original.slice(end));
     expect(after.subarray(0, prefix.length)).toEqual(prefix);
     expect(after.subarray(after.length - suffix.length)).toEqual(suffix);
+  });
+}
+
+it.each(['\n', '\r\n'])('removes only the deleted Space block and preserves every other byte (%j)', async newline => {
+  const removed = '  - id: empty\n    title: Knowledge\n    kind: knowledge\n    icon: book\n';
+  const spaces = `spaces:\n  - id: work # keep work\n    title: 'Work'\n${removed}# keep neighbor\n  - title: QA\n    id: qa`;
+  const data = await fixture(`schema: 1 # keep schema\n${spaces}\ndecks:\n  - ${fields.join('\n    ')}\ntracks: [] # keep tracks\nmembership: [] # keep membership`, newline);
+  await checkEdit(data, { name: 'delete Space block', edit: { action: 'delete-space', spaceId: 'empty' },
+    change: manifest => { manifest.spaces.splice(1, 1); }, repeat: false }, data.original.replace(removed.replace(/\n/gu, newline), ''));
+});
+
+for (const newline of ['\n', '\r\n']) for (const flow of [false, true]) for (const bom of [false, true]) {
+  it.each(['first', 'middle', 'last', 'only'])(`deletes the %s Space without changing neighboring bytes (${JSON.stringify(newline)}, flow=${flow}, bom=${bom})`, async position => {
+    const removed = '{id: empty, title: "Knowledge"}';
+    const kept = ['{id: work, title: \'Work\'}', '{title: QA, id: qa}'];
+    let records = [removed];
+    if (position === 'first') records = [removed, ...kept];
+    if (position === 'middle') records = [kept[0], removed, kept[1]];
+    if (position === 'last') records = [...kept, removed];
+    const spaces = flow ? `spaces: [${records.join(', ')}] # keep spaces` : `spaces:\n${records.map(record => '  - ' + record).join('\n')}\n# keep spaces`;
+    const data = await fixture(`schema: 1 # keep schema\n'extension: # []': {text: Кириллица}\n${spaces}\ndecks: [] # keep decks\ntracks: [] # keep tracks\nmembership: [] # keep membership`, newline, bom);
+    await checkEdit(data, { name: 'delete space', edit: { action: 'delete-space', spaceId: 'empty' },
+      change: manifest => { manifest.spaces = manifest.spaces.filter(space => space.id !== 'empty'); }, repeat: false });
+    const after = await readFile(data.filename);
+    const prefix = Buffer.from(data.original.slice(0, data.original.indexOf('spaces:')));
+    const suffix = Buffer.from(data.original.slice(data.original.indexOf('decks:')));
+    expect(after.subarray(0, prefix.length)).toEqual(prefix);
+    expect(after.subarray(after.length - suffix.length)).toEqual(suffix);
+    if (position !== 'only') for (const record of kept) expect(after.toString('utf8')).toContain(record);
   });
 }
 
@@ -173,21 +201,6 @@ it.each([
   const data = await fixture(base + `decks: [${flowDeck.replace('title: Audio', 'title: ' + before)}]`, '\r\n');
   await checkEdit(data, { name: 'quote', edit: { action: 'update-deck', deckId: 'audio', ...deck, title }, change: m => { m.decks[0].title = title; } },
     data.original.replace('title: ' + before, 'title: ' + after));
-});
-
-it.each(['true', 'false'])('changes only the piled field (%s)', async piled => {
-  const data = await fixture(base + `decks:\n${blockDeck}\n    piled: ${piled} # keep pile\n# keep section`, '\r\n');
-  const value = piled !== 'true';
-  await checkEdit(data, { name: 'pile', edit: { action: 'set-deck-pile', deckId: 'audio', piled: value }, change: m => {
-    if (value) m.decks[0].piled = true;
-    else delete m.decks[0].piled;
-  } }, data.original.replace(`piled: ${piled}`, value ? 'piled: true' : ''));
-});
-
-it.each(['|', '|-', '|+', '>', '>-', '>+'])('piles a deck ending in a %s scalar at the YAML boundary', async style => {
-  const yaml = blockDeck.replace('    description: ""\n', '') + `\n    description: ${style} # keep final scalar\n      first\n      second`;
-  const data = await fixture(base + 'decks:\n' + yaml, '\r\n');
-  await checkEdit(data, operations.find(operation => operation.name === 'pile')!);
 });
 
 it.each([false, true])('appends into empty collections in a root flow map: %s', async empty => {

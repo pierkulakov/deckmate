@@ -4,13 +4,16 @@ import { Check, Layers, LoaderCircle, Minus, Plus, RefreshCw, Route, X } from 'l
 import type { ProjectTemplate, ProjectTemplateCategory, ProjectTemplatePlan, ProjectTemplatePlanItem } from '../../src/catalog-contracts.ts';
 import type { WorkspaceSnapshot } from '../../src/workspace-contracts.ts';
 import { markdownParser } from '../../src/markdown-model.ts';
-import { defineText, useLang, useText } from '../i18n.ts';
+import { defineText, formatNumber, useLang, useText } from '../i18n.ts';
 import { useCatalog } from '../useCatalog.ts';
 import { catalogStore } from '../catalog-store.ts';
 import { readStoredValue } from '../storage.ts';
 import { failureMessage } from '../failure-message.ts';
 import { navigateTabs } from '../tab-navigation.ts';
 import { templateText } from '../../src/template-text.ts';
+import { EmptyState } from './EmptyState.tsx';
+import { ErrorState } from './ErrorState.tsx';
+import { LoadingState } from './LoadingState.tsx';
 import { Markdown } from './Markdown.tsx';
 import { Button } from './ui/button.tsx';
 import '../project-templates.css';
@@ -28,7 +31,6 @@ const text = defineText({
   loadingPlan: 'Preparing your project…',
   loadFailed: 'Could not load templates. Try again.',
   planFailed: 'Could not load the plan. Try again.',
-  retry: 'Try again',
   empty: 'No project templates are available in this installation.',
   select: 'Choose a template to see its project structure.',
   plan: 'Your project',
@@ -51,8 +53,9 @@ const text = defineText({
   apply: 'Apply',
   applying: 'Applying…',
   noChanges: 'This structure is already in your project.',
-  decks: (count: number) => `${count} ${count === 1 ? 'deck' : 'decks'}`,
-  journeys: (count: number) => `${count} ${count === 1 ? 'Journey' : 'Journeys'}`,
+  // 2026-11-10: card counters are label + Geist Mono value pairs (client/surface.css .page-number), like the pulse.
+  decksLabel: 'decks',
+  journeysLabel: 'Journeys',
 }, {
   title: 'Начать с шаблона',
   description: 'Выберите заготовку, чтобы добавить в проект колоды и Journey.',
@@ -66,7 +69,6 @@ const text = defineText({
   loadingPlan: 'Готовим план проекта…',
   loadFailed: 'Не удалось загрузить шаблоны. Повторите попытку.',
   planFailed: 'Не удалось загрузить план. Повторите попытку.',
-  retry: 'Повторить',
   empty: 'В этой установке нет шаблонов проекта.',
   select: 'Выберите шаблон, чтобы увидеть структуру проекта.',
   plan: 'Ваш проект',
@@ -89,8 +91,8 @@ const text = defineText({
   apply: 'Применить',
   applying: 'Применяем…',
   noChanges: 'Эта структура уже есть в вашем проекте.',
-  decks: (count: number) => `Колоды: ${count}`,
-  journeys: (count: number) => `Journey: ${count}`,
+  decksLabel: 'Колоды',
+  journeysLabel: 'Journey',
 });
 
 // 2026-11-05: starters sit on two shelves, Games and Software; the key remembers the last opened one.
@@ -137,7 +139,7 @@ function PlanGroup({ status, items }: { status: ProjectTemplatePlanItem['status'
   const StatusIcon = { create: Plus, resume: RefreshCw, reuse: Check, skip: Minus }[status];
   if (items.length === 0) return null;
   return <section className={`project-template-plan-group is-${status}`}>
-    <h4><StatusIcon size={14} aria-hidden="true" />{t[status]}<span>{items.length}</span></h4>
+    <h4><StatusIcon size={14} aria-hidden="true" />{t[status]}<span className="panel-count">{items.length}</span></h4>
     <ul>{items.map((item, index) => <li key={`${item.kind}:${item.title}:${index}`}>
       <div><span>{item.title}</span><small>{t[item.kind]}</small></div>
       {item.reason && <p>{item.reason}</p>}
@@ -155,6 +157,8 @@ export function ProjectTemplates({ snapshot, refreshKey, onClose, onApplied, tes
 }) {
   const t = useText(text);
   const lang = useLang();
+  // 2026-11-10: the shared cached formatter keeps the home screen's number formatting in the card counters.
+  const amount = (value: number) => formatNumber(value, 2, lang);
   const catalog = useCatalog(snapshot, refreshKey);
   const shelfTabsId = useId();
   const [templates, setTemplates] = useState<ProjectTemplate[]>([]);
@@ -246,47 +250,64 @@ export function ProjectTemplates({ snapshot, refreshKey, onClose, onApplied, tes
 
   return <Dialog.Root open onOpenChange={open => { if (!open && !busy) onClose(); }}><Dialog.Portal>
     <Dialog.Overlay className="dialog-overlay" />
-    <Dialog.Content className="project-template-picker" aria-busy={busy}>
-      <header className="project-template-header">
-        <div className="project-template-heading"><Dialog.Title>{t.title}</Dialog.Title><Dialog.Description>{t.description}</Dialog.Description></div>
-        <div className="project-template-shelves" role="tablist" aria-label={t.shelves} onKeyDown={navigateTabs}>
-          {templateShelves.map(category => <button type="button" role="tab" key={category}
-            id={`${shelfTabsId}-${category}`} aria-controls={`${shelfTabsId}-panel`} tabIndex={shelf === category ? 0 : -1}
-            aria-selected={shelf === category} className="project-template-shelf" disabled={busy}
-            onClick={() => chooseShelf(category)}>{t[category]}</button>)}
+    <Dialog.Content className="project-template-picker dialog-panel" aria-busy={busy}>
+      <header className="project-template-header dialog-head">
+        <div className="project-template-heading">
+          <Dialog.Title className="dialog-title">{t.title}</Dialog.Title>
+          <Dialog.Description>{t.description}</Dialog.Description>
         </div>
-        <Dialog.Close asChild><Button variant="ghost" size="icon" className="project-template-close" disabled={busy} aria-label={t.close}><X size={18} /></Button></Dialog.Close>
+        <div className="project-template-tools">
+          <div className="project-template-shelves control-segmented" role="tablist" aria-label={t.shelves} onKeyDown={navigateTabs}>
+            {templateShelves.map(category => <button type="button" role="tab" key={category}
+              id={`${shelfTabsId}-${category}`} aria-controls={`${shelfTabsId}-panel`} tabIndex={shelf === category ? 0 : -1}
+              aria-selected={shelf === category} className="project-template-shelf" disabled={busy}
+              onClick={() => chooseShelf(category)}>{t[category]}</button>)}
+          </div>
+          <Dialog.Close asChild><Button variant="ghost" size="icon" className="project-template-close" disabled={busy} aria-label={t.close}><X size={17} /></Button></Dialog.Close>
+        </div>
       </header>
       <div className="project-template-body" role="tabpanel" id={`${shelfTabsId}-panel`} aria-labelledby={`${shelfTabsId}-${shelf}`} tabIndex={0}>
-        <section className="project-template-browser" aria-label={t.choose} aria-busy={loading}>
-          {loading && <p className="project-template-message" role="status"><LoaderCircle size={17} className="spin" />{t.loading}</p>}
-          {loadError && <div className="project-template-error" role="alert"><p>{loadError}</p><Button variant="outline" size="sm" onClick={() => setReload(value => value + 1)}>{t.retry}</Button></div>}
-          {!loading && !loadError && templates.length === 0 && <p className="project-template-message">{t.empty}</p>}
-          {!loading && !loadError && templates.length > 0 && shelfTemplates.length === 0 && <p className="project-template-message">{t.shelfEmpty}</p>}
-          {!loadError && shelfTemplates.length > 0 && <div className="project-template-grid">{shelfTemplates.map(template => {
-            const localized = templateText(template, lang);
-            return <button type="button" key={template.id}
-              className="project-template-option" aria-pressed={selectedId === template.id} disabled={busy || loading}
-              onClick={() => { setSelectedId(template.id); setApplyMessage(''); }}>
-              <span className="project-template-option-title"><strong>{localized.title}</strong>{selectedId === template.id && <Check size={17} aria-hidden="true" />}</span>
-              <span className="project-template-description">{localized.description}</span>
-              <span className="project-template-counts"><span><Layers size={13} aria-hidden="true" />{t.decks(template.decks.length)}</span>
-                <span><Route size={13} aria-hidden="true" />{t.journeys(template.decks.filter(deck => deck.journey).length)}</span></span>
-            </button>;
-          })}</div>}
-        </section>
-        <aside className="project-template-plan" aria-label={t.plan} aria-busy={planning}>
-          {selected && selectedText ? <>
-            <h3>{selectedText.title}</h3>
-            {selected.details && <div className="project-template-details"><Markdown tree={details} source={snapshot.source} path={`assets/project-templates/${selected.id}.md`} /></div>}
-            <p className="project-template-note">{t.additive}</p>
-            {planning && <p className="project-template-message" role="status"><LoaderCircle size={16} className="spin" />{t.loadingPlan}</p>}
-            {planError && <div className="project-template-error" role="alert"><p>{planError}</p><Button variant="outline" size="sm" onClick={() => setPlanRevision(value => value + 1)}>{t.retry}</Button></div>}
-            {currentPlan && !planning && <div className="project-template-plan-items">
-              {(['create', 'resume', 'reuse', 'skip'] as const).map(status => <PlanGroup key={status} status={status} items={items.filter(item => item.status === status)} />)}
-            </div>}
-          </> : !loading && !loadError && shelfTemplates.length > 0 && <p className="project-template-message">{t.select}</p>}
-        </aside>
+        <div className="project-template-pane">
+          <section className="project-template-browser glass-panel" aria-label={t.choose} aria-busy={loading}>
+            <div className="panel-head">
+              <h3 className="panel-title">{t[shelf]}</h3>
+              <span className="panel-count">{amount(shelfTemplates.length)}</span>
+            </div>
+            {loading && <LoadingState variant="skeleton" className="project-template-loading" message={t.loading} />}
+            {!loading && loadError && <ErrorState variant="banner" className="project-template-state" message={loadError}
+              onRetry={() => setReload(value => value + 1)} pending={loading} />}
+            {!loading && !loadError && templates.length === 0 && <EmptyState message={t.empty} />}
+            {!loading && !loadError && templates.length > 0 && shelfTemplates.length === 0 && <EmptyState message={t.shelfEmpty} />}
+            {!loadError && shelfTemplates.length > 0 && <div className="project-template-grid">{shelfTemplates.map(template => {
+              const localized = templateText(template, lang);
+              return <button type="button" key={template.id}
+                className="project-template-option" aria-pressed={selectedId === template.id} disabled={busy || loading}
+                onClick={() => { setSelectedId(template.id); setApplyMessage(''); }}>
+                <span className="project-template-option-title"><strong>{localized.title}</strong>{selectedId === template.id && <Check size={17} aria-hidden="true" />}</span>
+                <span className="project-template-description">{localized.description}</span>
+                <span className="project-template-counts">
+                  <span><Layers size={13} aria-hidden="true" />{t.decksLabel}: <span className="page-number">{amount(template.decks.length)}</span></span>
+                  <span><Route size={13} aria-hidden="true" />{t.journeysLabel}: <span className="page-number">{amount(template.decks.filter(deck => deck.journey).length)}</span></span>
+                </span>
+              </button>;
+            })}</div>}
+          </section>
+        </div>
+        <div className="project-template-pane">
+          <aside className="project-template-plan glass-panel" aria-label={t.plan} aria-busy={planning}>
+            {selected && selectedText ? <>
+              <div className="panel-head"><h3 className="panel-title">{selectedText.title}</h3></div>
+              {selected.details && <div className="project-template-details"><Markdown tree={details} source={snapshot.source} path={`assets/project-templates/${selected.id}.md`} /></div>}
+              <p className="project-template-note">{t.additive}</p>
+              {!planError && planning && <LoadingState variant="skeleton" className="project-template-loading" message={t.loadingPlan} />}
+              {planError && <ErrorState variant="banner" className="project-template-state" message={planError}
+                onRetry={() => setPlanRevision(value => value + 1)} pending={planning} />}
+              {currentPlan && !planning && <div className="project-template-plan-items">
+                {(['create', 'resume', 'reuse', 'skip'] as const).map(status => <PlanGroup key={status} status={status} items={items.filter(item => item.status === status)} />)}
+              </div>}
+            </> : !loading && !loadError && shelfTemplates.length > 0 && <EmptyState message={t.select} />}
+          </aside>
+        </div>
       </div>
       <footer className="project-template-footer">
         {(applyMessage || catalog.error) && <p className="project-template-error" role="alert">{applyMessage || catalog.error}</p>}
@@ -298,9 +319,9 @@ export function ProjectTemplates({ snapshot, refreshKey, onClose, onApplied, tes
         <div className="project-template-footer-row">
           <label className="project-template-samples"><input type="checkbox" checked={samples} disabled={busy || !selected?.samples.length} onChange={event => setSamples(event.target.checked)} />
             <span><strong>{t.samples}</strong><small>{t.samplesHint}</small></span></label>
-          <div className="project-template-actions"><Button variant="ghost" disabled={busy} onClick={onClose}>{t.cancel}</Button>
-            <Button disabled={!canWrite || busy || loading || planning || !currentPlan || !catalog.catalog || Boolean(planError) || Boolean(loadError) || stale || changes === 0} onClick={() => void apply()}>
-              {applying && <LoaderCircle size={15} className="spin" />}{applying ? t.applying : t.apply}
+          <div className="project-template-actions"><Button variant="ghost" size="sm" disabled={busy} onClick={onClose}>{t.cancel}</Button>
+            <Button variant="ghost" size="sm" className="action-mint" disabled={!canWrite || busy || loading || planning || !currentPlan || !catalog.catalog || Boolean(planError) || Boolean(loadError) || stale || changes === 0} onClick={() => void apply()}>
+              {applying && <LoaderCircle size={14} className="spin" />}{applying ? t.applying : t.apply}
             </Button></div>
         </div>
         {currentPlan && !planning && changes === 0 && <p className="project-template-note" role="status">{t.noChanges}</p>}

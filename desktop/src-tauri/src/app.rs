@@ -15,6 +15,8 @@ use std::{
     },
 };
 use tauri::{AppHandle, Emitter, Manager};
+use tauri_plugin_dialog::{MessageDialogButtons, MessageDialogKind, MessageDialogResult};
+use tauri_plugin_opener::OpenerExt;
 use tokio::sync::{oneshot, watch};
 
 #[derive(Clone)]
@@ -163,6 +165,59 @@ impl Shell {
         Ok(())
     }
 
+    async fn cancelled(&self, launch: u64) -> Failure {
+        let mut cancellation = self.launch.subscribe();
+        loop {
+            if let Err(failure) = self.require_launch(launch) {
+                return failure;
+            }
+            let _ = cancellation.changed().await;
+        }
+    }
+
+    async fn initialize_project<F: std::future::Future<Output = ()>>(
+        &self,
+        folder: &str,
+        launch: u64,
+        guard: tokio::sync::MutexGuard<'_, ()>,
+        warn: impl FnOnce(Failure) -> F,
+    ) -> Result<(), Failure> {
+        let language = self.language();
+        let initialized = server::initialize(
+            &self.programs,
+            folder,
+            &language,
+            &self.log,
+            self.cancelled(launch),
+        )
+        .await
+        .and_then(|()| {
+            self.require_launch(launch)
+                .map_err(|failure| server::init_failure(failure, folder, &language))
+        });
+        if initialized.is_err() {
+            let mut trusted = self.dialog_folder.lock().unwrap();
+            if trusted
+                .as_deref()
+                .is_some_and(|path| paths::same_path(path, folder))
+            {
+                trusted.take();
+            }
+        }
+        // 2026-11-10: quit must wait for child reaping, never for acknowledgement of a native dialog.
+        drop(guard);
+        if let Err(failure) = &initialized {
+            self.log.write(format!(
+                "project initialization failed: {}",
+                failure.message
+            ));
+            if !self.closing.load(Ordering::SeqCst) {
+                warn(failure.clone()).await;
+            }
+        }
+        initialized
+    }
+
     pub fn check_folder(&self, input: &Value) -> Result<String, Failure> {
         let folder = input
             .as_str()
@@ -296,35 +351,62 @@ async fn start_project(
         .await
         .map_err(|error| Failure::new("load-failed", error))?;
     let saved_port = shell.settings.lock().unwrap().server_port;
-    let port = server::choose_port(saved_port)
+    let mut port = server::choose_port(saved_port)
         .map_err(|error| Failure::new("start-failed", error.to_string()))?;
-    if saved_port != Some(port) {
-        shell.update_settings(|settings| {
-            settings.server_port = Some(port);
-            Ok(())
-        })?;
-    }
-    let (process, ready) = server::start_on_port(
-        &shell.programs,
-        &shell.directory,
-        folder,
-        shell.log.clone(),
-        shell.language(),
-        port,
-    )
-    .map_err(|error| Failure::new("start-failed", error.to_string()))?;
-    *shell.current.lock().unwrap() = Some(Session {
-        launch,
-        folder: folder.into(),
-        url: None,
-        process: process.clone(),
-    });
-    if shell.replaced(launch) {
-        process.request_stop();
-    }
-    let url = ready
-        .await
-        .map_err(|error| Failure::new("start-failed", error.to_string()))??;
+    let mut retries = server::PortRetries::default();
+    let (process, url) = loop {
+        if shell.replaced(launch) {
+            return Err(shell.failure("superseded", "superseded"));
+        }
+        if shell.settings.lock().unwrap().server_port != Some(port) {
+            shell.update_settings(|settings| {
+                settings.server_port = Some(port);
+                Ok(())
+            })?;
+        }
+        let (process, ready) = server::start_on_port(
+            &shell.programs,
+            &shell.directory,
+            folder,
+            shell.log.clone(),
+            shell.language(),
+            port,
+        )
+        .map_err(|error| Failure::new("start-failed", error.to_string()))?;
+        *shell.current.lock().unwrap() = Some(Session {
+            launch,
+            folder: folder.into(),
+            url: None,
+            process: process.clone(),
+        });
+        if shell.replaced(launch) {
+            process.request_stop();
+        }
+        match ready
+            .await
+            .map_err(|error| Failure::new("start-failed", error.to_string()))?
+        {
+            Ok(url) => break (process, url),
+            Err(error) => {
+                process.exited().await;
+                if shell.replaced(launch) {
+                    return Err(shell.failure("superseded", "superseded"));
+                }
+                match retries
+                    .next(&error)
+                    .map_err(|error| Failure::new("start-failed", error.to_string()))?
+                {
+                    Some(next) => {
+                        shell
+                            .log
+                            .write(format!("server port {port} was taken; retrying on {next}"));
+                        port = next;
+                    }
+                    None => return Err(error),
+                }
+            }
+        }
+    };
     if shell.replaced(launch) {
         process.stop().await;
         return Err(shell.failure("superseded", "superseded"));
@@ -398,8 +480,8 @@ pub async fn create_project(app: &AppHandle, options: Value) -> Result<(), Failu
     if shell.closing.load(Ordering::SeqCst) {
         return Err(shell.failure("closed", "closed"));
     }
-    let launch = *shell.launch.borrow();
-    // 2026-11-09: init owns a Job too; install and quit must wait for its writes to finish.
+    let launch = shell.next_launch();
+    // 2026-11-09: cancellation reaps init before releasing the lifecycle lock to quit or a newer launch.
     let guard = shell.lifecycle.lock().await;
     shell.require_launch(launch)?;
     let folder = shell.check_folder(&options["folder"])?;
@@ -428,10 +510,43 @@ pub async fn create_project(app: &AppHandle, options: Value) -> Result<(), Failu
             ))
         }
     }
-    server::initialize(&shell.programs, &folder, &shell.language(), &shell.log).await?;
-    shell.require_launch(launch)?;
-    drop(guard);
+    shell
+        .initialize_project(&folder, launch, guard, |failure| {
+            warn_incomplete_project(app, &folder, failure)
+        })
+        .await?;
     open_project(app, folder).await
+}
+
+async fn warn_incomplete_project(app: &AppHandle, folder: &str, failure: Failure) {
+    let shell = state(app);
+    if shell.closing.load(Ordering::SeqCst) {
+        return;
+    }
+    let language = shell.language();
+    let reveal = texts::text(&language, "openInExplorer");
+    let choice = menu::dialog(
+        app,
+        texts::text(&language, "createFailedTitle"),
+        &failure.message,
+        MessageDialogButtons::OkCancelCustom(reveal.into(), texts::text(&language, "ok").into()),
+        MessageDialogKind::Warning,
+    )
+    .await;
+    if !shell.closing.load(Ordering::SeqCst)
+        && matches!(choice, MessageDialogResult::Custom(label) if label == reveal)
+    {
+        if let Some(target) = Path::new(folder).ancestors().find(|path| path.is_dir()) {
+            if let Err(error) = app
+                .opener()
+                .open_path(target.to_string_lossy(), None::<&str>)
+            {
+                shell
+                    .log
+                    .write(format!("could not reveal incomplete project: {error}"));
+            }
+        }
+    }
 }
 
 pub async fn startup(app: AppHandle) {
@@ -726,6 +841,168 @@ pub(crate) mod tests {
         shell.closing.store(false, Ordering::SeqCst);
         assert!(shell.begin_quit());
         assert!(!shell.begin_quit());
+    }
+
+    #[tokio::test]
+    async fn failed_init_preserves_contents_without_remembering_or_trusting_the_folder() {
+        let sandbox = Sandbox::new();
+        let cli = sandbox.0.join("init.cjs");
+        std::fs::write(
+            &cli,
+            r#"
+            const fs = require('fs'), path = require('path');
+            fs.mkdirSync(process.argv[3], { recursive: true });
+            fs.writeFileSync(path.join(process.argv[3], 'partial.md'), 'keep partial project');
+            process.exitCode = 7;
+        "#,
+        )
+        .unwrap();
+        let mut shell = shell(&sandbox.0, None);
+        shell.programs.cli = cli;
+        shell
+            .update_settings(|settings| {
+                settings.remember("C:/Existing");
+                Ok(())
+            })
+            .unwrap();
+        let previous = shell.settings.lock().unwrap().clone();
+        for (name, language) in [("missing", "en"), ("empty", "ru")] {
+            let folder = sandbox.0.join(name);
+            if name == "empty" {
+                std::fs::create_dir(&folder).unwrap();
+            }
+            let folder = folder.to_string_lossy().into_owned();
+            shell.settings.lock().unwrap().language = language.into();
+            *shell.dialog_folder.lock().unwrap() = Some(folder.clone());
+            let launch = shell.next_launch();
+            let guard = shell.lifecycle.lock().await;
+            let error = shell
+                .initialize_project(&folder, launch, guard, |failure| {
+                    assert!(shell.lifecycle.try_lock().is_ok());
+                    assert!(failure.message.contains(&folder));
+                    assert!(failure.message.contains(&texts::format(
+                        language,
+                        "initPartial",
+                        "path",
+                        &folder
+                    )));
+                    async {}
+                })
+                .await
+                .unwrap_err();
+            assert_eq!(error.code, "create-failed");
+            assert_eq!(
+                std::fs::read(Path::new(&folder).join("partial.md")).unwrap(),
+                b"keep partial project"
+            );
+            assert!(shell.dialog_folder.lock().unwrap().is_none());
+            let saved = Settings::load(&sandbox.0, "en", &shell.log);
+            assert_eq!(saved.recent, previous.recent);
+            assert_eq!(saved.last_project, previous.last_project);
+            let memory = shell.settings.lock().unwrap();
+            assert_eq!(memory.recent, previous.recent);
+            assert_eq!(memory.last_project, previous.last_project);
+        }
+    }
+
+    #[tokio::test]
+    async fn pending_init_warning_does_not_hold_lifecycle_against_quit() {
+        let sandbox = Sandbox::new();
+        let cli = sandbox.0.join("init.cjs");
+        std::fs::write(&cli, "process.exitCode = 7;").unwrap();
+        let mut shell = shell(&sandbox.0, None);
+        shell.programs.cli = cli;
+        let shell = Arc::new(shell);
+        let running = shell.clone();
+        let launch = shell.next_launch();
+        let (shown, warning_shown) = oneshot::channel();
+        let (dismiss, dismissed) = oneshot::channel();
+        let task = tokio::spawn(async move {
+            let guard = running.lifecycle.lock().await;
+            running
+                .initialize_project(
+                    &running.directory.to_string_lossy(),
+                    launch,
+                    guard,
+                    |_| async {
+                        let _ = shown.send(());
+                        let _ = dismissed.await;
+                    },
+                )
+                .await
+        });
+        tokio::time::timeout(std::time::Duration::from_secs(5), warning_shown)
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(shell.begin_quit());
+        shell.next_launch();
+        let guard = tokio::time::timeout(std::time::Duration::from_secs(1), shell.lifecycle.lock())
+            .await
+            .unwrap();
+        assert!(!task.is_finished());
+        drop(guard);
+        let _ = dismiss.send(());
+        assert_eq!(task.await.unwrap().unwrap_err().code, "create-failed");
+    }
+
+    #[tokio::test]
+    async fn quit_and_superseding_launch_cancel_hung_init_before_taking_lifecycle() {
+        for quitting in [true, false] {
+            let sandbox = Sandbox::new();
+            let cli = sandbox.0.join("init.cjs");
+            std::fs::write(&cli, r#"
+                const child = require('child_process').spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], { stdio: ['ignore', 'inherit', 'inherit'] });
+                require('fs').writeFileSync(require('path').join(__dirname, 'descendant-pid'), String(child.pid));
+                require('fs').writeFileSync(require('path').join(__dirname, 'pid'), String(process.pid));
+                setInterval(() => {}, 1000);
+            "#).unwrap();
+            let mut shell = shell(&sandbox.0, None);
+            shell.programs.cli = cli;
+            let shell = Arc::new(shell);
+            let launch = shell.next_launch();
+            let running = shell.clone();
+            let warned = Arc::new(AtomicBool::new(false));
+            let warning = warned.clone();
+            let task = tokio::spawn(async move {
+                let guard = running.lifecycle.lock().await;
+                running
+                    .initialize_project(
+                        &running.directory.to_string_lossy(),
+                        launch,
+                        guard,
+                        |_| async {
+                            warning.store(true, Ordering::SeqCst);
+                        },
+                    )
+                    .await
+            });
+            tokio::time::timeout(std::time::Duration::from_secs(5), async {
+                while !sandbox.0.join("pid").exists() {
+                    tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+                }
+            })
+            .await
+            .unwrap();
+            if quitting {
+                assert!(shell.begin_quit());
+            }
+            shell.next_launch();
+            let guard =
+                tokio::time::timeout(std::time::Duration::from_secs(3), shell.lifecycle.lock())
+                    .await
+                    .unwrap();
+            drop(guard);
+            let failure = task.await.unwrap().unwrap_err();
+            assert_eq!(failure.code, if quitting { "closed" } else { "superseded" });
+            assert_eq!(warned.load(Ordering::SeqCst), !quitting);
+            assert!(failure.message.contains("partially"));
+            assert!(failure.message.contains(sandbox.0.to_str().unwrap()));
+            assert!(shell.settings.lock().unwrap().recent.is_empty());
+            assert!(shell.settings.lock().unwrap().last_project.is_none());
+            crate::server::tests::assert_child_reaped(&sandbox.0.join("pid")).await;
+            crate::server::tests::assert_child_reaped(&sandbox.0.join("descendant-pid")).await;
+        }
     }
 
     #[test]

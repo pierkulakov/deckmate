@@ -3,7 +3,7 @@ import type { CardContent, CardKind, CardPriority } from '../src/catalog-contrac
 import type { DataSource } from '../src/workspace-contracts.ts';
 
 /**
- * Unsaved card text kept after Cancel (2026-11-05, as in the reference): instead of a confirmation dialog the card shows
+ * Unsaved card text kept after Cancel (2026-11-05): instead of a confirmation dialog the card shows
  * "unsaved changes" with Continue editing and Discard changes. The draft keeps the revision it was based on, so a file
  * changed meanwhile opens as the usual content conflict, never as a silent overwrite. Stored per browser, per card.
  */

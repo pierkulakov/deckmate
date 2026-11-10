@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { moveFocus } from '../focus.ts';
 import '../confirm-strip.css';
 
 /**
@@ -28,10 +29,10 @@ export function ConfirmStrip({ question, keepLabel, confirmLabel, danger = false
     // The strip arrives with the decision: the safe button takes focus, and gives it back where it came from.
     restoreFocus.current = document.activeElement;
     root.current?.scrollIntoView({ block: 'nearest' });
-    keepButton.current?.focus({ preventScroll: true });
+    moveFocus(keepButton.current, { preventScroll: true });
     return () => {
       const restore = restoreFocus.current;
-      if (restore instanceof HTMLElement && restore.isConnected && root.current?.contains(document.activeElement)) restore.focus({ preventScroll: true });
+      if (restore instanceof HTMLElement && restore.isConnected && root.current?.contains(document.activeElement)) moveFocus(restore, { preventScroll: true });
     };
   }, []);
   useEffect(() => {

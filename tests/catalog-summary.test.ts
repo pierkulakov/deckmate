@@ -95,8 +95,8 @@ it('limits each group independently while keeping totals, exact counts and trunc
   const summary = summarizeCatalog(catalog, undefined, 2);
   expect(summary.counts.total).toBe(7);
   expect(summary.groups.doing).toMatchObject({ total: 7, truncated: true, cards: [expect.any(Object), expect.any(Object)] });
-  expect(summary.groups.blocked.total).toBe(7);
-  expect(summary.groups.blocked.cards).toHaveLength(2);
+  // 2026-11-09: a missing prerequisite stays in the dependency context but no longer blocks.
+  expect(summary.groups.blocked.total).toBe(0);
   expect(summary.dependencies.total).toBe(7);
   expect(summary.dependencies.cards).toHaveLength(2);
   expect(summary.groups.planned).toEqual({ total: 0, truncated: false, cards: [] });
@@ -137,8 +137,9 @@ it('retains explicitly marked archived/deleted prerequisites as context for acti
     card('deleted', 'not-started', { deleted: true, tags: ['legacy'] }),
   ]));
   expect(summary.counts.total).toBe(1);
-  expect(summary.groups.blocked.cards.map(item => item.id)).toEqual(['active']);
-  expect(summary.groups.ready.total).toBe(0);
+  // 2026-11-09: archived and deleted prerequisites are context only; the dependent card is ready.
+  expect(summary.groups.blocked.total).toBe(0);
+  expect(summary.groups.ready.cards.map(item => item.id)).toEqual(['active']);
   expect(summary.dependencies.cards).toEqual(expect.arrayContaining([
     expect.objectContaining({ id: 'archived', state: 'review', missing: false, archived: true, handMemberIds: ['kimi'] }),
     expect.objectContaining({ id: 'deleted', state: 'not-started', missing: false, deleted: true, tags: ['legacy'] }),

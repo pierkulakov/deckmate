@@ -22,17 +22,17 @@
   /* Highlight tone of the satin; Hero surfaces tint it with --hero-sheen (2026-11-05). */
   --metal-sheen: #fff8e8;
   --metal-shadow: #241b24;
-  /* 2026-11-08: warm shadow that deepens gold to the reference's amber without greying it. */
+  /* 2026-11-08: warm shadow that deepens gold to amber without greying it. */
   --metal-amber: #6b3f0a;
-  /* 2026-11-09: holographic foil of an accepted Hero (author's choice «A++»): one rainbow, used by the band, face and ring. */
+  /* 2026-11-09: holographic foil of an accepted Hero: one rainbow, used by the band, face and ring. */
   --holo-rose: #ff5c9a;
   --holo-amber: #ffcb3d;
   --holo-mint: #5dff9a;
   --holo-sky: #3fc8ff;
   --holo-violet: #9c6bff;
-  /* One long sweep, not a repeating tile: a repeated angled tile left a vertical seam across the card (author, 2026-11-09). */
+  /* One long sweep, not a repeating tile: a repeated angled tile left a vertical seam across the card (2026-11-09). */
   --holo-stripes: linear-gradient(115deg, var(--holo-rose), var(--holo-amber), var(--holo-mint), var(--holo-sky), var(--holo-violet), var(--holo-rose), var(--holo-amber), var(--holo-mint), var(--holo-sky), var(--holo-violet), var(--holo-rose), var(--holo-amber), var(--holo-mint), var(--holo-sky), var(--holo-violet), var(--holo-rose)) no-repeat;
-  /* 2026-11-09: sparse glitter — four dot layers with unrelated tile sizes read as scattered, not as a grid (author). */
+  /* 2026-11-09: sparse glitter — four dot layers with unrelated tile sizes read as scattered, not as a grid. */
   --holo-glitter: radial-gradient(circle at 23% 31%, #fff 0 .45px, transparent .8px) 0 0 / 13px 11px, radial-gradient(circle at 71% 64%, #fff 0 .4px, transparent .75px) 5px 3px / 17px 19px, radial-gradient(circle at 42% 83%, #fff6c8 0 .5px, transparent .85px) 2px 9px / 23px 17px, radial-gradient(circle at 86% 12%, #e9f6ff 0 .4px, transparent .7px) 11px 6px / 29px 31px;
 }
 .sub-card-progress { --sub-card-gap: 2px; display: flex; gap: var(--sub-card-gap); width: 100%; height: 8px; }
@@ -53,7 +53,7 @@ button.sub-card-progress-segment { cursor: pointer; }
 .catalog-card-hero .deck-card-identity:has(+ .catalog-card-progress) { margin-bottom: 3px; }
 .catalog-card-hero .catalog-card-progress { line-height: 11px; }
 .catalog-card-hero { --metal-sheen: var(--hero-sheen); }
-/* 2026-11-09: the author's reference — a Hero tile's Sub Cards read as a thin line of light on the gold, quiet beside the
+/* 2026-11-09: a Hero tile's Sub Cards read as a thin line of light on the gold, quiet beside the
    effort and the crown (the 8px bar of five saturated colours caught the eye). Done steps are near-white, working steps
    brighter cream, review and blocked steps carry a faint violet and rose; the Sub Cards panel keeps the full colours. */
 .catalog-card-hero .sub-card-progress {
@@ -78,11 +78,11 @@ button.sub-card-progress-segment { cursor: pointer; }
   --metal-base: var(--hero-metal);
   --metal-sheen: var(--hero-sheen);
   --metal-polish: 24%;
-  /* 2026-11-08: the author's reference ribbon runs from deep amber to pale cream; Hero gold shows it at full strength. */
+  /* 2026-11-08: the ribbon runs from deep amber to pale cream; Hero gold shows it at full strength. */
   --metal-deep: color-mix(in srgb, var(--metal-base) 64%, var(--metal-amber));
   --metal-glare-opacity: 1;
 }
-/* 2026-11-09: Doc Cards wear copper with deep brown ink (the author's «Страница»). The ribbon runs at full strength as
+/* 2026-11-09: Doc Cards wear copper with deep brown ink. The ribbon runs at full strength as
    on a Hero; at its darkest stop the word count still holds 4.6:1. */
 .catalog-card-doc > .deck-card-band {
   --metal-glare-opacity: 1;
@@ -128,13 +128,13 @@ button.sub-card-progress-segment { cursor: pointer; }
 
 /* 2026-11-09: a tile that can tilt keeps its own compositor layer. Otherwise Chromium promotes the card only while the
    tilt transition (or a moving ribbon layer) runs and drops it when that ends; the content then re-snaps to whole
-   device pixels, and the band's numbers and icons jumped about a pixel on hover and ~200ms after the pointer left
-   (author's recording). The ribbon itself stays unpromoted and repaints inside this one layer. */
+   device pixels, and the band's numbers and icons jumped about a pixel on hover and ~200ms after the pointer left.
+   The ribbon itself stays unpromoted and repaints inside this one layer. */
 @media (hover: hover) and (pointer: fine) and (prefers-reduced-motion: no-preference) {
   .deck-card-space > .deck-card { will-change: transform; }
 }
 
-/* 2026-11-08: tiles follow the author's reference ("макетный референс"): one rigid ribbon of metal slides across the
+/* 2026-11-08: one rigid ribbon of metal slides across the
    tile — a long ramp from deep amber to a cream hot edge, a crisp cut, a second ramp to pale gold, a crisp cut to deep
    amber. At rest only the first ramp shows, so the band reads as plain metal, dark to light. useCardTilt sweeps it in
    on enter, moves it with the tilt and sweeps it out on leave; --glare-shift is its cut in band widths at the tile's
@@ -198,13 +198,13 @@ button.sub-card-progress-segment { cursor: pointer; }
   transform: translateX(calc((var(--glare-shift, var(--glare-rest)) - 2.5) * 20% + var(--glare-band-offset, 0px))) skewX(-22deg);
 }
 
-/* 2026-11-08: the open card's band is not a tile — the author's reference gives it only a soft glow: a broad warm light
+/* 2026-11-08: the open card's band is not a tile — it has only a soft glow: a broad warm light
    that rests a little right of center and drifts slowly towards the pointer, with no sharp plane and no wash over the
-   ink. The author asked that it spread over the whole band rather than gather under the cursor, so the light is
+   ink. To spread over the whole band rather than gather under the cursor, the light is
    1.6 band widths across and follows only 30% of the pointer's travel: its center moves from 35% to 65% of the band.
-   2026-11-09: the gold parent bar above a Sub Card carries the same light, at the author's request. */
+   2026-11-09: the gold parent bar above a Sub Card carries the same light. */
 /* z-index -1 keeps the light in the metal, under the ink and controls: the owner medallion is not lifted below the band
-   edge (author, 2026-11-08), and the parent bar's title and the band's labels keep their contrast (2026-11-09). */
+   edge (2026-11-08), and the parent bar's title and the band's labels keep their contrast (2026-11-09). */
 :is(.card-preview-sheet > .card-preview-material-band, .card-preview-main > .card-preview-parent) > .card-material-glare {
   --glare-x: inherit;
   --glare-opacity: inherit;
@@ -227,7 +227,7 @@ button.sub-card-progress-segment { cursor: pointer; }
   transition: transform 700ms cubic-bezier(.22, .61, .36, 1);
 }
 
-/* 2026-11-09: an accepted Hero turns holographic (author's choice «A++» from the mock-up): its band keeps the working
+/* 2026-11-09: an accepted Hero turns holographic: its band keeps the working
    Hero's gold metal, the face carries a faint rainbow film, a 2px rainbow ring replaces the border, and glitter gathers around
    the pointer. The rainbow moves with the pointer (--glare-x/-y from useCardTilt); --glare-opacity lifts it while hovered.
    Only accepted Heroes pay for the blend layers; ink stays above the foil, so numbers keep their contrast. */
@@ -242,7 +242,7 @@ button.sub-card-progress-segment { cursor: pointer; }
   --card-metal-ink: var(--hero-ink);
   color: var(--hero-ink);
   /* Inside the 2px ring the card's inner radius is 3px; the band follows it, and its bottom inset line is dropped,
-     since against the ring it read as a seam (author, 2026-11-09). */
+     since against the ring it read as a seam (2026-11-09). */
   border-radius: 0 0 3px 3px;
   --material-inset: inset 0 1px 2px color-mix(in srgb, var(--metal-shadow) 12%, transparent);
 }
@@ -274,7 +274,7 @@ button.sub-card-progress-segment { cursor: pointer; }
   opacity: calc(.06 + var(--glare-opacity, 0) * .12);
 }
 :root:not(.dark) .deck-card.catalog-card-hero.is-family-done::before { mix-blend-mode: multiply; opacity: calc(.08 + var(--glare-opacity, 0) * .12); }
-/* 2026-11-09: on the dark face a faint screen turned grey and muddy (author); color-dodge lights the rainbow from the
+/* 2026-11-09: on the dark face a faint screen turned grey and muddy; color-dodge lights the rainbow from the
    dark instead, brightest in a broad pool around the pointer and fading towards the far corner. */
 :root.dark .deck-card.catalog-card-hero.is-family-done::before {
   mix-blend-mode: color-dodge;
@@ -293,7 +293,7 @@ button.sub-card-progress-segment { cursor: pointer; }
   mask: radial-gradient(90px 70px at var(--glare-x, 50%) var(--glare-y, 50%), #000, transparent 75%);
 }
 /* 2026-11-09: the band keeps exactly the working Hero's metal — the same gold ribbon, no rainbow foil or glitter over
-   it (author); the holographic finish lives on the face and the rim. */
+   it; the holographic finish lives on the face and the rim. */
 
 /* While the pointer is on an accepted Hero its glitter drifts: each dot layer slides by exactly one tile in its own
    direction and pace, so the loop is seamless and the dots seem to wander at random. */
@@ -303,7 +303,7 @@ button.sub-card-progress-segment { cursor: pointer; }
 @media (hover: hover) and (pointer: fine) and (prefers-reduced-motion: no-preference) {
   .deck-card-space:hover > .deck-card.catalog-card-hero.is-family-done::after { animation: holo-glitter-drift 3.2s linear infinite; }
 }
-/* The done medallion takes the owner's place on a finished Hero (author, 2026-11-09): accepted green with a white
+/* The done medallion takes the owner's place on a finished Hero (2026-11-09): accepted green with a white
    check inside the same gold ring, so the finish reads at a glance from the middle of the card. */
 .deck-card-owner-medallion.deck-card-done-medallion {
   display: grid;

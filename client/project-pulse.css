@@ -1,15 +1,16 @@
-/* One compact readout above the cover shelf; all five segments share the same baseline and material. */
-.project-pulse { min-width: 0; max-width: 100%; margin: 0 0 12px; border: .67px solid var(--line); border-radius: 8px; background: var(--pulse-face); color: var(--ink); font-family: var(--font-sans); overflow: hidden; }
+/* 2026-11-10: one flat bar shares the space panels' crisp edge, leaving depth to the covers. Five segments keep their
+   seams and baseline; the first segment starts at the panels' left edge. */
+.project-pulse { --pulse-value-size: 30px; min-width: 0; max-width: 100%; margin: 0 0 var(--space-4); border-radius: var(--glass-radius); background: var(--glass-face); box-shadow: var(--glass-rim), var(--glass-lift); color: var(--ink); font-family: var(--font-sans); overflow: hidden; }
 .project-pulse-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1.35fr) minmax(0, 1.45fr) minmax(0, 1fr); }
-.project-pulse-grid > :not(:last-child) { border-inline-end: .67px solid var(--line); }
-.project-pulse-segment { min-width: 0; min-height: 108px; padding: 12px 14px; display: flex; flex-direction: column; align-items: flex-start; gap: 5px; border: 0; border-radius: 0; background: transparent; color: var(--ink); text-align: start; }
-button.project-pulse-segment { width: 100%; cursor: pointer; }
-button.project-pulse-segment:hover:not(:disabled) { background: var(--hover); }
+.project-pulse-grid > :not(:last-child) { border-inline-end: 1px solid var(--glass-seam); }
+.project-pulse-segment { min-width: 0; min-height: 116px; padding: 14px 20px 14px var(--shelf-inset, 16px); display: flex; flex-direction: column; align-items: flex-start; gap: 5px; border: 0; border-radius: 0; background: transparent; color: var(--ink); text-align: start; }
+button.project-pulse-segment { width: 100%; border-radius: var(--control-radius); cursor: pointer; }
+@media (hover: hover) { button.project-pulse-segment:hover:not(:disabled) { background: var(--hover); } }
 button.project-pulse-segment:active:not(:disabled) { background: color-mix(in srgb, var(--hover) 78%, var(--accent-soft)); }
 button.project-pulse-segment:focus-visible { position: relative; z-index: 1; outline-offset: -3px; }
 .project-pulse-label { max-width: 100%; color: var(--muted); font-size: 12px; font-weight: 400; line-height: 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.project-pulse-value { max-width: 100%; display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px; color: var(--ink); font: 500 26px/1.1 'Geist Mono', monospace; font-variant-numeric: tabular-nums; }
-.project-pulse-value small { color: var(--muted); font: 400 12px/1.3 var(--font-sans); font-variant-numeric: normal; overflow-wrap: anywhere; }
+.project-pulse-value { max-width: 100%; display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px; color: var(--ink); font: 500 var(--pulse-value-size)/1.1 'Geist Mono', monospace; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
+.project-pulse-value small { color: var(--muted); font: 400 12px/1.3 var(--font-sans); font-variant-numeric: normal; letter-spacing: 0; overflow-wrap: anywhere; }
 .project-pulse-detail { min-height: 24px; margin-top: auto; display: flex; align-items: center; gap: 5px; color: var(--muted); font-size: 12px; line-height: 16px; overflow-wrap: anywhere; }
 .project-pulse-owners { min-height: 24px; margin: auto 0 0; padding: 0; display: flex; align-items: center; }
 .project-pulse-owner { position: relative; display: flex; flex: 0 0 auto; }
@@ -17,47 +18,48 @@ button.project-pulse-segment:focus-visible { position: relative; z-index: 1; out
 .project-pulse-owners .card-owner-avatar { width: 24px; height: 24px; border: 2px solid var(--pulse-face); }
 .project-pulse-days { width: 100%; height: 34px; margin: auto 0 0; padding: 0; display: flex; align-items: flex-end; gap: 3px; list-style: none; }
 .project-pulse-days li { min-width: 0; height: 100%; flex: 1 1 0; display: flex; align-items: flex-end; justify-content: center; }
-.project-pulse-day-bar { display: block; width: 100%; max-width: 14px; border-radius: 3px 3px 0 0; background: var(--pulse-bar); }
+.project-pulse-day-bar { display: block; width: 100%; max-width: 14px; border-radius: var(--control-radius) var(--control-radius) 0 0; background: var(--pulse-bar); }
 .project-pulse-day-bar.is-today { background: var(--pulse-today); }
 .project-pulse-run-bottom { width: 100%; min-height: 24px; margin-top: auto; display: flex; flex-direction: column; align-items: flex-start; gap: 4px; }
-.project-pulse-run-bottom progress { appearance: none; display: block; width: 100%; height: 6px; border: 0; border-radius: 3px; overflow: hidden; background: var(--pulse-track); color: var(--pulse-today); }
-.project-pulse-run-bottom progress::-webkit-progress-bar { border-radius: 3px; background: var(--pulse-track); }
-.project-pulse-run-bottom progress::-webkit-progress-value { border-radius: 3px; background: var(--pulse-today); }
-.project-pulse-run-bottom progress::-moz-progress-bar { border-radius: 3px; background: var(--pulse-today); }
+.project-pulse-run-bottom progress { appearance: none; display: block; width: 100%; height: 6px; border: 0; border-radius: var(--control-radius); overflow: hidden; background: var(--pulse-track); color: var(--pulse-today); }
+.project-pulse-run-bottom progress::-webkit-progress-bar { border-radius: var(--control-radius); background: var(--pulse-track); }
+.project-pulse-run-bottom progress::-webkit-progress-value { border-radius: var(--control-radius); background: var(--pulse-today); }
+.project-pulse-run-bottom progress::-moz-progress-bar { border-radius: var(--control-radius); background: var(--pulse-today); }
 .project-pulse-run-bottom small { color: var(--muted); font-size: 12px; line-height: 14px; }
 .project-pulse-without-deck.is-warning { background: var(--warning-bg); color: var(--warning-ink); }
 .project-pulse-without-deck.is-warning .project-pulse-value { color: var(--warning-ink); }
 .project-pulse-without-deck.is-warning .project-pulse-label, .project-pulse-without-deck.is-warning .project-pulse-value small, .project-pulse-without-deck.is-warning .project-pulse-detail { color: var(--warning-ink); }
-button.project-pulse-without-deck.is-warning:hover:not(:disabled) { background: color-mix(in srgb, var(--warning-bg) 82%, var(--hover)); }
-.project-pulse-loading { min-height: 108px; }
-.project-pulse-skeleton { display: block; border-radius: 3px; background: var(--pulse-track); }
-/* 2026-11-09: the bars sit in the loaded segment's line boxes — label 16px, value 26px × 1.1, a 24px foot and Accepted's
+@media (hover: hover) { button.project-pulse-without-deck.is-warning:hover:not(:disabled) { background: color-mix(in srgb, var(--warning-bg) 82%, var(--hover)); } }
+.project-pulse-loading { min-height: 116px; }
+.project-pulse-skeleton { display: block; border-radius: var(--control-radius); background: var(--pulse-track); }
+/* 2026-11-09: the bars sit in the loaded segment's line boxes — label 16px, value 30px × 1.1, a 24px foot and Accepted's
    34px day chart — so the strip no longer grew ~5px, pushing the covers below it down, when the pulse arrived. */
 .project-pulse-skeleton.is-label { width: min(76%, 112px); height: 12px; margin-block: 2px; }
-.project-pulse-skeleton.is-value { width: min(48%, 72px); height: 27px; margin-block: calc((26px * 1.1 - 27px) / 2); }
+.project-pulse-skeleton.is-value { width: min(48%, 72px); height: 27px; margin-block: calc((var(--pulse-value-size) * 1.1 - 27px) / 2); }
 .project-pulse-skeleton.is-detail { width: min(88%, 150px); height: 20px; margin-top: auto; margin-bottom: 4px; }
 .project-pulse-skeleton.is-detail.is-chart { margin-bottom: 14px; }
-.project-pulse-error { min-height: 82px; padding: 12px 14px; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 16px; }
+.project-pulse-error { min-height: 82px; padding: 12px var(--shelf-inset, 16px); display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 16px; }
 .project-pulse-error > div { min-width: 0; }
 .project-pulse-error strong { font-size: 13px; font-weight: 600; }
 .project-pulse-error p { margin: 3px 0 0; color: var(--danger); font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; }
-.project-pulse-retry { min-height: 30px; padding: 0 10px; flex: 0 0 auto; border: 1px solid var(--line); border-radius: 5px; background: var(--surface); color: var(--ink); font-size: 12px; font-weight: 500; }
-.project-pulse-retry:hover:not(:disabled) { background: var(--hover); }
+.project-pulse-retry { min-height: 30px; padding: 0 10px; flex: 0 0 auto; border: 1px solid var(--control-line); border-radius: var(--control-radius); background: transparent; color: var(--ink); font-size: 12px; font-weight: 500; letter-spacing: .01em; }
+@media (hover: hover) { .project-pulse-retry:hover:not(:disabled) { border-color: var(--button-line); background: var(--hover); } }
 .project-pulse-retry:active:not(:disabled) { transform: translateY(1px); }
 
 @media (max-width: 980px) {
   .project-pulse-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .project-pulse-grid > * { border: 0; }
-  .project-pulse-grid > :nth-child(-n+4) { border-bottom: .67px solid var(--line); }
-  .project-pulse-grid > :nth-child(odd):not(:last-child) { border-inline-end: .67px solid var(--line); }
+  .project-pulse-grid > :nth-child(-n+4) { border-bottom: 1px solid var(--glass-seam); }
+  .project-pulse-grid > :nth-child(odd):not(:last-child) { border-inline-end: 1px solid var(--glass-seam); }
   .project-pulse-grid > :last-child { grid-column: 1 / -1; }
 }
 
+/* 2026-11-09: a phone keeps the two columns (one column put a full screen of readouts above the first shelf) with a
+   smaller value and tighter segments. */
 @media (max-width: 540px) {
-  .project-pulse-grid { grid-template-columns: minmax(0, 1fr); }
-  .project-pulse-grid > * { grid-column: auto; border: 0; }
-  .project-pulse-grid > :not(:last-child) { border-bottom: .67px solid var(--line); }
-  .project-pulse-segment { min-height: 100px; }
+  .project-pulse { --pulse-value-size: 24px; margin-bottom: var(--space-4); }
+  .project-pulse-segment { min-height: 96px; padding: 10px 10px 10px max(var(--shelf-inset, 16px), 8px); }
+  .project-pulse-loading { min-height: 0; }
   .project-pulse-error { align-items: flex-start; }
 }
 

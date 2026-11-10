@@ -11,6 +11,7 @@ import { CardEditForm, composeDraft, splitDraft } from './CardEditForm.tsx';
 import { ConfirmStrip, useConfirmStrip } from './ConfirmStrip.tsx';
 import { Button } from './ui/button.tsx';
 import { defineText, locale, useText } from '../i18n.ts';
+import { moveFocus } from '../focus.ts';
 import { priorityLabel } from '../locales/common.ts';
 import '../journey-step.css';
 
@@ -209,8 +210,8 @@ export function JourneyStepPanel({
     <Dialog.Portal>
       <Dialog.Overlay className="journey-step-overlay" />
       <Dialog.Content className="journey-step-sheet"
-        onOpenAutoFocus={event => { event.preventDefault(); if (!editing) closeButton.current?.focus(); }}
-        onCloseAutoFocus={event => { event.preventDefault(); if (opener.current?.isConnected) opener.current.focus(); }}
+        onOpenAutoFocus={event => { event.preventDefault(); if (!editing) moveFocus(closeButton.current); }}
+        onCloseAutoFocus={event => { event.preventDefault(); if (opener.current?.isConnected) moveFocus(opener.current); }}
         onEscapeKeyDown={event => {
           event.preventDefault();
           // In edit mode Escape belongs to the editor, as on a card: its menus close first, then the form cancels the edit.

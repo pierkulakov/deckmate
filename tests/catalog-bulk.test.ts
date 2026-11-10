@@ -132,14 +132,16 @@ it('preflights every target, source revision and unique selection before changin
 it.each(['Injected disk failure', 'CARD_CONFLICT'])('reports saved IDs after %s and a fresh retry completes only the remaining native card', async failure => {
   const root = await fixture();
   const original = vi.mocked(native.editNativeCard).getMockImplementation()!;
+  let injected = false;
   vi.mocked(native.editNativeCard).mockImplementation(async (...args) => {
-    if (args[1] === nativeIds[1]) throw new Error(failure);
+    if (args[1] === nativeIds[1]) { injected = true; throw new Error(failure); }
     return original(...args);
   });
   const selected = await selection(root, [legacyId, ...nativeIds]);
   await expect(editProjectCatalog(root, { action: 'bulk-assign-deck', deckId: 'mixed', ...selected })).rejects.toMatchObject({
     saved: true, updated: [legacyId, nativeIds[0]], pending: [nativeIds[1]],
   });
+  expect(injected).toBe(true);
   const partial = await readProjectCatalog(root);
   expect(partial.cards.find(card => card.id === legacyId)!.deckId).toBe('mixed');
   expect(partial.cards.find(card => card.id === nativeIds[0])!.deckId).toBe('mixed');
@@ -159,17 +161,20 @@ it('keeps partial-success warning and fresh files visible even when rebuilding t
   await execute('git', ['init', '-b', 'deckmate/sandbox', root], { windowsHide: true });
   const service = new CatalogService({ editMode: 'sandbox', dataRoot: root, writeRoot: root, projectName: 'Test', port: 44319, python: 'python' }, ':memory:');
   const original = vi.mocked(native.editNativeCard).getMockImplementation()!;
+  let injected = false;
   try {
     await service.get('sandbox');
     vi.mocked(native.editNativeCard).mockImplementation(async (...args) => {
-      if (args[1] === nativeIds[1]) throw new Error('Injected native failure');
+      if (args[1] === nativeIds[1]) { injected = true; throw new Error('Injected native failure'); }
       return original(...args);
     });
-    vi.spyOn(ProjectIndex.prototype, 'replace').mockImplementationOnce(() => { throw new Error('Injected index failure'); });
+    const indexFailure = vi.spyOn(ProjectIndex.prototype, 'replace').mockImplementationOnce(() => { throw new Error('Injected index failure'); });
     const result = await service.edit({ action: 'bulk-add-track', trackId: 'sound', ...await selection(root, [legacyId, ...nativeIds]) }, 'sandbox');
-    expect(result.warnings.join(' ')).toContain('Some changes were saved: 2 of 3');
-    expect(result.warnings.join(' ')).toContain(nativeIds[1]);
-    expect(result.warnings.join(' ')).toContain('search index was not updated');
+    expect(injected).toBe(true);
+    expect(indexFailure).toHaveBeenCalled();
+    expect(result.savedWarning).toContain('Some changes were saved: 2 of 3');
+    expect(result.savedWarning).toContain(nativeIds[1]);
+    expect(result.savedWarning).toContain('search index was not updated');
     expect(result.cards.find(card => card.id === legacyId)!.trackIds).toEqual(['release', 'sound']);
     expect(result.bulkOutcome).toMatchObject({ applied: [legacyId, nativeIds[0]], unchanged: [], pending: [nativeIds[1]] });
     vi.mocked(native.editNativeCard).mockImplementation(original);
@@ -185,12 +190,14 @@ it.each(['move', 'track'] as const)('exposes structured %s partial outcome, incl
   await editProjectCatalog(root, { ...command, ...await selection(root, [legacyId]) });
   const service = new CatalogService({ editMode: 'sandbox', dataRoot: root, writeRoot: root, projectName: 'Test', port: 44319, python: 'python' }, ':memory:');
   const original = vi.mocked(native.editNativeCard).getMockImplementation()!;
+  let injected = false;
   vi.mocked(native.editNativeCard).mockImplementation(async (...args) => {
-    if (args[1] === nativeIds[1]) throw new Error('Injected partial membership write');
+    if (args[1] === nativeIds[1]) { injected = true; throw new Error('Injected partial membership write'); }
     return original(...args);
   });
   try {
     const response = await service.edit({ ...command, ...await selection(root, [legacyId, ...nativeIds]) }, 'sandbox');
+    expect(injected).toBe(true);
     expect(response.bulkOutcome).toMatchObject({ applied: [nativeIds[0]], unchanged: [legacyId], pending: [nativeIds[1]] });
     expect(response.bulkOutcome!.warnings.join(' ')).toContain('Injected partial membership write');
   } finally { await service.close(); }
@@ -263,13 +270,16 @@ it('counts a native commit when its helper reports an error after publication', 
   const root = await fixture();
   const before = await readFile(path.join(root, 'tasks/deckmate.md'));
   const original = vi.mocked(native.editNativeCard).getMockImplementation()!;
+  let injected = false;
   vi.mocked(native.editNativeCard).mockImplementation(async (...args) => {
     await original(...args);
+    injected = true;
     throw Object.assign(new Error('Post-save verification failed'), { saved: true });
   });
   await expect(editProjectCatalog(root, { action: 'bulk-assign-deck', deckId: 'mixed', ...await selection(root, nativeIds) })).rejects.toMatchObject({
     saved: true, updated: [nativeIds[0]], pending: [nativeIds[1]],
   });
+  expect(injected).toBe(true);
   expect((await native.readNativeCard(root, nativeIds[0]))!.card.deckId).toBe('mixed');
   expect((await native.readNativeCard(root, nativeIds[1]))!.card.deckId).toBe('audio');
   expectOnlyDeckOrderChanged(before, await readFile(path.join(root, 'tasks/deckmate.md')),

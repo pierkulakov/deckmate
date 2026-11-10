@@ -15,7 +15,7 @@
 .tag-badge.is-compact.is-personal .tag-badge-name { padding-inline: 0; }
 .tag-badge.is-compact .tag-badge-glyph { flex-basis: var(--tag-compact-glyph-width); width: var(--tag-compact-glyph-width); }
 .tag-badge-link { display: inline-flex; min-width: 0; max-width: 100%; padding: 0; border: 0; background: transparent; vertical-align: middle; }
-/* 2026-11-08: the author does not want tag plaques underlined; hover only lifts the plaque's tone, keyboard focus keeps its outline. */
+/* 2026-11-08: tag plaques are not underlined; hover only lifts the plaque's tone, keyboard focus keeps its outline. */
 .tag-badge-link { cursor: pointer; }
 .tag-badge-link:hover:not(:disabled) .tag-badge { filter: brightness(1.15); }
 .card-tag-pie { display: inline-block; flex: 0 0 auto; width: var(--tag-dot-size); height: var(--tag-dot-size); padding: 0; border: 0; border-radius: 50%; box-shadow: none; }
@@ -26,7 +26,7 @@
 .card-title-tags .card-tag-emoji { font-size: 15px; }
 /* On a tile the glyphs fill exactly one 17 px title line, so a tagged title starts and wraps like a plain one (as the Hero strip, card-family.css). */
 .deck-card-title .card-title-tags { height: 17px; vertical-align: top; }
-/* 2026-11-09: the open card's 24/700 title (author): its tag glyphs are sized to the title and fill exactly its first line
+/* 2026-11-09: the open card's 24/700 title: its tag glyphs are sized to the title and fill exactly its first line
    box, so they sit centred on that line and a wrapping title continues under them like a plain one. */
 .card-preview-title .card-title-tags { height: 1lh; gap: 4px; margin-right: 6px; vertical-align: top; }
 .card-preview-title .card-title-tags .card-tag-emoji { font-size: 20px; }

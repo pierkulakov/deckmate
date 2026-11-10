@@ -4,7 +4,7 @@ import { markdownParser } from '../src/markdown-model.ts';
 
 afterEach(() => vi.restoreAllMocks());
 
-// 2026-11-09: the Doc tile's face («Страница») shows the start of the document as plain text blocks.
+// 2026-11-09: the Doc tile's face shows the start of the document as plain text blocks.
 describe('Doc tile excerpt', () => {
   it('keeps headings apart from text and drops Markdown syntax', () => {
     const markdown = 'Use **broad** silhouettes, see [the brief](brief.md) and `Lantern`.\n\n## Working notes\n- Test assets\n- Keep sources\n\n![Harbor at dusk](harbor.png)';

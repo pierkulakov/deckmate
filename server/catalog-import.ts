@@ -4,7 +4,7 @@ import { deckAcceptsCard } from '../src/catalog-contracts.ts';
 import type { CatalogImportEdit, CatalogImportReport, CatalogImportRow } from '../src/catalog-contracts.ts';
 import { resolveMember } from '../src/members.ts';
 import { readManifest, readProjectCatalog } from './catalog.ts';
-import { prepareCardOptionsPatch } from './card-options.ts';
+import { cardOptionsPath, maximumCardOptionsChanges, prepareCardOptionsPatch } from './card-options.ts';
 import { createManagedMarkdown, nativeCardPath, readNativeCard, validateNativeCardMetadata, type NativeCardMetadata } from './native-cards.ts';
 import { defineText, serverText } from './i18n.ts';
 import { cardStates, cardStateWords, readCardState, writeCardState } from '../src/format-vocabulary.ts';
@@ -88,6 +88,7 @@ export async function importCards(root: string, edit: CatalogImportEdit): Promis
   const report: CatalogImportReport = { created: [], unchanged: [], skipped: [], warnings: [] };
   const changedPaths: string[] = [];
   const planned: PlannedRow[] = [];
+  const retryTags: PlannedRow[] = [];
   const plannedIds = new Set<string>();
 
   for (const [index, row] of edit.cards.entries()) {
@@ -127,15 +128,17 @@ export async function importCards(root: string, edit: CatalogImportEdit): Promis
 
     const existing = byId.get(cardId);
     if (existing) {
-      // Skip cards already imported into the project without duplicating or overwriting them.
+      // 2026-11-09: missing tags can be an interrupted import; unrelated tags still protect an occupied ID.
       const identical = existing.kind === row.kind && existing.title === title && existing.deckId === edit.deckId
         && existing.parentId === null && existing.trackIds.length === 0
         && (existing.owner ?? null) === owner && (existing.effort ?? null) === row.effort
         && (existing.priority ?? null) === row.priority && (existing.state ?? null) === state
         && existing.markdown === row.markdown
-        && isDeepStrictEqual([...(existing.tags ?? [])].sort(), [...row.tags].sort());
-      if (identical) report.unchanged.push(cardId);
-      else skip(serverText(importText).idUsedUnchanged);
+        && (existing.tags ?? []).every(tag => row.tags.includes(tag));
+      if (identical) {
+        report.unchanged.push(cardId);
+        if ((existing.tags ?? []).length !== row.tags.length) retryTags.push({ cardId, metadata, markdown: row.markdown, tags: row.tags });
+      } else skip(serverText(importText).idUsedUnchanged);
       continue;
     }
     planned.push({ cardId, metadata, markdown: row.markdown, tags: row.tags });
@@ -160,20 +163,23 @@ export async function importCards(root: string, edit: CatalogImportEdit): Promis
     }
   }
 
-  // Tags are planning properties; write them to Card Options in one edit, as in bulk tag actions.
-  const createdSet = new Set(report.created);
-  const tagPatches: Record<string, { tags: string[] }> = {};
-  for (const plan of planned) if (createdSet.has(plan.cardId) && plan.tags.length) tagPatches[plan.cardId] = { tags: plan.tags };
-  if (Object.keys(tagPatches).length) {
-    try {
-      const manifest = await readManifest(root);
-      if ((manifest.bytes ? digest(manifest.bytes) : '') !== edit.manifestHash) throw new Error('CATALOG_CONFLICT');
-      const optionsPlan = await prepareCardOptionsPatch(root, edit.optionsHash, tagPatches);
-      await optionsPlan.publish();
-      if (optionsPlan.changed) changedPaths.push('tasks/deckmate-card-options.md');
-    } catch (error) {
-      report.warnings.push(serverText(importText).tagsUnsaved(error));
+  // 2026-11-09: chain our own revisions, never adopt an external writer's hash between batches.
+  const confirmed = new Set([...report.created, ...report.unchanged]);
+  const tagRows = [...retryTags, ...planned.filter(plan => confirmed.has(plan.cardId))].filter(plan => plan.tags.length);
+  let optionsHash = edit.optionsHash;
+  try {
+    for (let start = 0; start < tagRows.length; start += maximumCardOptionsChanges) {
+      const tagPatches = Object.fromEntries(tagRows.slice(start, start + maximumCardOptionsChanges).map(plan => [plan.cardId, { tags: plan.tags }]));
+      const optionsPlan = await prepareCardOptionsPatch(root, optionsHash, tagPatches);
+      await optionsPlan.publish(async () => {
+        const manifest = await readManifest(root);
+        if ((manifest.bytes ? digest(manifest.bytes) : '') !== edit.manifestHash) throw new Error('CATALOG_CONFLICT');
+      });
+      optionsHash = optionsPlan.nextHash;
+      if (optionsPlan.changed && !changedPaths.includes(cardOptionsPath)) changedPaths.push(cardOptionsPath);
     }
+  } catch (error) {
+    report.warnings.push(serverText(importText).tagsUnsaved(error));
   }
   return { ...report, changedPaths };
 }

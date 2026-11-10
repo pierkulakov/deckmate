@@ -1,6 +1,7 @@
 import { stat } from 'node:fs/promises';
 import type { CatalogCard, CatalogView } from '../src/catalog-contracts.ts';
 import { getCatalogHands, isActiveCatalogCard, selectCatalogHand } from '../src/catalog-hand.ts';
+import { openDependencies } from '../src/dependency-contracts.ts';
 import { readAgentHistory } from './agent-changes.ts';
 import { containedFile } from './config.ts';
 
@@ -43,10 +44,7 @@ export async function nextAgentCard(catalog: CatalogView, root: string, requeste
   const hand = selectCatalogHand(getCatalogHands(catalog), requestedMember);
   const byId = new Map(catalog.cards.map(card => [card.id, card]));
   const candidates = hand.cards.filter(card => !['review', 'done'].includes(normalizedState(card))
-    && (card.dependsOn ?? []).every(id => {
-      const dependency = byId.get(id);
-      return dependency !== undefined && normalizedState(dependency) === 'done';
-    }));
+    && openDependencies(card.dependsOn, byId).length === 0);
   staleHours(options.staleHours);
   for (const card of candidates) {
     const stale = await readStaleCards({ ...catalog, cards: [card] }, root, options);

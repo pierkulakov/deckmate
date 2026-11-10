@@ -79,7 +79,7 @@ it('excludes shelved documents from the Knowledge count and handles an empty act
   const hidden = [card('hidden-archive', { kind: 'doc', archived: true }), card('hidden-trash', { kind: 'doc', deleted: true })];
   expect(renderSummary('knowledge', [active, ...hidden])).toContain('<strong>1 document</strong>');
   const html = renderSummary('knowledge', hidden);
-  expect(html).toContain('<strong>0 documents</strong>');
-  expect(html).toContain('<strong>0%</strong>');
-  expect(html).toContain('Source files <span>0</span>');
+  expect(html).toContain('Statistics appear after the first card.');
+  expect(html).not.toContain('deck-overview-stats');
+  expect(html).not.toContain('Source files');
 });

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { CatalogCard, CatalogView } from '../src/catalog-contracts.ts';
 import { buildCatalogLookups } from '../client/catalog-lookups.ts';
-import { sameCardTileData, type TileData } from '../client/card-tile-equality.ts';
+import { cardTileData, sameCardTileData, type TileData } from '../client/card-tile-equality.ts';
 
 function card(id: string, overrides: Partial<CatalogCard> = {}): CatalogCard {
   return { id, kind: 'task', path: `cards/${id}.md`, version: null, title: id, state: 'not-started', owner: null,
@@ -41,6 +41,25 @@ describe('card tile catalog equality', () => {
       expect(next.card.sourceHash).toBe(previous.card.sourceHash);
       expect(sameCardTileData(previous, next)).toBe(false);
     }
+  });
+
+  it('retains only this tile’s checklist and refreshes for its progress, not unrelated progress', () => {
+    const cards = [card('shown', { markdown: '- [x] First\n- [ ] Second' }), card('other', { markdown: '- [ ] Other' })];
+    const previous = tile(cards);
+    const catalog = { ...previous.catalog, cards } as CatalogView;
+    const compact = cardTileData(cards[0], buildCatalogLookups(cards), catalog);
+    expect([...compact.lookups.checklistByCard]).toEqual([['shown', { done: 1, total: 2 }]]);
+    expect(sameCardTileData(previous, { ...previous, ...compact })).toBe(true);
+    const clone = { ...compact, lookups: structuredClone(compact.lookups) };
+    expect(sameCardTileData({ ...previous, ...compact }, { ...previous, ...clone })).toBe(true);
+    clone.lookups.checklistByCard.set('shown', { done: 2, total: 2 });
+    expect(sameCardTileData({ ...previous, ...compact }, { ...previous, ...clone })).toBe(false);
+    clone.lookups.checklistByCard.set('shown', { done: 1, total: 3 });
+    expect(sameCardTileData({ ...previous, ...compact }, { ...previous, ...clone })).toBe(false);
+    const unrelated = tile([cards[0], { ...cards[1], markdown: '- [x] Other' }]);
+    expect(sameCardTileData(previous, unrelated)).toBe(true);
+    const toggled = tile([{ ...cards[0], markdown: '- [x] First\n- [x] Second' }, cards[1]]);
+    expect(sameCardTileData(previous, toggled)).toBe(false);
   });
 
   it('tracks incoming/outgoing acceptance and newly added outgoing dependencies', () => {

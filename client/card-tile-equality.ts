@@ -1,8 +1,11 @@
 import type { CatalogCard, CatalogMember, CatalogView } from '../src/catalog-contracts.ts';
 import { familyChildren, type CatalogLookups } from './catalog-lookups.ts';
 
-export type CardTileLookups = Pick<CatalogLookups, 'cardById' | 'childrenByParent' | 'outgoingByCard' | 'milestoneProgress'>;
-export type CardTileCatalog = Pick<CatalogView, 'runs' | 'milestones' | 'indexedAt'>;
+export type CardTileLookups = Pick<CatalogLookups, 'cardById' | 'childrenByParent' | 'outgoingByCard' | 'milestoneProgress' | 'checklistByCard'>;
+export type CardTileCatalog = Pick<CatalogView, 'runs' | 'milestones'> & {
+  // 2026-11-10: Deck.tsx still passes a full catalog; indexedAt is optional and never drives tile refreshes.
+  indexedAt?: string;
+};
 
 export interface TileData {
   card: CatalogCard;
@@ -48,8 +51,11 @@ export function cardTileData(card: CatalogCard, lookups: CatalogLookups, catalog
   const milestoneProgress: CardTileLookups['milestoneProgress'] = new Map();
   const progress = card.milestone ? lookups.milestoneProgress.get(card.milestone) : undefined;
   if (card.milestone && progress) milestoneProgress.set(card.milestone, progress);
-  return { lookups: { cardById, childrenByParent, outgoingByCard, milestoneProgress },
-    catalog: { indexedAt: catalog.indexedAt, runs: catalog.runs?.filter(run => run.id === card.run),
+  const checklistByCard: CardTileLookups['checklistByCard'] = new Map();
+  const checklist = lookups.checklistByCard.get(card.id);
+  if (checklist) checklistByCard.set(card.id, checklist);
+  return { lookups: { cardById, childrenByParent, outgoingByCard, milestoneProgress, checklistByCard },
+    catalog: { runs: catalog.runs?.filter(run => run.id === card.run),
       milestones: catalog.milestones?.filter(milestone => milestone.id === card.milestone) } };
 }
 
@@ -83,6 +89,7 @@ export function sameCardTileData(previous: TileData, next: TileData): boolean {
     const previousOutgoing = previous.lookups.outgoingByCard.get(next.card.id) ?? noIds;
     const nextOutgoing = next.lookups.outgoingByCard.get(next.card.id) ?? noIds;
     if (!sameData(previousOutgoing, nextOutgoing)
+      || !sameData(previous.lookups.checklistByCard.get(next.card.id), next.lookups.checklistByCard.get(next.card.id))
       || !sameAcceptance(next.card.dependsOn ?? noIds, previous.lookups, next.lookups)
       || !sameAcceptance(nextOutgoing, previous.lookups, next.lookups)
       || !sameFamily(previous, next)) return false;

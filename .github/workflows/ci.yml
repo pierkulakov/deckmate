@@ -82,6 +82,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     strategy:
+      # Both contexts must report; fail-fast would cancel one when the other fails.
+      fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest]
     steps:

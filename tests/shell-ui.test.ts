@@ -10,7 +10,27 @@ const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 describe.skipIf(!browserPath)('application shell (browser)', () => {
   const session = createBrowserSession({ attempts: 150 });
   const { send, evaluate, until } = session;
-  let errors: string[] = [];
+  const shortcutProjects = Array.from({ length: 10 }, (_, index) => ({
+    path: `C:\\Work\\Проект_${index + 1}`, name: `Длинное русское название проекта номер ${index + 1}`,
+    current: index === 2, missing: false,
+  }));
+  const browserErrors: string[][] = [];
+  async function openBrowser() {
+    await session.open(browserPath!, { extraArgs: ['--disable-features=OverlayScrollbar'] });
+    browserErrors.push(session.errors);
+    await session.navigate('shell-ui', `Boolean(window.shellTest && document.querySelector('.global-tabs'))`, 600);
+    expect(await evaluate(`({ hover: matchMedia('(hover: hover)').matches, fine: matchMedia('(pointer: fine)').matches })`))
+      .toEqual({ hover: true, fine: true });
+  }
+  async function inTouchMode(check: () => Promise<void>) {
+    await send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 1 });
+    try { await check(); } finally {
+      // 2026-11-10: disabling touch restores platform pointer defaults, not --blink-settings; Linux headless loses hover.
+      // Relaunch so subsequent desktop checks keep the explicit hovering, fine pointer and measure the current mark.
+      await session.close();
+      await openBrowser();
+    }
+  }
   async function click(selector: string) {
     await evaluate(`document.querySelector(${JSON.stringify(selector)}).click()`);
     await delay(80);
@@ -31,6 +51,35 @@ describe.skipIf(!browserPath)('application shell (browser)', () => {
     await until(`Boolean(document.querySelector('.mission-control-workspace-add:not(:disabled)'))`);
     await evaluate(`Promise.all(document.querySelector('.mission-control').getAnimations().map(animation => animation.finished))`);
   }
+  async function workspaceLayoutFailures() {
+    return evaluate(`(() => {
+      return [...document.querySelectorAll('.mission-control-workspace-row')].flatMap((row, index) => {
+        const name = row.querySelector('.mission-control-workspace-copy strong');
+        const chip = row.querySelector('.shortcuts-panel-key');
+        const mark = row.querySelector('.mission-control-workspace-current');
+        const rects = Object.fromEntries(Object.entries({ row, name, chip, mark,
+          remove: row.querySelector('.mission-control-workspace-remove') })
+          .map(([key, element]) => [key, element?.getBoundingClientRect().toJSON() ?? null]));
+        const conditions = {
+          chipBeforeRemove: !chip || rects.chip.right <= rects.remove.left - 2,
+          chipBeforeCurrent: !chip || !mark || rects.chip.right <= rects.mark.left - 2,
+          nameBeforeChip: !chip || rects.name.right <= rects.chip.left + 1,
+          nameHeight: rects.name.height <= 40,
+          noHorizontalOverflow: row.scrollWidth <= row.clientWidth,
+        };
+        const failed = Object.keys(conditions).filter(key => !conditions[key]);
+        return failed.length ? [{ row: index + 1, name: name.textContent,
+          path: row.querySelector('.mission-control-workspace-open').dataset.path, failed, rects,
+          scrollWidth: row.scrollWidth, clientWidth: row.clientWidth,
+          nameFont: getComputedStyle(name).font, chipFont: chip && getComputedStyle(chip).font,
+          markDisplay: mark && getComputedStyle(mark).display, hover: matchMedia('(hover: hover)').matches,
+          fontStatus: document.fonts.status,
+          fontFaces: [...document.fonts].filter(face => face.family === 'Source Sans 3')
+            .map(face => ({ family: face.family, status: face.status, unicodeRange: face.unicodeRange })),
+        }] : [];
+      });
+    })()`);
+  }
   async function addMenu() {
     await evaluate(`document.querySelector('.mission-control-workspace-add').focus()`);
     await key('Enter');
@@ -46,11 +95,7 @@ describe.skipIf(!browserPath)('application shell (browser)', () => {
     await delay(100);
   }
 
-  beforeAll(async () => {
-    await session.open(browserPath!, { extraArgs: ['--disable-features=OverlayScrollbar'] });
-    errors = session.errors;
-    await session.navigate('shell-ui', `Boolean(window.shellTest && document.querySelector('.global-tabs'))`, 600);
-  }, 90000);
+  beforeAll(openBrowser, 90000);
 
   afterAll(async () => {
     await session.close();
@@ -162,8 +207,7 @@ describe.skipIf(!browserPath)('application shell (browser)', () => {
   });
 
   it('gallery: touch has no sticky elevation and exposes the settings action', async () => {
-    await send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 1 });
-    try {
+    await inTouchMode(async () => {
       await render('app', {}, 375);
       await until(`Boolean(document.querySelector('.catalog-cover-item [data-deck-cover]'))`);
       await evaluate(`document.querySelector('.catalog-cover-item').scrollIntoView({ block:'center', behavior:'instant' })`);
@@ -174,7 +218,7 @@ describe.skipIf(!browserPath)('application shell (browser)', () => {
         const c=document.querySelector('.catalog-cover-item [data-deck-cover]');
         return !matchMedia('(hover: hover)').matches && new DOMMatrixReadOnly(getComputedStyle(c).transform).m42 === 0 && getComputedStyle(c,'::before').opacity === '0' && getComputedStyle(document.querySelector('.catalog-cover-settings')).opacity === '1';
       })()`)).toBe(true);
-    } finally { await send('Emulation.setTouchEmulationEnabled', { enabled: false }); }
+    });
   });
 
   it('gallery: keyboard dragging suppresses material feedback without losing the sortable handle', async () => {
@@ -272,11 +316,7 @@ describe.skipIf(!browserPath)('application shell (browser)', () => {
   });
 
   it('workspace: Ctrl+1…9 label the first nine rows in list order, the current row keeping its place', async () => {
-    const projects = Array.from({ length: 10 }, (_, index) => ({
-      path: `C:\\Work\\Проект_${index + 1}`, name: `Длинное русское название проекта номер ${index + 1}`,
-      current: index === 2, missing: false,
-    }));
-    await workspace({ workspace: projects }, 375);
+    await workspace({ workspace: shortcutProjects }, 375);
     // The shell menu pins Ctrl+N to the Nth workspace entry, and the bridge returns that order, so the Nth row wears it.
     expect(await evaluate(`[...document.querySelectorAll('.mission-control-workspace-row')]
       .map(row => row.querySelector('.shortcuts-panel-key')?.textContent ?? null)`))
@@ -298,24 +338,30 @@ describe.skipIf(!browserPath)('application shell (browser)', () => {
         rowTile.getAttribute('data-initials'), window.color, window.fontSize];
     })()`)).toEqual(['uppercase', 'solid', 'ST', 'ДР', 'rgb(255, 255, 255)', '10px']);
     // Phone width: the chip clears the remove button, the current mark and the two-line clamped name.
-    expect(await evaluate(`(() => {
-      return [...document.querySelectorAll('.mission-control-workspace-row')].every(row => {
-        const chip = row.querySelector('.shortcuts-panel-key'); if (!chip) return true;
-        const chipRect = chip.getBoundingClientRect();
-        const remove = row.querySelector('.mission-control-workspace-remove').getBoundingClientRect();
-        const mark = row.querySelector('.mission-control-workspace-current')?.getBoundingClientRect();
-        const name = row.querySelector('.mission-control-workspace-copy strong').getBoundingClientRect();
-        return chipRect.right <= remove.left - 2 && (!mark || chipRect.right <= mark.left - 2)
-          && name.right <= chipRect.left + 1 && name.height <= 40 && row.scrollWidth <= row.clientWidth;
-      });
-    })()`)).toBe(true);
+    expect(await workspaceLayoutFailures()).toEqual([]);
     await click('.mission-control-workspace-row:nth-child(3) .mission-control-workspace-open');
     expect(await evaluate('window.shellTest.workspaceCalls')).toEqual([]);
   });
 
-  it('workspace: touch exposes remove actions in place of the current mark without overlapping phone shortcuts', async () => {
-    await send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 1 });
+  it.each([375, 1280])('workspace: long names and wide fallback fonts keep shortcuts and the current mark clear at %s px', async width => {
+    const projects = shortcutProjects.map((project, index) => ({ ...project,
+      name: index % 2 ? 'WWЖЩ'.repeat(24) : project.name,
+    }));
+    // 2026-11-10: fallback font metrics must not let long names borrow the keycap or current mark's space.
+    await evaluate(`(() => {
+      const style = document.createElement('style'); style.id = 'workspace-wide-font-test';
+      style.textContent = '.mission-control-workspace-row { --font-sans: "DejaVu Sans", Verdana, sans-serif; font-family: var(--font-sans); }';
+      document.head.append(style);
+    })()`);
     try {
+      await workspace({ workspace: projects }, width);
+      await waitForLayout(evaluate, '.mission-control-workspace-row');
+      expect(await workspaceLayoutFailures()).toEqual([]);
+    } finally { await evaluate(`document.getElementById('workspace-wide-font-test').remove()`); }
+  });
+
+  it('workspace: touch exposes remove actions in place of the current mark without overlapping phone shortcuts', async () => {
+    await inTouchMode(async () => {
       await workspace({}, 375);
       expect(await evaluate(`matchMedia('(hover: none)').matches`)).toBe(true);
       expect(await evaluate(`getComputedStyle(document.querySelector('.mission-control-workspace-current')).display`)).toBe('none');
@@ -327,7 +373,7 @@ describe.skipIf(!browserPath)('application shell (browser)', () => {
         return getComputedStyle(remove).opacity === '1' && chip.right <= button.left - 2
           && name.right <= chip.left + 1 && name.height <= 40 && row.scrollWidth <= row.clientWidth;
       })`)).toBe(true);
-    } finally { await send('Emulation.setTouchEmulationEnabled', { enabled: false }); }
+    });
   });
 
   it('workspace: empty state adds current, dialog and recent projects only on request', async () => {
@@ -782,5 +828,5 @@ describe.skipIf(!browserPath)('application shell (browser)', () => {
     })`)).toBe(1);
   });
 
-  it('has no uncaught browser errors', () => { expect(errors).toEqual([]); });
+  it('has no uncaught browser errors', () => { expect(browserErrors.flat()).toEqual([]); });
 });

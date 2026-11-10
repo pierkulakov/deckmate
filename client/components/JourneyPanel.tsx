@@ -1,5 +1,5 @@
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
-import { Check, Copy, Layers, Link2, LoaderCircle, Plus, Route, UserRound } from 'lucide-react';
+import { Check, Copy, Layers, Link2, LoaderCircle, Plus, UserRound } from 'lucide-react';
 import type { CatalogCard, CatalogJourney, CatalogJourneyStep, CatalogMember, CatalogView } from '../../src/catalog-contracts.ts';
 import type { DataSource } from '../../src/workspace-contracts.ts';
 import { markdownParser } from '../../src/markdown-model.ts';
@@ -7,7 +7,11 @@ import { shortReference } from '../../src/references.ts';
 import type { CatalogAction } from '../useCatalog.ts';
 import { Markdown } from './Markdown.tsx';
 import { journeyStepTitle } from './journey-step-title.ts';
+import { JourneyOperationBadge, JourneyOperationNotice, JourneyOption, useJourneyApplyBlocked } from './JourneyOperationNotice.tsx';
+import { failureMessage } from '../failure-message.ts';
+import { readFreshCatalog } from '../catalog-store.ts';
 import { Button } from './ui/button.tsx';
+import { EmptyState } from './EmptyState.tsx';
 import { defineText, locale, useText, type Lang } from '../i18n.ts';
 import '../journey-apply.css';
 import '../catalog-reference.css';
@@ -178,6 +182,7 @@ export function ApplyJourneyPanel({ catalog, card, source, pending, writable, on
   const t = useText(text);
   const [journeyId, setJourneyId] = useState(journeys[0]?.id ?? '');
   const journey = journeys.find(candidate => candidate.id === journeyId);
+  const applyBlocked = useJourneyApplyBlocked(journey);
   const targets = availableTargets(catalog);
   const applied = new Set(catalog.cards.filter(candidate => candidate.journey && candidate.parentId === card.id && candidate.journey.journeyId === journey?.id && candidate.journey.version === journey?.version).map(candidate => candidate.journey!.stepId));
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set(journeys[0]?.steps.filter(step => !applied.has(step.id)).map(step => step.id) ?? []));
@@ -218,23 +223,27 @@ export function ApplyJourneyPanel({ catalog, card, source, pending, writable, on
     setApplyError('');
   }
   async function apply() {
-    if (!journey || !writable || busy || applyingRef.current || !validTargets || selected.size === 0 || card.kind !== 'hero') return;
+    if (!journey || applyBlocked || !writable || busy || applyingRef.current || !validTargets || selected.size === 0 || card.kind !== 'hero') return;
     const deckAssignments = Object.fromEntries([...selected].map(id => [id, assignments[id] ?? journey.steps.find(step => step.id === id)!.deckId]));
     applyingRef.current = true; setApplying(true); setApplyError('');
     try {
       if (await onEdit({ action: 'apply-journey', cardId: card.id, journeyId: journey.id, journeyHash: journey.fileHash, stepIds: [...selected], deckAssignments })) onClose();
       else setApplyError(t.applyUnconfirmed);
-    } catch { setApplyError(t.createFailed); }
+    } catch (failure) {
+      setApplyError(failureMessage(failure, t.createFailed));
+      try { await readFreshCatalog(source); } catch { /* 2026-11-10: keep the write failure visible if the refresh also fails. */ }
+    }
     finally { applyingRef.current = false; setApplying(false); }
   }
   if (card.kind !== 'hero') return null;
   return <section className="journey-apply journey-apply-picker" aria-label={t.applyJourney} aria-busy={busy}>
-    <header className="journey-picker-heading"><div><h3>{t.startJourney}</h3><p>{journeys.length ? <>{t.chooseCards}<strong>{card.title}</strong>.</> : <>{t.journeyForDeck}<strong>{catalog.decks.find(deck => deck.id === card.deckId)?.title ?? t.heroCards}</strong>.</>}</p></div></header>
-    {journeys.length === 0 ? <div className="journey-picker-empty"><span className="journey-picker-empty-icon"><Route size={25} aria-hidden="true" /></span><h4>{t.noJourney}</h4><p>{t.noJourneyDescription}</p>{writable && onManageJourney && <Button type="button" variant="outline" size="sm" disabled={busy} onClick={onManageJourney}><Plus size={14} />{t.createJourney}</Button>}</div> : <>
-      <div className="journey-picker-controls"><label className="catalog-field">{t.journey}<select value={journeyId} disabled={busy} onChange={event => chooseJourney(event.target.value)}>{!journey && <option value={journeyId}>{t.journeyUnavailable}</option>}{journeys.map(item => <option key={item.id} value={item.id}>{item.title} · v{item.version}</option>)}</select></label>
+    <header className="journey-picker-heading"><div><h3 className="dialog-title">{t.startJourney}</h3><p>{journeys.length ? <>{t.chooseCards}<strong>{card.title}</strong>.</> : <>{t.journeyForDeck}<strong>{catalog.decks.find(deck => deck.id === card.deckId)?.title ?? t.heroCards}</strong>.</>}</p></div></header>
+    {journeys.length === 0 ? <EmptyState variant="first-run" className="journey-picker-empty" art="journey" title={t.noJourney} message={t.noJourneyDescription} action={writable && onManageJourney ? { label: t.createJourney, disabled: busy, onClick: onManageJourney } : undefined} /> : <>
+      <div className="journey-picker-controls"><label className="catalog-field">{t.journey}<select className="control-field" value={journeyId} disabled={busy} onChange={event => chooseJourney(event.target.value)}>{!journey && <option value={journeyId}>{t.journeyUnavailable}</option>}{journeys.map(item => <JourneyOption key={item.id} journey={item} />)}</select></label>
         {writable && journey && <Button type="button" variant="ghost" size="sm" disabled={busy || availableCount === 0} onClick={() => { setSelectedIds(allSelected ? new Set() : new Set(journey.steps.filter(step => !applied.has(step.id)).map(step => step.id))); setApplyError(''); }}>{allSelected ? t.deselectAll : t.selectAll}</Button>}
       </div>
-      {journey && <><div className="journey-picker-group-title"><span>{t.defaultSteps}</span><small>{t.count(journey.steps.length)}</small></div>
+      {journey && <><JourneyOperationBadge journey={journey} /><JourneyOperationNotice key={journey.id} journey={journey} catalog={catalog} source={source} writable={writable} disabled={busy} onEdit={onEdit} onBusyChange={setApplying} /></>}
+      {journey && <><div className="journey-picker-group-title panel-head"><span className="panel-title">{t.defaultSteps}</span><small className="panel-count">{t.count(journey.steps.length)}</small></div>
         <div className="journey-picker-grid" aria-label={t.journeySteps}>{journey.steps.map((step, index) => {
           const alreadyApplied = applied.has(step.id);
           const checked = alreadyApplied || selected.has(step.id);
@@ -249,9 +258,9 @@ export function ApplyJourneyPanel({ catalog, card, source, pending, writable, on
           </button>;
         })}</div>
         {availableCount === 0 && <p className="journey-picker-note" role="status">{t.allStepsCreated}</p>}
-        {inspected && <section id={detailsId} className="journey-picker-details" aria-label={t.stepTitle(stepTitle(inspected))}>
-          <header><h4>{stepTitle(inspected)}</h4><span>{applied.has(inspected.id) ? t.applied : selected.has(inspected.id) ? t.selected : t.notSelected}</span></header>
-          <div className="journey-picker-step-settings"><label className="catalog-field">{t.targetDeck}<select disabled={busy || !writable || !selected.has(inspected.id)} value={assignments[inspected.id] ?? inspected.deckId} onChange={event => setAssignments(previous => ({ ...previous, [inspected.id]: event.target.value }))}><option value="">{t.chooseDeck}</option>{targets.map(target => <option key={target.id} value={target.id}>{target.title}</option>)}{!targets.some(target => target.id === (assignments[inspected.id] ?? inspected.deckId)) && (assignments[inspected.id] ?? inspected.deckId) && <option value={assignments[inspected.id] ?? inspected.deckId} disabled>{t.deckUnavailable}</option>}</select></label>
+        {inspected && <section id={detailsId} className="journey-picker-details glass-panel" aria-label={t.stepTitle(stepTitle(inspected))}>
+          <header className="panel-head"><h4 className="panel-title">{stepTitle(inspected)}</h4><span>{applied.has(inspected.id) ? t.applied : selected.has(inspected.id) ? t.selected : t.notSelected}</span></header>
+          <div className="journey-picker-step-settings"><label className="catalog-field">{t.targetDeck}<select className="control-field" disabled={busy || !writable || !selected.has(inspected.id)} value={assignments[inspected.id] ?? inspected.deckId} onChange={event => setAssignments(previous => ({ ...previous, [inspected.id]: event.target.value }))}><option value="">{t.chooseDeck}</option>{targets.map(target => <option key={target.id} value={target.id}>{target.title}</option>)}{!targets.some(target => target.id === (assignments[inspected.id] ?? inspected.deckId)) && (assignments[inspected.id] ?? inspected.deckId) && <option value={assignments[inspected.id] ?? inspected.deckId} disabled>{t.deckUnavailable}</option>}</select></label>
             {inspected.owner && <span className="journey-picker-owner"><UserRound size={14} aria-hidden="true" />{inspected.owner}</span>}
           </div>
           {inspected.dependsOn.length > 0 && <p className="journey-picker-note"><Link2 size={13} aria-hidden="true" />{t.dependsOn}{inspected.dependsOn.map(id => journey.steps.find(step => step.id === id)).filter((step): step is CatalogJourneyStep => Boolean(step)).map(stepTitle).join(', ')}.{t.requiredSteps}</p>}
@@ -262,7 +271,7 @@ export function ApplyJourneyPanel({ catalog, card, source, pending, writable, on
       {!writable && <p className="journey-picker-note">{t.readOnlySandbox}</p>}
     </>}
     {applyError && <p className="journey-picker-error" role="alert">{applyError}</p>}
-    <footer className="journey-picker-footer"><span role="status">{journey ? t.newCards(selected.size, applied.size) : ''}</span><Button type="button" variant="ghost" disabled={busy} onClick={onClose}>{t.cancel}</Button>{journey && writable && <Button type="button" disabled={busy || selected.size === 0 || !validTargets} onClick={() => void apply()}>{busy ? <LoaderCircle size={14} className="spin" /> : <Plus size={14} />}{t.createCards(selected.size)}</Button>}</footer>
+    <footer className="journey-picker-footer dialog-foot"><span role="status">{journey ? t.newCards(selected.size, applied.size) : ''}</span><Button type="button" variant="ghost" disabled={busy} onClick={onClose}>{t.cancel}</Button>{journey && writable && <Button type="button" className="action-mint" title={applyBlocked} disabled={!!applyBlocked || busy || selected.size === 0 || !validTargets} onClick={() => void apply()}>{busy ? <LoaderCircle size={14} className="spin" /> : <Plus size={14} />}{t.createCards(selected.size)}</Button>}</footer>
   </section>;
 }
 

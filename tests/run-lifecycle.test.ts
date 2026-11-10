@@ -135,15 +135,18 @@ it.each(['runs', 'options'] as const)('keeps a foreign %s revision as a pure con
   const filename = path.join(root, 'tasks', kind === 'runs' ? 'deckmate-runs.md' : 'deckmate-card-options.md');
   const foreignBytes = Buffer.concat([await readFile(filename), Buffer.from('\nExternal writer kept this note.\n')]);
   const prepare = cardOptions.prepareCardOptionsPatch;
+  let injected = false;
   vi.spyOn(cardOptions, 'prepareCardOptionsPatch').mockImplementationOnce(async (...args) => {
     const plan = await prepare(...args);
     return { ...plan, async publish(verify) {
+      injected = true;
       await writeFile(filename, foreignBytes);
       await plan.publish(verify);
     } };
   });
   const failure = await applyPlanningEdit(root, { action: 'finish-run', runId: 'team-1', runsHash: before.hash,
     optionsHash: beforeOptions.hash, carryOver: { review: true, blocked: true, other: true } }).catch(error => error);
+  expect(injected).toBe(true);
   expect(failure).toBeInstanceOf(Error);
   expect(failure.message).toContain('CONFLICT');
   expect(failure.saved).not.toBe(true);
@@ -163,13 +166,19 @@ it('rolls back its own options write when a foreign runs revision lands between 
   const foreignRuns = Buffer.concat([await readFile(runsFile), Buffer.from('\nExternal writer kept this note.\n')]);
   const optionsBytes = await readFile(optionsFile);
   const prepare = cardOptions.prepareCardOptionsPatch;
-  // Our options patch lands, then a foreign writer replaces the runs registry before it is published.
+  let injected = false;
+  // 2026-11-10: the foreign revision must land after our options write, before runs publication.
   vi.spyOn(cardOptions, 'prepareCardOptionsPatch').mockImplementationOnce(async (...args) => {
     const plan = await prepare(...args);
-    return { ...plan, async publish(verify) { await plan.publish(verify); await writeFile(runsFile, foreignRuns); } };
+    return { ...plan, async publish(verify) {
+      await plan.publish(verify);
+      injected = true;
+      await writeFile(runsFile, foreignRuns);
+    } };
   });
   const failure = await applyPlanningEdit(root, { action: 'finish-run', runId: 'team-1', runsHash: before.hash,
     optionsHash: beforeOptions.hash, carryOver: { review: true, blocked: true, other: true } }).catch(error => error);
+  expect(injected).toBe(true);
   expect(failure).toBeInstanceOf(Error);
   expect(failure.message).toContain('CONFLICT');
   expect(failure.saved).not.toBe(true);

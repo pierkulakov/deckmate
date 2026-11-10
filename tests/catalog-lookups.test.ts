@@ -30,11 +30,12 @@ describe('catalog lookups', () => {
     expect(before.milestoneProgress.get('release')).toEqual({ total: 2, accepted: 1 });
   });
 
-  it('counts nested Markdown checklist items without counting fenced examples or Hero progress', () => {
+  it('counts each card kind’s own Markdown checklists, excluding fenced examples and Sub Card progress', () => {
     const markdown = '- [x] First\n  - [ ] Nested\n- [ ] Last\n\n```md\n- [x] Example, not a task\n```\n';
-    const before = buildCatalogLookups([card('checklist', { markdown }), card('hero', { kind: 'hero', markdown })]);
+    const before = buildCatalogLookups([card('checklist', { markdown, parentId: 'hero', state: 'done' }), card('hero', { kind: 'hero', markdown }), card('doc', { kind: 'doc', markdown })]);
     expect(before.checklistByCard.get('checklist')).toEqual({ done: 1, total: 3 });
-    expect(before.checklistByCard.has('hero')).toBe(false);
+    expect(before.checklistByCard.get('hero')).toEqual({ done: 1, total: 3 });
+    expect(before.checklistByCard.get('doc')).toEqual({ done: 1, total: 3 });
     const after = buildCatalogLookups([card('checklist', { markdown: '- [x] Updated\n' })]);
     expect(after.checklistByCard.get('checklist')).toEqual({ done: 1, total: 1 });
     expect(before.checklistByCard.get('checklist')).toEqual({ done: 1, total: 3 });

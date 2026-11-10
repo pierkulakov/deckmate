@@ -1,7 +1,7 @@
 import { execFile } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { promisify } from 'node:util';
-import type { DeckActivityEvent } from '../src/activity-contracts.ts';
+import type { ActivityStateTransition, DeckActivityEvent } from '../src/activity-contracts.ts';
 import type { CatalogCard } from '../src/catalog-contracts.ts';
 import { readWholeActivity } from './activity.ts';
 import { readProjectMarkdown } from './native-cards.ts';
@@ -29,6 +29,7 @@ export interface AgentHistory {
   totalEvents: number;
   git: AgentGitHistory;
   warnings: string[];
+  latestReturn?: { event: DeckActivityEvent; transition: ActivityStateTransition & { reason: string } };
 }
 
 export interface AgentChanges {
@@ -94,10 +95,19 @@ async function readHistory(root: string, card: CatalogCard): Promise<AgentHistor
   return { sourceHash: createHash('sha256').update(bytes).digest('hex'), events, totalEvents: events.length, git, warnings };
 }
 
-/** 2026-11-05: brief reads only the latest three card events; no agent checkpoint is written. */
+/** 2026-11-10: retain the latest recorded return before limiting the event summary; later edits must not hide feedback. */
 export async function readAgentHistory(root: string, card: CatalogCard): Promise<AgentHistory> {
   const history = await readHistory(root, card);
-  return { ...history, events: history.events.slice(0, 3) };
+  let latestReturn: AgentHistory['latestReturn'];
+  for (const event of history.events) {
+    const transition = event.transitions?.find(candidate => candidate.cardId === card.id
+      && candidate.from === 'review' && candidate.to !== 'review' && candidate.to !== 'done' && candidate.reason?.trim());
+    if (transition?.reason) {
+      latestReturn = { event, transition: { ...transition, reason: transition.reason } };
+      break;
+    }
+  }
+  return { ...history, events: history.events.slice(0, 3), ...(latestReturn ? { latestReturn } : {}) };
 }
 
 /** 2026-11-05: a file digest has no time information and does not cover separately stored card options. */

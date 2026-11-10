@@ -18,6 +18,7 @@ API input, `state:` search and CLI `--state` accept both languages. API response
 | `started` | `started` | `в работе` |
 | `review` | `review` | `приёмка` |
 | `done` | `done` | `принято` |
+| `wont-do` | `wont-do` | `не делаем` |
 | Open questions | `## Open questions` | `## Открыто` |
 | Decision Task | `Decision: …` | `Решение: …` |
 | Workflow assignment | `## Assignment: <role>` | `## Задание: <role>` |
@@ -33,7 +34,8 @@ See [catalog.md](catalog.md#two-language-file-format--2026-11-05) for byte-prese
 - `DECKMATE_DATA` — the project folder. Default `direct` mode edits it in place without requiring git; use git commits for recovery.
 - `DECKMATE_WRITE` enables `sandbox` mode: a separate worktree outside the project, on branch `deckmate/sandbox` or `freetion/sandbox`. Only this copy is writable; the original stays read-only.
 - `--read-only` or `DECKMATE_READ_ONLY=1` selects `read-only` mode and overrides `DECKMATE_WRITE`.
-- Every endpoint takes `source=live|sandbox` (query parameter or body field, default `sandbox`). The internal name `sandbox` means the writable source: the project itself in `direct`, the separate copy in `sandbox`. Writes to `source=live` are rejected.
+- `DECKMATE_SHUTDOWN_STDIN=1` is set by Deckmate Desktop only: the server stops on a `{"type":"shutdown"}` line on stdin or when stdin ends (the shell died); without it stdin is not read.
+- Project data endpoints accept `source=live|sandbox` (query parameter or body field, default `sandbox`). The internal name `sandbox` means the writable source: the project itself in `direct`, the separate copy in `sandbox`. Writes to `source=live` are rejected.
 
 ## Token and actor
 
@@ -48,7 +50,7 @@ These header checks protect browser access; they do not authenticate remote clie
 
 ## Hash guards (optimistic concurrency)
 
-Catalog, card, board and attachment edits carry the SHA-256 hashes required by their action. A stale hash is rejected with `409` and nothing is written; re-read, take fresh hashes, repeat the action once. Empty string `""` means "file absent / nothing yet". All values are lowercase hex. Notification seen/dismiss actions do not take source hashes.
+Catalog, card, board and attachment edits carry the SHA-256 hashes required by their action. A stale hash is rejected with `409`; normally nothing is written, but Journey recovery can complete or partially publish an earlier operation before rejecting the new request (see below). Re-read and review before submitting fresh hashes. Empty string `""` means "file absent / nothing yet". All values are lowercase hex. Notification seen/dismiss actions do not take source hashes.
 
 | Field | SHA-256 of | Where to read | Used by |
 |---|---|---|---|
@@ -58,6 +60,7 @@ Catalog, card, board and attachment edits carry the SHA-256 hashes required by t
 | `tagsHash` | `tasks/deckmate-tags.md` | `CatalogView.tagsHash` | `save-project-tag` |
 | `attachmentsHash` | The card's attachment registry | `GET /api/attachments` → `.hash` | `upload-attachment`, `remove-attachment` |
 | `journeyHash` | Journey index + ordered step files (aggregate) | `journey.fileHash` | `apply-journey`, `update-journey`, `save-journey-template`, `add-journey-step-lesson` |
+| `journalHash` | Raw `.deckmate-operation.json` bytes | `journey.pendingOperation.journalHash` | `abandon-journey-operation` |
 | `templateHash` | Journey template index + steps (aggregate) | `journeyTemplate.fileHash` | `import-journey-template` |
 | `parentSourceHash` | Target parent card's `sourceHash` | `card.sourceHash` | `set-card-parent` (null when detaching) |
 | `runsHash`, `milestonesHash` | `tasks/deckmate-runs.md`, `tasks/deckmate-milestones.md` | `CatalogView.runsHash`, `.milestonesHash` | `POST /api/planning` |
@@ -66,9 +69,23 @@ Catalog, card, board and attachment edits carry the SHA-256 hashes required by t
 
 On success a write returns the updated `CatalogView` — its `manifestHash` is the base for your next write. A `503` with `saved: true` means the Markdown write landed but a follow-up step (index, journal, board rebuild) failed: do **not** repeat create-style actions blindly, re-read first. `create-card` retries are safe when `cardId` and content are identical; a different content under the same ID is a `409`.
 
+### Resuming Journey updates — 2026-11-09
+
+An unfinished existing-Journey update exposes optional `pendingOperation: { id: string | null, journalHash: string, state: 'pending' | 'conflict' | 'invalid', file?: string }`. `id` is the operation UUID (null for an unreadable journal); `journalHash` is the SHA-256 of its raw bytes. `pending` returns a coherent original snapshot only after every disk file matches its saved before/after hash. `conflict` returns current disk contents and names the conflicting `file` relative to the Journey directory; missing steps are omitted and the graph can be incomplete. `invalid` returns disk contents with “The Journey operation journal cannot be read” / “Журнал операции Journey не читается”. Reads never recover or write. Concurrent reads during a save actively handled by this process show a coherent snapshot without a pending warning.
+
+Any writing request targeting that Journey (update, template import, apply, lesson, Save as Template) first finishes the saved journal using its own prepared bytes, independently of the new request and manifest changes. Original file hash means publish, target hash means skip, another hash means stop and name the conflicting file. Then the new request checks its own hashes normally: a 409 after successful recovery requires rereading and submitting fresh hashes. Clients do not need the original request. No request identity or persistent completion file is stored; reread after a lost response.
+
+An interrupted publication carries an internal `saved: true` error; the catalog service normally returns HTTP 200 with a snapshot and a localized `savedWarning: string` naming the failing/conflicting file, without internal error codes. Clients must inspect `pendingOperation` and `savedWarning` rather than HTTP success alone; never detect partial saves by matching localized text in `warnings`. A damaged journal rejects further writes with its readable warning.
+
+If recovery stops on a foreign edit, HTTP 409 carries `{ code: "CATALOG", message, saved: true }`; the localized `message` names the conflicting file. Re-read and keep drafts open; simply repeating cannot resolve this conflict. If recovery completes but the new request's hashes are stale, HTTP 409 carries `{ code: "CATALOG", message, saved: false }`, explaining that the unfinished Journey save has now completed. Show the server message in both cases, not a generic retry suggestion.
+
+To discard only the intent, POST `action: 'abandon-journey-operation'`, `journeyId`, `journalHash`, `source: 'sandbox'`, and the shared `manifestHash` field. The journal hash must match exactly; a stale or absent journal returns 409. This action works for malformed/unsupported journals too. It deletes only the journal through guarded deletion, never rolls back or changes working files, and returns the disk catalog as-is. `manifestHash` is required by the envelope but not checked for this journal-only action. Show this explicit action for conflict/invalid states; reread after a hash conflict.
+
+Publication order: `.deckmate-operation.json` → dependency-ordered steps → index → removed steps → remove journal. See [catalog.md](catalog.md) for byte preservation and crash-guarantee boundaries.
+
 ## Read endpoints
 
-All accept `?source=live|sandbox`.
+Project data reads, the template plan and short-link redirects accept `?source=live|sandbox`; health, onboarding facts, the template list and events do not select a source.
 
 | Endpoint | Returns |
 |---|---|
@@ -76,7 +93,7 @@ All accept `?source=live|sandbox`.
 | `GET /api/catalog` | Full `CatalogView`: cards, spaces, decks, tracks, journeys, journeyTemplates, members, subCardOrder, runs, milestones, warnings, hashes. Reading the writable source may perform server housekeeping writes (Run carry-over and automatic archiving) without a client token; no client-supplied data is written. |
 | `GET /api/cards` | Indexed search. Query: `text`, `deckId`, `trackId`, `kind=task|hero|doc`, `state`, `owner`, `limit` (≤1000). Excludes archived/deleted. |
 | `GET /api/cards?fields=brief` | Same search and card properties, without `markdown`, with `hits: [{ line, text }]`: up to 3 excerpts per card, each at most 200 characters. Lines are absolute, 1-based source-file lines. Without `fields` the original response is unchanged. |
-| `GET /api/brief` | `cardId` (full ID or `c-ref`), optional `budget` (positive integer, default 1500) → `{ markdown, tokens, truncated, readNext }`. Fresh source text, family, relevant rules/code, related cards and history. |
+| `GET /api/brief` | `cardId` (full ID or `c-ref`), optional `budget` (positive integer, default 1500) → `{ markdown, tokens, truncated, readNext }`. Fresh source text, family, relevant rules/code, related cards, history and latest recorded review-return feedback. |
 | `GET /api/changes` | `cardId` (full ID or `c-ref`), required `since` (ISO timestamp with timezone or full 64-digit SHA-256) → current `sourceHash`, journal events, Git history and explicit checkpoint scope. Never writes a checkpoint. |
 | `GET /api/card-content` | `{ cardId, title, markdown, sourceHash }` for one card — the full editable text, not the catalog excerpt. |
 | `GET /api/summary` | `track` (ID or unique title) and `limit` (0–100, default 5) → counts, groups `doing/review/blocked/ready/planned`, `dependencies`. |
@@ -101,6 +118,8 @@ Start with `GET /api/brief?cardId=<c-ref>`, follow a `readNext` entry through `/
 
 The card's mandatory verbatim text is never silently cut. If it cannot fit the requested budget, `brief` fails with the required minimum (HTTP 422); increase the budget or read a file range. Nonpositive budgets fail validation. Brief search uses a disposable read-only index, so `fields=brief` does not trigger automatic archival or Run carry-over.
 
+Review feedback — 2026-11-10: the optional Markdown block “Latest recorded review return” selects the newest structured transition for this card from `review` to neither `review` nor `done` with a nonblank reason, searching beyond the three-event summary. It shows `at`, `actorMemberId` (explicitly unknown if absent/null), `from → to`, and the original reason; it does not infer missing reasons from details or Owner, or claim that historical feedback remains unresolved. Labels follow the request language, while IDs and recorded text do not change. The reason uses the existing supplement budget; omission displays `[return feedback truncated; read the full journal range]` (Russian: `[обратная связь сокращена; прочитайте полный диапазон журнала]`) and `truncated: true`, with the full event-file range in `readNext`. No recorded reason means no extra block or change to reason-free briefs. The JSON shape is unchanged. Card-scoped state changes also enter the journal with `deckIds: []` when no deck exists; `/api/card-activity` and `/api/changes` retain their transitions, reasons and actors, while deck feeds still filter by deck. Activity remains secondary: a journal write failure warns after saving the card, without rollback or crash recovery.
+
 An ISO checkpoint filters journal events strictly after that instant. A hash checkpoint compares the current source bytes (`previousSourceHash`, `sourceHash`, `changed`), but cannot establish an event timestamp: `eventScope: "all-card-events"` explicitly returns the full card journal and a warning. With an ISO checkpoint `changed` is `null`. Sidecar property changes may appear in the journal without changing the source hash. Git supplies the last three commits touching the source path; journal events do not capture arbitrary external edits. An unavailable Git history is reported explicitly. The context endpoints do not create notifications, receipts or files in `tasks/`.
 
 CLI equivalents (JSON except the default `brief` Markdown), run from the project folder or with `--data <project>`; they need no running server. From a Deckmate source checkout, `npm run project -- <command>` is the same command.
@@ -121,10 +140,14 @@ To keep pre-existing CLI JSON byte-compatible, `find`, `show` and `summary` expo
 
 The write path for the catalog; Runs and Milestones use `POST /api/planning` below. Body: `action`, `source: "sandbox"`, `manifestHash`, plus the action's required fields. On success returns the updated `CatalogView` (bulk actions add `bulkOutcome: { applied, unchanged, pending, created?, warnings }`).
 
+HTTP 200 may also include `savedWarning: string`: localized mutation feedback for a partial save or failed follow-up (activity journal, board rebuild, search index), including bulk operations and project-template application. Display it as a save warning, independently of `warnings`, which describe project contents. Ordinary reads do not include `savedWarning`.
+
+The browser store's `edit` remains `Promise<boolean>`: HTTP 200 retains the existing success result (unless bulk cards remain pending), with `savedWarning` exposed as `state.warning`. Every HTTP 409 returns `false` to preserve form/editor drafts, refreshes the catalog and displays the server's `message`; `saved: true` uses `state.warning`, otherwise `state.error`. Other error responses also preserve server messages; an empty/non-JSON 409 uses the generic conflict notice. Callers must not interpret `true` alone as proof of a complete write; inspect warnings and bulk outcomes. The existing non-409 `saved: true` behavior remains unchanged.
+
 | `action` | Required fields |
 |---|---|
 | `bulk-edit-cards` | `cards`, `optionsHash`, `change` |
-| `set-card-state` | `cardId`, `sourceHash`, `state`; optional `returnReason` (one line, ≤500 characters, only leaving review without acceptance). In a deck with guardians, `done` needs a guardian as `x-deckmate-actor` (without the header, as `acceptedBy`). A native Hero takes only `done` (manual mark, refused while it has Task Sub Cards other than `wont-do`) and `not-started` (removes the mark) |
+| `set-card-state` | `cardId`, `sourceHash`, `state`; nonempty `returnReason` is required when leaving review without acceptance (one line, ≤500 characters). In a deck with guardians, `done` needs a guardian as `x-deckmate-actor` (without the header, as `acceptedBy`). A native Hero takes only `done` (manual mark, refused while it has Task Sub Cards other than `wont-do`) and `not-started` (removes the mark) |
 | `set-card-properties` | `cardId`, `sourceHash`, `owner`, `effort`, `priority` |
 | `set-card-parent` | `cardId`, `sourceHash`, `expectedParentId`, `parentId`, `parentSourceHash` |
 | `reorder-subcards` | `cardId`, `sourceHash`, `cardIds` |
@@ -138,6 +161,7 @@ The write path for the catalog; Runs and Milestones use `POST /api/planning` bel
 | `create-space` | `title` |
 | `create-deck` | `title`, `spaceId`, `kind`, `icon`, `color`, `description`; optional `deckId` (UUID for an idempotent create followed by upload), `style`, `coverPosition` (0–100, retained by a later cover upload) |
 | `update-space` | `spaceId`, `title`, `kind`, `icon` |
+| `delete-space` | `spaceId`; only when no manifest Deck references it (including inactive or legacy piled Decks). The last Space may be deleted. Optional `optionsHash` also guards CardOptions freshness |
 | `update-deck` | `deckId`, `title`, `icon`, `color`, `description`, `style`, `cover`, `coverPosition` |
 | `set-deck-kind` | `deckId`, `kind` (asset/task/knowledge/mixed) |
 | `set-deck-default-order` | `deckId`, `defaultOrder` (URL-parameter string ≤200 characters, or null to clear) |
@@ -149,13 +173,13 @@ The write path for the catalog; Runs and Milestones use `POST /api/planning` bel
 | `move-cards-in-deck` | `deckId`, `cards`, `zoneId`, `beforeCardId` |
 | `set-inbox-deck` | `deckId` (null clears): the deck for cards created without one |
 | `set-deck-watchers` | `deckId`, `watcherIds` (full replacement list) |
-| `set-deck-pile` | `deckId`, `piled`: true moves the deck to the pile at the end of its space, false returns it to the shelf and removes the key; deck order and cards stay, a repeat does not write |
 | `set-deck-guardians` | `deckId`, `guardianIds`: only these members accept cards of the deck |
 | `set-deck-automation` | `deckId`, `autoTag`, `autoTagKeep`, `templateMarkdown`, `templateOwner`, `templateEffort`, `templatePriority` |
 | `apply-project-template` | `templateId`, `templateHash`, `samples` |
 | `create-journey` | `deckId`, `title`, `steps` |
 | `apply-journey` | `cardId`, `journeyId`, `journeyHash`, `stepIds`, `deckAssignments`, `sourceHash` |
 | `update-journey` | `journeyId`, `journeyHash`, `title`, `description`, `zones`, `steps` |
+| `abandon-journey-operation` | `journeyId`, `journalHash` (deletes only the observed journal, no rollback) |
 | `import-journey-template` | `deckId`, `templateId`, `templateSource`, `templateHash`, `mode`, `journeyId`, `journeyHash`, `roleMapping` |
 | `save-journey-template` | `journeyId`, `journeyHash`, `title`, `description`, `category`, `tags` |
 | `add-journey-step-lesson` | `journeyId`, `journeyHash`, `stepId`, `cardId`, `text` (≤500 characters); a known `x-deckmate-actor` is required. Appends to the step's `## Lessons` (`## Грабли`) without increasing Journey version. |
@@ -175,7 +199,8 @@ Field notes:
 - `cards` selections are `[{ cardId, sourceHash }]`, 1–1000 unique entries; only `bulk-edit-cards` with `change.kind: "promote-parent"` allows `cards: []` to promote a card without attaching children. Nullable fields are passed explicitly as `null`, empty lists as `[]`.
 - `create-card.deckId: null` means automatic placement: Inbox if it accepts `kind`, otherwise Unassigned (`deckId: null`), including Sub Cards. An explicit deck must exist and accept the card kind. `set-inbox-deck` allows only Task or Mixed decks; null clears it. Legacy Inbox kinds remain readable. Changing the Inbox to a kind that cannot take Tasks clears it with a warning.
 - `bulk-edit-cards.change`: `kind` one of `properties, state, parent, create-parent, promote-parent, options, hand, tags, convert, duplicate, track` — each kind brings its own fields (see `src/bulk-contracts.ts`).
-- `state`: English ids `not-started`, `discussing`, `in-iteration`, `started`, `review`, `done`; the Russian words from the table above are accepted as input too. Responses always use ids. `priority`: `high|medium|low` or null. `effort`: number ≥ 0 or null.
+  For `kind: state`, `change.returnReason` is required if any selected card leaves review without acceptance; the common reason is journaled for each returned card. Acceptance, unchanged states and other non-return transitions do not require a reason.
+- `state`: English ids `not-started`, `discussing`, `in-iteration`, `started`, `review`, `done`, `wont-do`; the Russian words from the table above are accepted as input too. Responses always use ids. `priority`: `high|medium|low` or null. `effort`: number ≥ 0 or null.
 - Card `title` ≤ 1000 chars, no line breaks; `markdown` ≤ 200000 chars. Titles of spaces/decks/tracks/journeys/templates ≤ 120 chars. `description`, `questionText`, `answer` ≤ 2000 chars.
 - Attachment actions run through the attachment module; with `x-deckmate-actor` the uploader is the actor, not `addedBy` from the body.
 - Card covers were removed on 2026-11-09. Uploads and removals replace only the registry's `files` block; legacy `cover` entries remain byte-for-byte unchanged and are not shown. New registries have no `cover` field. Deck, Run and Milestone covers and Vision images are unaffected.
@@ -200,12 +225,12 @@ Response shape: `{ code, message }`, codes `CATALOG`, `CONTENT`, `IMPORT`, `MODE
 | 400 | Malformed request or schema violation (e.g. missing field, non-string title/markdown). |
 | 403 | Missing/wrong token, foreign `Host`/`Origin`, write to `live`, read-only mode or a sandbox branch that does not permit writes. |
 | 404 | Unknown card, board, file, or short reference. |
-| 409 | Stale hash of any guarded file, a `cardId` taken by different content, or a changed board file; the body carries a plain message (with `code: "CATALOG"` outside `/api/planning`), not an internal conflict name. Re-read and repeat once. |
+| 409 | Stale hash of any guarded file, a `cardId` taken by different content, a changed board file, or Journey recovery. The body carries a localized `message` (with `code: "CATALOG"` outside `/api/planning`), not an internal conflict name. `saved: true` means recovery partially saved an earlier operation: re-read, keep drafts and resolve the named file conflict instead of blindly repeating. A completed recovery can also return 409 with `saved: false` and an explanatory message. |
 | 422 | Invalid value or domain failure (bad state, title limits, edit that breaks mechanic structure, undecodable data URL). |
 | 503 | Write landed, follow-up failed (`saved: true`) — re-read instead of repeating. |
 | 500 | Unexpected server error. |
 
-Body limits: 512 KB default; `/api/catalog` 16 MB; `/api/catalog-import` 24 MB; `/api/boards` 21 MB. Attachment registry ≤ 500 files per card. Writes are serialized server-side, so concurrent requests cannot interleave; each confirmed mutation appends an event to `tasks/deckmate-activity/`.
+Body limits: 512 KB default; `/api/catalog` 16 MB; `/api/catalog-import` 24 MB; `/api/boards` 21 MB. Attachment registry ≤ 500 files per card. Catalog writes use a server-side queue; attachment operations follow a separate hash-guarded path and do not create activity events. Other activity events are recorded in `tasks/deckmate-activity/` when applicable.
 
 ## Examples
 
@@ -246,4 +271,4 @@ curl -s -X POST "$BASE/api/catalog" \
        "trackIds":[],"parentId":null,"owner":null,"effort":null,"priority":null}'
 ```
 
-The response is the updated `CatalogView`: its `manifestHash` is the base for the next write. A `409` means files changed underneath — re-read and rebuild the request with fresh hashes.
+The response is the updated `CatalogView`: its `manifestHash` is the base for the next write; display any `savedWarning`. On `409`, read `message` and `saved`, re-read the catalog and review the result before rebuilding the request with fresh hashes.

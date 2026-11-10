@@ -1,6 +1,7 @@
 import type { CardKind, CatalogCard, CatalogTrack, CatalogView } from '../src/catalog-contracts.ts';
 import type { CardOptions } from '../src/bulk-contracts.ts';
 import { cardPlanningOptions, isActiveCatalogCard } from '../src/catalog-hand.ts';
+import { openDependencies } from '../src/dependency-contracts.ts';
 import { shortReference } from '../src/references.ts';
 import { defineText, serverText } from './i18n.ts';
 
@@ -85,7 +86,7 @@ export function summarizeCatalog(catalog: CatalogView, track?: string, limit = 5
   const byId = new Map(catalog.cards.map(card => [card.id, card]));
   const decks = new Map(catalog.decks.map(deck => [deck.id, deck.title]));
   const tasks = selectedCards.filter(card => card.kind === 'task');
-  const isBlocked = (card: CatalogCard) => !accepted(card) && (card.dependsOn ?? []).some(id => !accepted(byId.get(id)));
+  const isBlocked = (card: CatalogCard) => !accepted(card) && openDependencies(card.dependsOn, byId).length > 0;
   const compact = (card: CatalogCard): SummaryCard => {
     const ref = shortReference('c', card.id);
     return { id: card.id, ref, link: `/r/${ref}`, title: card.title, state: card.state, owner: card.owner, ...cardPlanningOptions(card),

@@ -3,16 +3,14 @@
 /* 2026-11-06: the text box and Properties scroll inside, so the shell drops the stable gutter like the open card's shell
    (.card-preview-layout > .card-preview): the sheet keeps 456 px and the rail does not shift 3 px between New Card and a card. */
 .card-composer { max-height: var(--composer-height, var(--preview-height)); }
-/* 2026-11-08: the shell clips instead of scrolling, so only the padding that keeps the sheet width stays. */
-.card-preview.card-composer { padding-right: 7px; }
 .card-composer > .card-composer-main { display: flex; flex-direction: column; min-width: 0; min-height: 0; height: var(--composer-height, var(--preview-height)); }
 .card-composer-main > .card-preview-header { flex-shrink: 0; }
 .card-composer-main > .card-composer-sheet { flex: 1 1 0; min-width: 0; min-height: 0; }
 /* 2026-11-05: the restored-draft banner opens the sheet edge to edge; the card reading margins do not apply here. */
 .card-preview .card-composer-sheet > .card-draft-banner { margin: 0 0 8px; }
-/* Header: New Card at 14px/700 in secondary ink, then the deck picker shared with the open card (deck-picker.css). */
+/* 2026-11-10: the New Card header keeps its 14px secondary label at the Foil heading weight 600. */
 .card-composer-context { flex-wrap: nowrap; gap: 8px; }
-.card-composer-context > h2 { flex-shrink: 0; margin: 0; color: var(--muted); font-size: 14px; font-weight: 700; line-height: 16px; white-space: nowrap; }
+.card-composer-context > h2 { flex-shrink: 0; margin: 0; color: var(--muted); font-size: 14px; font-weight: 600; line-height: 16px; white-space: nowrap; }
 
 .card-composer-panel { display: flex; flex: 1 1 0; flex-direction: column; min-width: 0; min-height: 0; animation: composer-panel-enter 150ms var(--ease-out); }
 .card-composer-panel[hidden] { display: none; }

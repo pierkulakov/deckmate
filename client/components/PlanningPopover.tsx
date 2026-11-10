@@ -1,8 +1,10 @@
+import { moveFocus } from '../focus.ts';
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import * as Dialog from '@radix-ui/react-dialog';
 import { X } from 'lucide-react';
 import type { CatalogView, MilestoneRecord } from '../../src/catalog-contracts.ts';
 import { defineText, useText } from '../i18n.ts';
+import { useDesktopDirty } from '../desktop-bridge.ts';
 import { Switch } from './CardOrdering.tsx';
 import { PlanningColorField, planningColors } from './PlanningColors.tsx';
 import { ConfirmStrip } from './ConfirmStrip.tsx';
@@ -82,15 +84,15 @@ export function PlanningPopover({ anchor, placement, wide, title, closeLabel, di
     };
   }, [anchor, placement, element]);
   return <Dialog.Root open modal={false} onOpenChange={value => { if (!value) onClose(); }}><Dialog.Portal>
-    <Dialog.Content ref={setElement} aria-describedby={undefined} className={`planning-popover${wide ? ' is-wide' : ''}`} style={position}
+    <Dialog.Content ref={setElement} aria-describedby={undefined} className={`planning-popover dialog-panel${wide ? ' is-wide' : ''}`} style={position}
       // A press on the anchor itself is left to its own click: «Set up Runs» toggles, a date cell keeps its form.
       onInteractOutside={event => { if (dirty || pending || anchor.contains(event.target as Node)) event.preventDefault(); }}
       onEscapeKeyDown={event => { if (pending) event.preventDefault(); }}
       // The strip is the only active part while it asks; a touch of the dimmed form means the user stayed.
       onPointerDownCapture={() => { if (!confirm) onInteract?.(); }}
       onKeyDownCapture={event => { if (!confirm && event.key !== 'Escape') onInteract?.(); }}
-      onCloseAutoFocus={event => { event.preventDefault(); if (anchor.isConnected) (anchor.querySelector<HTMLElement>('button') ?? anchor).focus(); }}>
-      <header><Dialog.Title title={title}>{title}</Dialog.Title><button type="button" className="planning-popover-close" disabled={pending} aria-label={closeLabel} onClick={onClose}><X size={20} /></button></header>
+      onCloseAutoFocus={event => { event.preventDefault(); if (anchor.isConnected) moveFocus(anchor.querySelector<HTMLElement>('button') ?? anchor); }}>
+      <header className="dialog-head"><Dialog.Title className="dialog-title" title={title}>{title}</Dialog.Title><button type="button" className="planning-popover-close control control-ghost" disabled={pending} aria-label={closeLabel} onClick={onClose}><X size={20} /></button></header>
       {/* The wrapper always renders: mounting it with the strip would reset the form's own draft state (2026-11-05). */}
       <div className="planning-popover-body" inert={Boolean(confirm)}>{children}</div>
       {confirm && <ConfirmStrip question={t.discard} keepLabel={t.keepEditing} confirmLabel={t.discardChanges}
@@ -112,6 +114,7 @@ export function MilestoneForm({ date, milestone, catalog, pending, onSave, onDir
   const [validation, setValidation] = useState(false);
   const dirty = JSON.stringify(value) !== JSON.stringify(initial.current);
   useEffect(() => { onDirtyChange(dirty); }, [dirty, onDirtyChange]);
+  useDesktopDirty(dirty);
   useEffect(() => {
     if (!dirty) return;
     const protect = (event: BeforeUnloadEvent) => { event.preventDefault(); event.returnValue = ''; };
@@ -136,8 +139,8 @@ export function MilestoneForm({ date, milestone, catalog, pending, onSave, onDir
       <div className="planning-popover-band"><Switch label={t.projectSpecific} hint={t.projectHint} checked={value.projectSpecific} onChange={checked => update('projectSpecific', checked)} /></div>
       <div className="planning-popover-columns">
         <div>
-          <label className="planning-underline-field">{t.title}<input autoFocus required maxLength={120} value={value.title} onChange={event => update('title', event.target.value)} /></label>
-          <label className="planning-underline-field">{t.date}<input type="date" min="0001-01-01" max="9999-12-31" required value={value.date} onChange={event => update('date', event.target.value)} /></label>
+          <label className="planning-underline-field">{t.title}<input className="control-field" autoFocus required maxLength={120} value={value.title} onChange={event => update('title', event.target.value)} /></label>
+          <label className="planning-underline-field">{t.date}<input className="control-field" type="date" min="0001-01-01" max="9999-12-31" required value={value.date} onChange={event => update('date', event.target.value)} /></label>
         </div>
         <div>
           <div className="planning-underline-field"><span>{t.color}</span><PlanningColorField label={t.color} value={value.color} onChange={color => update('color', color)} /></div>

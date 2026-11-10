@@ -91,6 +91,59 @@ it('validates move-space fields and returns the reordered spaces with unchanged 
   expect(end.json().spaces.map((space: { id: string }) => space.id)).toEqual(['work', qa]);
 });
 
+it('validates Space deletion, localizes refusals, guards freshness and allows deleting the last Space', async () => {
+  const { root, config } = await fixture();
+  const app = await createApp(config);
+  apps.push(app);
+  const snapshot = (await app.inject({ url: '/api/snapshot', headers })).json();
+  const authorized = { ...headers, 'x-deckmate-token': snapshot.token };
+  let catalog = (await app.inject({ url: '/api/catalog', headers })).json();
+  const post = (edit: Record<string, unknown>, lang = 'en') => app.inject({ method: 'POST', url: '/api/catalog',
+    headers: { ...authorized, cookie: `deckmate-lang=${lang}` }, payload: { source: 'sandbox', manifestHash: catalog.manifestHash, ...edit } });
+  catalog = (await post({ action: 'create-space', title: 'Knowledge' })).json();
+  const spaceId = catalog.spaces[1].id;
+  const filename = path.join(root, 'tasks/deckmate.md');
+  const before = await readFile(filename);
+  const files = await readdir(path.join(root, 'tasks'));
+  for (const fields of [{}, { spaceId: {} }]) expect((await post({ action: 'delete-space', ...fields })).statusCode).toBe(400);
+  for (const lang of ['en', 'ru']) {
+    const response = await post({ action: 'delete-space', spaceId: 'work' }, lang);
+    expect(response.statusCode, response.body).toBe(422);
+    expect(response.json().message).toBe(lang === 'en' ? "Move or delete this space's decks first" : 'Сначала перенесите или удалите колоды этого пространства');
+  }
+  const missing = await post({ action: 'delete-space', spaceId: 'missing' });
+  expect(missing.statusCode).toBe(422);
+  expect(missing.json().message).toBe('Space not found.');
+  expect((await post({ action: 'delete-space', spaceId, manifestHash: 'stale' })).statusCode).toBe(409);
+  expect((await post({ action: 'delete-space', spaceId, optionsHash: 'f'.repeat(64) })).statusCode).toBe(409);
+  expect((await post({ action: 'delete-space', spaceId, source: 'live' })).statusCode).toBe(403);
+  expect(await readFile(filename)).toEqual(before);
+  expect(await readdir(path.join(root, 'tasks'))).toEqual(files);
+  const response = await post({ action: 'delete-space', spaceId, optionsHash: catalog.optionsHash });
+  expect(response.statusCode, response.body).toBe(200);
+  expect(response.json().spaces.map((space: { id: string }) => space.id)).toEqual(['work']);
+  expect(response.json().decks).toEqual(catalog.decks);
+  catalog = response.json();
+  catalog = (await post({ action: 'delete-deck', deckId: 'audio' })).json();
+  const last = await post({ action: 'delete-space', spaceId: 'work' });
+  expect(last.statusCode, last.body).toBe(200);
+  expect(last.json()).toMatchObject({ spaces: [], decks: [], configured: true });
+  expect((await app.inject({ url: '/api/catalog', headers })).json().spaces).toEqual([]);
+});
+
+it('refuses deleting a Space from a read-only project', async () => {
+  const { root, config } = await fixture();
+  const app = await createApp({ ...config, editMode: 'read-only', writeRoot: null });
+  apps.push(app);
+  const snapshot = (await app.inject({ url: '/api/snapshot', headers })).json();
+  const catalog = (await app.inject({ url: '/api/catalog', headers })).json();
+  const before = await readFile(path.join(root, 'tasks/deckmate.md'));
+  const response = await app.inject({ method: 'POST', url: '/api/catalog', headers: { ...headers, 'x-deckmate-token': snapshot.token },
+    payload: { action: 'delete-space', spaceId: 'work', manifestHash: catalog.manifestHash, source: 'sandbox' } });
+  expect(response.statusCode).toBe(403);
+  expect(await readFile(path.join(root, 'tasks/deckmate.md'))).toEqual(before);
+});
+
 it('observes external card content and a new Markdown file in the derived index', async () => {
   const { root, config } = await fixture();
   const app = await createApp(config);
@@ -131,7 +184,7 @@ it('reports a successful primary save when the derived index fails after rename'
     try {
       const result = await service.edit({ action: 'create-space', title: 'Сохранено один раз', manifestHash: before.manifestHash }, 'sandbox');
       expect(result.spaces.filter(space => space.title === 'Сохранено один раз')).toHaveLength(1);
-      expect(result.warnings.join(' ')).toContain('Changes were saved');
+      expect(result.savedWarning).toContain('Changes were saved');
       expect(result.manifestHash).not.toBe(before.manifestHash);
       expect(await readFile(path.join(root, 'tasks/deckmate.md'), 'utf8')).toContain('Сохранено один раз');
     } finally { replace.mockRestore(); }

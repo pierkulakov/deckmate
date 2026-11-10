@@ -1,55 +1,57 @@
-/* CSV import opens from the More menu and uses only the theme tokens in styles.css. */
+/* 2026-11-10: the import dialog reads as one product with the redesigned Decks home: the frame, the head and the foot
+   are the shared dialog grammar of client/surface.css (.dialog-panel/.dialog-head/.dialog-foot), the mapping and the
+   preview are flat panels with panel-head titles and counts, the deck select is a recessed field, counters are Geist
+   Mono (.page-number), and Import is the one mint action. Only the dialog's own content lives here: the file slot,
+   the column chips, the preview table and local spacing. */
 .csv-import { position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%); z-index: 80;
   display: flex; flex-direction: column; width: min(1020px, calc(100vw - 32px)); max-height: min(86vh, 820px);
-  border: 1px solid var(--line); border-radius: 10px; background: var(--surface); color: var(--ink);
-  box-shadow: var(--shadow); animation: dialog-drop var(--motion-spring-firm) var(--ease-spring-firm); }
-.csv-import-header { display: flex; align-items: start; justify-content: space-between; gap: 12px;
-  padding: 17px 19px; border-bottom: 1px solid var(--line); }
-/* 2026-11-06: as in the members dialog, the title line matches the 30 px close button so title and × share a centre line. */
-.csv-import-header h2 { margin: 0; font-size: 17px; font-weight: 600; line-height: 30px; }
-.csv-import-header p { margin: .5px 0 0; max-width: 74ch; color: var(--muted); font-size: 11px; line-height: 1.6; }
-.csv-import-body { display: flex; flex-direction: column; gap: 13px; min-height: 0; padding: 16px 19px; overflow-y: auto; scrollbar-width: thin; }
-.csv-import-pick { display: flex; flex-direction: column; gap: 12px; padding: 26px 0 10px; align-items: start; }
+  overflow: hidden; animation: dialog-drop var(--motion-spring-firm) var(--ease-spring-firm); }
+.csv-import-heading { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.csv-import-heading p { margin: 0; max-width: 74ch; color: var(--muted); font-size: 12px; line-height: 16px; overflow-wrap: anywhere; }
+.csv-import-body { display: flex; flex-direction: column; gap: var(--space-3); min-height: 0; padding: var(--space-4); overflow-y: auto; scrollbar-width: thin; }
+/* --shelf-inset is the home page's shared left edge; inside a dialog the panels keep a plain 16px reading inset. */
+.csv-import .glass-panel { padding: var(--space-3) var(--space-4); }
+.csv-import-pick { display: flex; flex-direction: column; gap: var(--space-3); padding: var(--space-3) 0 var(--space-2); align-items: start; }
+/* The file slot shares the outline action treatment. */
 .csv-import-file-label { display: flex; align-items: center; gap: 11px; padding: 15px 19px;
-  border: 1px dashed var(--muted); border-radius: 8px; color: var(--ink); background: var(--ground);
-  font-size: 13px; cursor: pointer; }
-.csv-import-file-label:hover { border-color: var(--accent); color: var(--link-ink); }
+  border: var(--control-hairline) solid var(--control-line); border-radius: var(--control-radius); color: var(--button-ink); background: transparent;
+  font-size: 13px; font-weight: 500; letter-spacing: .01em; cursor: pointer; transition: background-color var(--motion-feedback), border-color var(--motion-feedback), color var(--motion-feedback); }
+@media (hover: hover) { .csv-import-file-label:hover:not(:has(input:disabled)) { border-color: var(--button-line); background: var(--hover); color: var(--ink); } }
 /* The real input is a 1 px transparent box, so the visible label carries the keyboard focus ring. */
-.csv-import-file-label:has(input:focus-visible) { outline: 2px solid var(--focus); outline-offset: 3px; }
+.csv-import-file-label:has(input:focus-visible) { outline: 2px solid var(--focus); outline-offset: 2px; }
 .csv-import-file-label input { position: absolute; width: 1px; height: 1px; opacity: 0; }
-.csv-import-note { margin: 0; color: var(--muted); font-size: 11px; line-height: 1.7; max-width: 88ch; }
-.csv-import-file-line { margin: 0; color: var(--muted); font-size: 12px; }
-.csv-import-error { margin: 0; padding: 10px 12px; border-radius: 6px; color: var(--warning-ink); background: var(--warning-bg); font-size: 12px; line-height: 1.6; }
-.csv-import-report { display: flex; flex-direction: column; gap: 6px; padding: 12px 14px;
-  border: 1px solid var(--line); border-radius: 7px; background: var(--ground); font-size: 12px; line-height: 1.6; }
+.csv-import-note { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.6; max-width: 88ch; overflow-wrap: anywhere; }
+.csv-import-file-line { margin: 0; color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
+.csv-import-error { margin: 0; padding: 10px 12px; border-radius: var(--glass-radius); color: var(--warning-ink); background: var(--warning-bg); font-size: 12px; line-height: 1.6; overflow-wrap: anywhere; }
+.csv-import-report { display: flex; flex-direction: column; gap: 6px; padding: var(--space-3) var(--space-3);
+  border: 1px solid var(--line); border-radius: var(--glass-radius); background: var(--ground); font-size: 12px; line-height: 1.6; }
 .csv-import-report > p:first-child { margin: 0; font-size: 13px; }
 .csv-import-report p { margin: 0; }
 .csv-import-warning { color: var(--warning-ink); }
 .csv-import-skip-line { color: var(--muted); overflow-wrap: anywhere; }
-.csv-import-mapping h3, .csv-import-preview h3 { margin: 0 0 8px; font-size: 12px; font-weight: 600; color: var(--ink); }
 .csv-import-mapping ul { display: flex; flex-wrap: wrap; gap: 6px 8px; margin: 0; padding: 0; list-style: none; }
 .csv-import-mapping li { display: inline-flex; align-items: baseline; gap: 7px; padding: 5px 9px;
-  border: 1px solid var(--line); border-radius: 5px; background: var(--ground); font-size: 11px; }
+  border: 1px solid var(--control-line); border-radius: var(--control-radius); background: var(--ground); font-size: 11px; }
 .csv-import-column-name { color: var(--ink); font-weight: 500; max-width: 200px; overflow-wrap: anywhere; }
 .csv-import-column-field { color: var(--link-ink); }
 .csv-import-column-unused { color: var(--muted); }
-.csv-import-field { display: flex; flex-direction: column; gap: 6px; max-width: 360px; color: var(--muted); font-size: 11px; }
-.csv-import-field select { min-height: 35px; border: 1px solid var(--line); border-radius: 5px; padding: 7px 9px;
-  color: var(--ink); background: var(--ground); font: inherit; font-size: 12px; }
-.csv-import-field select:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
-.csv-import-table-scroll { overflow-x: auto; border: 1px solid var(--line); border-radius: 7px; }
-.csv-import-preview table { width: 100%; border-collapse: collapse; font-size: 11px; line-height: 1.5; background: var(--surface); }
+.csv-import-field { display: flex; flex-direction: column; gap: 6px; max-width: 360px; color: var(--muted); font-size: 12px; font-weight: 500; }
+.csv-import-field select { width: 100%; padding-inline: 10px; font-size: 13px; }
+.csv-import-table-scroll { overflow-x: auto; border: 1px solid var(--line); border-radius: var(--glass-radius); }
+.csv-import-preview table { width: 100%; border-collapse: collapse; font-size: 11px; line-height: 1.5; background: transparent; }
 .csv-import-preview th { text-align: left; padding: 8px 10px; color: var(--muted); font-size: 10px; font-weight: 500; white-space: nowrap; }
 .csv-import-preview td { padding: 7px 10px; border-top: 1px solid var(--line); vertical-align: top; overflow-wrap: anywhere; }
 .csv-import-preview tbody tr.is-error td, .csv-import-preview tbody tr.is-skip td { color: var(--muted); }
 .csv-import-preview tbody tr.is-error .csv-import-cell-title { color: var(--danger); }
 .csv-import-preview td small { display: block; margin-top: 2px; color: var(--muted); font-size: 10px; line-height: 1.4; }
 .csv-import-cell-title { display: inline-block; max-width: 320px; }
-.csv-import-preview .csv-import-note { margin-top: 8px; }
-.csv-import-footer { display: flex; align-items: center; justify-content: space-between; gap: 12px;
-  padding: 13px 19px; border-top: 1px solid var(--line); }
-.csv-import-hint { color: var(--muted); font-size: 11px; }
-.csv-import-actions { display: flex; align-items: center; gap: 9px; }
+.csv-import-counts { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 6px; margin-top: var(--space-2); }
+.csv-import-counts .dot-separator { opacity: .6; }
+.csv-import-hint { margin-inline-end: auto; color: var(--muted); font-size: 12px; line-height: 16px; overflow-wrap: anywhere; }
+.csv-import-actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
+/* The mint fold to a bare icon (surface.css, ≤420px) belongs to page heads whose label sits in a span; the dialog's
+   creating action is text-only, so it keeps its label at phone widths (2026-11-10). */
+@media (max-width: 420px) { .csv-import-foot .action-mint { width: auto; padding: 0 12px 0 9px; } }
 @media (prefers-reduced-motion: reduce) { .csv-import { animation: none; } }
 @media (max-width: 760px) {
   .csv-import { width: calc(100vw - 20px); }

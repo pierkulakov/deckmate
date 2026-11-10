@@ -1,11 +1,12 @@
 import { defineText, serverText } from './i18n.ts';
 import { createHash } from 'node:crypto';
 import { isDeepStrictEqual } from 'node:util';
-import { isAlias, isMap, isScalar, isSeq, parseDocument, stringify, visit, type Node, type YAMLMap } from 'yaml';
+import { isMap, isScalar, isSeq, parseDocument, stringify, type Node, type YAMLMap } from 'yaml';
 import type { CardOptions } from '../src/bulk-contracts.ts';
 import type { FormatLanguage } from '../src/format-vocabulary.ts';
 import { projectLanguage } from './project-language.ts';
 import { createManagedMarkdown, readProjectMarkdown, replaceProjectMarkdown } from './native-cards.ts';
+import { parseYamlFrontMatter } from './yaml-front-matter.ts';
 
 const messages = defineText({
   invalidOptionsId: "Invalid card ID in Card Options.",
@@ -61,6 +62,7 @@ const messages = defineText({
 
 
 export const cardOptionsPath = 'tasks/deckmate-card-options.md';
+export const maximumCardOptionsChanges = 1000;
 export type CardOptionsPatch = { [Key in keyof CardOptions]?: CardOptions[Key] | null };
 export interface CardOptionsSource { hash: string; options: Record<string, CardOptions> }
 export interface CardOptionsPlan {
@@ -166,12 +168,10 @@ interface ParsedOptions extends CardOptionsSource {
 }
 
 function parseOptions(bytes: Buffer): ParsedOptions {
-  const text = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(bytes);
-  const match = /^(?:\uFEFF)?---(\r?\n)([\s\S]*?)^---[ \t]*(?:\r?\n|$)/mu.exec(text);
-  if (!match || match.index !== 0) throw new Error(serverText(messages).optionsHeaderMissing);
-  const document = parseDocument(match[2]);
-  if (document.errors.length || !isMap(document.contents)) throw new Error(serverText(messages).invalidOptionsYaml);
-  visit(document, (_key, node) => { if (isAlias(node)) throw new Error(serverText(messages).optionsAliasesUnsupported); });
+  const { text, yaml, yamlStart, yamlEnd, newline, document } = parseYamlFrontMatter(bytes, {
+    headerError: serverText(messages).optionsHeaderMissing, yamlError: serverText(messages).invalidOptionsYaml,
+    aliases: 'reject', aliasError: serverText(messages).optionsAliasesUnsupported,
+  });
   const metadata: unknown = document.toJS({ maxAliasCount: 0 });
   if (!record(metadata) || metadata.schema !== 1 || !record(metadata.cards) || Object.keys(metadata.cards).length > 100000) {
     throw new Error(serverText(messages).invalidOptionsSchema);
@@ -182,9 +182,8 @@ function parseOptions(bytes: Buffer): ParsedOptions {
     const normalized = validateOptions(value, id);
     if (Object.keys(normalized).length) options[id] = normalized;
   }
-  const yamlStart = text.indexOf('\n') + 1;
-  return { hash: digest(bytes), options, text, yaml: match[2], yamlStart, yamlEnd: yamlStart + match[2].length,
-    newline: match[1], metadata: metadata as ParsedOptions['metadata'] };
+  return { hash: digest(bytes), options, text, yaml, yamlStart, yamlEnd,
+    newline, metadata: metadata as ParsedOptions['metadata'] };
 }
 
 async function readBytes(root: string): Promise<Buffer | null> {
@@ -265,7 +264,7 @@ function patchField(yaml: string, id: string, key: string, value: unknown, newli
 /** 2026-11-03: prepare has no writes; each publication rechecks the full-file revision. */
 export async function prepareCardOptionsPatch(root: string, expectedHash: string, changes: Record<string, CardOptionsPatch>): Promise<CardOptionsPlan> {
   if (typeof expectedHash !== 'string' || (expectedHash !== '' && !/^[0-9a-f]{64}$/u.test(expectedHash))) throw new Error(serverText(messages).optionsHashRequired);
-  if (!record(changes) || Object.keys(changes).length > 1000) throw new Error(serverText(messages).tooManyOptionsChanges);
+  if (!record(changes) || Object.keys(changes).length > maximumCardOptionsChanges) throw new Error(serverText(messages).tooManyOptionsChanges);
   for (const [id, patch] of Object.entries(changes)) { validateId(id); validateOptions(patch, id); }
   const previousBytes = await readBytes(root);
   const previousHash = previousBytes ? digest(previousBytes) : '';

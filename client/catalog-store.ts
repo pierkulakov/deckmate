@@ -13,6 +13,8 @@ const text = defineText({
   unconfirmedBulk: 'The previous bulk action is unconfirmed. Refresh the catalog before retrying; your selection and settings are saved.',
   sandboxOnly: 'Catalog changes are available in the test copy. Switch the source and try again.',
   conflict: 'The catalog changed in the files. Data has been refreshed and your form values are preserved. Review them and save again.',
+  requestFailed: (status: number) => `The request failed (HTTP ${status}).`,
+  partialSave: 'Some changes were saved. Refresh the data before continuing.',
   partialBulk: (applied: string, pending: string) => `Saved ${applied}, remaining ${pending}. Review the remaining selected cards and try again.`,
   savedWithoutConfirmation: 'Some changes may have been saved, but the result was not received. Refresh the catalog before retrying; your selection and copy IDs are saved.',
   notLoaded: 'The catalog is not loaded.',
@@ -22,6 +24,8 @@ const text = defineText({
   unconfirmedBulk: 'Результат предыдущего массового действия не подтверждён. Обновите каталог перед повтором; выбор и параметры сохранены.',
   sandboxOnly: 'Изменения каталога доступны в тестовой копии. Переключите источник и повторите действие.',
   conflict: 'Каталог изменился в файлах. Данные обновлены, введённые значения сохранены в форме. Проверьте их и сохраните ещё раз.',
+  requestFailed: (status: number) => `Запрос не выполнен (HTTP ${status}).`,
+  partialSave: 'Часть изменений сохранена. Обновите данные перед продолжением.',
   partialBulk: (applied: string, pending: string) => `Сохранено ${applied}, осталось ${pending}. Проверьте оставшиеся выбранные карточки и повторите действие.`,
   savedWithoutConfirmation: 'Часть изменений могла сохраниться, но результат не получен. Обновите каталог перед повтором; выбор и ID копий сохранены.',
   notLoaded: 'Каталог не загружен.',
@@ -29,6 +33,12 @@ const text = defineText({
 
 type WithoutHash<Edit> = Edit extends CatalogEdit ? Omit<Edit, 'manifestHash'> & { manifestHash?: string } : never;
 export type CatalogAction = WithoutHash<CatalogEdit>;
+
+// 2026-11-09: an open form keeps its original base even when a socket refresh advances the shared catalog.
+export function withCatalogFormHash<Action extends CatalogAction>(action: Action, manifestHash: string): Action {
+  return { ...action, manifestHash };
+}
+
 interface CatalogState {
   catalog: CatalogView | null;
   loading: boolean;
@@ -55,9 +65,14 @@ function failureMessage(error: unknown, offline = textNow(text).connectionFailed
 }
 
 async function readResponse(response: Response): Promise<CatalogView> {
-  const result: unknown = await response.json();
-  if (!response.ok) throw result;
-  return result as CatalogView;
+  if (response.ok) return await response.json() as CatalogView;
+  const result: unknown = await response.json().catch(() => null);
+  const saved = Boolean(result && typeof result === 'object' && 'saved' in result && result.saved === true);
+  let fallback = response.status === 409 ? textNow(text).conflict : textNow(text).requestFailed(response.status);
+  if (saved) fallback = textNow(text).partialSave;
+  const message = result && typeof result === 'object' && 'message' in result && typeof result.message === 'string' && result.message.trim()
+    ? result.message : fallback;
+  throw { message, saved, status: response.status };
 }
 
 /** 2026-11-05: one confirmed snapshot per source; optimistic edits never change its revision hashes. */
@@ -142,19 +157,21 @@ export class CatalogStore {
   }
 
   /** Every catalog write is shown by the server status chip as Saving… and then Saved (2026-11-05); panels print no saving lines. */
-  async edit(snapshot: WorkspaceSnapshot, action: CatalogAction, onOutcome?: (outcome: BulkOutcome) => void): Promise<boolean> {
+  async edit(snapshot: WorkspaceSnapshot, action: CatalogAction, onOutcome?: (outcome: BulkOutcome) => void,
+    onConfirmed?: (catalog: CatalogView) => void): Promise<boolean> {
     if (this.state.pending) return false;
     const settle = beginSave();
     let saved = false;
     try {
-      saved = await this.send(snapshot, action, onOutcome);
+      saved = await this.send(snapshot, action, onOutcome, onConfirmed);
       return saved;
     } finally {
       settle(saved);
     }
   }
 
-  private async send(snapshot: WorkspaceSnapshot, action: CatalogAction, onOutcome?: (outcome: BulkOutcome) => void): Promise<boolean> {
+  private async send(snapshot: WorkspaceSnapshot, action: CatalogAction, onOutcome?: (outcome: BulkOutcome) => void,
+    onConfirmed?: (catalog: CatalogView) => void): Promise<boolean> {
     const isBulk = action.action === 'bulk-edit-cards' || action.action === 'bulk-assign-deck' || action.action === 'bulk-add-track';
     if (isBulk && this.bulkNeedsRefresh) {
       this.publish({ error: textNow(text).unconfirmedBulk });
@@ -172,7 +189,7 @@ export class CatalogStore {
     const startedRevision = this.revision;
     let savedWithoutConfirmation = false;
     this.optimistic = action;
-    this.publish({ pending: true, error: null });
+    this.publish({ pending: true, error: null, warning: null });
     this.showConfirmed();
     try {
       const response = await fetch('/api/catalog', {
@@ -180,22 +197,15 @@ export class CatalogStore {
         headers: { 'Content-Type': 'application/json', 'x-deckmate-token': token, ...actorHeaders(base.members ?? []) },
         body: JSON.stringify({ ...action, source: 'sandbox', manifestHash, sourceHash }),
       });
-      if (response.status === 409) {
-        this.optimistic = null;
-        this.showConfirmed();
-        this.invalidate();
-        await this.load();
-        this.publish({ error: textNow(text).conflict });
-        return false;
-      }
       const result = await readResponse(response);
       this.writeEpoch += 1;
       this.confirmed = result;
       this.loadedRevision = startedRevision;
       this.optimistic = null;
       this.showConfirmed();
+      onConfirmed?.(result);
       emitSignal({ type: 'catalog-edit', action, before: base, after: result });
-      this.publish({ warning: result.warnings.find(message => /изменения сохранены|не полностью|changes (?:were |have been )?saved|not (?:fully|completely)/iu.test(message)) ?? null });
+      this.publish({ warning: result.savedWarning ?? null });
       if (this.loadedRevision !== this.revision) void this.load();
       if (result.bulkOutcome) {
         onOutcome?.(result.bulkOutcome);
@@ -207,6 +217,18 @@ export class CatalogStore {
       }
       return true;
     } catch (failure) {
+      if (failure && typeof failure === 'object' && 'status' in failure && failure.status === 409) {
+        const saved = 'saved' in failure && failure.saved === true;
+        this.optimistic = null;
+        this.showConfirmed();
+        this.writeEpoch += 1;
+        this.invalidate();
+        await this.load();
+        // 2026-11-10: false keeps form/editor drafts open even when recovery already wrote part of the Journey.
+        if (saved) this.publish({ warning: failureMessage(failure) });
+        else this.publish({ error: failureMessage(failure) });
+        return false;
+      }
       if (failure && typeof failure === 'object' && 'saved' in failure && failure.saved === true) {
         savedWithoutConfirmation = true;
         this.writeEpoch += 1;

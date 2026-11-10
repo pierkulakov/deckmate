@@ -1,0 +1,8 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "whats-new",
+  "description": "Bundled release notes: read the changelog and version range.",
+  "local": true,
+  "windows": ["whats-new"],
+  "permissions": ["allow-whats-new-get"]
+}

@@ -1,66 +1,65 @@
-/* The home catalog has one project row (48×48 add button, 16/700 name, tools on the right), 48px space headings and 24px gaps between deck rows. */
-.catalog-view.deck-gallery { max-width: none; padding: 12px 24px 40px 16px; }
-.deck-gallery .deck-gallery-header { display: flex; align-items: center; gap: 12px; min-height: 48px; margin: 0 0 16px; padding: 0; border: 0; }
-.deck-gallery .deck-gallery-project { display: flex; align-items: center; gap: 12px; min-width: 0; flex: 0 1 auto; }
-.deck-gallery .deck-gallery-add { width: 48px; height: 48px; flex: 0 0 48px; border-radius: 4px; border: .67px solid var(--line); background: var(--ground); color: var(--ink); }
-.deck-gallery .deck-gallery-add:hover:not(:disabled) { background: var(--hover); }
-.deck-gallery .deck-gallery-header h1 { margin: 0; font-size: 16px; font-weight: 700; line-height: 18px; letter-spacing: 0; color: var(--ink); overflow-wrap: anywhere; }
-/* 2026-11-09: the file inventory is a caption under the project name:
-   numbers in Geist Mono like the scope pills' counts, parts wrap whole at the separators. */
+/* 2026-11-10: flat Foil panels leave depth to the covers under the existing page light. One project row (26/600 name with the file
+   inventory under it, a labeled New space button beside the name, tools on the right), the pulse readout on one flat bar,
+   then every space as a panel of 146.67×200 covers. --shelf-inset is the one left edge the name, the readout, the
+   panel labels and the covers share. The page light is fixed to the window, so every panel down the scroll has it behind.
+   The row's search, scope controls and track select are shared with the card scopes (catalog-header.css). */
+.catalog-view.deck-gallery { --cover-width: var(--gallery-cover-width); --cover-height: var(--gallery-cover-height); --cover-radius: calc(var(--cover-width) / 16.5); --shelf-inset: var(--space-6); max-width: none; padding: 20px 24px 56px 16px; background: var(--gallery-light) no-repeat fixed; }
+.deck-gallery .deck-gallery-header { display: flex; align-items: flex-start; gap: var(--space-4); min-height: 52px; margin: 0 0 20px; padding: 0 0 0 var(--shelf-inset); border: 0; }
+.deck-gallery .deck-gallery-project { display: flex; align-items: flex-start; gap: var(--space-3); min-width: 0; flex: 0 1 auto; }
+.deck-gallery .deck-gallery-header h1 { margin: 0; font-size: 26px; font-weight: 600; line-height: 30px; letter-spacing: -.015em; color: var(--ink); overflow-wrap: anywhere; text-wrap: balance; }
+/* 2026-11-09: the file inventory is a caption under the project name rather than a footer line under the covers:
+   numbers in Geist Mono like the scope choices' counts, parts wrap whole at the separators. */
 .deck-gallery .deck-gallery-title { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
 .deck-gallery .catalog-source { margin: 0; display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 6px; color: var(--muted); font-size: 12px; line-height: 16px; }
 .deck-gallery .catalog-source-part { white-space: nowrap; }
 .deck-gallery .catalog-source-count { color: var(--ink); font: 500 11px/16px 'Geist Mono', monospace; font-variant-numeric: tabular-nums; }
 .deck-gallery .catalog-source .dot-separator { opacity: .6; }
-.deck-gallery .catalog-source-warnings { padding: 0; border: 0; border-radius: 3px; background: none; color: var(--warning-ink); font: inherit; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
-.deck-gallery .catalog-source-warnings:hover { text-decoration-thickness: 2px; }
+.deck-gallery .catalog-source-warnings { padding: 0; border: 0; border-radius: var(--control-radius); background: none; color: var(--warning-ink); font: inherit; font-weight: 500; letter-spacing: .01em; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
+@media (hover: hover) { .deck-gallery .catalog-source-warnings:hover { text-decoration-thickness: 2px; } }
 .deck-gallery .catalog-source-warnings:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
-.deck-gallery .catalog-warnings { max-height: 240px; margin: 0 0 12px; padding: 10px 14px 10px 30px; overflow: auto; list-style: disc; border: .67px solid color-mix(in srgb, var(--warning-ink) 35%, transparent); border-radius: 8px; background: var(--warning-bg); color: var(--warning-ink); font-size: 12px; line-height: 1.6; }
+.deck-gallery .catalog-heading-actions { display: flex; align-items: center; gap: 12px; flex: 1; justify-content: flex-end; min-width: 0; min-height: 30px; }
+/* 2026-11-10: the bare 30px "+" was too easy to miss; New space is the one labeled mint action in the row,
+   like the Journey button in an open deck. Up to 420px wide it folds back to the icon so the project name keeps its line. */
+/* 2026-11-10: «Create space» is the shared mint creating action (surface.css .action-mint), icon only up to 420px. */
+.deck-gallery .deck-gallery-add { margin-top: 0; }
+.deck-gallery .deck-gallery-name { display: flex; align-items: flex-start; gap: var(--space-3); min-width: 0; }
+.deck-gallery .catalog-warnings { max-height: 240px; margin: 0 0 12px var(--shelf-inset); padding: 10px 14px 10px 30px; overflow: auto; list-style: disc; border: .67px solid color-mix(in srgb, var(--warning-ink) 35%, transparent); border-radius: var(--glass-radius); background: var(--warning-bg); color: var(--warning-ink); font-size: 12px; line-height: 1.6; }
 .deck-gallery .catalog-warnings li { overflow-wrap: anywhere; }
-.deck-gallery .catalog-heading-actions { display: flex; align-items: center; gap: 12px; flex: 1; justify-content: flex-end; min-width: 0; }
-.deck-gallery .deck-gallery-search { flex: 0 1 260px; min-width: 150px; }
-.deck-gallery .deck-gallery-search .catalog-search { height: 30px; padding-inline: 10px 4px; border: .67px solid var(--line); border-radius: 4px; background: var(--ground); }
-.deck-gallery .deck-gallery-search input { height: 28px; font-size: 13px; }
-.deck-gallery .deck-gallery-search input::-webkit-search-cancel-button { display: none; }
-.deck-gallery .deck-gallery-search button { display: grid; place-items: center; flex: 0 0 24px; width: 24px; height: 24px; padding: 0; border: 0; border-radius: 4px; background: transparent; color: var(--muted); }
-.deck-gallery .deck-gallery-search button:hover:not(:disabled) { background: var(--hover); color: var(--ink); }
-.deck-gallery .deck-gallery-search button:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
-.deck-gallery .deck-gallery-search-status { margin: -8px 0 12px; color: var(--muted); font-size: 12px; }
-/* Filters live in the project row: compact pills, no separate block. */
-.deck-gallery .catalog-browser-navigation { display: flex; align-items: center; gap: 4px; margin: 0; padding: 0; border: 0; }
-.deck-gallery .catalog-nav-section { display: flex; align-items: center; gap: 4px; }
-.deck-gallery .catalog-nav-section > div { display: flex; gap: 4px; }
-.deck-gallery .catalog-nav-section > .catalog-nav-label { display: none; }
-.deck-gallery .catalog-nav-section button { min-height: 30px; padding: 4px 9px; border-radius: 4px; font-size: 13px; }
-.deck-gallery .catalog-track-picker { display: flex; align-items: center; gap: 6px; margin-left: 8px; }
-.deck-gallery .catalog-track-picker .catalog-nav-label { display: none; }
-.deck-gallery .catalog-track-picker > div { display: flex; align-items: center; gap: 4px; min-width: 150px; max-width: 220px; }
-.deck-gallery .catalog-track-picker select { height: 30px; border-radius: 4px; background: var(--ground); font-size: 13px; }
-/* 2026-11-06: the select takes width: 100%, which squeezed the New track button to 25×30; it keeps the row's 30px square and 4px radius. */
-.deck-gallery .catalog-track-picker .ui-button { flex: 0 0 30px; border-radius: 4px; }
-/* Space headings are 48px with 12px padding; the 14/400 title and edit button sit together, with rows 12px apart. */
-.deck-gallery .catalog-spaces { display: flex; flex-direction: column; gap: 12px; }
-.deck-gallery .catalog-space { margin: 0; }
-.deck-gallery .catalog-space-heading { align-items: flex-start; justify-content: flex-start; gap: 8px; min-height: 48px; margin: 0; padding: 12px; border: 0; border-radius: 0; background: none; }
-/* 2026-11-08: only the title wraps; icons and the pencil keep the first line's 24px axis. */
-.deck-gallery .catalog-space-heading h2 > button { align-items: flex-start; flex-wrap: nowrap; gap: 8px; max-width: 100%; min-height: 24px; padding: 0; font-size: 14px; font-weight: 400; line-height: 16px; color: var(--ink); }
-.deck-gallery .catalog-space-heading h2 > button > span { flex: 1; min-width: 0; padding-block: 4px; font-weight: 400; }
-.deck-gallery .catalog-space-heading h2 > button > svg { margin-top: 3.5px; }
+.deck-gallery .deck-gallery-search-status { margin: -12px 0 12px var(--shelf-inset); color: var(--muted); font-size: 12px; }
+/* 2026-11-10: the flat face and crisp edge stay behind the content so the frozen gallery can fade them while a row
+   travels to an open deck, without adding a blur layer. */
+.deck-gallery .catalog-spaces { display: flex; flex-direction: column; gap: var(--space-4); min-width: 0; }
+.deck-gallery .catalog-space { position: relative; isolation: isolate; margin: 0; min-width: 0; padding: var(--space-3) 0 var(--space-4); }
+.deck-gallery .catalog-space::before { content: ''; position: absolute; inset: 0; z-index: -1; border-radius: var(--glass-radius); background: var(--glass-face); box-shadow: var(--glass-rim), var(--glass-lift); pointer-events: none; }
+.deck-gallery .catalog-space-heading { align-items: flex-start; justify-content: flex-start; gap: var(--space-2); min-height: 32px; margin: 0 0 var(--space-3); padding: 0 var(--shelf-inset); border: 0; border-radius: 0; background: none; }
+.deck-gallery .catalog-space-heading h2 { display: flex; align-items: flex-start; gap: 10px; }
+/* 2026-11-08: only the title wraps; icons, the count and the pencil keep the first line's 32px axis. */
+.deck-gallery .catalog-space-heading h2 > button { align-items: flex-start; flex-wrap: nowrap; gap: var(--space-2); max-width: 100%; min-height: 32px; padding: 0; border-radius: var(--control-radius); font-size: 17px; font-weight: 600; line-height: 24px; color: var(--ink); }
+.deck-gallery .catalog-space-heading h2 > button > span { flex: 1; min-width: 0; padding-block: var(--space-1); font-weight: inherit; }
+.deck-gallery .catalog-space-heading h2 > button > svg { margin-top: 7.5px; }
+.deck-gallery .catalog-space-heading .catalog-space-count { flex-shrink: 0; margin: 0; padding-top: 9px; color: var(--muted); font-size: 12px; line-height: 16px; font-variant-numeric: tabular-nums; }
+/* 2026-11-10: draw the cell around the text, excluding the existing baseline inset without moving the heading. */
+
 /* Search disables collapsing, not the heading's information. */
 .deck-gallery .catalog-space-heading h2 > button:disabled { opacity: 1; }
-.deck-gallery .catalog-space-actions { flex-shrink: 0; opacity: .7; transition: opacity var(--motion-feedback); }
+.deck-gallery .catalog-space-actions { flex-shrink: 0; margin-top: var(--space-1); opacity: .8; transition: opacity var(--motion-feedback) var(--ease-out); }
 .deck-gallery .catalog-space-heading:hover .catalog-space-actions, .deck-gallery .catalog-space-actions:focus-within { opacity: 1; }
 .deck-gallery .catalog-space-actions .ui-button { width: 24px; min-height: 24px; height: 24px; }
+/* Touch has no hover to bring the actions up, and needs a full-size target. */
+@media (hover: none) {
+  .deck-gallery .catalog-space-actions { margin-top: 0; opacity: 1; }
+  .deck-gallery .catalog-space-actions .ui-button { width: 32px; min-height: 32px; height: 32px; }
+}
 @media (max-width: 1100px) {
   .deck-gallery .deck-gallery-header { flex-wrap: wrap; }
   .deck-gallery .catalog-heading-actions { flex-basis: 100%; justify-content: flex-start; flex-wrap: wrap; }
-  /* 2026-11-06: under ~510px the scope pills and the track picker no longer share a line; the picker wraps whole
-     instead of pushing its New track button past the window edge. */
-  .deck-gallery .catalog-browser-navigation { flex-wrap: wrap; row-gap: 8px; }
 }
 @media (max-width: 420px) {
-  .catalog-view.deck-gallery { padding-inline: 12px; }
-  .deck-gallery .deck-gallery-search { flex-basis: 100%; }
-  .deck-gallery .catalog-track-picker { margin-left: 0; }
+  .deck-gallery .deck-gallery-header h1 { font-size: 22px; line-height: 26px; }
+  /* Two covers at the gallery's own size and their 16u gap fit a 360px window beside its scrollbar (since 2026-11-10;
+     phones had 154×210 while the gallery was 165×225); they sit centered in the panel, and the label starts at their left
+     edge. */
+  .catalog-view.deck-gallery { --shelf-inset: var(--space-2); padding-inline: 6px; }
+  .deck-gallery .catalog-deck-grid { justify-content: center; }
+  .deck-gallery .catalog-space-heading { padding-inline: max(var(--shelf-inset), calc((100% - 2 * var(--cover-width) - var(--gallery-cover-gap)) / 2)); }
 }
-

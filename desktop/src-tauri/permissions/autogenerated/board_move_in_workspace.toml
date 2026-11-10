@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-board-move-in-workspace"
+description = "Enables the board_move_in_workspace command without any pre-configured scope."
+commands.allow = ["board_move_in_workspace"]
+
+[[permission]]
+identifier = "deny-board-move-in-workspace"
+description = "Denies the board_move_in_workspace command without any pre-configured scope."
+commands.deny = ["board_move_in_workspace"]

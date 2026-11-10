@@ -1,6 +1,6 @@
 /* Motion vocabulary, 2026-11-05. Springs (mass 1, tension/friction below) are sampled into linear() curves, so CSS plays
    their overshoot and settle; durations are where each spring has settled.
-   Movement uses translate/scale/opacity only; the global reduced-motion rule in styles.css shortens all of it to .01 ms. */
+   Movement uses translate/scale/opacity only; reduced motion in styles.css makes transitions instant and shortens CSS animations to .01 ms. */
 :root {
   /* tension 500, friction 30: popovers, menus, tooltips — 6 % overshoot over a 20 px slide. */
   --ease-spring-quick: linear(0, 0.036, 0.122, 0.239, 0.367, 0.498, 0.619, 0.728, 0.819, 0.895, 0.953, 0.996, 1.026, 1.045, 1.054, 1.058, 1.056, 1.052, 1.045, 1.038, 1.03, 1.023, 1.017, 1.011, 1);

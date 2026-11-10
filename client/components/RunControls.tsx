@@ -3,6 +3,7 @@ import * as Dialog from '@radix-ui/react-dialog';
 import { Check, RotateCcw, Settings, Trash2, X } from 'lucide-react';
 import type { CatalogView, RunCarryOver, RunConfiguration, RunRecord } from '../../src/catalog-contracts.ts';
 import { defineText, useText } from '../i18n.ts';
+import { useDesktopDirty } from '../desktop-bridge.ts';
 import { addDays } from '../planning-metrics.ts';
 import { localIsoDate } from '../../src/catalog-hand.ts';
 import { Button } from './ui/button.tsx';
@@ -85,6 +86,7 @@ export function RunConfigurationForm({ catalog, configuration, pending, onSave, 
   const dirty = configurationDraftKey(value) !== initial.current;
   useEffect(() => { onDirtyChange?.(dirty); }, [dirty, onDirtyChange]);
   useEffect(() => () => onDirtyChange?.(false), [onDirtyChange]);
+  useDesktopDirty(dirty);
   useEffect(() => {
     if (!dirty) return;
     const protect = (event: BeforeUnloadEvent) => { event.preventDefault(); event.returnValue = ''; };

@@ -1,3 +1,17 @@
+/* 2026-11-09: the pointer's values live only where they are read. useCardTilt writes them on the tile (or the open card's
+   band) every frame; as inherited properties each write restyled the whole tile, ~80 elements, and several tiles at once
+   while their ribbons swept out: the largest cost of moving the pointer across the grid. Not inherited, they reach their
+   readers below by an explicit inherit; with no initial value an unset one still takes each var() fallback. */
+@property --tilt-x { syntax: '*'; inherits: false; }
+@property --tilt-y { syntax: '*'; inherits: false; }
+@property --glare-x { syntax: '*'; inherits: false; }
+@property --glare-y { syntax: '*'; inherits: false; }
+@property --glare-u { syntax: '*'; inherits: false; }
+@property --glare-v { syntax: '*'; inherits: false; }
+@property --glare-opacity { syntax: '*'; inherits: false; }
+@property --glare-shift { syntax: '*'; inherits: false; }
+@property --holo-angle { syntax: '*'; inherits: false; }
+
 /* 2026-11-08: Footers and Hero affiliation strips share satin; reading surfaces stay matte. */
 :root {
   --sub-card-state-accepted: var(--accepted-metal);
@@ -8,7 +22,7 @@
   /* Highlight tone of the satin; Hero surfaces tint it with --hero-sheen (2026-11-05). */
   --metal-sheen: #fff8e8;
   --metal-shadow: #241b24;
-  /* 2026-11-08: warm shadow that deepens gold to the reference's amber without greying it. */
+  /* 2026-11-08: warm shadow that deepens gold to amber without greying it. */
   --metal-amber: #6b3f0a;
   /* 2026-11-09: holographic foil of an accepted Hero: one rainbow, used by the band, face and ring. */
   --holo-rose: #ff5c9a;
@@ -114,13 +128,13 @@ button.sub-card-progress-segment { cursor: pointer; }
 
 /* 2026-11-09: a tile that can tilt keeps its own compositor layer. Otherwise Chromium promotes the card only while the
    tilt transition (or a moving ribbon layer) runs and drops it when that ends; the content then re-snaps to whole
-   device pixels, and the band's numbers and icons jumped about a pixel on hover and ~200ms after the pointer left
-   (author's recording). The ribbon itself stays unpromoted and repaints inside this one layer. */
+   device pixels, and the band's numbers and icons jumped about a pixel on hover and ~200ms after the pointer left.
+   The ribbon itself stays unpromoted and repaints inside this one layer. */
 @media (hover: hover) and (pointer: fine) and (prefers-reduced-motion: no-preference) {
   .deck-card-space > .deck-card { will-change: transform; }
 }
 
-/* 2026-11-08: tiles: one rigid ribbon of metal slides across the
+/* 2026-11-08: one rigid ribbon of metal slides across the
    tile — a long ramp from deep amber to a cream hot edge, a crisp cut, a second ramp to pale gold, a crisp cut to deep
    amber. At rest only the first ramp shows, so the band reads as plain metal, dark to light. useCardTilt sweeps it in
    on enter, moves it with the tilt and sweeps it out on leave; --glare-shift is its cut in band widths at the tile's
@@ -130,6 +144,9 @@ button.sub-card-progress-segment { cursor: pointer; }
 .deck-card > .card-family-trigger { --glare-band-y: 50cqh; }
 .deck-card > .deck-card-band { --glare-band-y: calc(var(--tile-height) - 2px - 50cqh); }
 /* done-impact.css registers --material-base without inheritance, so the ribbon reads copies made on the band. */
+.deck-card > :is(.card-family-trigger, .deck-card-band),
+.deck-card > :is(.card-family-trigger, .deck-card-band) > .card-material-glare,
+.deck-card > :is(.card-family-trigger, .deck-card-band) > .card-material-glare::before { --glare-shift: inherit; }
 .deck-card > :is(.card-family-trigger, .deck-card-band) {
   --ribbon-base: var(--material-base);
   --ribbon-deep: var(--metal-deep, color-mix(in srgb, var(--material-base) 75%, var(--metal-shadow)));
@@ -181,14 +198,16 @@ button.sub-card-progress-segment { cursor: pointer; }
   transform: translateX(calc((var(--glare-shift, var(--glare-rest)) - 2.5) * 20% + var(--glare-band-offset, 0px))) skewX(-22deg);
 }
 
-/* 2026-11-08: the open card's band is not a tile — it gets only a soft glow: a broad warm light
+/* 2026-11-08: the open card's band is not a tile — it has only a soft glow: a broad warm light
    that rests a little right of center and drifts slowly towards the pointer, with no sharp plane and no wash over the
-   ink. It spreads over the whole band rather than gather under the cursor, so the light is
+   ink. To spread over the whole band rather than gather under the cursor, the light is
    1.6 band widths across and follows only 30% of the pointer's travel: its center moves from 35% to 65% of the band.
    2026-11-09: the gold parent bar above a Sub Card carries the same light. */
 /* z-index -1 keeps the light in the metal, under the ink and controls: the owner medallion is not lifted below the band
    edge (2026-11-08), and the parent bar's title and the band's labels keep their contrast (2026-11-09). */
 :is(.card-preview-sheet > .card-preview-material-band, .card-preview-main > .card-preview-parent) > .card-material-glare {
+  --glare-x: inherit;
+  --glare-opacity: inherit;
   z-index: -1;
   mix-blend-mode: soft-light;
   opacity: calc(.7 + var(--glare-opacity, 0) * .3);
@@ -197,6 +216,7 @@ button.sub-card-progress-segment { cursor: pointer; }
 /* The light keeps one layer for good (there is a single open card): a layer created only for each 700ms drift would
    re-snap the owner medallion above it when the drift ends, the same jump the tiles had (2026-11-09). */
 :is(.card-preview-sheet > .card-preview-material-band, .card-preview-main > .card-preview-parent) > .card-material-glare::before {
+  --glare-x: inherit;
   content: '';
   position: absolute;
   will-change: transform;
@@ -235,6 +255,9 @@ button.sub-card-progress-segment { cursor: pointer; }
 /* Face film and its glitter sit under the band (z-index 2) and blend with the face, so the title keeps its colour. */
 .deck-card.catalog-card-hero.is-family-done::before,
 .deck-card.catalog-card-hero.is-family-done::after {
+  --glare-x: inherit;
+  --glare-y: inherit;
+  --glare-opacity: inherit;
   content: '';
   position: absolute;
   inset: 0;

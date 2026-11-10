@@ -1,8 +1,10 @@
-import { defineText, locale, textNow, useLang, useText } from '../i18n.ts';
+import { defineText, formatNumber, locale, textNow, useLang, useText } from '../i18n.ts';
+import { moveFocus } from '../focus.ts';
 import { stateLabel } from '../locales/common.ts';
 import { readStoredValue } from '../storage.ts';
 import { navigateTabs } from '../tab-navigation.ts';
 import { useEscapeToClose } from '../useEscapeToClose.ts';
+import { useDesktopDirty } from '../desktop-bridge.ts';
 import { Fragment, useCallback, useDeferredValue, useEffect, useEffectEvent, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { ComponentProps, CSSProperties, FormEvent, PointerEvent, ReactElement, ReactNode, RefObject } from 'react';
 import * as Dialog from '@radix-ui/react-dialog';
@@ -11,11 +13,12 @@ import * as Tooltip from '@radix-ui/react-tooltip';
 import { DndContext, DragOverlay, KeyboardSensor, MeasuringStrategy, PointerSensor, closestCenter, pointerWithin, useDndContext, useDraggable, useDroppable, useSensor, useSensors } from '@dnd-kit/core';
 import { SortableContext, arrayMove, rectSortingStrategy, sortableKeyboardCoordinates, useSortable } from '@dnd-kit/sortable';
 import type { AutoScrollOptions, CollisionDetection, DragStartEvent, DragEndEvent, DragOverEvent, KeyboardCoordinateGetter } from '@dnd-kit/core';
-import { Activity, Archive, ArrowDown, ArrowUp, BookOpen, Bot, Box, Braces, Bug, ChevronDown, ChevronRight, CircleCheck, Eye, Flag, FoldHorizontal, Gamepad2, Gauge, GripVertical, Hourglass, Image, Inbox, Layers, LayersArrowDown, LayersArrowUp, LayoutGrid, ListChecks, LoaderCircle, Palette, Pencil, Plus, Route, ScrollText, Search, Shield, Swords, Table2, Tag, Trash2, UsersRound, Volume2, X } from 'lucide-react';
+import { Activity, Archive, ArrowDown, ArrowUp, BookOpen, Bot, Box, Braces, Bug, ChevronDown, ChevronRight, CircleCheck, Eye, Flag, Gamepad2, Gauge, GripVertical, Hourglass, Image, Inbox, Layers, ListChecks, LoaderCircle, Palette, Pencil, Plus, Route, ScrollText, Search, Shield, Swords, Tag, Trash2, UsersRound, Volume2, X } from 'lucide-react';
 import type { CatalogCard, CatalogDeck, CatalogDeckZone, CatalogSpace, CatalogView, CardKind, CardPriority, DeckKind, DeckStyle, SpaceKind } from '../../src/catalog-contracts.ts';
 import { defaultDeckKind, deckCanBeInbox } from '../../src/catalog-contracts.ts';
 import type { WorkspaceSnapshot } from '../../src/workspace-contracts.ts';
 import { useCatalog } from '../useCatalog.ts';
+import { catalogStore, withCatalogFormHash } from '../catalog-store.ts';
 import type { BulkChange } from '../../src/bulk-contracts.ts';
 import type { CatalogAction } from '../useCatalog.ts';
 import { JourneyTemplatePanel } from './JourneyPanel.tsx';
@@ -31,10 +34,12 @@ import type { CatalogLookups } from '../catalog-lookups.ts';
 import { cardTileData } from '../card-tile-equality.ts';
 import { defaultCardOrdering, groupAndSortCards, laneOrderOf, readOrdering, sameOrdering, serializeOrdering, writeOrdering, type CardGroup, type CardOrderKey, type CardOrdering as CardOrderingValue, type OrderingContext } from '../catalog-ordering.ts';
 import { CardOrdering } from './CardOrdering.tsx';
+import { CardFilterBar, type CardFilter } from './CardFilterBar.tsx';
 import { DeckTagsPanel, cardsMatchingTagPick, emptyTagPick, tagPickSize, type TagPick } from './DeckTagsPanel.tsx';
 import { AttachSubCards, type AttachSubCardsRequest } from '../AttachSubCards.tsx';
 import { DeckActivity } from './DeckActivity.tsx';
 import { DeckSummary } from './DeckSummary.tsx';
+import { EmptyState } from './EmptyState.tsx';
 import { DeckTypePicker } from './DeckTypePicker.tsx';
 import { DeckAutomation, type DeckAutomationSettings } from './DeckAutomation.tsx';
 import { DeckGuardians } from './DeckGuardians.tsx';
@@ -42,12 +47,12 @@ import { useCardLayoutMotion } from '../useCardLayoutMotion.ts';
 import { VirtualCardGrid, virtualCardNavigationEntries } from './VirtualCardGrid.tsx';
 import { ArrowDownUp, Hash, History, Info, Sparkles } from 'lucide-react';
 import { CardOwnerAvatar, CardQuickSettings } from './CardQuickSettings.tsx';
+import { memberForOwner } from './CardOwnerAvatar.tsx';
 import { QuickSettingsPopover } from './QuickSettingsList.tsx';
 import { TagSelectionList } from './TagPicker.tsx';
 import { collectProjectTags } from '../../src/project-tags.ts';
 import { currentMember } from '../current-member.ts';
 import { emitSignal } from '../onboarding/signals.ts';
-import { JourneyReturnPrompt, isJourneyReturn, journeyLessonAction, type JourneyReturnAnswer } from './JourneyReturnPrompt.tsx';
 import { CardTags, TagBadge, TagTitlePrefix } from './CardTags.tsx';
 import { cardHeroEffort } from './CardPropertiesPanel.tsx';
 import { JourneyPriorityIcon } from './JourneyMiniCard.tsx';
@@ -58,25 +63,27 @@ import { ConfirmStrip } from './ConfirmStrip.tsx';
 import type { CatalogMember } from '../../src/catalog-contracts.ts';
 import '../deck-workbench.css';
 import '../deck-cover.css';
+import '../catalog-header.css';
 import '../deck-gallery.css';
 import '../card-transfer.css';
 import '../deck-settings.css';
 import '../deck-zones.css';
 import '../deck-table.css';
+import '../card-scope.css';
 import { deckArt, type DeckArt } from '../deck-art.ts';
 import { captureCardTransfer, cardTransferRequest, cardTransferTargetIssue, type CardTransferBaseline } from '../card-transfer.ts';
 import { CardDragFace, CardDragTabs, CardDropDeckPicker, CardGroupDropSurface, CardHeroPromotionConfirmation, captureCardDragPreview, cardDragText, type CardDragPreview } from './CardDragPresentation.tsx';
 import { useText as useCardDragText } from '../i18n.ts';
-import { BULK_SHORTCUTS, listenForHoveredCardShortcuts, matchShortcut, shortcutTargetBlocked, type HoveredCardShortcut, type CardQuickSettingsTab, type ShortcutScreen } from '../keyboard-shortcuts.ts';
+import { BULK_SHORTCUTS, listenForHoveredCardShortcuts, matchShortcut, resolveCardShortcutAction, shortcutTargetBlocked, type HoveredCardShortcut, type CardQuickSettingsTab, type ShortcutScreen } from '../keyboard-shortcuts.ts';
+import type { CardReviewFocus, CardReviewRequest, CardStateAction } from '../card-state-actions.ts';
 import { ShortcutsHelp } from './ShortcutsHelp.tsx';
-import { contrastRatio, rgbOf, type Rgb } from '../color-contrast.ts';
+import { useCoverColors } from '../cover-color.ts';
 import '../deck-panels.css';
 import { useDeckTransition } from '../useDeckTransition.ts';
-import { shelfAndPile } from '../deck-shelf.ts';
 import { ProjectPulseStrip } from './ProjectPulse.tsx';
 import { navigateToPlanning } from '../planning-navigation.ts';
 
-const number = (value: number) => new Intl.NumberFormat(locale(), { maximumFractionDigits: 2 }).format(value);
+const number = (value: number) => formatNumber(value);
 
 const text = defineText({
   iconDeck: "Deck",
@@ -114,7 +121,7 @@ const text = defineText({
   checklistDone: "Completed checklist items",
   changeUnconfirmed: "Change not confirmed. Check the catalog message and try again.",
   saveFailed: "Could not save the change. Try again.",
-  lessonFailed: "State saved, but the step lesson was not saved. The reason is in the card activity log.",
+  reopenRequired: "Reopen the card before starting work.",
   cardTags: "Card tags",
   staleCard: "The card or catalog changed. Close this window and try again.",
   changeState: "Change state",
@@ -146,6 +153,11 @@ const text = defineText({
   importDeckCsv: "Import CSV into this deck",
   importCsv: "Import CSV",
   deleteDeck: "Delete deck",
+  deleteSpace: "Delete space",
+  deleteSpaceConfirm: (title: string) => `Delete the space “${title}”? It has no decks.`,
+  spaceHasDecks: "Move or delete this space's decks first",
+  spaceReadOnly: "This source is read-only",
+  spaceRemoved: "This space was removed. Close the form and choose another space.",
   delete: "Delete",
   showAllCards: "Show all cards",
   showMyCards: "Show only my cards",
@@ -166,14 +178,23 @@ const text = defineText({
   startTemplateTitle: "Give your project a starting structure",
   startTemplateHelp: "A starter adds ready spaces, decks and Journeys — for a game or a software project.",
   deckActions: "Deck actions",
+  scopeActions: "Card view tools",
   customOrderHint: "Order differs from the deck order",
   leftPanelWidth: "Left panel width",
-  resetFilters: "Clear search and filters",
-  laneFilters: "Lane filters",
   noMatches: "No matches. Clear search or change the filters.",
   noCardsProject: "No cards yet.",
+  emptyDeckTitle: "No cards yet",
+  emptyDeckHelp: "Add the first card here or bring cards in from a CSV file.",
   noCardsDeck: "No cards in this deck yet. Add the first one with “New card”.",
-  noCards: "No cards in this area yet.",
+  scopeNoCardsHelp: "Cards are created inside a deck. Open your decks to add the first one.",
+  scopeOpenDecks: "Open decks",
+  scopeSortedTitle: "Every card is in a deck",
+  scopeSortedHelp: "Cards without a deck gather here, such as the cards of a deleted deck.",
+  scopeTrackTitle: "No cards on this track yet",
+  scopeTrackHelp: "Select cards in any deck and choose Add to Track.",
+  scopeNoMatchesTitle: "No matching cards",
+  scopeNoMatchesHelp: "Nothing here fits the current search and filters.",
+  searchScopeCards: "Filter cards…",
   zone: "Zone",
   noSpaces: "No spaces yet.",
   createSpaceHelp: " Create the first space with +, then add decks to it.",
@@ -182,16 +203,7 @@ const text = defineText({
   emptySpace: "This space has no decks.",
   deckTitle: "Deck title",
   spaceToMove: ". Space to move",
-  inPile: "in pile",
-  inPileNote: ", in the pile",
-  showPile: (count: number) => `${number(count)} ${new Intl.PluralRules(locale('en')).select(count) === 'one' ? 'deck' : 'decks'} in the pile. Show`,
-  collapsePile: "Collapse pile",
-  pileOf: (space: string) => `Pile of ${space}`,
-  moveToPile: "Move to pile",
-  backToShelf: "Back to shelf",
-  pileHelp: "A piled deck leaves the shelf for the pile at the end of its space; its cards and settings stay. Saves immediately.",
-  movedToPile: "The deck is in the pile at the end of its space.",
-  movedToShelf: "The deck is back on the shelf.",
+  shelfDecks: (count: number) => `${number(count)} ${new Intl.PluralRules(locale('en')).select(count) === 'one' ? 'deck' : 'decks'}`,
   closeForm: "Close form",
   newTrack: "New track",
   title: "Title",
@@ -250,15 +262,11 @@ const text = defineText({
   showTags: "Display and select by tags",
   labelInfo: "Info",
   labelActivity: "Activity",
-  labelCardview: "Card view",
-  labelCards: "Cards",
-  labelTable: "Table",
   labelAddDeck: "Add deck",
   labelUpdateSpace: "Update space",
   labelSpacetype: "Space type",
   labelIcon: "Icon",
   labelCustomname: "Custom name",
-  labelCancel: "Cancel",
   labelUpdate: "Update",
   labelAdd: "Add",
   labelSymbol: "Symbol",
@@ -282,8 +290,6 @@ const text = defineText({
   selectCard: (title: string) => `Select: ${title}`,
   owner: (title: string) => `Owner: ${title}`,
   searchCards: (title: string) => `Search cards: ${title}`,
-  search: (title: string) => `Search: ${title}`,
-  removeFilter: (title: string) => `Remove filter: ${title}`,
   cover: (title: string) => `Cover: ${title}`,
   deleteZoneConfirm: (title: string) => `Delete empty zone “${title}”?`,
   watchers: (names: string) => ` · Watching: ${names}`,
@@ -295,11 +301,10 @@ const text = defineText({
   configureDeck: (title: string) => `Configure deck ${title}`,
   beforeDeck: (title: string) => `Before “${title}”`,
   cardsCount: (count: number) => `${number(count)} ${new Intl.PluralRules(locale('en')).select(count) === 'one' ? 'card' : 'cards'}`,
-  cardsCountLong: (count: number) => `${number(count)} ${new Intl.PluralRules(locale('en')).select(count) === 'one' ? 'card' : 'cards'}`,
+  cardWord: (count: number): string => new Intl.PluralRules(locale('en')).select(count) === 'one' ? 'card' : 'cards',
   deckResults: (shown: number, total: number) => `${number(shown)} of ${number(total)} ${new Intl.PluralRules(locale('en')).select(total) === 'one' ? 'deck' : 'decks'}`,
   foundDecks: (shown: number, total: number) => `Found ${number(shown)} of ${number(total)} ${new Intl.PluralRules(locale('en')).select(total) === 'one' ? 'deck' : 'decks'}`,
   trackProgress: (done: number, total: number) => `${number(done)} of ${number(total)} ${new Intl.PluralRules(locale('en')).select(total) === 'one' ? 'task' : 'tasks'} done · a track connects cards across decks`,
-  cardResults: (scope: string, shown: number, total: number) => `${scope} · ${number(shown)} of ${number(total)} ${new Intl.PluralRules(locale('en')).select(total) === 'one' ? 'card' : 'cards'}`,
   sourceWarnings: (count: number) => `Source warnings: ${number(count)}`,
   // 2026-11-09: the inventory under the project name sets each number apart in Geist Mono, so the nouns are separate keys.
   sourceDocuments: (count: number) => `Markdown ${new Intl.PluralRules(locale('en')).select(count) === 'one' ? 'document' : 'documents'}`,
@@ -352,7 +357,7 @@ const text = defineText({
   checklistDone: "Выполненные пункты чеклиста",
   changeUnconfirmed: "Изменение не подтверждено. Проверьте сообщение каталога и повторите действие.",
   saveFailed: "Не удалось сохранить изменение. Повторите действие.",
-  lessonFailed: "Состояние сохранено, но грабли шага не записаны. Причина сохранена в журнале карточки.",
+  reopenRequired: "Откройте карточку снова, прежде чем начинать работу.",
   cardTags: "Теги карточки",
   staleCard: "Карточка или каталог изменились. Закройте окно и повторите действие.",
   changeState: "Изменить состояние",
@@ -384,6 +389,11 @@ const text = defineText({
   importDeckCsv: "Импорт CSV в эту колоду",
   importCsv: "Импорт CSV",
   deleteDeck: "Удалить колоду",
+  deleteSpace: "Удалить пространство",
+  deleteSpaceConfirm: (title: string) => `Удалить пространство «${title}»? Колод в нём нет.`,
+  spaceHasDecks: "Сначала перенесите или удалите колоды этого пространства",
+  spaceReadOnly: "Этот источник доступен только для чтения",
+  spaceRemoved: "Это пространство удалено. Закройте форму и выберите другое пространство.",
   delete: "Удалить",
   showAllCards: "Показать все карточки",
   showMyCards: "Показать только мои карточки",
@@ -404,14 +414,23 @@ const text = defineText({
   startTemplateTitle: "Создайте начальную структуру проекта",
   startTemplateHelp: "Заготовка добавит готовые пространства, колоды и Journeys — для игры или софтверного проекта.",
   deckActions: "Действия колоды",
+  scopeActions: "Инструменты списка",
   customOrderHint: "Порядок отличается от порядка колоды",
   leftPanelWidth: "Ширина левой панели",
-  resetFilters: "Сбросить поиск и фильтры",
-  laneFilters: "Фильтры дорожек",
   noMatches: "Совпадений нет. Сбросьте поиск или измените фильтры.",
   noCardsProject: "Карточек пока нет.",
+  emptyDeckTitle: "Карточек пока нет",
+  emptyDeckHelp: "Добавьте первую карточку или перенесите карточки из CSV-файла.",
   noCardsDeck: "В этой колоде пока нет карточек. Добавьте первую кнопкой «Новая карточка».",
-  noCards: "В этой области пока нет карточек.",
+  scopeNoCardsHelp: "Карточки создаются внутри колоды. Откройте колоды, чтобы добавить первую.",
+  scopeOpenDecks: "К колодам",
+  scopeSortedTitle: "Все карточки лежат в колодах",
+  scopeSortedHelp: "Сюда попадают карточки без колоды — например, из удалённой колоды.",
+  scopeTrackTitle: "На этом треке пока нет карточек",
+  scopeTrackHelp: "Выберите карточки в любой колоде и нажмите «Добавить в трек».",
+  scopeNoMatchesTitle: "Подходящих карточек нет",
+  scopeNoMatchesHelp: "Под текущие поиск и фильтры здесь ничего не подходит.",
+  searchScopeCards: "Фильтр карточек…",
   zone: "Зона",
   noSpaces: "Пространств пока нет.",
   createSpaceHelp: " Создайте первое пространство кнопкой + и добавьте в него колоды.",
@@ -420,22 +439,13 @@ const text = defineText({
   emptySpace: "В пространстве нет колод.",
   deckTitle: "Название колоды",
   spaceToMove: ". Пробел — перенести",
-  inPile: "в стопке",
-  inPileNote: ", в стопке",
-  showPile: (count: number) => {
+  shelfDecks: (count: number) => {
     const rule = new Intl.PluralRules(locale('ru')).select(count);
     let form = 'колод';
     if (rule === 'one') form = 'колода';
     else if (rule === 'few') form = 'колоды';
-    return `В стопке ${number(count)} ${form}. Показать`;
+    return `${number(count)} ${form}`;
   },
-  collapsePile: "Свернуть стопку",
-  pileOf: (space: string) => `Стопка пространства ${space}`,
-  moveToPile: "Убрать в стопку",
-  backToShelf: "Вернуть на полку",
-  pileHelp: "Колода уходит с полки в стопку в конце своего пространства; карточки и настройки остаются. Сохраняется сразу.",
-  movedToPile: "Колода лежит в стопке в конце своего пространства.",
-  movedToShelf: "Колода снова на полке.",
   closeForm: "Закрыть форму",
   newTrack: "Новый трек",
   title: "Название",
@@ -494,15 +504,11 @@ const text = defineText({
   showTags: "Показ и выбор по тегам",
   labelInfo: "Инфо",
   labelActivity: "Активность",
-  labelCardview: "Режим просмотра",
-  labelCards: "Карточки",
-  labelTable: "Таблица",
   labelAddDeck: "Добавить колоду",
   labelUpdateSpace: "Изменить пространство",
   labelSpacetype: "Тип пространства",
   labelIcon: "Значок",
   labelCustomname: "Своё название",
-  labelCancel: "Отмена",
   labelUpdate: "Изменить",
   labelAdd: "Добавить",
   labelSymbol: "Символ",
@@ -526,8 +532,6 @@ const text = defineText({
   selectCard: (title: string) => `Выбрать: ${title}`,
   owner: (title: string) => `Исполнитель: ${title}`,
   searchCards: (title: string) => `Поиск карточек: ${title}`,
-  search: (title: string) => `Поиск: ${title}`,
-  removeFilter: (title: string) => `Убрать фильтр: ${title}`,
   cover: (title: string) => `Обложка: ${title}`,
   deleteZoneConfirm: (title: string) => `Удалить пустую зону «${title}»?`,
   watchers: (names: string) => ` · Наблюдают: ${names}`,
@@ -539,11 +543,14 @@ const text = defineText({
   configureDeck: (title: string) => `Настроить колоду ${title}`,
   beforeDeck: (title: string) => `Перед «${title}»`,
   cardsCount: (count: number) => `Карточек: ${number(count)}`,
-  cardsCountLong: (count: number) => `${number(count)} карточек`,
+  cardWord: (count: number) => {
+    const rule = new Intl.PluralRules(locale('ru')).select(count);
+    if (rule === 'one') return 'карточка';
+    return rule === 'few' ? 'карточки' : 'карточек';
+  },
   deckResults: (shown: number, total: number) => `${number(shown)} из ${number(total)} колод`,
   foundDecks: (shown: number, total: number) => `Найдено ${number(shown)} из ${number(total)} колод`,
   trackProgress: (done: number, total: number) => `${number(done)} из ${number(total)} задач принято · трек объединяет карточки из разных колод`,
-  cardResults: (scope: string, shown: number, total: number) => `${scope} · ${number(shown)} из ${number(total)} карточек`,
   sourceWarnings: (count: number) => `Замечания к источникам: ${number(count)}`,
   // 2026-11-06: Russian counts need a noun form that agrees with the number, not a fixed genitive plural.
   sourceDocuments: (count: number) => {
@@ -705,6 +712,17 @@ function readCatalogLocation(source: string) {
   return query;
 }
 
+function locationOrdering(query: URLSearchParams): CardOrderingValue | null {
+  if (query.has('order')) return readOrdering(query);
+  const deckId = query.get('deck');
+  return deckId ? storedDeckOrdering(deckId) : null;
+}
+
+function locationCardView(query: URLSearchParams): 'cards' | 'table' | null {
+  const view = query.get('layout');
+  return view === 'cards' || view === 'table' ? view : null;
+}
+
 function initialScope(query: URLSearchParams): CatalogScope {
   const deckId = query.get('deck');
   if (deckId) return { kind: 'deck', id: deckId };
@@ -722,10 +740,25 @@ function storedPanelWidth(key: string, fallback: number, minimum: number, maximu
   } catch { return fallback; }
 }
 
+type StickyLayout = Record<'--catalog-scroll-height' | '--deck-sticky-offset' | '--catalog-content-offset', string> & { toolbarSticky: string; selectionSticky: string };
+
+// 2026-11-09: the last measured layout of each view shape (deck or not, selection or not). The page renders it before its
+// first style pass, so opening or closing a deck no longer changes these inherited properties on the root right after that
+// pass; the second pass restyled the whole open deck (~2,000 elements, ~100 ms at 4x CPU). The measurement still corrects it.
+const stickyLayouts = new Map<string, StickyLayout>();
+let lastStickyLayout: StickyLayout | undefined;
+
+function stickyLayoutProps(layout: StickyLayout | undefined): { style?: Record<string, string>; 'data-toolbar-sticky'?: string; 'data-selection-sticky'?: string } {
+  if (!layout) return {};
+  const { toolbarSticky, selectionSticky, ...style } = layout;
+  return { style, 'data-toolbar-sticky': toolbarSticky, 'data-selection-sticky': selectionSticky };
+}
+
 function useCatalogStickyLayout(hasDeck: boolean, hasSelection: boolean) {
   const root = useRef<HTMLElement>(null);
   const toolbar = useRef<HTMLElement>(null);
   const selection = useRef<HTMLDivElement>(null);
+  const shape = `${hasDeck}:${hasSelection}`;
   useLayoutEffect(() => {
     const element = root.current;
     const scrollport = element?.closest<HTMLElement>('.workspace-main');
@@ -739,35 +772,40 @@ function useCatalogStickyLayout(hasDeck: boolean, hasSelection: boolean) {
       const toolbarOffset = toolbarPinned ? toolbarHeight + 8 : 0;
       const selectionPinned = window.innerWidth > 900 && selectionHeight > 0 && toolbarOffset + selectionHeight < viewportHeight * .4;
       const selectionOffset = selectionPinned ? selectionHeight + 8 : 0;
-      element.dataset.toolbarSticky = String(toolbarPinned);
-      element.dataset.selectionSticky = String(selectionPinned);
-      element.style.setProperty('--catalog-scroll-height', viewportHeight + 'px');
-      element.style.setProperty('--deck-sticky-offset', toolbarOffset + 'px');
-      element.style.setProperty('--catalog-content-offset', toolbarOffset + selectionOffset + 'px');
+      const layout: StickyLayout = { toolbarSticky: String(toolbarPinned), selectionSticky: String(selectionPinned),
+        '--catalog-scroll-height': viewportHeight + 'px', '--deck-sticky-offset': toolbarOffset + 'px',
+        '--catalog-content-offset': toolbarOffset + selectionOffset + 'px' };
+      stickyLayouts.set(shape, layout);
+      lastStickyLayout = layout;
+      if (element.dataset.toolbarSticky !== layout.toolbarSticky) element.dataset.toolbarSticky = layout.toolbarSticky;
+      if (element.dataset.selectionSticky !== layout.selectionSticky) element.dataset.selectionSticky = layout.selectionSticky;
+      for (const name of ['--catalog-scroll-height', '--deck-sticky-offset', '--catalog-content-offset'] as const) {
+        if (element.style.getPropertyValue(name) !== layout[name]) element.style.setProperty(name, layout[name]);
+      }
     };
     const observer = new ResizeObserver(measure);
     [scrollport, toolbar.current, selection.current].forEach(node => { if (node) observer.observe(node); });
     measure();
     window.addEventListener('resize', measure);
     return () => { observer.disconnect(); window.removeEventListener('resize', measure); };
-  }, [hasDeck, hasSelection]);
-  return { root, toolbar, selection };
+  }, [shape]);
+  return { root, toolbar, selection, rendered: stickyLayoutProps(stickyLayouts.get(shape) ?? lastStickyLayout) };
 }
 
-// The left column is 503 px on desktop and shrinks for narrow windows.
+// 2026-11-10: grow the reading column with wide workspaces to keep the 4K/150% proportions.
+// The v6 storage key reapplies this default instead of retaining the old narrow column.
 function defaultPreviewWidth() {
-  // Below roughly 1000 px, shrink the 503 px column while keeping a readable 420 px minimum.
-  return Math.max(420, Math.min(503, Math.round((window.innerWidth - 32) * .5)));
+  return Math.round(Math.min(780, Math.max(420, 190 + window.innerWidth * .217)));
 }
 
 function useCatalogPanels() {
-  const [leftPanelWidth, setLeftPanelWidth] = useState(() => storedPanelWidth('deckmate-left-panel-width-v5', defaultPreviewWidth(), 420, 800));
+  const [leftPanelWidth, setLeftPanelWidth] = useState(() => storedPanelWidth('deckmate-left-panel-width-v6', defaultPreviewWidth(), 420, 800));
   const [summaryCollapsed, setSummaryCollapsed] = useState(() => {
     if (window.matchMedia('(max-width: 760px)').matches) return true;
     try { return readStoredValue(localStorage, 'deckmate-summary-collapsed') === 'true'; } catch { return false; }
   });
   useEffect(() => {
-    try { localStorage.setItem('deckmate-left-panel-width-v5', String(leftPanelWidth)); localStorage.setItem('deckmate-summary-collapsed', String(summaryCollapsed)); }
+    try { localStorage.setItem('deckmate-left-panel-width-v6', String(leftPanelWidth)); localStorage.setItem('deckmate-summary-collapsed', String(summaryCollapsed)); }
     catch { /* Storage may be unavailable in private contexts; resizing still works (2026-11-03). */ }
   }, [leftPanelWidth, summaryCollapsed]);
   return { leftPanelWidth, summaryCollapsed, setLeftPanelWidth, setSummaryCollapsed };
@@ -781,7 +819,7 @@ function PanelResize({ label, value, minimum, maximum, direction, onChange }: { 
     onPointerMove={event => { if (start.current) onChange(bounded(start.current.value + (event.clientX - start.current.pointer) * direction)); }}
     onPointerUp={event => { start.current = null; if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId); }}
     onPointerCancel={() => { start.current = null; }}
-    onKeyDown={event => { if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return; event.preventDefault(); if (event.key === 'Home') onChange(minimum); else if (event.key === 'End') onChange(maximum); else onChange(bounded(value + (event.key === 'ArrowRight' ? 16 : -16) * direction)); }}><span /></div>;
+    onKeyDown={event => { if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return; event.preventDefault(); if (event.key === 'Home') onChange(minimum); else if (event.key === 'End') onChange(maximum); else onChange(bounded(value + (event.key === 'ArrowRight' ? 16 : -16) * direction)); }}><span className="catalog-resize-line" /></div>;
 }
 
 function groupEffort(group: CardGroup, lookups: CatalogLookups) {
@@ -799,9 +837,8 @@ function groupEffort(group: CardGroup, lookups: CatalogLookups) {
   const total = cards.reduce((sum, card) => sum + (card.effort ?? 1), 0);
   const done = cards.reduce((sum, card) => sum + (card.state === 'done' ? card.effort ?? 1 : 0), 0);
   const missing = cards.filter(card => card.effort == null).length;
-  const format = (value: number) => value.toLocaleString(locale(), { maximumFractionDigits: 2 });
-  return { label: (done ? format(done) + ' / ' : '') + format(total) + (missing ? ' (' + number(missing) + ')' : ''),
-    description: t.effortProgress(format(done), format(total), missing) };
+  return { label: (done ? number(done) + ' / ' : '') + number(total) + (missing ? ' (' + number(missing) + ')' : ''),
+    description: t.effortProgress(number(done), number(total), missing) };
 }
 
 function CardGroupHeading({ group, tagDefinitions, lookups, selectedIds, disabled, onToggleGroup, onFilter, onCreate, zone }: {
@@ -832,7 +869,7 @@ function CardGroupHeading({ group, tagDefinitions, lookups, selectedIds, disable
     {zone && zone.dragHandle}
     <div className="catalog-group-label">
     <label className="catalog-group-select" title={t.selectAll(group.title)}>
-    <input type="checkbox" aria-label={t.selectGroup(group.title)} checked={ids.length > 0 && selectedCount === ids.length}
+    <input className="catalog-group-check" type="checkbox" aria-label={t.selectGroup(group.title)} checked={ids.length > 0 && selectedCount === ids.length}
       ref={input => { if (input) input.indeterminate = selectedCount > 0 && selectedCount < ids.length; }}
       disabled={disabled || ids.length === 0} onChange={() => onToggleGroup(ids)} />
     </label>
@@ -841,9 +878,9 @@ function CardGroupHeading({ group, tagDefinitions, lookups, selectedIds, disable
           onChange={event => setDraftTitle(event.target.value)} onBlur={commitRename}
           onKeyDown={event => { if (event.key === 'Enter') { event.preventDefault(); commitRename(); } if (event.key === 'Escape') { event.preventDefault(); setRenaming(false); setDraftTitle(group.title); } }} />
       : <button type="button" className="catalog-group-filter" disabled={disabled} onClick={() => onFilter(group)} title={t.filter(group.title)}>{group.state ? <StatusBadge state={group.state} /> : <>{laneIcon}{groupLabel}</>}</button>}
-    <span className="catalog-group-count">{number(group.cards.length)}</span>
+    <span className="catalog-group-count panel-count page-number">{number(group.cards.length)}</span>
   </div><span className="catalog-group-rule" aria-hidden="true" />
-    {onCreate && <Button type="button" variant="ghost" size="icon" className="catalog-group-add" disabled={disabled} title={t.newGroupCard(group.title)} aria-label={t.newGroupCard(group.title)} onClick={onCreate}><Plus size={14} /></Button>}
+    {onCreate && <Button type="button" variant="outline" size="icon" className="catalog-group-add" disabled={disabled} title={t.newGroupCard(group.title)} aria-label={t.newGroupCard(group.title)} onClick={onCreate}><Plus size={14} /></Button>}
     {zone && <span className="catalog-zone-tools">
       {zone.writable && <Button type="button" variant="ghost" size="icon" disabled={disabled} title={t.renameZone(group.title)} aria-label={t.renameZone(group.title)} onClick={() => { setDraftTitle(group.title); setRenaming(true); }}><Pencil size={13} /></Button>}
       {zone.writable && group.cards.length === 0 && (zone.deleteConfirm
@@ -1093,8 +1130,8 @@ function CardTransferTargets({ baseline, catalog, source }: { baseline: CardTran
   </aside>;
 }
 
-function DeckNeighborCover({ deck, counts, source, current, disabled, baseline, catalogCards, onOpen }: {
-  deck: CatalogDeck; counts: DeckCardCounts; source: WorkspaceSnapshot['source']; current: boolean; disabled: boolean;
+function DeckNeighborCover({ deck, counts, source, inbox, current, disabled, baseline, catalogCards, onOpen }: {
+  deck: CatalogDeck; counts: DeckCardCounts; source: WorkspaceSnapshot['source']; inbox: boolean; current: boolean; disabled: boolean;
   baseline: CardTransferBaseline | null; catalogCards: CatalogView['cards']; onOpen: () => void;
 }) {
   const issue = baseline ? cardTransferTargetIssue(baseline, deck, catalogCards) : null;
@@ -1107,7 +1144,8 @@ function DeckNeighborCover({ deck, counts, source, current, disabled, baseline, 
     aria-label={`${deck.title}, ${deckCountLabel(counts)}`} aria-current={current ? 'page' : undefined}
     disabled={disabled || Boolean(baseline && blocked)} onClick={onOpen}>
     <span className="deck-neighbor-window"><span className={'catalog-deck-cover catalog-cover-' + (deck.style ?? 'symbol')}>
-      <CoverFace deck={deck} counts={counts} source={source} />
+      {/* 2026-11-09: the shelf face shows the foot of the box, where the Inbox mark is printed; without it the mark vanished as the row landed. */}
+      <CoverFace deck={deck} counts={counts} source={source} inbox={inbox} />
     </span></span>
   </button>;
 }
@@ -1173,9 +1211,9 @@ function CatalogTableRow({ card, lookups, members, tagDefinitions, catalog, curr
   return <tr ref={node => { transfer.setNodeRef(node); orderDrop.setNodeRef(node); }} onPointerDown={transfer.onPointerDown} data-card-transfer-enabled={transfer.enabled || undefined} data-card-transfer-source={transfer.isDragging || undefined} data-card-id={card.id}
     data-kind={card.kind} data-state={card.kind === 'task' ? statusClass(card.state ?? '') : undefined}
     className={'deck-table-row' + (checked ? ' is-multi-selected' : '') + (openedId === card.id ? ' is-opened' : '') + (orderDrop.isOver ? ' is-card-order-target' : '')}>
-    <td className="deck-table-select"><input type="checkbox" checked={checked} disabled={disabled} aria-label={t.selectCard(card.title)} onChange={event => onToggle(card.id, Boolean((event.nativeEvent as MouseEvent).shiftKey))} /></td>
+    <td className="deck-table-select"><input className="deck-table-check" type="checkbox" checked={checked} disabled={disabled} aria-label={t.selectCard(card.title)} onChange={event => onToggle(card.id, Boolean((event.nativeEvent as MouseEvent).shiftKey))} /></td>
     <td className={'deck-table-priority' + (card.priority ? '' : ' is-empty')}><span data-shortcut-property="priority"><JourneyPriorityIcon priority={card.priority} size={16} /></span></td>
-    <td className={'deck-table-effort' + (effort == null ? ' is-empty' : '')}><span data-shortcut-property="effort"><Gauge size={16} aria-hidden="true" />{effort == null ? <span className="visually-hidden">{t.noEffort}</span> : <span>{effort.toLocaleString(locale(lang), { maximumFractionDigits: 2 })}</span>}</span></td>
+    <td className={'deck-table-effort' + (effort == null ? ' is-empty' : '')}><span data-shortcut-property="effort"><Gauge size={16} aria-hidden="true" />{effort == null ? <span className="visually-hidden">{t.noEffort}</span> : <span>{formatNumber(effort, 2, lang)}</span>}</span></td>
     <td className="deck-table-card">{parent && <CardFamilyPopover projectTags={tagDefinitions} members={members} hero={parent} children={familyChildren(lookups, parent.id)} disabled={disabled} onOpen={onFamilyOpen} />}
       {heroChildren.length > 0 ? <span className="deck-table-hero">{titleButton}<SubCardProgress cards={heroChildren} cardsById={lookups.cardById} /></span> : titleButton}
       </td>
@@ -1184,17 +1222,18 @@ function CatalogTableRow({ card, lookups, members, tagDefinitions, catalog, curr
       <OpenQuestionsBadge card={card} />
       {checklist && checklist.total > 0 && <span className="deck-table-checklist" title={t.checklistDone}><CircleCheck size={12} aria-hidden="true" />{number(checklist.done)}/{number(checklist.total)}</span>}
       {StateIcon && <span className="deck-table-state" title={stateName}><StateIcon size={12} aria-hidden="true" /><span className="visually-hidden">{stateName}</span></span>}
-      {card.owner && <span className="deck-table-owner" title={t.owner(card.owner)}><CardOwnerAvatar owner={card.owner} members={members} /><span className="visually-hidden">{t.owner(card.owner)}</span></span>}
+      {card.owner && <span className="deck-table-owner"><CardOwnerAvatar owner={card.owner} members={members} progress={checklist} /></span>}
       {transfer.handle}</td>
   </tr>;
 }
 
 interface HoverCardTarget { card: CatalogCard; anchor: HTMLElement; manifestHash: string; optionsHash: string }
+type HoverCardState = Extract<CardStateAction, { kind: 'state' }>['state'];
 type HoverCardPanel = HoverCardTarget & (
   | { kind: 'quick'; tab: CardQuickSettingsTab }
   | { kind: 'tags' | 'hero' }
   | { kind: 'removal'; action: 'archive' | 'unarchive' | 'delete' }
-  | { kind: 'state'; state: 'not-started' | 'started' | 'done'; conflicts: DependencyConflict[]; confirmed: boolean }
+  | { kind: 'state'; state: HoverCardState; conflicts: DependencyConflict[] }
 );
 
 /** The shortcut registry owns keys and event arbitration; this adapter connects commands to catalog actions. */
@@ -1202,16 +1241,17 @@ interface DeckHoveredCardActionsHandle {
   openQuickSettings: (cardId: string, tab: CardQuickSettingsTab, anchor: HTMLElement) => boolean;
 }
 
-function DeckHoveredCardActions({ ref, root, catalog, lookups, snapshot, writable, locked, onEdit, onSelect }: {
+function DeckHoveredCardActions({ ref, root, catalog, lookups, snapshot, writable, locked, onEdit, onSelect, onOpenReview }: {
   ref: RefObject<DeckHoveredCardActionsHandle | null>;
   root: RefObject<HTMLDivElement | null>; catalog: CatalogView; lookups: CatalogLookups; snapshot: WorkspaceSnapshot;
   writable: boolean; locked: boolean; onEdit: CatalogEditor; onSelect: (id: string) => void;
+  onOpenReview: (card: CatalogCard, anchor: HTMLElement, focus: CardReviewFocus) => void;
 }) {
   const t = useText(text);
   const [panel, setPanel] = useState<HoverCardPanel | null>(null);
   const [tagQuery, setTagQuery] = useState('');
   const [saving, setSaving] = useState(false);
-  const [notice, setNotice] = useState<'changeUnconfirmed' | 'saveFailed' | 'lessonFailed' | 'coverSaveFailed' | 'inboxAssigned' | 'inboxRemoved' | ''>('');
+  const [notice, setNotice] = useState<'changeUnconfirmed' | 'saveFailed' | 'reopenRequired' | 'coverSaveFailed' | 'inboxAssigned' | 'inboxRemoved' | ''>('');
   const inFlight = useRef(false);
   const busy = locked || saving;
   const stale = Boolean(panel && (lookups.cardById.get(panel.card.id)?.sourceHash !== panel.card.sourceHash
@@ -1233,17 +1273,15 @@ function DeckHoveredCardActions({ ref, root, catalog, lookups, snapshot, writabl
     } catch { setNotice('saveFailed'); return false; }
     finally { inFlight.current = false; setSaving(false); }
   }
-  async function changeState(target: HoverCardTarget, state: 'not-started' | 'started' | 'done', confirmed = false, answer?: JourneyReturnAnswer) {
-    if (busy || inFlight.current || !writable || target.card.kind !== 'task' || target.card.archived || target.card.deleted) return;
+  async function changeState(target: HoverCardTarget, state: HoverCardState, confirmed = false) {
+    if (busy || inFlight.current || !writable || target.card.kind !== 'task' || target.card.archived || target.card.deleted || target.card.state === 'review') return;
     const conflicts = confirmed ? [] : dependencyConflicts([target.card], lookups.cardById, state);
-    if (conflicts.length || (!answer && isJourneyReturn(target.card, state))) {
-      setPanel({ ...target, kind: 'state', state, conflicts, confirmed: !conflicts.length });
+    if (conflicts.length) {
+      setPanel({ ...target, kind: 'state', state, conflicts });
       return;
     }
-    const saved = await save({ action: 'set-card-state', cardId: target.card.id, sourceHash: target.card.sourceHash,
-      manifestHash: target.manifestHash, state, ...(answer?.reason ? { returnReason: answer.reason } : {}) });
-    const lesson = saved && answer ? journeyLessonAction(target.card, catalog, answer) : null;
-    if (lesson && !await save(lesson)) setNotice('lessonFailed');
+    await save({ action: 'set-card-state', cardId: target.card.id, sourceHash: target.card.sourceHash,
+      manifestHash: target.manifestHash, state });
   }
   function openQuickSettings(cardId: string, tab: CardQuickSettingsTab, anchor: HTMLElement): boolean {
     if (busy || inFlight.current || panel || !writable) return false;
@@ -1272,6 +1310,16 @@ function DeckHoveredCardActions({ ref, root, catalog, lookups, snapshot, writabl
       return true;
     }
     const member = currentMember(catalog.members ?? []);
+    const stateAction = resolveCardShortcutAction(command.shortcut, card, { member });
+    if (stateAction) {
+      switch (stateAction.kind) {
+        case 'review': onOpenReview(card, command.anchor, stateAction.focus); return true;
+        case 'reopen-required': setNotice('reopenRequired'); return true;
+        case 'assign': void save(bulk(target, { kind: 'properties', owner: stateAction.owner })); return true;
+        case 'state': void changeState(target, stateAction.state); return true;
+        default: return false;
+      }
+    }
     switch (command.action) {
       case 'tags': setTagQuery(''); setPanel({ ...target, kind: 'tags' }); return true;
       case 'hero':
@@ -1284,16 +1332,6 @@ function DeckHoveredCardActions({ ref, root, catalog, lookups, snapshot, writabl
       case 'hand':
         if (!member || card.archived) return false;
         void save(bulk(target, { kind: 'hand', memberId: member.id, mode: card.handMemberIds?.includes(member.id) ? 'remove' : 'add' })); return true;
-      case 'work':
-        if (!member || card.archived) return false;
-        if (card.owner !== member.label && !member.aliases.includes(card.owner ?? '')) {
-          void save(bulk(target, { kind: 'properties', owner: member.label })); return true;
-        }
-        if (card.kind !== 'task') return false;
-        void changeState(target, card.state === 'started' ? 'not-started' : 'started'); return true;
-      case 'done':
-        if (card.kind !== 'task' || card.archived) return false;
-        void changeState(target, card.state === 'done' ? 'not-started' : 'done'); return true;
     }
     return false;
   });
@@ -1322,7 +1360,7 @@ function DeckHoveredCardActions({ ref, root, catalog, lookups, snapshot, writabl
         cards: [request.child], change: { kind: 'promote-parent', ...request.candidate, deckId: request.deckId } })} />}
     {(panel?.kind === 'removal' || panel?.kind === 'state') && <Dialog.Root open onOpenChange={open => { if (!open) close(); }}><Dialog.Portal>
       <Dialog.Overlay className="card-journey-overlay" />
-      <Dialog.Content className="card-removal-dialog" aria-busy={busy} onCloseAutoFocus={event => { event.preventDefault(); if (panel.anchor.isConnected) panel.anchor.focus({ preventScroll: true }); }}
+      <Dialog.Content className="card-removal-dialog" aria-busy={busy} onCloseAutoFocus={event => { event.preventDefault(); if (panel.anchor.isConnected) moveFocus(panel.anchor, { preventScroll: true }); }}
         onEscapeKeyDown={event => { if (busy) event.preventDefault(); }} onPointerDownOutside={event => { if (busy) event.preventDefault(); }}>
         <Dialog.Title>{panel.kind === 'removal' ? removalLabel : t.changeState}</Dialog.Title>
         <Dialog.Description>{panel.card.title}</Dialog.Description>
@@ -1333,9 +1371,7 @@ function DeckHoveredCardActions({ ref, root, catalog, lookups, snapshot, writabl
           <footer><Button type="button" variant="ghost" disabled={busy} onClick={close}>{t.cancel}</Button>
             <Button type="button" disabled={busy || stale || unavailable} onClick={() => void save(bulk(panel, { kind: 'options', patch: panel.action === 'delete' ? { deleted: true } : { archived: panel.action === 'archive' } }))}>{removalLabel}</Button></footer>
         </>}
-        {panel.kind === 'state' && panel.confirmed && <JourneyReturnPrompt card={panel.card} catalog={catalog} busy={busy || stale || unavailable}
-          onAnswer={answer => void changeState(panel, panel.state, true, answer)} />}
-        {panel.kind === 'state' && !panel.confirmed && <DependencyStateWarning conflicts={panel.conflicts} busy={busy || stale || unavailable}
+        {panel.kind === 'state' && <DependencyStateWarning conflicts={panel.conflicts} busy={busy || stale || unavailable}
           onConfirm={() => void changeState(panel, panel.state, true)} onCancel={close} />}
       </Dialog.Content>
     </Dialog.Portal></Dialog.Root>}
@@ -1374,19 +1410,18 @@ export function Deck({ snapshot, refreshKey, onEditing, onImportCsv, onStartFrom
   const searchText = useDeferredValue(search.trim().toLocaleLowerCase('ru'));
   const [trackId, setTrackId] = useState(initialQuery.get('track') ?? '');
   // null uses the deck's Default Order, falling back to the global default; otherwise use the viewer's own order.
-  const [orderingChoice, setOrderingChoice] = useState<CardOrderingValue | null>(() => {
-    if (initialQuery.has('order')) return readOrdering(initialQuery);
-    const deckId = initialQuery.get('deck');
-    return deckId ? storedDeckOrdering(deckId) : null;
-  });
+  const [orderingChoice, setOrderingChoice] = useState(() => locationOrdering(initialQuery));
   const [orderingOpen, setOrderingOpen] = useState(false);
   const [tagsOpen, setTagsOpen] = useState(false);
   const [tagPick, setTagPick] = useState<TagPick>(emptyTagPick);
   const [activityOpen, setActivityOpen] = useState(false);
   const [creation, setCreation] = useState<Creation | null>(null);
   const [creationDirty, setCreationDirty] = useState(false);
+  const creationManifestHash = useRef<string | null>(null);
   const [openedCard, setOpenedCard] = useState<CatalogCard | null>(null);
   const [openedCardId, setOpenedCardId] = useState(initialQuery.get('card') ?? '');
+  const [reviewRequest, setReviewRequest] = useState<(CardReviewRequest & { cardId: string }) | null>(null);
+  const reviewSequence = useRef(0);
   const [heroReturn, setHeroReturn] = useState<HeroReturn | null>(null);
   const restoreHeroView = useRef<HeroReturn | null>(null);
   const [membershipDirty, setMembershipDirty] = useState(false);
@@ -1401,10 +1436,7 @@ export function Deck({ snapshot, refreshKey, onEditing, onImportCsv, onStartFrom
   // A tag link on an open card shows every card with that tag.
   const [tagFilter, setTagFilter] = useState(initialQuery.get('tag') ?? '');
   const [attachmentHeroId, setAttachmentHeroId] = useState<string | null>(null);
-  const [cardView, setCardView] = useState<'cards' | 'table' | null>(() => {
-    const saved = initialQuery.get('layout');
-    return saved === 'cards' || saved === 'table' ? saved : null;
-  });
+  const [cardView, setCardView] = useState(() => locationCardView(initialQuery));
   const [bulkFocusPending, setBulkFocusPending] = useState(false);
   const [cardTransfer, setCardTransfer] = useState<CardTransferBaseline | null>(null);
   const [cardDragPreview, setCardDragPreview] = useState<CardDragPreview | null>(null);
@@ -1431,11 +1463,21 @@ export function Deck({ snapshot, refreshKey, onEditing, onImportCsv, onStartFrom
   const panels = useCatalogPanels();
   const lastOpenedButton = useRef<HTMLButtonElement | null>(null);
   const creationOpener = useRef<HTMLElement | null>(null);
+  const createSpaceButton = useRef<HTMLButtonElement>(null);
   const [requestedCardFocus, setRequestedCardFocus] = useState<string | null>(null);
   const searchField = useRef<HTMLInputElement>(null);
+  const pulseReturnFocus = useRef<string | null>(null);
+  const scopeFocusPending = useRef(false);
   const journeyReturnFocus = useRef<HTMLElement | null>(null);
   const writable = snapshot.writable && snapshot.source === 'sandbox';
   const selectedDeck = scope.kind === 'deck' ? catalog?.decks.find(deck => deck.id === scope.id) : null;
+  useEffect(() => {
+    if (!catalog) return;
+    setCollapsedSpaces(previous => {
+      const remaining = new Set([...previous].filter(id => catalog.spaces.some(space => space.id === id)));
+      return remaining.size === previous.size ? previous : remaining;
+    });
+  }, [catalog?.spaces]);
   const selectedTrack = catalog?.tracks.find(track => track.id === trackId);
   const resolvedView = cardView ?? 'cards';
   const cards = catalog?.cards ?? emptyCards;
@@ -1459,6 +1501,7 @@ export function Deck({ snapshot, refreshKey, onEditing, onImportCsv, onStartFrom
   const familyRoot = familyDraftParent ?? familyHero ?? selectedCard;
   const familyCards = familyRoot ? familyChildren(lookups, familyRoot.id) : emptyCards;
   const showFamily = Boolean((selectedCard || familyHero) && (familyVisible || composer?.parentId));
+  const familyShown = Boolean(showFamily && selectedCard && familyRoot);
   const hasPreview = Boolean(selectedCard || composer);
   let activeDeckPanel: 'info' | 'ordering' | 'tags' | 'activity' | null = null;
   if (selectedDeck && !panels.summaryCollapsed && !hasPreview) {
@@ -1466,6 +1509,10 @@ export function Deck({ snapshot, refreshKey, onEditing, onImportCsv, onStartFrom
     if (orderingOpen) activeDeckPanel = 'ordering';
     else if (tagsOpen) activeDeckPanel = 'tags';
     else if (activityOpen) activeDeckPanel = 'activity';
+  } else if (!selectedDeck && scope.kind !== 'catalog' && !hasPreview) {
+    // 2026-11-10: a card scope has the open deck's rail and left column, without the deck's own Info and Activity.
+    if (orderingOpen) activeDeckPanel = 'ordering';
+    else if (tagsOpen) activeDeckPanel = 'tags';
   }
   const showCards = scope.kind !== 'catalog';
   // My Cards uses the member selected in Your Hand via ?handMember= (Hand.tsx).
@@ -1487,10 +1534,10 @@ export function Deck({ snapshot, refreshKey, onEditing, onImportCsv, onStartFrom
     return true;
   }), [cards, scope, trackId, includeShelved]);
   const searchedCards = useMemo(() => scopedCards.filter(card => {
-    if (mineOnly && card.owner !== currentMember?.label) return false;
+    if (mineOnly && (!currentMember || memberForOwner(card.owner, catalog?.members ?? [])?.id !== currentMember.id)) return false;
     if (tagFilter && !card.tags?.includes(tagFilter)) return false;
     return !searchText || lookups.normalizedSearch.get(card.id)!.includes(searchText);
-  }), [scopedCards, mineOnly, currentMember, tagFilter, searchText, lookups]);
+  }), [scopedCards, mineOnly, currentMember, catalog?.members, tagFilter, searchText, lookups]);
   // Ordering uses the viewer's choice, then the deck's Default Order, then Priority. Manual exists only inside a deck.
   const deckDefaultOrdering = useMemo(() => selectedDeck?.defaultOrder ? readOrdering(new URLSearchParams(selectedDeck.defaultOrder)) : defaultCardOrdering,
     [selectedDeck?.defaultOrder]);
@@ -1518,10 +1565,13 @@ export function Deck({ snapshot, refreshKey, onEditing, onImportCsv, onStartFrom
     return searchedCards.filter(card => memberships.every(ids => ids.has(card.id)));
   }, [searchedCards, scopedCards, lookups.cardById, orderingContext, laneSearch, projectTagNames]);
   const tableGroups = useMemo(() => groupAndSortCards(visibleCards, lookups.cardById, ordering, orderingContext), [visibleCards, lookups.cardById, ordering, orderingContext, lang]);
-  const labeledLaneSearch = useMemo(() => laneSearch.map(entry => ({ ...entry,
-    title: groupAndSortCards(scopedCards, lookups.cardById, entry.ordering, orderingContext)
-      .find(group => group.key === entry.key)?.title ?? entry.title,
-  })), [laneSearch, scopedCards, lookups.cardById, orderingContext, lang]);
+  const labeledLaneSearch = useMemo(() => laneSearch.map(entry => {
+    let title = groupAndSortCards(scopedCards, lookups.cardById, entry.ordering, orderingContext)
+      .find(group => group.key === entry.key)?.title ?? entry.title;
+    // 2026-11-10: a pulse with zero matches still names the state in the current interface language.
+    if (entry.key.startsWith('state:') && entry.key !== 'state:none') title = stateLabel(entry.key.slice('state:'.length), lang);
+    return { ...entry, title };
+  }), [laneSearch, scopedCards, lookups.cardById, orderingContext, lang]);
   // Empty zones stay in storage; "Hide empty" only filters the view.
   const shownGroups = useMemo(() => hideEmptyZones && ordering.order === 'manual' ? tableGroups.filter(group => group.key === 'all' || group.cards.length > 0) : tableGroups,
     [tableGroups, hideEmptyZones, ordering.order]);
@@ -1569,7 +1619,7 @@ export function Deck({ snapshot, refreshKey, onEditing, onImportCsv, onStartFrom
     if (!requestedCardFocus) return;
     const button = cardOpenButton(requestedCardFocus);
     if (button) {
-      button.focus();
+      moveFocus(button);
       lastOpenedButton.current = button;
       setRequestedCardFocus(null);
     }
@@ -1594,7 +1644,7 @@ export function Deck({ snapshot, refreshKey, onEditing, onImportCsv, onStartFrom
       applyScroll();
       const id = CSS.escape(saved.subCardId);
       const selector = saved.origin === 'journey' ? `[data-journey-card-id="${id}"]` : `.card-family-list [data-card-id="${id}"] .card-family-row-open`;
-      root?.querySelector<HTMLElement>(selector)?.focus({ preventScroll: true });
+      moveFocus(root?.querySelector<HTMLElement>(selector), { preventScroll: true });
     });
     return () => cancelAnimationFrame(frame);
   }, [selectedCard?.id, sticky.root]);
@@ -1614,7 +1664,7 @@ export function Deck({ snapshot, refreshKey, onEditing, onImportCsv, onStartFrom
   const toggleTile = useCallback((id: string, shift: boolean) => tileActions.current.toggle(id, shift), []);
   const blockedDragIds = selectedCards.length > 1000 ? selection.selectedIds : null;
   const canDragTile = useCallback((id: string) => !blockedDragIds?.has(id), [blockedDragIds]);
-  const transferContext = useMemo(() => ({ enabled: writable && !navigationLocked && !showFamily,
+  const transferContext = useMemo(() => ({ available: writable, enabled: writable && !navigationLocked && !showFamily,
     active: Boolean(cardTransfer), canDrag: canDragTile,
     sourceIds: cardDragPreview ? new Set(cardTransfer?.cards.map(card => card.cardId)) : undefined,
   }), [writable, navigationLocked, showFamily, cardTransfer, canDragTile, cardDragPreview]);
@@ -1626,9 +1676,9 @@ export function Deck({ snapshot, refreshKey, onEditing, onImportCsv, onStartFrom
       const results = sticky.root.current?.querySelector<HTMLElement>('.catalog-results');
       const firstCard = results && [...results.querySelectorAll<HTMLButtonElement>('.deck-card-open:not(:disabled), .catalog-table-title:not(:disabled)')]
         .find(button => button.getClientRects().length > 0);
-      if (firstCard) firstCard.focus({ preventScroll: true });
-      else if (results?.getClientRects().length) results.focus({ preventScroll: true });
-      else searchField.current?.focus({ preventScroll: true });
+      if (firstCard) moveFocus(firstCard, { preventScroll: true });
+      else if (results?.getClientRects().length) moveFocus(results, { preventScroll: true });
+      else moveFocus(searchField.current, { preventScroll: true });
       setBulkFocusPending(false);
     });
     return () => cancelAnimationFrame(frame);
@@ -1670,7 +1720,7 @@ export function Deck({ snapshot, refreshKey, onEditing, onImportCsv, onStartFrom
     const target = orderedCards[nextIndex];
     if (!target || target.id === currentId) return;
     const button = cardOpenButton(target.id);
-    button?.focus();
+    moveFocus(button);
     if (!button) setRequestedCardFocus(target.id);
     openCard(target, button ?? undefined);
   }
@@ -1681,7 +1731,7 @@ export function Deck({ snapshot, refreshKey, onEditing, onImportCsv, onStartFrom
     const card = lookups.cardById.get(cardId);
     if (!card) return;
     const button = cardOpenButton(cardId);
-    button?.focus();
+    moveFocus(button);
     openCard(card, button ?? undefined);
   }
   // Arrow keys work only when the grid has focus, choosing cards by tile geometry.
@@ -1716,7 +1766,7 @@ export function Deck({ snapshot, refreshKey, onEditing, onImportCsv, onStartFrom
       .sort((first, second) => first.weight - second.weight)[0]?.entry;
     if (!next || next.button === current.button) return;
     event.preventDefault();
-    next.button?.focus();
+    moveFocus(next.button);
     if (!next.button) setRequestedCardFocus(next.cardId);
     const cardId = next.cardId;
     const card = lookups.cardById.get(cardId);
@@ -1812,8 +1862,7 @@ export function Deck({ snapshot, refreshKey, onEditing, onImportCsv, onStartFrom
         case 'open-tags-panel': {
           if (!showCards || navigationLocked || cardTransfer || transferBaseline.current) return;
           event.preventDefault();
-          if (selectedDeck) showDeckPanel(shortcut.id === 'open-order-panel' ? 'ordering' : 'tags');
-          else if (shortcut.id === 'open-order-panel') setOrderingOpen(open => !open);
+          showDeckPanel(shortcut.id === 'open-order-panel' ? 'ordering' : 'tags');
           return;
         }
       }
@@ -1824,6 +1873,7 @@ export function Deck({ snapshot, refreshKey, onEditing, onImportCsv, onStartFrom
     return () => window.removeEventListener('keydown', listener, true);
   }, []);
   useEffect(() => () => onEditing?.(false), [onEditing]);
+  useDesktopDirty(navigationLocked);
   useEffect(() => {
     if (!navigationLocked) return;
     const protectDraft = (event: BeforeUnloadEvent) => event.preventDefault();
@@ -1833,6 +1883,7 @@ export function Deck({ snapshot, refreshKey, onEditing, onImportCsv, onStartFrom
   useEffect(() => {
     if (navigationSource === snapshot.source) return;
     setOpenedCard(null); setOpenedCardId(''); setCreation(null); setCreationDirty(false); setComposer(null); setParentPicker(null); setAttachmentHeroId(null); resetFamilyContext(); setMembershipDirty(false); setJourneyDeckId(null); setRequestedJourneyId(null);
+    creationManifestHash.current = null;
     setScope({ kind: 'catalog' }); setTrackId(''); setSearch(''); setDeckSearch(''); setTagFilter(''); setMineOnly(false); setOrderingOpen(false); setTagsOpen(false); setTagPick(emptyTagPick);
     setIncludeShelved(false); setLaneSearch([]);
     setNavigationSource(snapshot.source);
@@ -1862,6 +1913,45 @@ export function Deck({ snapshot, refreshKey, onEditing, onImportCsv, onStartFrom
     history.replaceState(history.state, '', url);
   }, [scope, trackId, openedCardId, search, deckSearch, snapshot.source, navigationSource, cardView, requestedJourneyId, tagFilter, mineOnly, ordering, orderingChoice, includeShelved, laneSearch]);
 
+  // 2026-11-10: entering a card scope adds one history step; edits to its filters replace that step, so Back returns
+  // to the entry point and Forward restores the current filtered view rather than replaying every removed filter.
+  const restoreCatalogLocation = useEffectEvent(() => {
+    const query = readCatalogLocation(snapshot.source);
+    if (query.get('view') && query.get('view') !== 'deck') return;
+    if (navigationLocked) { history.forward(); return; }
+    const nextScope = initialScope(query);
+    const closingDeck = selectedDeck && nextScope.kind === 'catalog';
+    const openingDeck = scope.kind === 'catalog' && nextScope.kind === 'deck';
+    // 2026-11-10: Back/Forward must capture the old page before the same layout commit as button navigation.
+    if (closingDeck) deckTransition('close', selectedDeck.id);
+    if (openingDeck) deckTransition('open', nextScope.id);
+    closeInlinePanels(); resetFamilyContext();
+    setScope(nextScope); setTrackId(query.get('track') ?? '');
+    setSearch(query.get('q') ?? ''); setDeckSearch(query.get('deckQ') ?? '');
+    setTagFilter(query.get('tag') ?? ''); setMineOnly(query.get('mine') === '1');
+    setLaneSearch(readLaneSearch(query)); setIncludeShelved(query.get('archive') === '1');
+    setOrderingChoice(locationOrdering(query)); setCardView(locationCardView(query));
+    setOpenedCard(null); setOpenedCardId(query.get('card') ?? '');
+    setOrderingOpen(false); setTagsOpen(false); setTagPick(emptyTagPick);
+    scopeFocusPending.current = !closingDeck && !openingDeck;
+  });
+  useEffect(() => {
+    const restore = () => restoreCatalogLocation();
+    window.addEventListener('popstate', restore);
+    return () => window.removeEventListener('popstate', restore);
+  }, []);
+  useLayoutEffect(() => {
+    if (!scopeFocusPending.current || !catalog) return;
+    scopeFocusPending.current = false;
+    let target: HTMLElement | null | undefined = searchField.current;
+    if (scope.kind === 'catalog' && pulseReturnFocus.current) {
+      target = sticky.root.current?.querySelector<HTMLElement>(`[data-pulse="${pulseReturnFocus.current}"]`) ?? target;
+    } else if (scope.kind !== 'catalog') {
+      target = sticky.root.current?.querySelector<HTMLElement>('.card-filter-remove') ?? target;
+    }
+    moveFocus(target, { preventScroll: true });
+  }, [scope, catalog]);
+
   function resetFamilyContext() {
     setFamilyVisible(false); setFamilyDraftParentId(null); setFamilyCreationRequest(null); setFamilyDirty(false); setParentPicker(null);
   }
@@ -1869,12 +1959,17 @@ export function Deck({ snapshot, refreshKey, onEditing, onImportCsv, onStartFrom
     if (navigationLocked) return;
     if (selectedDeck) deckTransition('close', selectedDeck.id);
     closeInlinePanels();
-    setCardView(null); resetFamilyContext(); setLaneSearch([]); setIncludeShelved(false);
-    setScope({ kind: 'catalog' }); setSearch(''); setTrackId(''); setTagFilter(''); setOpenedCard(null); setOpenedCardId('');
+    setCardView(null); resetFamilyContext(); resetCardFilters(); setIncludeShelved(false);
+    setOrderingOpen(false); setTagsOpen(false); setTagPick(emptyTagPick);
+    setScope({ kind: 'catalog' }); setTrackId(''); setOpenedCard(null); setOpenedCardId('');
+    scopeFocusPending.current = !selectedDeck;
   }
   function openDeck(deck: CatalogDeck) {
     if (navigationLocked) return;
-    if (scope.kind === 'catalog') deckTransition('open', deck.id);
+    if (scope.kind === 'catalog') {
+      deckTransition('open', deck.id);
+      history.pushState(history.state, '', location.href);
+    }
     emitSignal({ type: 'deck-opened', deckId: deck.id });
     closeInlinePanels();
     setCardView(null); setOrderingOpen(false); setTagsOpen(false); setTagPick(emptyTagPick); resetFamilyContext();
@@ -1886,7 +1981,13 @@ export function Deck({ snapshot, refreshKey, onEditing, onImportCsv, onStartFrom
     closeInlinePanels();
     if (button) lastOpenedButton.current = button;
     if (familyRoot && card.id !== familyRoot.id && card.parentId !== familyRoot.id) resetFamilyContext();
+    setReviewRequest(null);
     setOpenedCard(card); setOpenedCardId(card.id);
+  }
+  function openReview(card: CatalogCard, anchor: HTMLElement, focus: CardReviewFocus) {
+    if (navigationLocked) return;
+    openCard(card, anchor instanceof HTMLButtonElement ? anchor : undefined);
+    setReviewRequest({ cardId: card.id, sequence: ++reviewSequence.current, focus });
   }
   function openHeroSubCard(card: CatalogCard, origin: HeroReturn['origin']) {
     if (navigationLocked) return;
@@ -1979,7 +2080,23 @@ export function Deck({ snapshot, refreshKey, onEditing, onImportCsv, onStartFrom
     void applyDeckZones(currentZones().filter(zone => zone.id !== zoneIdOfGroup(group)));
   }
   function closeComposer() { setComposer(null); setMembershipDirty(false); }
-  function closeCreation() { setCreation(null); setCreationDirty(false); }
+  function openCreation(form: Creation, opener?: HTMLElement) {
+    if (!catalog) return;
+    creationOpener.current = opener ?? null;
+    creationManifestHash.current = catalog.manifestHash;
+    setCreation(form);
+  }
+  function closeCreation() { setCreation(null); setCreationDirty(false); creationManifestHash.current = null; }
+  async function editCreation(action: CatalogAction) {
+    const store = catalogStore(snapshot.source);
+    const baseHash = creationManifestHash.current;
+    let responseHash: string | undefined;
+    const saved = await store.edit(snapshot, baseHash ? withCatalogFormHash(action, baseHash) : action,
+      undefined, result => { responseHash = result.manifestHash; });
+    // 2026-11-09: a sequence continues from its own response; a conflict instead rebases onto the refreshed catalog without clearing the form.
+    creationManifestHash.current = responseHash ?? store.getSnapshot().catalog?.manifestHash ?? baseHash;
+    return saved;
+  }
   function closeInlinePanels() {
     setHeroReturn(null);
     restoreHeroView.current = null;
@@ -2038,7 +2155,7 @@ export function Deck({ snapshot, refreshKey, onEditing, onImportCsv, onStartFrom
     if (navigationLocked) return;
     const collapse = activeDeckPanel === panel;
     closeCard(false);
-    panels.setSummaryCollapsed(collapse);
+    if (selectedDeck) panels.setSummaryCollapsed(collapse);
     setOrderingOpen(!collapse && panel === 'ordering');
     setTagsOpen(!collapse && panel === 'tags');
     setActivityOpen(!collapse && panel === 'activity');
@@ -2079,10 +2196,12 @@ export function Deck({ snapshot, refreshKey, onEditing, onImportCsv, onStartFrom
   function restoreJourneyFocus() {
     const target = journeyReturnFocus.current;
     journeyReturnFocus.current = null;
-    if (target?.isConnected) target.focus({ preventScroll: true });
-    else searchField.current?.focus({ preventScroll: true });
+    if (target?.isConnected) moveFocus(target, { preventScroll: true });
+    else moveFocus(searchField.current, { preventScroll: true });
   }
   function resetCardFilters() { setSearch(''); setMineOnly(false); setTagFilter(''); setLaneSearch([]); }
+  function focusCardSearch() { moveFocus(searchField.current, { preventScroll: true }); }
+  function clearCardFilters() { if (!navigationLocked) { resetCardFilters(); focusCardSearch(); } }
   function filterGroup(group: CardGroup) {
     if (navigationLocked || group.key === 'all') return;
     setLaneSearch(entries => entries.some(entry => entry.key === group.key && entry.ordering.order === ordering.order) ? entries
@@ -2090,16 +2209,16 @@ export function Deck({ snapshot, refreshKey, onEditing, onImportCsv, onStartFrom
   }
   function openCardView(next: 'all' | 'unassigned', nextTrack = '') {
     if (navigationLocked) return;
+    if (scope.kind !== next || trackId !== nextTrack) history.pushState(history.state, '', location.href);
     closeInlinePanels();
     resetFamilyContext();
     setScope({ kind: next }); setTrackId(nextTrack); resetCardFilters(); setOpenedCard(null); setOpenedCardId(''); 
+    scopeFocusPending.current = true;
   }
-  function openPulseCards(state: 'started' | 'review', deckId: string | null = null) {
+  function openPulseCards(state: 'started' | 'review') {
     if (navigationLocked) return;
-    const deck = catalog?.decks.find(candidate => candidate.id === deckId);
-    if (deck) openDeck(deck);
-    else openCardView('all');
-    resetCardFilters();
+    openCardView('all');
+    pulseReturnFocus.current = state;
     setIncludeShelved(false);
     setLaneSearch([{ key: `state:${state}`, title: stateLabel(state), ordering: { ...defaultCardOrdering, order: 'state' } }]);
   }
@@ -2215,7 +2334,7 @@ export function Deck({ snapshot, refreshKey, onEditing, onImportCsv, onStartFrom
     // 2026-11-04: the drag render locks selection; retain avoids capturing its disabled clear callback.
     if (saved && ownsSelection) { selection.retain([]); setBulkFocusPending(true); }
     if (saved) requestAnimationFrame(() => {
-      if (document.activeElement === document.body) sticky.root.current?.querySelector<HTMLElement>('.catalog-results')?.focus({ preventScroll: true });
+      if (document.activeElement === document.body) moveFocus(sticky.root.current?.querySelector<HTMLElement>('.catalog-results'), { preventScroll: true });
     });
     return saved;
   }
@@ -2237,16 +2356,17 @@ export function Deck({ snapshot, refreshKey, onEditing, onImportCsv, onStartFrom
     if (saved) { selection.clear(); setBulkFocusPending(true); }
     return saved;
   }
+  function restoreCardFocus() {
+    if (selectedCard?.kind === 'hero' && orderedCards.some(card => card.id === selectedCard.id)) setRequestedCardFocus(selectedCard.id);
+    else if (lastOpenedButton.current?.isConnected) moveFocus(lastOpenedButton.current);
+    else moveFocus(searchField.current);
+  }
   function closeCard(restoreFocus = true) {
     if (navigationLocked) return;
     closeInlinePanels();
     resetFamilyContext();
     setOpenedCard(null); setOpenedCardId('');
-    if (restoreFocus) {
-      if (selectedCard?.kind === 'hero' && orderedCards.some(card => card.id === selectedCard.id)) setRequestedCardFocus(selectedCard.id);
-      else if (lastOpenedButton.current?.isConnected) lastOpenedButton.current.focus();
-      else searchField.current?.focus();
-    }
+    if (restoreFocus) restoreCardFocus();
   }
   function toggleSpace(spaceId: string) {
     setCollapsedSpaces(previous => {
@@ -2292,13 +2412,35 @@ export function Deck({ snapshot, refreshKey, onEditing, onImportCsv, onStartFrom
   else if (scope.kind === 'all') title = t.allCards;
   else if (showCards) title = t.foundCards;
   const searchScope = selectedDeck ? t.searchScope(selectedDeck.title) : title;
-  const hasFilters = Boolean(search.trim() || tagFilter || laneSearch.length);
-  // 2026-11-06: an empty deck invites the first card, an empty project stays quiet, other scopes keep the area wording;
-  // cards hidden by search, filters or My cards are "no matches", never "no cards yet".
-  let cardsEmptyText = t.noCards;
+  const activeFilters: CardFilter[] = labeledLaneSearch.map((entry, index) => ({
+    id: `lane:${entry.ordering.order}:${entry.key}`,
+    kind: entry.key.startsWith('kind:') ? 'kind' : entry.ordering.order,
+    value: entry.title,
+    onRemove: () => setLaneSearch(entries => entries.filter((_, position) => position !== index)),
+  }));
+  if (tagFilter) activeFilters.push({ id: 'tag', kind: 'tags', value: tagFilter, onRemove: () => setTagFilter('') });
+  if (mineOnly) activeFilters.push({ id: 'mine', kind: 'mine', value: '', onRemove: () => setMineOnly(false) });
+  if (search.trim()) activeFilters.push({ id: 'search', kind: 'search', value: search.trim(), onRemove: () => setSearch('') });
+  const hasFilters = activeFilters.length > 0;
+  const emptyDeck = Boolean(selectedDeck && openDeckCardCount === 0 && !hasFilters && scopedCards.length === 0);
+  // 2026-11-06: an empty deck invites the first card; cards hidden by search, filters or My cards are "no matches",
+  // never "no cards yet".
+  let cardsEmptyText = writable ? t.noCardsDeck : t.noCardsProject;
   if (hasFilters || scopedCards.length > 0) cardsEmptyText = t.noMatches;
-  else if (selectedDeck) cardsEmptyText = writable ? t.noCardsDeck : t.noCardsProject;
-  else if (catalog && catalog.cards.length === 0) cardsEmptyText = t.noCardsProject;
+  // 2026-11-10: an empty card list says which emptiness it is, with a scene. In a card scope (All cards, Unassigned, a
+  // track): cards only hidden by search and filters (with a reset), every card already in a deck, an empty track, or no
+  // cards at all.
+  let listEmpty: ReactNode = null;
+  if (!selectedDeck && visibleCards.length === 0) {
+    if (hasFilters || scopedCards.length > 0) listEmpty = <EmptyState variant="filtered" className="card-scope-empty" art="no-results" title={t.scopeNoMatchesTitle} message={t.scopeNoMatchesHelp} onReset={clearCardFilters} />;
+    else if (cards.length > 0 && scope.kind === 'unassigned') listEmpty = <EmptyState variant="first-run" className="card-scope-empty" art="sorted" title={t.scopeSortedTitle} message={t.scopeSortedHelp} />;
+    else if (cards.length > 0 && selectedTrack) listEmpty = <EmptyState variant="first-run" className="card-scope-empty" art="track" title={t.scopeTrackTitle} message={writable ? t.scopeTrackHelp : undefined} />;
+    else listEmpty = <EmptyState variant="first-run" className="card-scope-empty" art="first-card" title={t.emptyDeckTitle} message={writable ? t.scopeNoCardsHelp : undefined}
+      action={{ label: t.scopeOpenDecks, onClick: returnToCatalog, disabled: navigationLocked }} />;
+  } else if (visibleCards.length === 0 && hasFilters) {
+    // 2026-11-10: an open deck whose cards are hidden by search, filters or My cards says so, with the same reset.
+    listEmpty = <EmptyState variant="filtered" art="no-results" title={t.scopeNoMatchesTitle} message={t.scopeNoMatchesHelp} onReset={clearCardFilters} />;
+  }
   const showSummary = activeDeckPanel !== null;
   // Ordering and Tags use narrow columns beside the rail; Info and Activity use the wide, resizable left slot.
   const narrowPanel = activeDeckPanel === 'ordering' || activeDeckPanel === 'tags';
@@ -2316,7 +2458,7 @@ export function Deck({ snapshot, refreshKey, onEditing, onImportCsv, onStartFrom
   const browserNavigation = catalog ? <fieldset className="catalog-browser-navigation" disabled={navigationLocked}>
         <nav className="catalog-nav-section" aria-label={t.decks}><span className="catalog-nav-label">{t.decks}</span><button type="button" aria-current={!showCards ? 'page' : undefined} onClick={returnToCatalog}><Layers size={14} />{t.allDecks}<span>{number(catalog.decks.length)}</span></button></nav>
         <nav className="catalog-nav-section" aria-label={t.cards}><span className="catalog-nav-label">{t.cards}</span><div><button type="button" aria-current={scope.kind === 'all' && !trackId ? 'page' : undefined} onClick={() => openCardView('all')}>{t.allCards}<span>{number(cards.length)}</span></button><button type="button" aria-current={scope.kind === 'unassigned' ? 'page' : undefined} onClick={() => openCardView('unassigned')}>{t.unassigned}<span>{number(unassignedCount)}</span></button></div></nav>
-        <div className="catalog-track-picker"><label htmlFor="catalog-track-view" className="catalog-nav-label">{t.tracks} <span>{t.crossDeckCards}</span></label><div><select id="catalog-track-view" value={trackId} onChange={event => openCardView('all', event.target.value)}><option value="">{t.chooseTrack}</option>{catalog.tracks.map(track => <option key={track.id} value={track.id}>{track.title + ' · ' + number(lookups.trackCounts.get(track.id) ?? 0)}</option>)}</select>{writable && <Button variant="ghost" size="icon" onClick={event => { creationOpener.current = event.currentTarget; setCreation({ kind: 'track' }); }} aria-label={t.createTrack}><Plus size={14} /></Button>}</div></div>
+        <div className="catalog-track-picker"><label htmlFor="catalog-track-view" className="catalog-nav-label">{t.tracks} <span>{t.crossDeckCards}</span></label><div><select id="catalog-track-view" value={trackId} onChange={event => openCardView('all', event.target.value)}><option value="">{t.chooseTrack}</option>{catalog.tracks.map(track => <option key={track.id} value={track.id}>{track.title + ' · ' + number(lookups.trackCounts.get(track.id) ?? 0)}</option>)}</select>{writable && <Button variant="ghost" size="icon" onClick={event => openCreation({ kind: 'track' }, event.currentTarget)} aria-label={t.createTrack}><Plus size={14} /></Button>}</div></div>
       </fieldset> : null;
   return <DndContext key={snapshot.source} sensors={transferSensors} collisionDetection={coverCollisions} autoScroll={transferAutoScroll}
     onDragStart={startCardTransfer} onDragEnd={event => void finishCardTransfer(event)} onDragCancel={clearCardTransfer}
@@ -2328,22 +2470,22 @@ export function Deck({ snapshot, refreshKey, onEditing, onImportCsv, onStartFrom
     } }}>
     <CardTransferContext.Provider value={transferContext}>
     <CardAttachmentRefreshContext.Provider value={catalog?.indexedAt}>
-    <section ref={sticky.root} onClickCapture={event => { if (transferBaseline.current || Date.now() < suppressTransferClickUntil.current) { event.preventDefault(); event.stopPropagation(); } }} className={'deck-view catalog-view' + (cardTransfer ? ' is-card-transfer-active' : '') + (cardDragPreview ? ' is-card-pointer-transfer' : '') + (selectedDeck ? ' is-deck-open' : '') + (hasPreview ? ' has-preview' : '') + (!selectedDeck && !showCards ? ' deck-gallery' : '')} style={{ '--left-panel-width': panels.leftPanelWidth + 'px' } as CSSProperties} aria-label={t.projectCatalog}>
+    <section ref={sticky.root} onClickCapture={event => { if (transferBaseline.current || Date.now() < suppressTransferClickUntil.current) { event.preventDefault(); event.stopPropagation(); } }} className={'deck-view catalog-view' + (cardTransfer ? ' is-card-transfer-active' : '') + (cardDragPreview ? ' is-card-pointer-transfer' : '') + (selectedDeck ? ' is-deck-open' : '') + (hasPreview ? ' has-preview' : '') + (!selectedDeck && !showCards ? ' deck-gallery' : '') + (!selectedDeck && showCards ? ' card-scope-view' : '')} data-toolbar-sticky={sticky.rendered['data-toolbar-sticky']} data-selection-sticky={sticky.rendered['data-selection-sticky']} style={{ ...sticky.rendered.style, '--left-panel-width': panels.leftPanelWidth + 'px' } as CSSProperties} aria-label={t.projectCatalog}>
     {selectedDeck && catalog && <nav className="deck-neighbor-rail" aria-label={t.spaceDecks}>{catalog.decks.filter(deck => deck.spaceId === selectedDeck.spaceId).map(deck => {
       const counts = deckCounts.get(deck.id) ?? emptyDeckCounts;
-      return <DeckNeighborCover key={deck.id} deck={deck} counts={counts} source={snapshot.source} current={deck.id === selectedDeck.id} disabled={navigationLocked} baseline={cardTransfer} catalogCards={cards} onOpen={() => openDeck(deck)} />;
+      return <DeckNeighborCover key={deck.id} deck={deck} counts={counts} source={snapshot.source} inbox={deck.id === (catalog.inboxDeckId ?? null)} current={deck.id === selectedDeck.id} disabled={navigationLocked} baseline={cardTransfer} catalogCards={cards} onOpen={() => openDeck(deck)} />;
     })}</nav>}
-    {selectedDeck && catalog ? <header ref={sticky.toolbar} className={'deck-open-toolbar' + (selectionToolbar ? ' is-selection' : '')}>
+    {selectedDeck && catalog ? <header ref={sticky.toolbar} className={'deck-open-toolbar page-head' + (selectionToolbar ? ' is-selection' : '')}>
       {selectionToolbar ?? <Tooltip.Provider delayDuration={200}>
       <DeckHeaderHint label={t.closeDeck}>
         <Button variant="ghost" size="icon" disabled={navigationLocked} onClick={returnToCatalog} aria-label={t.closeDeck}><X size={17} /></Button>
       </DeckHeaderHint>
-      <DeckTypePicker key={selectedDeck.id} deck={selectedDeck} cards={catalog.cards} journeys={catalog.journeys ?? []} pending={navigationLocked} writable={writable} manifestHash={catalog.manifestHash} onChange={(kind, manifestHash) => edit({ action: 'set-deck-kind', deckId: selectedDeck.id, kind, manifestHash })} /><h1 title={selectedDeck.title}>{selectedDeck.title}</h1><span>{t.cardsCount(scopedCards.length)}</span>
-      <div className="deck-open-tools">{(selectedDeck.kind === 'asset' || selectedDeck.kind === 'mixed') && <DeckHeaderHint label={t.labelPrepareJourney}>
-        <Button variant="ghost" size="sm" className="deck-journey-button" disabled={navigationLocked} onClick={event => { closeInlinePanels(); journeyReturnFocus.current = event.currentTarget; setJourneyDeckId(selectedDeck.id); }}><ScrollText size={14} />{t.labelJourney}</Button>
+      <DeckTypePicker key={selectedDeck.id} deck={selectedDeck} cards={catalog.cards} journeys={catalog.journeys ?? []} pending={navigationLocked} writable={writable} manifestHash={catalog.manifestHash} onChange={(kind, manifestHash) => edit({ action: 'set-deck-kind', deckId: selectedDeck.id, kind, manifestHash })} /><h1 className="page-title" tabIndex={-1} title={selectedDeck.title}>{selectedDeck.title}</h1><span className="page-caption">{t.cardsCount(scopedCards.length)}</span>
+      <div className="deck-open-tools page-tools">{(selectedDeck.kind === 'asset' || selectedDeck.kind === 'mixed') && <DeckHeaderHint label={t.labelPrepareJourney}>
+        <Button variant="ghost" size="sm" className="deck-journey-button action-mint" aria-label={t.labelJourney} disabled={navigationLocked} onClick={event => { closeInlinePanels(); journeyReturnFocus.current = event.currentTarget; setJourneyDeckId(selectedDeck.id); }}><ScrollText size={14} /><span>{t.labelJourney}</span></Button>
       </DeckHeaderHint>}
         {writable && <DeckHeaderHint label={t.deckSettings}>
-          <Button variant="ghost" size="icon" disabled={navigationLocked} onClick={() => { closeInlinePanels(); setCreation({ kind: 'deck', deckId: selectedDeck.id, editing: true }); }} aria-label={t.deckSettings}><Pencil size={14} /></Button>
+          <Button variant="ghost" size="icon" disabled={navigationLocked} onClick={() => { closeInlinePanels(); openCreation({ kind: 'deck', deckId: selectedDeck.id, editing: true }); }} aria-label={t.deckSettings}><Pencil size={14} /></Button>
         </DeckHeaderHint>}
         <DeckHeaderHint label={watchHint}>
           <Button variant="ghost" size="icon" className={'deck-watch-toggle' + (watchingDeck ? ' is-watching' : '')} aria-pressed={watchingDeck}
@@ -2375,73 +2517,77 @@ export function Deck({ snapshot, refreshKey, onEditing, onImportCsv, onStartFrom
           </DropdownMenu.Root>
         </DeckHeaderHint>
         <DeckHeaderHint label={mineOnly ? t.showAllCards : t.showMyCards}>
-          <Button variant="ghost" size="sm" className="deck-mine-toggle" aria-pressed={mineOnly} disabled={navigationLocked} onClick={() => setMineOnly(value => !value)}>{t.labelMyCards}</Button>
+          <Button variant="outline" size="sm" className="deck-mine-toggle" aria-pressed={mineOnly} disabled={navigationLocked} onClick={() => setMineOnly(value => !value)}>{t.labelMyCards}</Button>
         </DeckHeaderHint>
-        <label className="catalog-search deck-toolbar-search"><Search size={14} /><span className="visually-hidden">{t.searchCards(searchScope)}</span><input ref={searchField} type="search" value={search} disabled={navigationLocked} onChange={event => setSearch(event.target.value)} placeholder={t.searchDeck} /></label>
+        <label className="catalog-search deck-toolbar-search control-field"><Search size={14} /><span className="visually-hidden">{t.searchCards(searchScope)}</span><input ref={searchField} type="search" value={search} disabled={navigationLocked} onChange={event => setSearch(event.target.value)} placeholder={t.searchDeck} /></label>
         <DeckHeaderHint label={t.includeShelved}>
-          <Button type="button" variant="ghost" size="sm" className="deck-archive-toggle" aria-pressed={includeShelved} disabled={navigationLocked} onClick={() => setIncludeShelved(value => !value)}><Archive size={14} />{t.labelArchiveTrash}</Button>
+          <Button type="button" variant="outline" size="sm" className="deck-archive-toggle" aria-pressed={includeShelved} disabled={navigationLocked} onClick={() => setIncludeShelved(value => !value)}><Archive size={14} />{t.labelArchiveTrash}</Button>
         </DeckHeaderHint>
       </div>
       </Tooltip.Provider>}
-    </header> : <header className={'deck-heading catalog-heading' + (!showCards ? ' deck-gallery-header' : '')}>{!showCards ? <div className="deck-gallery-project">{writable && <Button variant="outline" size="icon" className="deck-gallery-add" onClick={event => { creationOpener.current = event.currentTarget; setCreation({ kind: 'space' }); }} disabled={navigationLocked || !catalog} aria-label={t.labelCreateSpace} title={t.labelCreateSpace}><Plus size={22} /></Button>}<div className="deck-gallery-title"><h1>{snapshot.projectName}</h1>
+    </header> : <header className={!showCards ? 'deck-heading catalog-heading deck-gallery-header' : 'page-head card-scope-header'}>{!showCards ? <div className="deck-gallery-project"><div className="deck-gallery-title"><div className="deck-gallery-name"><h1>{snapshot.projectName}</h1>{writable && <button ref={createSpaceButton} type="button" className="deck-gallery-add action-mint" onClick={event => openCreation({ kind: 'space' }, event.currentTarget)} disabled={navigationLocked || !catalog} aria-label={t.labelCreateSpace}><Plus size={16} aria-hidden="true" /><span>{t.labelCreateSpace}</span></button>}</div>
       {/* 2026-11-06: a first-run folder has nothing to count; the template prompt below already says what to do. */}
-      {catalog && (catalog.documents.length > 0 || catalog.cards.length > 0) && <CatalogSourceLine documents={catalog.documents.length} kinds={lookups.kindCounts} warnings={catalog.warnings.length} warningsOpen={sourceWarningsOpen} onToggleWarnings={() => setSourceWarningsOpen(open => !open)} />}</div></div> :<div><h1>{title}</h1><p>{snapshot.projectName}{catalog && <><span className="dot-separator">·</span>{t.cardsCountLong(scopedCards.length)}</>}</p></div>}<div className="catalog-heading-actions">{loading && catalog && <span className="catalog-updating" role="status"><LoaderCircle size={14} className="spin" />{t.updating}</span>}
-      {!showCards && catalog && <div className="deck-gallery-search"><label className="catalog-search"><Search size={20} /><span className="visually-hidden">{t.deckSearchLabel}</span><input type="search" value={deckSearch} disabled={navigationLocked} onChange={event => setDeckSearch(event.target.value)} placeholder={t.searchDecks} />{deckSearch && <button type="button" disabled={navigationLocked} onClick={() => setDeckSearch('')} aria-label={t.clearDeckSearch} title={t.clearSearch}><X size={14} /></button>}</label><span role="status" className="visually-hidden">{t.deckResults(visibleDecks.length, catalog.decks.length)}</span></div>}
-      {!showCards && browserNavigation}</div></header>}
+      {catalog && (catalog.documents.length > 0 || catalog.cards.length > 0) && <CatalogSourceLine documents={catalog.documents.length} kinds={lookups.kindCounts} warnings={catalog.warnings.length} warningsOpen={sourceWarningsOpen} onToggleWarnings={() => setSourceWarningsOpen(open => !open)} />}</div></div> :<div className="page-head-main"><div className="page-title-block"><h1 className="page-title">{title}</h1><p className="page-caption"><span>{snapshot.projectName}</span>{catalog && <><span className="dot-separator" aria-hidden="true">·</span><span><span className="page-number">{number(scopedCards.length)}</span> {t.cardWord(scopedCards.length)}</span></>}</p></div></div>}<div className={!showCards ? 'catalog-heading-actions' : 'page-tools'}>{loading && catalog && <span className="catalog-updating" role="status"><LoaderCircle size={14} className="spin" />{t.updating}</span>}
+      {!showCards && catalog && <div className="deck-gallery-search"><label className="catalog-search"><Search size={20} /><span className="visually-hidden">{t.deckSearchLabel}</span><input ref={searchField} type="search" value={deckSearch} disabled={navigationLocked} onChange={event => setDeckSearch(event.target.value)} placeholder={t.searchDecks} />{deckSearch && <button type="button" disabled={navigationLocked} onClick={() => setDeckSearch('')} aria-label={t.clearDeckSearch} title={t.clearSearch}><X size={14} /></button>}</label><span role="status" className="visually-hidden">{t.deckResults(visibleDecks.length, catalog.decks.length)}</span></div>}
+      {showCards && catalog && <div className="deck-gallery-search"><label className="catalog-search"><Search size={20} /><span className="visually-hidden">{t.searchCards(searchScope)}</span><input ref={searchField} type="search" value={search} disabled={navigationLocked} onChange={event => setSearch(event.target.value)} placeholder={t.searchScopeCards} />{search && <button type="button" disabled={navigationLocked} onClick={() => { setSearch(''); moveFocus(searchField.current); }} aria-label={t.clearSearch} title={t.clearSearch}><X size={14} /></button>}</label></div>}
+      {browserNavigation}</div></header>}
 
     {error && <div className="catalog-error" role="alert"><span>{error}</span><Button variant="outline" size="sm" disabled={loading || pending} onClick={() => void refresh()}>{t.refresh}</Button></div>}
     {warning && <div className="catalog-notice catalog-saved-warning" role="status"><span>{warning}</span><Button variant="outline" size="sm" disabled={loading || pending} onClick={() => void refresh()}>{t.refresh}</Button><Button variant="ghost" size="icon" aria-label={t.dismissSaveNotice} onClick={dismissWarning}><X size={15} /></Button></div>}
     {!catalog && <p className="catalog-empty" role="status">{loading ? t.loadingCatalog : t.catalogNotLoaded}</p>}
     {catalog && <>
-      {!selectedDeck && showCards && browserNavigation}
       {!showCards && catalog.warnings.length > 0 && <ul id="catalog-source-warnings" className="catalog-warnings" aria-label={t.sourceWarnings(catalog.warnings.length)} hidden={!sourceWarningsOpen}>{catalog.warnings.map((item, index) => <li key={index}>{item}</li>)}</ul>}
 
       {!showCards && catalog.decks.length === 0 && onStartFromTemplate && <section className="project-template-start"><div><h2>{t.startTemplateTitle}</h2><p>{t.startTemplateHelp}</p></div><Button disabled={navigationLocked} onClick={onStartFromTemplate}><Layers size={16} />{t.startTemplate}</Button></section>}
       {!showCards && <ProjectPulseStrip source={snapshot.source} refreshKey={`${refreshKey}:${catalog.indexedAt}`} members={catalog.members ?? []} disabled={navigationLocked}
-        onInProgress={() => openPulseCards('started')} onReview={deckId => openPulseCards('review', deckId)}
-        onWithoutDeck={() => { openCardView('unassigned'); setIncludeShelved(false); }}
+        onInProgress={() => openPulseCards('started')} onReview={() => openPulseCards('review')}
+        onWithoutDeck={() => { openCardView('unassigned'); setIncludeShelved(false); pulseReturnFocus.current = 'unassigned'; }}
         onRun={id => { if (!navigationLocked) navigateToPlanning(snapshot.source, catalog.rootIdentity, { kind: 'run', id }); }} />}
 
       {!showCards && deckSearchText && <p className="deck-gallery-search-status">{t.foundDecks(visibleDecks.length, catalog.decks.length)}</p>}
       {selectedTrack && !selectedDeck && <div className="catalog-track-context"><Route size={16} /><div><strong>{selectedTrack.title}</strong>{selectedTrack.description && <p>{selectedTrack.description}</p>}<span>{t.trackProgress(trackProgress?.accepted ?? 0, trackProgress?.total ?? 0)}</span></div><Button variant="ghost" size="sm" disabled={navigationLocked} onClick={() => openCardView('all')}>{t.leaveTrack}</Button></div>}
-      {showCards && !selectedDeck && <div className="catalog-card-search-row"><label className="catalog-search"><Search size={16} /><span className="visually-hidden">{t.searchCards(searchScope)}</span><input ref={searchField} type="search" value={search} disabled={navigationLocked} onChange={event => setSearch(event.target.value)} placeholder={t.search(searchScope)} /></label></div>}
 
-      {creation && <CatalogForm key={creation.kind + ':' + (creation.spaceId ?? '') + ':' + (creation.deckId ?? '')} creation={creation} catalog={catalog} source={snapshot.source} disabled={!writable || pending} pending={pending} onCancel={closeCreation} onSaved={closeCreation} onSubmit={edit} onDirtyChange={setCreationDirty} dirty={creationDirty} opener={creationOpener} />}
+      {creation && <CatalogForm key={creation.kind + ':' + (creation.spaceId ?? '') + ':' + (creation.deckId ?? '')} creation={creation} catalog={catalog} source={snapshot.source} disabled={!writable || pending} pending={pending} onCancel={closeCreation} onSaved={closeCreation} onSubmit={editCreation} error={error} onDirtyChange={setCreationDirty} dirty={creationDirty} opener={creationOpener} />}
       {journeyDeckId && catalog.decks.some(deck => deck.id === journeyDeckId) && <JourneyTemplatePanel key={journeyDeckId} catalog={catalog} deck={catalog.decks.find(deck => deck.id === journeyDeckId)!} source={snapshot.source} initialJourneyId={requestedJourneyId} writable={writable} pending={pending} onEdit={edit} onClose={() => { setJourneyDeckId(null); setRequestedJourneyId(null); }} onRestoreFocus={restoreJourneyFocus} />}
       {/* 2026-11-06: the notice serves files that exist without a catalog; a first-run folder has nothing to report. */}
       {!catalog.configured && catalog.documents.length > 0 && <p className="catalog-notice">{t.notConfigured}</p>}
-      {!showCards && <CatalogSpaces key={`${snapshot.source}:${catalog.rootIdentity}`} catalog={catalog} deckCounts={deckCounts} visibleDecks={visibleDecks} filtering={Boolean(deckSearchText)} source={snapshot.source} writable={writable} disabled={navigationLocked} collapsed={collapsedSpaces} onToggle={toggleSpace} onOpen={openDeck} onForm={(form, opener) => { creationOpener.current = opener ?? null; setCreation(form); }} onEdit={edit} />}
+      {!showCards && <CatalogSpaces key={`${snapshot.source}:${catalog.rootIdentity}`} catalog={catalog} deckCounts={deckCounts} visibleDecks={visibleDecks} filtering={Boolean(deckSearchText)} source={snapshot.source} writable={writable} disabled={navigationLocked} error={error} createSpaceButton={createSpaceButton} collapsed={collapsedSpaces} onToggle={toggleSpace} onOpen={openDeck} onForm={openCreation} onEdit={edit} />}
 
       {!selectedDeck && selectionToolbar && <div ref={sticky.selection} className="catalog-selection-dock">{selectionToolbar}</div>}
-      {showCards && <div className={'catalog-workbench' + (selectedDeck ? ' has-action-rail' : '')}>
-        {selectedDeck && <Tooltip.Provider delayDuration={200}><nav className="deck-action-rail" aria-label={t.deckActions}>
-          {writable && <DeckHeaderHint side="right" label={t.labelAddCard} keys={["N"]}><Button variant="ghost" size="icon" aria-label={t.labelNewCard} disabled={navigationLocked} onClick={() => newCard()}><Plus size={20} /></Button></DeckHeaderHint>}
-          <DeckHeaderHint side="right" label={t.showInfoSidebar}><Button variant="ghost" size="icon" aria-label={t.labelInfo} aria-pressed={activeDeckPanel === 'info'} disabled={navigationLocked} onClick={() => showDeckPanel('info')}><Info size={20} /></Button></DeckHeaderHint>
-          <DeckHeaderHint side="right" label={t.labelOpenOrderPanel} keys={['Shift', 'O']} note={orderDiffersFromDefault ? t.customOrderHint : undefined}><Button variant="ghost" size="icon" aria-label={t.labelOrdering} aria-pressed={activeDeckPanel === 'ordering'} disabled={navigationLocked} onClick={() => showDeckPanel('ordering')}><ArrowDownUp size={20} /></Button></DeckHeaderHint>
-          <DeckHeaderHint side="right" label={t.showTags} keys={['Shift', 'T']}><Button variant="ghost" size="icon" aria-label={t.labelTags} aria-pressed={activeDeckPanel === 'tags'} disabled={navigationLocked} onClick={() => showDeckPanel('tags')}><Hash size={20} /></Button></DeckHeaderHint>
-          <DeckHeaderHint side="right" label={t.labelActivity}><Button variant="ghost" size="icon" aria-label={t.labelActivity} aria-pressed={activeDeckPanel === 'activity'} disabled={navigationLocked} onClick={() => showDeckPanel('activity')}><History size={20} /></Button></DeckHeaderHint>
-        </nav></Tooltip.Provider>}
+      {showCards && <div className="catalog-workbench has-action-rail">
+        <Tooltip.Provider delayDuration={200}><nav className="deck-action-rail" aria-label={selectedDeck ? t.deckActions : t.scopeActions}>
+          {writable && selectedDeck && <DeckHeaderHint side="right" label={t.labelAddCard} keys={["N"]}><Button variant="outline" size="icon" aria-label={t.labelNewCard} disabled={navigationLocked} onClick={() => newCard()}><Plus size={20} /></Button></DeckHeaderHint>}
+          {selectedDeck && <DeckHeaderHint side="right" label={t.showInfoSidebar}><Button variant="outline" size="icon" data-deck-panel="info" aria-label={t.labelInfo} aria-pressed={activeDeckPanel === 'info'} disabled={navigationLocked} onClick={() => showDeckPanel('info')}><Info size={20} /></Button></DeckHeaderHint>}
+          <DeckHeaderHint side="right" label={t.labelOpenOrderPanel} keys={['Shift', 'O']} note={orderDiffersFromDefault ? t.customOrderHint : undefined}><Button variant="outline" size="icon" aria-label={t.labelOrdering} aria-pressed={activeDeckPanel === 'ordering'} disabled={navigationLocked} onClick={() => showDeckPanel('ordering')}><ArrowDownUp size={20} /></Button></DeckHeaderHint>
+          <DeckHeaderHint side="right" label={t.showTags} keys={['Shift', 'T']}><Button variant="outline" size="icon" aria-label={t.labelTags} aria-pressed={activeDeckPanel === 'tags'} disabled={navigationLocked} onClick={() => showDeckPanel('tags')}><Hash size={20} /></Button></DeckHeaderHint>
+          {selectedDeck && <DeckHeaderHint side="right" label={t.labelActivity}><Button variant="outline" size="icon" data-deck-panel="activity" aria-label={t.labelActivity} aria-pressed={activeDeckPanel === 'activity'} disabled={navigationLocked} onClick={() => showDeckPanel('activity')}><History size={20} /></Button></DeckHeaderHint>}
+        </nav></Tooltip.Provider>
         <div className={'catalog-content-layout' + (hasPreview ? ' has-preview' : '') + (showSummary ? (narrowPanel ? ' has-narrow-panel' : ' has-summary') : '')}>
         {hasPreview ? <><div className="catalog-preview-slot">{composer ? <CardComposer key={snapshot.source + ':new:' + composer.deckId + ':' + composer.parentId + ':' + composer.zoneId} catalog={catalog} snapshot={snapshot} initialDeckId={composer.deckId} initialParentId={composer.parentId} initialPriority={composer.priority} initialZoneId={composer.zoneId} pending={pending} onEdit={edit} onClose={closeComposer} onCreated={cardCreated} onDirtyChange={setMembershipDirty} /> : selectedCard && <CardPreview key={snapshot.source + ':' + selectedCard.id} card={selectedCard} catalog={catalog} snapshot={snapshot} writable={writable && lookups.cardById.has(selectedCard.id)} pending={pending || familyDirty} onClose={() => closeCard()} onSelect={openCard}
           onOpenSubCard={card => openHeroSubCard(card, 'journey')} onReturnToHero={returnHero ? () => { returnToHero(); } : undefined}
-          onEdit={edit} onDirtyChange={setMembershipDirty} onShowTagCards={name => { openCardView('all'); setTagFilter(name); }} onOpenDeck={selectedCard.deckId && selectedCard.deckId !== deckScopeId ? () => showCardInDeck(selectedCard.id, selectedCard.deckId!) : undefined} onManageJourney={selectedCard.deckId ? opener => { journeyReturnFocus.current = opener ?? null; closeInlinePanels(); setJourneyDeckId(selectedCard.deckId); } : undefined} familyVisible={showFamily} onShowFamily={() => { if (navigationLocked) return; setFamilyVisible(true); }} onToggleFamily={() => { if (navigationLocked) return; if (showFamily) resetFamilyContext(); else setFamilyVisible(true); }} />}</div><PanelResize label={t.leftPanelWidth} value={panels.leftPanelWidth} minimum={420} maximum={800} direction={1} onChange={panels.setLeftPanelWidth} /></> : <>{showSummary && selectedDeck && (narrowPanel ? <aside className="deck-summary deck-narrow-panel">{activeDeckPanel === 'ordering'
-          ? <CardOrdering value={ordering} onChange={changeOrdering} disabled={navigationLocked} inDeck hideEmpty={hideEmptyZones} onHideEmpty={setHideEmptyZones} view={resolvedView} onViewChange={setCardView}
-            defaultView={{ canReset: orderingChoice !== null && orderDiffersFromDefault, canSave: writable && orderDiffersFromDefault, onReset: resetOrdering, onSave: () => void saveDefaultOrdering() }} />
+          reviewRequest={reviewRequest?.cardId === selectedCard.id ? reviewRequest : undefined}
+          onReviewRequestHandled={sequence => setReviewRequest(request => request?.sequence === sequence ? null : request)}
+          onCancelEdit={!showFamily && lastOpenedButton.current?.isConnected ? restoreCardFocus : undefined}
+          onEdit={edit} onDirtyChange={setMembershipDirty} onShowTagCards={name => { openCardView('all'); setTagFilter(name); }} onOpenDeck={selectedCard.deckId && selectedCard.deckId !== deckScopeId ? () => showCardInDeck(selectedCard.id, selectedCard.deckId!) : undefined} onManageJourney={selectedCard.deckId ? opener => { journeyReturnFocus.current = opener ?? null; closeInlinePanels(); setJourneyDeckId(selectedCard.deckId); } : undefined} familyVisible={showFamily} onShowFamily={() => { if (navigationLocked) return; setFamilyVisible(true); }} onToggleFamily={() => { if (navigationLocked) return; if (showFamily) resetFamilyContext(); else setFamilyVisible(true); }} />}</div><PanelResize label={t.leftPanelWidth} value={panels.leftPanelWidth} minimum={420} maximum={800} direction={1} onChange={panels.setLeftPanelWidth} /></> : <>{showSummary && (narrowPanel ? <aside className="deck-summary deck-narrow-panel">{activeDeckPanel === 'ordering'
+          ? <CardOrdering value={ordering} onChange={changeOrdering} disabled={navigationLocked} inDeck={Boolean(selectedDeck)} hideEmpty={hideEmptyZones} onHideEmpty={setHideEmptyZones} view={resolvedView} onViewChange={setCardView}
+            defaultView={selectedDeck ? { canReset: orderingChoice !== null && orderDiffersFromDefault, canSave: writable && orderDiffersFromDefault, onReset: resetOrdering, onSave: () => void saveDefaultOrdering() } : undefined} />
           : <DeckTagsPanel cards={visibleCards} projectTags={catalog.projectTags} pick={tagPick} active={tagPickActive} disabled={navigationLocked} onPick={pickTags} />}</aside>
-          : <><>{activityOpen ? <aside className="deck-summary deck-activity-sidebar"><DeckActivity deckId={selectedDeck.id} source={snapshot.source} refreshKey={refreshKey + ":" + catalog.indexedAt} disabled={navigationLocked} onOpen={id => { const card = lookups.cardById.get(id); if (card) openCard(card); }} /></aside> : <DeckSummary deck={selectedDeck} cards={lookups.cardsByDeck.get(selectedDeck.id) ?? emptyCards} catalog={catalog} source={snapshot.source} refreshKey={refreshKey + ":" + catalog.indexedAt} onOpen={id => { const card = lookups.cardById.get(id); if (card) openCard(card); }} disabled={navigationLocked} onCollapse={() => panels.setSummaryCollapsed(true)} onTrack={id => openCardView('all', id)} />}</><PanelResize label={t.leftPanelWidth} value={panels.leftPanelWidth} minimum={420} maximum={800} direction={1} onChange={panels.setLeftPanelWidth} /></>)}</>}
-        <div className="catalog-results" ref={attachResults} role="region" aria-label={t.cards} tabIndex={-1}>
-          {showFamily && selectedCard && familyRoot ? <CardFamilyPanel key={familyRoot.id} source={snapshot.source} createRequest={familyCreationRequest?.parentId === familyRoot.id ? familyCreationRequest.sequence : 0} card={selectedCard} hero={familyDraftParent ?? familyHero} children={familyCards} openedId={selectedCard.id} catalog={catalog} disabled={navigationLocked} writable={writable} onOpen={openCard} onOpenSubCard={card => openHeroSubCard(card, 'family')}
-            onCreate={newCard} onAttach={() => { closeInlinePanels(); setAttachmentHeroId(familyRoot.id); }} onChooseParent={chooseParent} onDetach={detachCard} onReorder={reorderSubCards} onRefresh={refresh} pending={pending} onCreateCard={edit} onCreated={familyCardCreated} onCreateDirtyChange={setFamilyDirty} onCreateSessionChange={setFamilyDraftParentId} onCreateRequestHandled={sequence => setFamilyCreationRequest(request => request?.sequence === sequence ? null : request)} onEdit={edit} onCancelParentPicker={() => setParentPicker(null)} parentPicker={parentPicker ? <CardParentPicker embedded card={parentPicker.card} catalog={catalog} pending={pending} onChoose={saveParent} onPromote={promoteParent} onClose={() => setParentPicker(null)} /> : undefined} /> : <>
-          {!selectedDeck && <div className="catalog-results-toolbar">
-            <div className="catalog-view-toggle" aria-label={t.labelCardview}><Button variant="ghost" size="sm" aria-pressed={resolvedView === 'cards'} onClick={() => setCardView('cards')}><LayoutGrid size={13} />{t.labelCards}</Button><Button variant="ghost" size="sm" aria-pressed={resolvedView === 'table'} onClick={() => setCardView('table')}><Table2 size={13} />{t.labelTable}</Button></div>
-            <div className="catalog-panel-controls">
-              <Button variant="ghost" size="sm" disabled={navigationLocked} aria-expanded={orderingOpen} aria-controls="catalog-ordering-panel" onClick={() => setOrderingOpen(!orderingOpen)}>{t.labelOrdering}</Button>
-            </div>
-          </div>}
-          <div id="catalog-ordering-panel" className="catalog-ordering-panel" hidden={!orderingOpen || Boolean(selectedDeck)}><CardOrdering value={ordering} onChange={changeOrdering} disabled={navigationLocked} /></div>
-          <div className={hasFilters || !selectedDeck ? "catalog-result-summary" : "visually-hidden"}><span role="status">{t.cardResults(searchScope, visibleCards.length, scopedCards.length)}</span>{hasFilters && <Button variant="ghost" size="sm" disabled={navigationLocked} onClick={resetCardFilters}>{t.resetFilters}</Button>}</div>
-          {labeledLaneSearch.length > 0 && <div className="deck-lane-search" aria-label={t.laneFilters}>{labeledLaneSearch.map((entry, index) => <button type="button" key={entry.ordering.order + ':' + entry.key} className="deck-panel-button" disabled={navigationLocked} aria-label={t.removeFilter(entry.title)} onClick={() => setLaneSearch(entries => entries.filter((_, position) => position !== index))}>{entry.title}<X size={12} aria-hidden="true" /></button>)}</div>}
-          {visibleCards.length === 0 && !manualOrdering && <p className="catalog-empty">{cardsEmptyText}</p>}
+          : selectedDeck && <><>{activityOpen ? <aside className="deck-summary deck-activity-sidebar"><DeckActivity deckId={selectedDeck.id} source={snapshot.source} refreshKey={refreshKey + ":" + catalog.indexedAt} disabled={navigationLocked} onOpen={id => { const card = lookups.cardById.get(id); if (card) openCard(card); }} /></aside> : <DeckSummary deck={selectedDeck} cards={lookups.cardsByDeck.get(selectedDeck.id) ?? emptyCards} catalog={catalog} source={snapshot.source} refreshKey={refreshKey + ":" + catalog.indexedAt} onOpen={id => { const card = lookups.cardById.get(id); if (card) openCard(card); }} disabled={navigationLocked} onCollapse={() => panels.setSummaryCollapsed(true)} onTrack={id => openCardView('all', id)} />}</><PanelResize label={t.leftPanelWidth} value={panels.leftPanelWidth} minimum={420} maximum={800} direction={1} onChange={panels.setLeftPanelWidth} /></>)}</>}
+        <div className="catalog-results" ref={attachResults} role="region" aria-label={t.cards} tabIndex={-1}
+          onPointerDown={event => { if (familyShown && !navigationLocked && event.target === event.currentTarget) resetFamilyContext(); }}>
+          {/* 2026-11-10: Sub Cards is one of the open card's panels: a layer beside the card over the deck's cards,
+            in the same place and frame as Properties or History; the cards stay under it, dimmed and inert, and a
+            press on them closes it. On a phone the panel takes the column and the cards step aside (card-family.css). */}
+          {showFamily && selectedCard && familyRoot && <div className="catalog-family-layer"><CardFamilyPanel key={familyRoot.id} source={snapshot.source} createRequest={familyCreationRequest?.parentId === familyRoot.id ? familyCreationRequest.sequence : 0} card={selectedCard} hero={familyDraftParent ?? familyHero} children={familyCards} openedId={selectedCard.id} catalog={catalog} disabled={navigationLocked} writable={writable} onOpen={openCard} onOpenSubCard={card => openHeroSubCard(card, 'family')}
+            onCreate={newCard} onAttach={() => { closeInlinePanels(); setAttachmentHeroId(familyRoot.id); }} onChooseParent={chooseParent} onDetach={detachCard} onReorder={reorderSubCards} onRefresh={refresh} pending={pending} onCreateCard={edit} onCreated={familyCardCreated} onCreateDirtyChange={setFamilyDirty} onCreateSessionChange={setFamilyDraftParentId} onCreateRequestHandled={sequence => setFamilyCreationRequest(request => request?.sequence === sequence ? null : request)} onEdit={edit} onCancelParentPicker={() => setParentPicker(null)} parentPicker={parentPicker ? <CardParentPicker embedded card={parentPicker.card} catalog={catalog} pending={pending} onChoose={saveParent} onPromote={promoteParent} onClose={() => setParentPicker(null)} /> : undefined} /></div>}
+          <div className="catalog-results-body" inert={familyShown || undefined}>
+          <CardFilterBar filters={activeFilters} shown={visibleCards.length} total={scopedCards.length} disabled={navigationLocked}
+            onClear={clearCardFilters} onEmptyFocus={focusCardSearch} />
+          {visibleCards.length === 0 && (!manualOrdering || emptyDeck) && (emptyDeck && selectedDeck
+            ? <EmptyState variant="first-run" className="deck-empty" title={t.emptyDeckTitle} message={writable ? t.emptyDeckHelp : undefined} icon={<span className="deck-empty-icon" aria-hidden="true"><DeckIcon name={selectedDeck.icon} size={24} /></span>} primary
+              action={writable ? { label: t.labelNewCard, onClick: () => newCard(), disabled: navigationLocked } : undefined}
+              secondary={writable && onImportCsv ? { label: t.importCsv, onClick: () => onImportCsv(selectedDeck.id), disabled: navigationLocked } : undefined} />
+            : listEmpty ?? <p className="catalog-empty">{cardsEmptyText}</p>)}
           {resolvedView === 'table'
             ? <CatalogTable groups={shownGroups} transfer={cardTransfer} pointerDrag={Boolean(cardDragPreview)} lookups={lookups} members={members} tagDefinitions={catalog.projectTags} catalog={catalog} currentMemberId={currentMember?.id} openedId={selectedCard?.id} selectedIds={selection.selectedIds} disabled={draftLocked} onOpen={activateCard} onFamilyOpen={openCard} onToggle={selection.toggle} onToggleGroup={selection.toggleGroup} onFilterGroup={filterGroup} onCreateGroup={writable ? createGroupCard : undefined} laneOf={laneOfGroup} zoneOf={zoneControlsOf} zoneDrag={zoneDrag} manualDrop={manualDrop} />
             : <>
@@ -2454,9 +2600,9 @@ export function Deck({ snapshot, refreshKey, onEditing, onImportCsv, onStartFrom
               </CatalogCardGroupSection>)}
             </>}
           {manualOrdering && writable && <AddZoneControl disabled={navigationLocked || pending} onAdd={title => addZone(title)} />}
-          </>}
+          </div>
         </div>
-        {!showFamily && <DeckHoveredCardActions ref={hoveredCardActions} key={selectionKey} root={resultsRoot} catalog={catalog} lookups={lookups} snapshot={snapshot} writable={writable} locked={navigationLocked || Boolean(cardTransfer)} onEdit={edit} onSelect={selection.toggle} />}
+        {!showFamily && <DeckHoveredCardActions ref={hoveredCardActions} key={selectionKey} root={resultsRoot} catalog={catalog} lookups={lookups} snapshot={snapshot} writable={writable} locked={navigationLocked || Boolean(cardTransfer)} onEdit={edit} onSelect={selection.toggle} onOpenReview={openReview} />}
       </div>{cardTransfer && cardDragPreview && <CardGroupDropPanel groups={dragGroups} baseline={cardTransfer} laneOf={laneOfGroup} catalogCards={cards} />}</div>}
       {attachmentHeroId && lookups.cardById.get(attachmentHeroId) && <AttachSubCards key={attachmentHeroId} hero={lookups.cardById.get(attachmentHeroId)!} catalog={catalog} writable={writable} pending={pending} onAttach={attachCards} onClose={() => setAttachmentHeroId(null)} />}
     </>}
@@ -2572,18 +2718,43 @@ const deckSortCollisions: CollisionDetection = arguments_ => {
   return scored.length ? [scored[0]] : under.slice(0, 1);
 };
 
-function CatalogSpaces({ catalog, deckCounts, visibleDecks, filtering, source, writable, disabled, collapsed, onToggle, onOpen, onForm, onEdit }: { catalog: CatalogView; deckCounts: Map<string | null, DeckCardCounts>; visibleDecks: CatalogDeck[]; filtering: boolean; source: WorkspaceSnapshot['source']; writable: boolean; disabled: boolean; collapsed: ReadonlySet<string>; onToggle: (id: string) => void; onOpen: (deck: CatalogDeck) => void; onForm: (form: Creation, opener?: HTMLElement) => void; onEdit: CatalogEditor }) {
+function CatalogSpaces({ catalog, deckCounts, visibleDecks, filtering, source, writable, disabled, error, createSpaceButton, collapsed, onToggle, onOpen, onForm, onEdit }: { catalog: CatalogView; deckCounts: Map<string | null, DeckCardCounts>; visibleDecks: CatalogDeck[]; filtering: boolean; source: WorkspaceSnapshot['source']; writable: boolean; disabled: boolean; error: string | null; createSpaceButton: RefObject<HTMLButtonElement | null>; collapsed: ReadonlySet<string>; onToggle: (id: string) => void; onOpen: (deck: CatalogDeck) => void; onForm: (form: Creation, opener?: HTMLElement) => void; onEdit: CatalogEditor }) {
   const t = useText(text);
+  const [deletion, setDeletion] = useState<{ spaceId: string; manifestHash: string; optionsHash?: string } | null>(null);
+  const [deleteFailed, setDeleteFailed] = useState(false);
+  const [deletedSpace, setDeletedSpace] = useState<{ id: string; index: number } | null>(null);
+  const deleting = useRef(false);
+  const deletionPanel = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    if (!deletedSpace || disabled || catalog.spaces.some(space => space.id === deletedSpace.id)) return;
+    const nextSpace = catalog.spaces[deletedSpace.index] ?? catalog.spaces.at(-1);
+    moveFocus(nextSpace ? document.getElementById(`space-heading-${nextSpace.id}`) : createSpaceButton.current);
+    setDeletedSpace(null);
+  }, [deletedSpace, disabled, catalog.spaces, createSpaceButton]);
+  useLayoutEffect(() => {
+    if (deleteFailed && !disabled) moveFocus(deletionPanel.current?.querySelector<HTMLButtonElement>('.confirm-strip-confirm'), { preventScroll: true });
+  }, [deleteFailed, disabled]);
+  useEffect(() => {
+    if (deletion && !deleting.current && !catalog.spaces.some(space => space.id === deletion.spaceId)) setDeletion(null);
+  }, [deletion, catalog.spaces]);
+  function cancelSpaceDelete() { if (!deleting.current) { setDeletion(null); setDeleteFailed(false); } }
+  async function confirmSpaceDelete() {
+    if (!deletion || disabled || !writable || deleting.current || catalog.decks.some(deck => deck.spaceId === deletion.spaceId)) return;
+    const target = { id: deletion.spaceId, index: catalog.spaces.findIndex(space => space.id === deletion.spaceId) };
+    deleting.current = true;
+    setDeleteFailed(false);
+    try {
+      if (await onEdit({ action: 'delete-space', ...deletion })) {
+        setDeletion(null);
+        setDeletedSpace(target);
+      } else setDeleteFailed(true);
+    } catch { setDeleteFailed(true); }
+    finally { deleting.current = false; }
+  }
   const [dragged, setDragged] = useState<CatalogDeck | null>(null);
   // The order on screen while dragging, and after a drop until the server catalog brings the same order back.
   const [dragLayout, setDragLayout] = useState<DeckLayout | null>(null);
-  // 2026-11-06: only the shelf is sorted by dragging; the pile keeps the catalog order after it. A drop at the end of a shelf
-  // sends beforeDeckId null (the end of the space), so a piled deck between two shelf decks never blocks the move.
-  const shelves = useMemo(() => shelfAndPile(visibleDecks), [visibleDecks]);
-  const baseLayout = useMemo(() => deckLayoutOf(catalog.spaces, shelves.shelf), [catalog.spaces, shelves.shelf]);
-  const piles = useMemo(() => deckLayoutOf(catalog.spaces, shelves.pile), [catalog.spaces, shelves.pile]);
-  // Piles opened during this visit; a deck search opens every pile, so a match is never hidden in one.
-  const [openPiles, setOpenPiles] = useState<ReadonlySet<string>>(() => new Set());
+  const baseLayout = useMemo(() => deckLayoutOf(catalog.spaces, visibleDecks), [catalog.spaces, visibleDecks]);
   const layout = dragLayout ?? baseLayout;
   const decksById = useMemo(() => new Map(catalog.decks.map(deck => [deck.id, deck])), [catalog.decks]);
   // A fresh catalog is the truth: it ends the optimistic order of the last drop (or reverts a refused move).
@@ -2591,7 +2762,7 @@ function CatalogSpaces({ catalog, deckCounts, visibleDecks, filtering, source, w
   // A drag ends with a pointerup over the tile; the click that follows must not open the deck.
   const clickBlockedUntil = useRef(0);
   // Layout motion only animates server-driven reorders; while a drag or its optimistic result is on screen, sortable owns motion.
-  const coverMotion = useCardLayoutMotion<HTMLDivElement>({ layoutKey: JSON.stringify([baseLayout, piles, [...openPiles]]), resetKey: source, dragging: Boolean(dragged) || dragLayout !== null });
+  const coverMotion = useCardLayoutMotion<HTMLDivElement>({ layoutKey: JSON.stringify(baseLayout), resetKey: source, dragging: Boolean(dragged) || dragLayout !== null });
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }), useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates, keyboardCodes: { start: ['Space'], cancel: ['Escape'], end: ['Space', 'Enter'] } }));
   function start(event: DragStartEvent) {
     clickBlockedUntil.current = Number.POSITIVE_INFINITY;
@@ -2641,13 +2812,6 @@ function CatalogSpaces({ catalog, deckCounts, visibleDecks, filtering, source, w
     void onEdit({ action: 'move-deck', deckId: deck.id, spaceId, beforeDeckId }).then(saved => { if (!saved) setDragLayout(null); });
   }
   const canOpen = () => !dragged && Date.now() > clickBlockedUntil.current;
-  function togglePile(spaceId: string) {
-    setOpenPiles(previous => {
-      const next = new Set(previous);
-      if (!next.delete(spaceId)) next.add(spaceId);
-      return next;
-    });
-  }
   const decksOf = (ids: readonly string[]) => ids.map(id => decksById.get(id)).filter((deck): deck is CatalogDeck => Boolean(deck));
   const spaceTitle = dragged ? catalog.spaces.find(space => space.id === spaceOfDeck(layout, dragged.id))?.title ?? '' : '';
   return <DndContext sensors={sensors} collisionDetection={deckSortCollisions} measuring={{ droppable: { strategy: MeasuringStrategy.Always } }} onDragStart={start} onDragOver={over} onDragEnd={finish} onDragCancel={cancel}>
@@ -2658,26 +2822,32 @@ function CatalogSpaces({ catalog, deckCounts, visibleDecks, filtering, source, w
       {catalog.spaces.filter(space => !filtering || visibleDecks.some(deck => deck.spaceId === space.id)).map(space => {
         const spaceIndex = catalog.spaces.indexOf(space);
         const ids = layout[space.id] ?? [];
-        const pile = decksOf(piles[space.id] ?? []);
-        const pileOpen = filtering || openPiles.has(space.id);
-        const spaceCollapsed = !filtering && collapsed.has(space.id);
+        const spaceEmpty = ids.length === 0;
+        const hasDecks = catalog.decks.some(deck => deck.spaceId === space.id);
+        let deleteHint = t.deleteSpace;
+        if (hasDecks) deleteHint = t.spaceHasDecks;
+        if (!writable) deleteHint = t.spaceReadOnly;
+        // 2026-11-10: an empty space has nothing to fold but its Add deck button, so it never collapses and shows no chevron.
+        const spaceCollapsed = !filtering && !spaceEmpty && collapsed.has(space.id);
         const tileProps = (deck: CatalogDeck) => ({ deck, source, counts: deckCounts.get(deck.id) ?? emptyDeckCounts, disabled, writable, inbox: deck.id === (catalog.inboxDeckId ?? null), canOpen, onOpen: () => onOpen(deck), onSettings: () => onForm({ kind: 'deck', deckId: deck.id, editing: true }) });
-        return <SpaceDrop key={space.id} space={space} disabled={disabled || !writable}>
-          <header className="catalog-space-heading"><h2><button type="button" disabled={filtering} aria-expanded={!spaceCollapsed} aria-controls={`space-${space.id}`} onClick={() => onToggle(space.id)}>{spaceCollapsed ? <ChevronRight size={17} /> : <ChevronDown size={17} />}<DeckIcon name={space.icon ?? spacePresets[space.kind ?? 'custom'].icon} size={17} /><span>{space.title}</span></button></h2>
-            {writable && <div className="catalog-space-actions">
+        return <SpaceDrop key={space.id} space={space} empty={spaceEmpty} disabled={disabled || !writable}>
+          <header className="catalog-space-heading"><h2 id={`space-heading-${space.id}`} tabIndex={-1}><button type="button" disabled={filtering || spaceEmpty} aria-expanded={spaceEmpty ? undefined : !spaceCollapsed} aria-controls={spaceEmpty ? undefined : `space-${space.id}`} onClick={() => onToggle(space.id)}>{!spaceEmpty && (spaceCollapsed ? <ChevronRight size={17} /> : <ChevronDown size={17} />)}<DeckIcon name={space.icon ?? spacePresets[space.kind ?? 'custom'].icon} size={17} /><span>{space.title}</span></button><small className="catalog-space-count">{t.shelfDecks(ids.length)}</small></h2>
+            <div className="catalog-space-actions">{writable && <>
               <Button variant="ghost" size="icon" disabled={disabled} onClick={event => onForm({ kind: 'space', spaceId: space.id, editing: true }, event.currentTarget)} aria-label={t.configureSpace(space.title)}><Pencil size={14} /></Button>
               <Button variant="ghost" size="icon" disabled={disabled || spaceIndex === 0} aria-label={t.moveSpaceUp} title={t.moveSpaceUp} onClick={() => void onEdit({ action: 'move-space', spaceId: space.id, beforeSpaceId: catalog.spaces[spaceIndex - 1].id })}><ArrowUp size={14} /></Button>
               <Button variant="ghost" size="icon" disabled={disabled || spaceIndex === catalog.spaces.length - 1} aria-label={t.moveSpaceDown} title={t.moveSpaceDown} onClick={() => void onEdit({ action: 'move-space', spaceId: space.id, beforeSpaceId: catalog.spaces[spaceIndex + 2]?.id ?? null })}><ArrowDown size={14} /></Button>
-            </div>}
+            </>}<Button variant="ghost" size="icon" disabled={disabled || !writable || hasDecks} aria-label={t.deleteSpace} title={deleteHint} aria-description={hasDecks || !writable ? deleteHint : undefined}
+              onClick={() => { setDeleteFailed(false); setDeletion({ spaceId: space.id, manifestHash: catalog.manifestHash, optionsHash: catalog.optionsHash }); }}><Trash2 size={14} /></Button></div>
           </header>
-          <div id={`space-${space.id}`} hidden={spaceCollapsed}><SortableContext items={ids} strategy={rectSortingStrategy}><div className="catalog-deck-grid">
+          {deletion?.spaceId === space.id && <div ref={deletionPanel} aria-busy={disabled}>
+            <ConfirmStrip question={t.deleteSpaceConfirm(space.title)} keepLabel={t.cancel} confirmLabel={t.delete} danger onEscape={cancelSpaceDelete} onKeep={cancelSpaceDelete} onConfirm={() => void confirmSpaceDelete()} />
+            {hasDecks && <p className="deck-settings-error" role="alert">{t.spaceHasDecks}</p>}
+            {deleteFailed && <p className="deck-settings-error" role="alert">{error || t.saveFailed}</p>}
+          </div>}
+          <div id={`space-${space.id}`} hidden={spaceCollapsed}><SortableContext items={ids} strategy={rectSortingStrategy}><div className={'catalog-deck-grid' + (ids.length === 0 ? ' is-empty' : '')}>
             {decksOf(ids).map(deck => <DeckCover key={deck.id} spaceId={space.id} {...tileProps(deck)} />)}
             {writable && !filtering && <AddDeckTile spaceId={space.id} disabled={disabled} onCreate={() => { if (canOpen()) onForm({ kind: 'deck', spaceId: space.id }); }} />}
-            {pile.length > 0 && !filtering && <DeckPileToggle spaceId={space.id} decks={pile} open={pileOpen} disabled={disabled} onToggle={() => { if (canOpen()) togglePile(space.id); }} />}
-            {pile.length > 0 && pileOpen && <div id={`pile-${space.id}`} className="catalog-pile-decks" role="group" aria-label={t.pileOf(space.title)}>
-              {pile.map(deck => <DeckCoverTile key={deck.id} {...tileProps(deck)} />)}
-            </div>}
-          </div></SortableContext>{ids.length === 0 && pile.length === 0 && !writable && <p className="catalog-space-empty">{t.emptySpace}</p>}</div>
+          </div></SortableContext>{ids.length === 0 && !writable && <p className="catalog-space-empty">{t.emptySpace}</p>}</div>
         </SpaceDrop>;
       })}
     </div>
@@ -2685,29 +2855,16 @@ function CatalogSpaces({ catalog, deckCounts, visibleDecks, filtering, source, w
   </DndContext>;
 }
 
-/** The pile at the end of a space: a fan of the piled decks that opens them in place and stays put as the Collapse control. */
-function DeckPileToggle({ spaceId, decks, open, disabled, onToggle }: { spaceId: string; decks: CatalogDeck[]; open: boolean; disabled: boolean; onToggle: () => void }) {
-  const t = useText(text);
-  const fan = decks.slice(0, 3).reverse();
-  const spread = fan.length > 1 ? 10 / (fan.length - 1) : 0;
-  return <button type="button" className="catalog-pile" disabled={disabled} aria-expanded={open} aria-controls={open ? `pile-${spaceId}` : undefined} aria-label={open ? t.collapsePile : t.showPile(decks.length)} onClick={onToggle}>
-    <span className="catalog-pile-fan" aria-hidden="true">{fan.map((deck, index) => <span key={deck.id} style={{ '--deck-color': deckColor(deck), '--fan': `${(fan.length > 1 ? -5 : 0) + index * spread}deg` } as CSSProperties} />)}</span>
-    <span className="catalog-pile-label" aria-hidden="true">{open
-      ? <><FoldHorizontal size={20} /><span>{t.collapsePile}</span></>
-      : <><strong>{number(decks.length)}</strong><span>{t.inPile}</span></>}</span>
-  </button>;
-}
-
 function AddDeckTile({ spaceId, disabled, onCreate }: { spaceId: string; disabled: boolean; onCreate: () => void }) {
   const t = useText(text);
   // Also the "end of space" drop target, so a deck can be dropped after the last one.
   const drop = useDroppable({ id: `end:${spaceId}`, disabled, data: { kind: 'end', spaceId } });
-  return <button ref={drop.setNodeRef} type="button" className="catalog-add-deck" disabled={disabled} onClick={onCreate}>{t.labelAddDeck}</button>;
+  return <button ref={drop.setNodeRef} type="button" className="catalog-add-deck" disabled={disabled} onClick={onCreate}><Plus size={20} aria-hidden="true" /><span>{t.labelAddDeck}</span></button>;
 }
 
-function SpaceDrop({ space, disabled, children }: { space: CatalogSpace; disabled: boolean; children: ReactNode }) {
+function SpaceDrop({ space, empty, disabled, children }: { space: CatalogSpace; empty: boolean; disabled: boolean; children: ReactNode }) {
   const { setNodeRef } = useDroppable({ id: `space:${space.id}`, disabled, data: { kind: 'space', spaceId: space.id } });
-  return <section ref={setNodeRef} className="catalog-space">{children}</section>;
+  return <section ref={setNodeRef} className={'catalog-space' + (empty ? ' is-empty' : '')}>{children}</section>;
 }
 
 /** The deck color when it is a plain #rrggbb, else the neutral gray the catalog uses for a missing color. */
@@ -2715,21 +2872,9 @@ function deckColor(deck: Pick<CatalogDeck, 'color'>) {
   return /^#[\da-f]{6}$/iu.test(deck.color) ? deck.color : '#878787';
 }
 
+/** 2026-11-10: covers set their title in the page's ink on glass (cover-color.ts), so only the deck color travels with a cover. */
 function coverStyle(deck: CatalogDeck): CSSProperties {
-  const color = deckColor(deck);
-  // 2026-11-06: the title sits on the band, and the band shows the deck color itself (--deck-face), so the ink is measured
-  // against that color; measured against the retired #263348-mixed label gradient, mid tones fell to 3.76:1.
-  let band = rgbOf(color);
-  const light = [240, 239, 245];
-  const dark = [27, 34, 48];
-  let ink = contrastRatio(light, band) >= contrastRatio(dark, band) ? light : dark;
-  // Mid-tone custom colors may fit neither text color: darken only the band, preserving the hue, the frame and the artwork.
-  if (contrastRatio(ink, band) < 4.5) {
-    ink = light;
-    while (contrastRatio(ink, band) < 4.5) band = band.map(channel => Math.floor(channel * .94));
-  }
-  const hex = (values: Rgb) => '#' + values.map(channel => channel.toString(16).padStart(2, '0')).join('');
-  return { '--deck-color': color, '--deck-band': hex(band), '--deck-ink': hex(ink) } as CSSProperties;
+  return { '--deck-color': deckColor(deck) } as CSSProperties;
 }
 
 /** imageUrl replaces the deck's stored cover, as the settings preview does with a picked image; null shows the symbol. */
@@ -2739,11 +2884,14 @@ function CoverFace({ deck, counts, source, imageUrl, inbox = false }: { deck: Ca
   const storedImage = deck.cover ? `/api/file?source=${source}&path=${encodeURIComponent(deck.cover)}` : null;
   const image = style === 'artwork' ? (imageUrl === undefined ? storedImage : imageUrl) : null;
   const fallbackIcon = { asset: 'box', task: 'layers', knowledge: 'book', mixed: 'layers' }[deck.kind];
-  // 2026-11-06: the lip shows accepted Tasks of all Tasks; a Hero's progress lives in its Sub Cards, so decks without Tasks have none.
-  const progress = counts.tasks > 0 ? Math.round(counts.accepted / counts.tasks * 100) : null;
-  // Cover layers: the sunken art window with the kinds in its corner, the title on the deck color, raised counters, the progress lip.
+  // 2026-11-10: the color the glass fills with when the cover is selected — from the illustration, or the deck's own color.
+  const colors = useCoverColors(image, deckColor(deck));
+  // Cover layers: the glass frame, then on the face the art with the kinds in its corner, the
+  // deck's icon on a medallion over the seam, the title and the count plates. No progress line at the foot (2026-11-10);
+  // the two plates already say how much is open and how much is accepted.
   return <>
-    <span className={'catalog-cover-art' + (image ? '' : ' is-symbol')}>
+    <span className="catalog-cover-backdrop" style={colors} aria-hidden="true" />
+    <span className={'catalog-cover-art' + (image ? '' : ' is-symbol')} style={colors}>
       {image ? <img src={image} alt="" draggable={false} style={{ objectPosition: `center ${deck.coverPosition ?? 50}%` }} /> : <DeckIcon name={deck.icon || fallbackIcon} size={style === 'minimal' ? 22 : 38} />}
       <span className="catalog-cover-kinds">
         {/* The tray marks the Inbox deck next to its kinds; the kind dots themselves stay decorative. */}
@@ -2751,9 +2899,9 @@ function CoverFace({ deck, counts, source, imageUrl, inbox = false }: { deck: Ca
         {deckKindBadges[deck.kind].map(kind => { const Icon = cardIcons[kind]; return <span key={kind} className={'catalog-cover-kind-badge is-' + kind} aria-hidden="true"><Icon size={11} /></span>; })}
       </span>
     </span>
+    <span className="catalog-cover-medallion" aria-hidden="true"><DeckIcon name={deck.icon || fallbackIcon} size={14} /></span>
     <strong className="catalog-cover-title">{deck.title || t.deckTitle}</strong>
     <span className="catalog-cover-foot"><DeckCounts counts={counts} /></span>
-    {progress !== null && <span className="catalog-cover-progress" aria-hidden="true"><span style={{ width: `${progress}%` }} /></span>}
   </>;
 }
 
@@ -2766,7 +2914,6 @@ function DeckCover({ spaceId, ...props }: DeckCoverProps & { spaceId: string }) 
   return <DeckCoverTile {...props} drag={drag} />;
 }
 
-/** A tile without drag is a piled deck shown in its opened pile: it opens and has settings, but is not sorted. */
 export function DeckCoverTile({ deck, counts, source, disabled, writable, inbox, canOpen, onOpen, onSettings, drag }: DeckCoverProps & { drag?: ReturnType<typeof useSortable> }) {
   const t = useText(text);
   const deckKinds = useText(deckKindText);
@@ -2777,7 +2924,8 @@ export function DeckCoverTile({ deck, counts, source, disabled, writable, inbox,
     const title = cover.current?.querySelector<HTMLElement>('.catalog-cover-title');
     if (!title) return;
     let active = true;
-    const measure = () => { if (active) setTitleClipped(title.scrollHeight > title.clientHeight); };
+    // 2026-11-09: the title is set in fractions of a pixel (13u/15u), so a whole title can report one extra rounded pixel.
+    const measure = () => { if (active) setTitleClipped(title.scrollHeight > title.clientHeight + 1); };
     measure();
     const observer = new ResizeObserver(measure);
     observer.observe(title);
@@ -2787,9 +2935,10 @@ export function DeckCoverTile({ deck, counts, source, disabled, writable, inbox,
   }, [deck.title, deck.style]);
   const handle = drag && writable ? drag : null;
   // Deck covers stay level because tilt looks like a position shift in the overview.
-  const motion: CSSProperties | undefined = drag ? { transform: drag.transform ? `translate3d(${Math.round(drag.transform.x)}px, ${Math.round(drag.transform.y)}px, 0)` : undefined, transition: drag.transition } : undefined;
-  const label = `${deck.title}, ${deckKinds[deck.kind]}, ${deckCountLabel(counts)}${deck.piled ? t.inPileNote : ''}${handle ? t.spaceToMove : ''}`;
-  return <article data-card-id={deck.id} ref={drag?.setNodeRef} style={motion} className={'catalog-cover-item' + (drag?.isDragging ? ' is-dragging' : '') + (deck.piled ? ' is-piled' : '')}>
+  // 2026-11-09: the tile carries the deck color too: the light a cover throws on the glass is drawn outside the cover button.
+  const motion = { '--deck-color': deckColor(deck), ...(drag ? { transform: drag.transform ? `translate3d(${Math.round(drag.transform.x)}px, ${Math.round(drag.transform.y)}px, 0)` : undefined, transition: drag.transition } : {}) } as CSSProperties;
+  const label = `${deck.title}, ${deckKinds[deck.kind]}, ${deckCountLabel(counts)}${handle ? t.spaceToMove : ''}`;
+  return <article data-card-id={deck.id} ref={drag?.setNodeRef} style={motion} className={'catalog-cover-item' + (drag?.isDragging ? ' is-dragging' : '')}>
     <Tooltip.Provider delayDuration={300} disableHoverableContent><Tooltip.Root open={titleHintOpen && titleClipped && !disabled && !drag?.isDragging} onOpenChange={open => setTitleHintOpen(open && canOpen())}>
       <Tooltip.Trigger asChild><button ref={cover} type="button" className={`catalog-deck-cover catalog-cover-${deck.style ?? 'symbol'}`} style={coverStyle(deck)} data-deck-cover={deck.id} {...(handle ? { ...handle.attributes, ...handle.listeners, role: undefined } : {})} onClick={() => { if (canOpen()) onOpen(); }} disabled={disabled} aria-label={label}><CoverFace deck={deck} counts={counts} source={source} inbox={inbox} /></button></Tooltip.Trigger>
       <Tooltip.Portal><Tooltip.Content className="deck-header-hint catalog-cover-title-tip" side="top" sideOffset={6} collisionPadding={12}>{deck.title}<Tooltip.Arrow /></Tooltip.Content></Tooltip.Portal>
@@ -2808,6 +2957,7 @@ interface CatalogFormProps {
   source: WorkspaceSnapshot['source'];
   disabled: boolean;
   pending: boolean;
+  error?: string | null;
   onCancel: () => void;
   onSaved: () => void;
   onSubmit: CatalogEditor;
@@ -2815,7 +2965,8 @@ interface CatalogFormProps {
 }
 
 function CatalogForm(props: CatalogFormProps) {
-  useEscapeToClose(props.creation.kind !== 'deck' && !props.pending && !props.dirty, props.onCancel, props.opener);
+  // 2026-11-10: the space form is a popover that answers Escape itself; the inline track form keeps the document-level guard.
+  useEscapeToClose(props.creation.kind === 'track' && !props.pending && !props.dirty, props.onCancel, props.opener);
   if (props.creation.kind === 'space') return <SpaceForm {...props} />;
   if (props.creation.kind === 'deck') return <DeckSettingsForm {...props} />;
   return <TrackForm {...props} />;
@@ -2826,22 +2977,56 @@ function FormHeading({ title, pending, onCancel }: { title: string; pending: boo
   return <header><h2>{title}</h2><Button type="button" size="icon" variant="ghost" disabled={pending} aria-label={t.closeForm} onClick={onCancel}><X size={17} /></Button></header>;
 }
 
-function SpaceForm({ creation, catalog, disabled, pending, onCancel, onSaved, onSubmit, onDirtyChange }: CatalogFormProps) {
+/** 2026-11-10: the space form is a compact popover anchored under the button that opened it, so the gallery never reflows. */
+function SpaceForm({ opener, creation, catalog, disabled, pending, onCancel, onSaved, onSubmit, onDirtyChange }: CatalogFormProps) {
   const t = useText(text);
-  const form = useRef<HTMLFormElement>(null);
+  // Radix mounts the content after its own presence pass, so the node arrives through a callback ref, not on the first effect.
+  const [element, setElement] = useState<HTMLDivElement | null>(null);
+  const [place, setPlace] = useState<CSSProperties>({ left: -10000, top: 0 });
+  const [side, setSide] = useState<'bottom' | 'top'>('bottom');
+  // Anchored like the deck picker popover: fixed below the opener, flipped above when there is no room, clamped 16 px
+  // inside the window and re-measured on resize/scroll, so the panel follows the opener while the page moves.
   useLayoutEffect(() => {
-    form.current?.scrollIntoView({ block: 'start', inline: 'nearest' });
-    form.current?.querySelector<HTMLInputElement>('input')?.focus({ preventScroll: true });
-  }, []);
+    if (!opener.current || !element) return;
+    const anchor: HTMLElement = opener.current;
+    const panel: HTMLDivElement = element;
+    const gap = 8;
+    const margin = 16;
+    function measure() {
+      if (!anchor.isConnected) return;
+      const bounds = anchor.getBoundingClientRect();
+      const width = Math.min(380, innerWidth - margin * 2);
+      const left = Math.max(margin, Math.min(bounds.left, innerWidth - width - margin));
+      const below = innerHeight - bounds.bottom - margin;
+      const above = bounds.top - margin;
+      const nextSide: 'bottom' | 'top' = below >= panel.scrollHeight || below >= above ? 'bottom' : 'top';
+      setSide(nextSide);
+      setPlace(nextSide === 'bottom'
+        ? { top: bounds.bottom + gap, left, width, maxHeight: Math.max(120, below) }
+        : { bottom: innerHeight - bounds.top + gap, left, width, maxHeight: Math.max(120, above) });
+    }
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(element);
+    addEventListener('resize', measure);
+    addEventListener('scroll', measure, true);
+    return () => {
+      observer.disconnect();
+      removeEventListener('resize', measure);
+      removeEventListener('scroll', measure, true);
+    };
+  }, [opener, element]);
   const deckKinds = useText(deckKindText);
   const descriptions = useText(spaceDescriptionText);
   const icons = useText(spaceIconText);
   const original = catalog.spaces.find(space => space.id === creation.spaceId);
+  const staleSpace = Boolean(creation.editing && !original);
   const [kind, setKind] = useState<SpaceKind>(original ? original.kind ?? 'custom' : 'gdd');
   const [customName, setCustomName] = useState(original?.title ?? '');
   const [icon, setIcon] = useState(original?.icon ?? spacePresets[kind].icon);
   const initialBeforeSpaceId = original ? catalog.spaces[catalog.spaces.indexOf(original) + 1]?.id ?? '' : '';
-  const [beforeSpaceId, setBeforeSpaceId] = useState(initialBeforeSpaceId);
+  const [requestedBeforeSpaceId, setBeforeSpaceId] = useState(initialBeforeSpaceId);
+  const beforeSpaceId = catalog.spaces.some(space => space.id === requestedBeforeSpaceId) ? requestedBeforeSpaceId : '';
   const title = kind === 'custom' ? customName.trim() : spacePresets[kind].title;
   const dirty = original
     ? kind !== (original.kind ?? 'custom') || customName !== original.title || icon !== original.icon || beforeSpaceId !== initialBeforeSpaceId
@@ -2852,7 +3037,7 @@ function SpaceForm({ creation, catalog, disabled, pending, onCancel, onSaved, on
   }, [dirty, onDirtyChange]);
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (disabled || !title) return;
+    if (disabled || staleSpace || !title) return;
     const action: CatalogAction = original
       ? { action: 'update-space', spaceId: original.id, title, kind, icon }
       : { action: 'create-space', title, kind, icon };
@@ -2861,23 +3046,42 @@ function SpaceForm({ creation, catalog, disabled, pending, onCancel, onSaved, on
       && !await onSubmit({ action: 'move-space', spaceId: original.id, beforeSpaceId: beforeSpaceId || null })) return;
     onSaved();
   }
-  return <form ref={form} className="catalog-create-form space-preset-form" onSubmit={event => void submit(event)}>
-    <FormHeading title={original ? t.labelUpdateSpace : t.labelCreateSpace} pending={pending} onCancel={onCancel} />
-    <fieldset disabled={disabled} className="space-preset-options">
-      <legend className="visually-hidden">{t.labelSpacetype}</legend>
-      {Object.entries(spacePresets).map(([value, preset]) => <label className="space-preset-option" key={value}>
-        <input type="radio" name="space-kind" value={value} checked={kind === value} onChange={() => { setKind(value as SpaceKind); setIcon(preset.icon); }} />
-        <DeckIcon name={preset.icon} size={19} /><span><strong>{preset.title}</strong>{descriptions[value as SpaceKind] && <span>{descriptions[value as SpaceKind]}</span>}</span>
-      </label>)}
-    </fieldset>
-    <fieldset disabled={disabled} className="space-custom-fields">
-      <label className="catalog-field">{t.labelIcon}<select value={icon} onChange={event => setIcon(event.target.value)}>{Object.entries(icons).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
-      {kind === 'custom' && <label className="catalog-field">{t.labelCustomname}<input value={customName} onChange={event => setCustomName(event.target.value)} maxLength={120} required /></label>}
-      {original && <label className="catalog-field">{t.position}<select value={beforeSpaceId} onChange={event => setBeforeSpaceId(event.target.value)}><option value="">{t.atEnd}</option>{catalog.spaces.filter(space => space.id !== original.id).map(space => <option key={space.id} value={space.id}>{t.beforeSpace(space.title)}</option>)}</select></label>}
-    </fieldset>
-    <p className="catalog-form-help">{t.defaultDeckType(deckKinds[defaultDeckKind(kind)])}</p>
-    <div className="catalog-form-actions"><Button type="button" variant="ghost" disabled={pending} onClick={onCancel}>{t.labelCancel}</Button><Button type="submit" disabled={disabled || !title}>{pending && <LoaderCircle className="spin" size={14} />}{original ? t.labelUpdate : t.labelAdd}</Button></div>
-  </form>;
+  return <Dialog.Root open modal={false} onOpenChange={open => { if (!open) onCancel(); }}><Dialog.Portal>
+    <Dialog.Content ref={setElement} className="space-form-popover" style={place} data-side={side} aria-describedby={undefined}
+      onOpenAutoFocus={event => { event.preventDefault(); moveFocus(element?.querySelector<HTMLElement>('input'), { preventScroll: true }); }}
+      onCloseAutoFocus={event => {
+        event.preventDefault();
+        // 2026-11-10: Radix fires this in a timeout after unmount. Focus returns to the opener only when nothing else
+        // (New Card, an outside click) claimed it, so closing never steals focus from what opened next.
+        if (document.activeElement === document.body && opener.current?.isConnected) moveFocus(opener.current, { preventScroll: true });
+      }}
+      onInteractOutside={event => {
+        const target = event.target;
+        // A dirty form and the opener's own press keep the popover open; Escape preserves unsaved input as before.
+        if (dirty || pending || (target instanceof Node && opener.current?.contains(target))) event.preventDefault();
+      }}
+      onEscapeKeyDown={event => { event.stopPropagation(); if (dirty || pending) event.preventDefault(); }}>
+      <header><Dialog.Title>{creation.editing ? t.labelUpdateSpace : t.labelCreateSpace}</Dialog.Title>
+        <Button type="button" size="icon" variant="ghost" disabled={pending} aria-label={t.closeForm} onClick={onCancel}><X size={15} /></Button></header>
+      <form className="space-preset-form" onSubmit={event => void submit(event)}>
+        <fieldset disabled={disabled} className="space-preset-options">
+          <legend className="visually-hidden">{t.labelSpacetype}</legend>
+          {Object.entries(spacePresets).map(([value, preset]) => <label className="space-preset-option" key={value}>
+            <input type="radio" name="space-kind" value={value} checked={kind === value} onChange={() => { setKind(value as SpaceKind); setIcon(preset.icon); }} />
+            <DeckIcon name={preset.icon} size={19} /><span><strong>{preset.title}</strong>{descriptions[value as SpaceKind] && <span>{descriptions[value as SpaceKind]}</span>}</span>
+          </label>)}
+        </fieldset>
+        <fieldset disabled={disabled} className="space-custom-fields">
+          <label className="catalog-field space-form-icon">{t.labelIcon}<select value={icon} onChange={event => setIcon(event.target.value)}>{Object.entries(icons).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
+          {kind === 'custom' && <label className="catalog-field">{t.labelCustomname}<input value={customName} onChange={event => setCustomName(event.target.value)} maxLength={120} required /></label>}
+          {original && <label className="catalog-field">{t.position}<select value={beforeSpaceId} onChange={event => setBeforeSpaceId(event.target.value)}><option value="">{t.atEnd}</option>{catalog.spaces.filter(space => space.id !== original.id).map(space => <option key={space.id} value={space.id}>{t.beforeSpace(space.title)}</option>)}</select></label>}
+        </fieldset>
+        <p className="catalog-form-help">{t.defaultDeckType(deckKinds[defaultDeckKind(kind)])}</p>
+        {staleSpace && <p className="deck-settings-error" role="alert">{t.spaceRemoved}</p>}
+        <div className="catalog-form-actions"><Button type="submit" disabled={disabled || staleSpace || !title}>{pending && <LoaderCircle className="spin" size={14} />}{creation.editing ? t.labelUpdate : t.labelAdd}</Button></div>
+      </form>
+    </Dialog.Content>
+  </Dialog.Portal></Dialog.Root>;
 }
 
 function TrackForm({ disabled, pending, onCancel, onSaved, onSubmit, onDirtyChange }: CatalogFormProps) {
@@ -2919,17 +3123,19 @@ const deckSettingsText = defineText({
 
 type DeckCoverTab = 'browse' | 'upload' | 'icon';
 
-export function DeckSettingsForm({ creation, catalog, source, disabled, pending, onCancel, onSaved, onSubmit, onDirtyChange }: CatalogFormProps) {
+export function DeckSettingsForm({ creation, catalog, source, disabled, pending, error, onCancel, onSaved, onSubmit, onDirtyChange }: CatalogFormProps) {
   const t = useText(text);
   const settings = useText(deckSettingsText);
   const deckKinds = useText(deckKindText);
   const original = catalog.decks.find(deck => deck.id === creation.deckId);
   const editedFields = useRef(new Set<string>());
-  const initialSpaceId = original?.spaceId ?? creation.spaceId ?? catalog.spaces[0]?.id ?? '';
-  const initialSpace = catalog.spaces.find(space => space.id === initialSpaceId);
+  const requestedSpaceId = original?.spaceId ?? creation.spaceId;
+  const initialSpace = catalog.spaces.find(space => space.id === requestedSpaceId) ?? catalog.spaces[0];
+  const initialSpaceId = initialSpace?.id ?? '';
   const [title, setTitle] = useState(original?.title ?? '');
   const [description, setDescription] = useState(original?.description ?? '');
-  const [spaceId, setSpaceId] = useState(initialSpaceId);
+  const [chosenSpaceId, setSpaceId] = useState(initialSpaceId);
+  const spaceId = catalog.spaces.some(space => space.id === chosenSpaceId) ? chosenSpaceId : catalog.spaces[0]?.id ?? '';
   const [kind, setKind] = useState<DeckKind>(original?.kind ?? defaultDeckKind(initialSpace?.kind ?? 'custom'));
   const [icon, setIcon] = useState(original?.icon ?? initialSpace?.icon ?? 'layers');
   const [color, setColor] = useState(original?.color ?? '#878787');
@@ -2946,8 +3152,9 @@ export function DeckSettingsForm({ creation, catalog, source, disabled, pending,
   // New Deck names the deck up front: a cover picked before creation uploads to it right after (2026-11-06).
   const [newDeckId] = useState(() => crypto.randomUUID());
   const [showColor, setShowColor] = useState(false);
-  const [notice, setNotice] = useState<'changeUnconfirmed' | 'saveFailed' | 'lessonFailed' | 'coverSaveFailed' | 'inboxAssigned' | 'inboxRemoved' | 'movedToPile' | 'movedToShelf' | ''>('');
-  const [moveSpaceId, setMoveSpaceId] = useState(initialSpaceId);
+  const [notice, setNotice] = useState<'changeUnconfirmed' | 'saveFailed' | 'coverSaveFailed' | 'inboxAssigned' | 'inboxRemoved' | ''>('');
+  const [chosenMoveSpaceId, setMoveSpaceId] = useState(initialSpaceId);
+  const moveSpaceId = catalog.spaces.some(space => space.id === chosenMoveSpaceId) ? chosenMoveSpaceId : initialSpaceId;
   const [beforeDeckId, setBeforeDeckId] = useState('');
   const reader = useRef<FileReader | null>(null);
   const artRequest = useRef<AbortController | null>(null);
@@ -2956,6 +3163,8 @@ export function DeckSettingsForm({ creation, catalog, source, disabled, pending,
   const coverDrag = useRef<{ y: number; position: number; height: number } | null>(null);
   function moveCover(next: number) { editedFields.current.add('coverPosition'); setCoverPosition(Math.round(Math.min(100, Math.max(0, next)))); }
   const busy = useRef(false);
+  const formError = imageError ? t[imageError] : error ?? '';
+  const formNotice = formError || (notice ? t[notice] : '');
   const unavailable = disabled || saving || reading || loadingArt;
   const closeDisabled = pending || saving || reading || loadingArt;
   const canMoveCover = !unavailable && style === 'artwork' && Boolean(cover || imageData);
@@ -3026,7 +3235,7 @@ export function DeckSettingsForm({ creation, catalog, source, disabled, pending,
   }
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (unavailable || busy.current || !title.trim() || imageError) return;
+    if (unavailable || busy.current || !title.trim() || imageError || (!original && !spaceId)) return;
     busy.current = true; setSaving(true); setNotice('');
     try {
       if (!original) {
@@ -3055,16 +3264,6 @@ export function DeckSettingsForm({ creation, catalog, source, disabled, pending,
       } else setNotice('changeUnconfirmed');
     } finally { busy.current = false; setSaving(false); }
   }
-  async function changePile() {
-    if (!original || unavailable || busy.current) return;
-    const piled = !original.piled;
-    busy.current = true; setSaving(true); setNotice('');
-    try {
-      const saved = await onSubmit({ action: 'set-deck-pile', deckId: original.id, piled, manifestHash: catalog.manifestHash });
-      if (saved) setNotice(piled ? 'movedToPile' : 'movedToShelf');
-      else setNotice('changeUnconfirmed');
-    } finally { busy.current = false; setSaving(false); }
-  }
   async function move() {
     if (!original || unavailable || metadataChanged || imageData || busy.current) return;
     busy.current = true; setSaving(true);
@@ -3074,20 +3273,20 @@ export function DeckSettingsForm({ creation, catalog, source, disabled, pending,
   return <Dialog.Root open onOpenChange={open => { if (!open && !closeDisabled) onCancel(); }}>
     <Dialog.Portal>
       <Dialog.Overlay className="deck-settings-overlay" />
-      <Dialog.Content className="deck-settings-dialog" aria-describedby={undefined}
+      <Dialog.Content className="deck-settings-dialog dialog-panel" aria-describedby={undefined}
         onPointerDownOutside={event => event.preventDefault()}
         onEscapeKeyDown={event => { event.preventDefault(); event.stopPropagation(); if (!unavailable && !dirty) onCancel(); }}
         onCloseAutoFocus={event => event.preventDefault()}>
         <form className="deck-settings-form" onSubmit={event => void submit(event)} aria-busy={closeDisabled}>
-          <header className="deck-settings-modal-heading">
-            <Dialog.Title>{original ? settings.editDeck : t.newDeck}</Dialog.Title>
+          <header className="deck-settings-modal-heading dialog-head">
+            <Dialog.Title className="dialog-title">{original ? settings.editDeck : t.newDeck}</Dialog.Title>
             <Button type="button" size="icon" variant="ghost" disabled={closeDisabled} aria-label={t.closeForm} onClick={onCancel}><X size={20} /></Button>
           </header>
           <div className="deck-settings-layout">
             <div className="deck-settings-main">
-              <div className="deck-settings-fields">
+              <div className="deck-settings-fields dialog-body">
                 <fieldset disabled={unavailable}>
-                  <label className="deck-settings-modal-name catalog-field"><span className="deck-settings-label">{settings.deckName}</span><input value={title} onChange={event => { editedFields.current.add('title'); setTitle(event.target.value); }} maxLength={120} required autoFocus /></label>
+                  <label className="deck-settings-modal-name catalog-field"><span className="deck-settings-label">{settings.deckName}</span><input className="control-field" value={title} onChange={event => { editedFields.current.add('title'); setTitle(event.target.value); }} maxLength={120} required autoFocus /></label>
                   <div className="deck-settings-cover">
                     <span className="deck-settings-label">{settings.coverImage}</span>
                     <div className={`deck-settings-preview catalog-deck-cover catalog-cover-${style}` + (canMoveCover ? ' is-cover-draggable' : '')}
@@ -3095,7 +3294,7 @@ export function DeckSettingsForm({ creation, catalog, source, disabled, pending,
                       role={canMoveCover ? 'slider' : 'img'} aria-label={canMoveCover ? t.imagePosition : t.preview}
                       tabIndex={canMoveCover ? 0 : undefined} aria-valuemin={canMoveCover ? 0 : undefined} aria-valuemax={canMoveCover ? 100 : undefined}
                       aria-valuenow={canMoveCover ? coverPosition : undefined} aria-orientation={canMoveCover ? 'vertical' : undefined} title={canMoveCover ? t.dragImage : undefined}
-                      onPointerDown={canMoveCover ? event => { if (event.button !== 0) return; event.currentTarget.focus(); coverDrag.current = { y: event.clientY, position: coverPosition, height: event.currentTarget.getBoundingClientRect().height || 1 }; event.currentTarget.setPointerCapture(event.pointerId); } : undefined}
+                      onPointerDown={canMoveCover ? event => { if (event.button !== 0) return; moveFocus(event.currentTarget); coverDrag.current = { y: event.clientY, position: coverPosition, height: event.currentTarget.getBoundingClientRect().height || 1 }; event.currentTarget.setPointerCapture(event.pointerId); } : undefined}
                       onPointerMove={canMoveCover ? event => { const drag = coverDrag.current; if (drag) moveCover(drag.position - (event.clientY - drag.y) / drag.height * 100); } : undefined}
                       onPointerUp={() => { coverDrag.current = null; }} onPointerCancel={() => { coverDrag.current = null; }} onLostPointerCapture={() => { coverDrag.current = null; }}
                       onKeyDown={canMoveCover ? event => {
@@ -3111,7 +3310,7 @@ export function DeckSettingsForm({ creation, catalog, source, disabled, pending,
                   </div>
                   <div className="deck-settings-color">
                     <label className="deck-settings-color-toggle"><input type="checkbox" role="switch" checked={showColor} aria-expanded={showColor} aria-controls="deck-settings-color-picker" onChange={event => setShowColor(event.target.checked)} /><span>{settings.customColor}</span></label>
-                    {showColor && <label id="deck-settings-color-picker" className="deck-settings-color-picker"><span className="visually-hidden">{t.color}</span><input type="color" value={color} onChange={event => { editedFields.current.add('color'); setColor(event.target.value); }} /><span>{color.toUpperCase()}</span></label>}
+                    {showColor && <label id="deck-settings-color-picker" className="deck-settings-color-picker"><span className="visually-hidden">{t.color}</span><input className="control-field" type="color" value={color} onChange={event => { editedFields.current.add('color'); setColor(event.target.value); }} /><span className="page-number">{color.toUpperCase()}</span></label>}
                   </div>
                   {/* 2026-11-08: Inbox sits in the main form — it is the deck's role, not an extra. Decks without Tasks cannot take it. */}
                   {original && <label className="deck-settings-inbox"><input type="checkbox" checked={catalog.inboxDeckId === original.id} disabled={!deckCanBeInbox(original.kind)} onChange={event => void changeInbox(event.target.checked)} /><Inbox size={15} /><strong>{t.inboxDeck}</strong><span>{deckCanBeInbox(original.kind) ? t.inboxHelp : t.inboxTasksOnly}</span></label>}
@@ -3120,38 +3319,37 @@ export function DeckSettingsForm({ creation, catalog, source, disabled, pending,
                   <summary>{settings.more}</summary>
                   <fieldset disabled={unavailable}>
                     {!original && <>
-                      <label className="catalog-field"><span className="deck-settings-label">{t.space}</span><select value={spaceId} onChange={event => { const selected = catalog.spaces.find(space => space.id === event.target.value); setSpaceId(event.target.value); setKind(defaultDeckKind(selected?.kind ?? 'custom')); }} required>{catalog.spaces.map(space => <option key={space.id} value={space.id}>{space.title}</option>)}</select></label>
-                      <label className="catalog-field"><span className="deck-settings-label">{t.deckType}</span><select value={kind} onChange={event => setKind(event.target.value as DeckKind)}>{Object.entries(deckKinds).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
+                      <label className="catalog-field"><span className="deck-settings-label">{t.space}</span><select className="control-field" value={spaceId} onChange={event => { const selected = catalog.spaces.find(space => space.id === event.target.value); setSpaceId(event.target.value); setKind(defaultDeckKind(selected?.kind ?? 'custom')); }} required>{catalog.spaces.map(space => <option key={space.id} value={space.id}>{space.title}</option>)}</select></label>
+                      <label className="catalog-field"><span className="deck-settings-label">{t.deckType}</span><select className="control-field" value={kind} onChange={event => setKind(event.target.value as DeckKind)}>{Object.entries(deckKinds).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
                     </>}
-                    <label className="catalog-field"><span className="deck-settings-label">{t.description}</span><textarea value={description} onChange={event => { editedFields.current.add('description'); setDescription(event.target.value); }} rows={2} maxLength={2000} /></label>
-                    {original && <div className="deck-pile-settings"><Button type="button" variant="outline" size="sm" onClick={() => void changePile()}>{original.piled ? <LayersArrowUp size={15} /> : <LayersArrowDown size={15} />}{original.piled ? t.backToShelf : t.moveToPile}</Button><p className="catalog-form-help">{t.pileHelp}</p></div>}
+                    <label className="catalog-field"><span className="deck-settings-label">{t.description}</span><textarea className="control-field" value={description} onChange={event => { editedFields.current.add('description'); setDescription(event.target.value); }} rows={2} maxLength={2000} /></label>
                   </fieldset>
                   {original && <details className="deck-move-settings">
                     <summary>{t.moveDeck}</summary>
                     <fieldset disabled={unavailable || metadataChanged || Boolean(imageData)}>
-                      <label className="catalog-field"><span className="deck-settings-label">{t.space}</span><select value={moveSpaceId} onChange={event => { setMoveSpaceId(event.target.value); setBeforeDeckId(''); }}>{catalog.spaces.map(space => <option key={space.id} value={space.id}>{space.title}</option>)}</select></label>
-                      <label className="catalog-field"><span className="deck-settings-label">{t.position}</span><select value={beforeDeckId} onChange={event => setBeforeDeckId(event.target.value)}><option value="">{t.atEnd}</option>{catalog.decks.filter(deck => deck.spaceId === moveSpaceId && deck.id !== original.id).map(deck => <option key={deck.id} value={deck.id}>{t.beforeDeck(deck.title)}</option>)}</select></label>
+                      <label className="catalog-field"><span className="deck-settings-label">{t.space}</span><select className="control-field" value={moveSpaceId} onChange={event => { setMoveSpaceId(event.target.value); setBeforeDeckId(''); }}>{catalog.spaces.map(space => <option key={space.id} value={space.id}>{space.title}</option>)}</select></label>
+                      <label className="catalog-field"><span className="deck-settings-label">{t.position}</span><select className="control-field" value={beforeDeckId} onChange={event => setBeforeDeckId(event.target.value)}><option value="">{t.atEnd}</option>{catalog.decks.filter(deck => deck.spaceId === moveSpaceId && deck.id !== original.id).map(deck => <option key={deck.id} value={deck.id}>{t.beforeDeck(deck.title)}</option>)}</select></label>
                       <Button type="button" variant="outline" size="sm" onClick={() => void move()}>{t.move}</Button>
                     </fieldset>
                     {(metadataChanged || imageData) && <p className="catalog-form-help">{t.saveBeforeMove}</p>}
                   </details>}
                 </details>
               </div>
-              <footer className="deck-settings-modal-actions">
-                {(notice || imageError) && <p className={imageError ? 'inline-error' : 'catalog-notice'} role={imageError ? 'alert' : 'status'}>{imageError ? t[imageError] : notice && t[notice]}</p>}
-                <div><Button type="submit" disabled={unavailable || !title.trim() || !spaceId || Boolean(imageError)}>{closeDisabled && <LoaderCircle size={14} className="spin" />}{original ? t.save : t.create}</Button><Button type="button" variant="ghost" disabled={closeDisabled} onClick={onCancel}>{t.cancel}</Button></div>
+              <footer className="deck-settings-modal-actions dialog-foot">
+                {formNotice && <p className={formError ? 'inline-error' : 'catalog-notice'} role={formError ? 'alert' : 'status'}>{formNotice}</p>}
+                <div><Button type="button" variant="ghost" disabled={closeDisabled} onClick={onCancel}>{t.cancel}</Button><Button className="action-mint" type="submit" disabled={unavailable || !title.trim() || !spaceId || Boolean(imageError)}>{closeDisabled && <LoaderCircle size={14} className="spin" />}{original ? t.save : t.create}</Button></div>
               </footer>
             </div>
-            <section className="deck-settings-picker" aria-label={settings.pickCover}>
-              <div className="deck-settings-picker-heading">
-                <h3>{settings.pickCover}</h3>
-                <div role="tablist" aria-label={settings.pickCover} onKeyDown={navigateTabs}>
+            <section className="deck-settings-picker glass-panel" aria-label={settings.pickCover}>
+              <div className="deck-settings-picker-heading panel-head">
+                <h3 className="panel-title">{settings.pickCover}</h3>
+                <div className="control-segmented" role="tablist" aria-label={settings.pickCover} onKeyDown={navigateTabs}>
                   {(['browse', 'upload', 'icon'] as const).map(tab => <button key={tab} type="button" role="tab" id={`deck-cover-tab-${tab}`} aria-controls={`deck-cover-panel-${tab}`} aria-selected={coverTab === tab} tabIndex={coverTab === tab ? 0 : -1} disabled={unavailable} onClick={() => setCoverTab(tab)}>{settings[tab]}</button>)}
                 </div>
               </div>
               <div className="deck-settings-picker-content">
                 <div role="tabpanel" id="deck-cover-panel-browse" aria-labelledby="deck-cover-tab-browse" hidden={coverTab !== 'browse'} tabIndex={0}>
-                  {deckArt.length > 0 ? <div className="deck-art-library">{deckArt.map(art => <button key={art.id} type="button" className="deck-art-option" disabled={unavailable} onClick={() => void pickArt(art)} aria-label={t.cover(art.title)} title={art.title} aria-pressed={imageName === art.id + '.webp'}><img src={art.url} alt="" loading="lazy" /></button>)}</div> : <p className="catalog-form-help">{settings.emptyLibrary}</p>}
+                  {deckArt.length > 0 ? <div className="deck-art-library">{deckArt.map(art => <button key={art.id} type="button" className="deck-art-option" disabled={unavailable} onClick={() => void pickArt(art)} aria-label={t.cover(art.title)} title={art.title} aria-pressed={imageName === art.id + '.webp'}><img className="deck-art-image" src={art.url} alt="" loading="lazy" /></button>)}</div> : <p className="catalog-form-help">{settings.emptyLibrary}</p>}
                 </div>
                 <div role="tabpanel" id="deck-cover-panel-upload" aria-labelledby="deck-cover-tab-upload" hidden={coverTab !== 'upload'} tabIndex={0}>
                   <fieldset disabled={unavailable} className="deck-settings-upload">
@@ -3164,8 +3362,8 @@ export function DeckSettingsForm({ creation, catalog, source, disabled, pending,
                 </div>
                 <div role="tabpanel" id="deck-cover-panel-icon" aria-labelledby="deck-cover-tab-icon" hidden={coverTab !== 'icon'} tabIndex={0}>
                   <fieldset disabled={unavailable} className="deck-settings-icon-fields">
-                    <label className="catalog-field"><span className="deck-settings-label">{t.appearance}</span><select value={style} onChange={event => { editedFields.current.add('style'); setStyle(event.target.value as DeckStyle); }}><option value="symbol">{t.labelSymbol}</option><option value="artwork">{t.labelArtwork}</option><option value="minimal">{t.labelMinimal}</option></select></label>
-                    <label className="catalog-field"><span className="deck-settings-label">{t.icon}</span><select value={icon} onChange={event => { editedFields.current.add('icon'); setIcon(event.target.value); }}>{Object.entries(deckIconNames()).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
+                    <label className="catalog-field"><span className="deck-settings-label">{t.appearance}</span><select className="control-field" value={style} onChange={event => { editedFields.current.add('style'); setStyle(event.target.value as DeckStyle); }}><option value="symbol">{t.labelSymbol}</option><option value="artwork">{t.labelArtwork}</option><option value="minimal">{t.labelMinimal}</option></select></label>
+                    <label className="catalog-field"><span className="deck-settings-label">{t.icon}</span><select className="control-field" value={icon} onChange={event => { editedFields.current.add('icon'); setIcon(event.target.value); }}>{Object.entries(deckIconNames()).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
                   </fieldset>
                 </div>
               </div>

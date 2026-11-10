@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-board-workspace-projects"
+description = "Enables the board_workspace_projects command without any pre-configured scope."
+commands.allow = ["board_workspace_projects"]
+
+[[permission]]
+identifier = "deny-board-workspace-projects"
+description = "Denies the board_workspace_projects command without any pre-configured scope."
+commands.deny = ["board_workspace_projects"]

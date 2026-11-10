@@ -63,7 +63,7 @@ const savedForMs = 1600;
 /**
  * Server connection and saving beside the logo (2026-11-05): one chip says Live, Saving…, Saved,
  * Connecting… or Offline. The slot keeps the width of the longest label, so the tabs never move; the pill inside hugs
- * the active label and slides its width, colour and label between states. Details on hover or focus.
+ * the active label with a scaled face, without relaying out the chrome during the transition. Details on hover or focus.
  */
 export function ServerStatus({ connection, snapshot, updatedAt }: { connection: ConnectionState; snapshot: WorkspaceSnapshot | null; updatedAt: number }) {
   const t = useText(text);
@@ -73,7 +73,7 @@ export function ServerStatus({ connection, snapshot, updatedAt }: { connection: 
   const recentlySaved = useRecent(savedAt, savedForMs);
   const state: ShownState = settled !== 'live' ? settled : saving ? 'saving' : recentlySaved ? 'saved' : 'live';
   const pinged = usePing(state);
-  const labelsRef = useHuggedWidth(state, lang);
+  const labelsRef = useHuggedFace(state, lang);
   const chip: Record<ShownState, string> = { live: t.chipLive, saving: t.chipSaving, saved: t.chipSaved, reconnecting: t.chipReconnecting, offline: t.chipOffline };
   const title: Record<ShownState, string> = { live: t.live, saving: t.saving, saved: t.saved, reconnecting: t.reconnecting, offline: t.offline };
   const detail: Record<ShownState, string> = { live: t.liveDetail, saving: t.savingDetail, saved: t.savedDetail, reconnecting: t.reconnectingDetail, offline: t.offlineDetail };
@@ -92,13 +92,13 @@ export function ServerStatus({ connection, snapshot, updatedAt }: { connection: 
         </span>
       </Tooltip.Trigger>
       <Tooltip.Portal>
-        <Tooltip.Content className={`server-status-card is-${state}`} side="bottom" align="start" sideOffset={8}>
+        <Tooltip.Content className={`server-status-card dialog-panel is-${state}`} side="bottom" align="start" sideOffset={8}>
           <p className="server-status-title"><span className="server-status-dot" aria-hidden="true" />{title[state]}</p>
           <p className="server-status-detail">{detail[state]}</p>
           <dl className="server-status-facts">
             <dt>{t.project}</dt><dd title={snapshot?.projectName || undefined}>{snapshot?.projectName || '—'}</dd>
             <dt>{t.editing}</dt><dd>{editing}</dd>
-            <dt>{t.lastChange}</dt><dd className="is-number">{lastChange}</dd>
+            <dt>{t.lastChange}</dt><dd className="is-number page-number">{lastChange}</dd>
             <dt>{t.server}</dt><dd className="is-number">{location.host}</dd>
           </dl>
         </Tooltip.Content>
@@ -107,16 +107,29 @@ export function ServerStatus({ connection, snapshot, updatedAt }: { connection: 
   </span></Tooltip.Provider>;
 }
 
-/** Sets --label-width to the active label's own width before paint and again once fonts load, so the pill hugs it. */
-function useHuggedWidth(state: string, lang: string) {
+/** 2026-11-10: the label stack keeps its widest width; only the face scales, avoiding a layout on every saving frame. */
+function useHuggedFace(state: string, lang: string) {
   const ref = useRef<HTMLSpanElement>(null);
   const measure = useCallback(() => {
     const labels = ref.current;
     const active = labels?.querySelector<HTMLElement>('.is-active');
-    if (labels && active) labels.style.setProperty('--label-width', `${active.offsetWidth}px`);
+    const chip = labels?.parentElement;
+    if (!labels || !active || !chip) return;
+    const width = chip.offsetWidth;
+    const labelWidth = labels.offsetWidth;
+    const activeWidth = active.offsetWidth;
+    if (width <= 0) return;
+    const scale = String((width - labelWidth + activeWidth) / width);
+    if (chip.style.getPropertyValue('--status-face-scale') !== scale) chip.style.setProperty('--status-face-scale', scale);
   }, []);
   useLayoutEffect(measure, [measure, state, lang]);
-  useEffect(() => { void document.fonts?.ready.then(measure); }, [measure]);
+  useEffect(() => {
+    // 2026-11-10: the label stack disappears on narrow windows; measure its return without polling animation frames.
+    const observer = new ResizeObserver(measure);
+    if (ref.current) observer.observe(ref.current);
+    void document.fonts?.ready.then(measure);
+    return () => observer.disconnect();
+  }, [measure]);
   return ref;
 }
 

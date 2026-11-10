@@ -3,58 +3,57 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=1280, initial-scale=1">
-  <title>Deckmate — a local Markdown project board for teams of people and AI agents</title>
-  <!-- 2026-11-07: GitHub link preview, 1280×640; rendered by `npm run shots`. The fanned cards are crops of the real
+  <title>Deckmate — your project, on your desktop. People and AI agents, the same Markdown files.</title>
+  <!-- 2026-11-09: shared GitHub preview and README banner, 1280×640; render with `npm run shots -- --social`.
+       The fanned cards are crops of the real
        docs/social-cards.png capture (five cards, 230×294 px each, 262 px apart, 16 px inset), not redrawn UI. -->
   <style>
     @font-face { font-family: "Source Sans 3"; src: url('../assets/fonts/source-sans-3/SourceSans3-latin-wght.woff2'); font-weight: 200 900; }
     @font-face { font-family: "Geist Mono"; src: url('../assets/fonts/geist/GeistMono-Medium.ttf'); font-weight: 500; }
-    :root { color-scheme: dark; --night: #15131c; --ink: #f9f9fa; --muted: #cdc8dc; --plum: #9258e5; --gold: #f5c24c;
-      --champagne: #f7e18e; --hero: #e5b650; --mint: #a8eedf; --mint-ground: #0f3a35; --mint-edge: #2a8a7b; }
+    :root { color-scheme: dark; --night: #15131c; --ink: #f9f9fa; --muted: #cdc8dc; --plum: #9258e5;
+      --gold: #e8bd48; --champagne: #f7e18e; --hero-ink: #24180a; --mint: #a8eedf; }
     * { box-sizing: border-box; }
     body { margin: 0; background: var(--night); color: var(--ink); font-family: "Source Sans 3", sans-serif; }
     .stage { position: relative; width: 1280px; height: 640px; overflow: hidden;
       background:
-        radial-gradient(560px 460px at 960px 300px, #f5c24c80, #e5b65030 45%, transparent 72%),
-        radial-gradient(760px 600px at 120px 0px, #9258e5cc, transparent 72%),
-        radial-gradient(560px 400px at 1200px 660px, #74dcc866, transparent 70%),
+        radial-gradient(500px 400px at 1000px 260px, #f5c24c80, #e5b65030 45%, transparent 72%),
+        radial-gradient(760px 620px at 80px -100px, #9258e5ee, transparent 74%),
+        radial-gradient(500px 400px at 1220px 620px, #74dcc85c, transparent 70%),
         linear-gradient(160deg, #241f33, var(--night) 60%); }
     /* A faint pixel grid recalls the board and the pixel mark without competing with the cards. */
     .stage::after { content: ""; position: absolute; inset: 0; pointer-events: none; background: radial-gradient(130% 120% at 50% 45%, transparent 55%, #0000008c); }
-    .stage::before { content: ""; position: absolute; inset: 0; opacity: .35;
+    .stage::before { content: ""; position: absolute; inset: 0; opacity: .25;
       background-image: radial-gradient(#ffffff26 1.2px, transparent 1.6px); background-size: 32px 32px; }
-    .copy { position: absolute; left: 72px; top: 0; bottom: 0; width: 600px; display: flex; flex-direction: column; justify-content: center; }
-    .brand { display: flex; align-items: center; gap: 22px; }
-    .logo { width: 104px; height: 104px; image-rendering: pixelated; filter: drop-shadow(0 6px 18px #9258e5aa); }
-    h1 { margin: 0; padding-bottom: 8px; font-size: 140px; font-weight: 800; line-height: .9; letter-spacing: -.035em;
+    .copy { position: absolute; z-index: 2; left: 64px; top: 44px; width: 650px; }
+    .brand { display: flex; align-items: center; gap: 18px; }
+    .logo { width: 88px; height: 88px; image-rendering: pixelated; filter: drop-shadow(0 6px 18px #9258e5aa); }
+    h1 { margin: 0; padding-bottom: 8px; font-size: 108px; font-weight: 800; line-height: 1; letter-spacing: -.035em;
       background: linear-gradient(175deg, #ffffff 20%, #e9e0ff 55%, #b79cf2 100%); -webkit-background-clip: text; background-clip: text; color: transparent;
       filter: drop-shadow(0 2px 0 #4b2f86) drop-shadow(0 10px 24px #0a0812cc); }
-    .slogan { margin: 24px 0 0; font-size: 62px; font-weight: 800; line-height: 1; letter-spacing: -.015em;
+    .slogan { margin: 24px 0 0; font-size: 72px; font-weight: 800; line-height: .98; letter-spacing: -.025em;
       background: linear-gradient(180deg, #fff6d6 8%, #f7d775 38%, #e5a93a 62%, #f9dc86 82%, #c98d2a); -webkit-background-clip: text; background-clip: text; color: transparent;
       filter: drop-shadow(0 3px 12px #e5b65055); }
-    .tagline { margin: 22px 0 28px; color: var(--muted); font-size: 31px; font-weight: 550; line-height: 1.2; }
+    .tagline { margin: 26px 0 0; color: var(--muted); font-size: 30px; font-weight: 500; line-height: 1.28; }
     .tagline b { color: var(--ink); font-weight: 700; }
-    /* 2026-11-08: ways to run Deckmate sit in one row: the CLI plate, then one chip per desktop platform
-       (Windows today; a macOS chip joins the row later). The chips share the plate's shape and size. */
-    .badges { display: flex; align-items: center; gap: 14px; }
-    .badge { display: inline-flex; align-items: center; padding: 10px 16px; border: 2px solid transparent; border-radius: 12px; line-height: 1.2; }
-    .badge-app { gap: 11px; padding-left: 14px;
-      background: linear-gradient(160deg, #2c2442, #16131f) padding-box, linear-gradient(120deg, #ffffffa0, #b79cf2 45%, #9258e5) border-box;
-      color: var(--ink); font: 650 23px/1.2 "Source Sans 3", sans-serif; letter-spacing: -.005em; box-shadow: 0 0 28px #9258e540; }
-    .badge-app svg { width: 22px; height: 22px; fill: #c9b2fb; flex: none; }
-    code { background: linear-gradient(160deg, #123f3a, #0b2724) padding-box, linear-gradient(120deg, #a8eedf, #74dcc8 40%, #9258e5) border-box;
-      color: var(--mint); font: 500 23px/1.2 "Geist Mono", monospace; box-shadow: 0 0 28px #74dcc833; }
-    /* A trailing space in generated content collapses inside inline-flex (it printed "$npx"), so the gap is a margin. */
-    code::before { content: "$"; margin-right: 11px; color: #74dcc8aa; }
-    .cards { position: absolute; left: 700px; top: 70px; width: 580px; height: 540px; perspective: 1300px; }
-    .fan { position: absolute; inset: 0; transform-style: preserve-3d; transform: rotateX(16deg) rotateY(-22deg) rotateZ(4deg) scale(1.14); }
+    /* One entry rail gives the desktop a clear lead while the CLI shares the same foundation. */
+    .entry { position: absolute; z-index: 3; left: 64px; right: 64px; bottom: 40px; height: 108px; display: grid; grid-template-columns: 1.65fr 1fr;
+      overflow: hidden; border: 1px solid #f7e18e99; border-radius: 14px;
+      box-shadow: 0 12px 40px #07060c99, 0 0 36px #e8bd4826; }
+    .desktop { display: flex; align-items: center; gap: 22px; padding: 18px 28px; color: var(--hero-ink);
+      background: linear-gradient(112deg, #cc9833, var(--gold) 22%, #f7e18e 48%, #e8bd48 76%); }
+    .desktop svg { width: 36px; height: 36px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+    .desktop strong { display: block; font-size: 32px; font-weight: 800; line-height: 1.15; }
+    .desktop small { display: block; margin-top: 5px; font-size: 23px; line-height: 1.2; }
+    .terminal { display: flex; flex-direction: column; justify-content: center; gap: 6px; padding: 16px 30px;
+      background: linear-gradient(115deg, #252337, #132f2e); border-left: 1px solid #fff4c280; }
+    .terminal span { color: var(--muted); font-size: 20px; font-weight: 600; }
+    code { color: var(--mint); font: 500 28px/1.3 "Geist Mono", monospace; white-space: nowrap; }
+    .cards { position: absolute; left: 710px; top: 0; width: 540px; height: 480px; perspective: 1300px; }
+    .fan { position: absolute; inset: 0; transform-style: preserve-3d; transform: rotateX(16deg) rotateY(-22deg) rotateZ(4deg) scale(.98); }
     /* A soft floor shadow anchors the floating hand. */
     .floor { position: absolute; left: 60px; right: 0; bottom: 6px; height: 90px; border-radius: 50%; background: radial-gradient(closest-side, #000000b0, transparent); filter: blur(6px); }
-    .card { position: absolute; left: 185px; top: 150px; width: 230px; height: 294px; overflow: hidden; border-radius: 12px;
+    .card { position: absolute; left: 170px; top: 110px; width: 230px; height: 294px; overflow: hidden; border-radius: 12px;
       transform-origin: 50% 165%; box-shadow: 0 30px 50px #07060cdd, 0 0 0 1px #ffffff26, -6px 0 22px #9258e566; }
-    /* Glare across the card face gives the matte top a lacquered, premium finish. */
-    .card::after { content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
-      background: linear-gradient(118deg, #ffffff38 0%, #ffffff10 28%, transparent 42%, transparent 70%, #ffffff14 86%, transparent 100%); }
     .card img { position: absolute; top: -16px; left: calc(-16px - 262px * var(--i)); width: 1310px; height: 326px; }
     .card.hero { box-shadow: 0 30px 50px #07060cdd, 0 0 0 2px #f9dc86, 0 0 0 4px #b8822a, 0 0 90px #f5c24cee, 0 0 0 6px #f5c24c33; }
     .c0 { transform: rotate(-32deg) translateY(14px) translateZ(-60px); }
@@ -63,7 +62,7 @@
     .c3 { transform: rotate(15deg) translateY(-4px) translateZ(10px); }
     .c4 { transform: rotate(32deg) translateY(14px) translateZ(10px); }
     /* Golden rays burst from behind the front Hero, like a winning card being shown. */
-    .rays { position: absolute; left: 990px; top: 290px; width: 1400px; height: 1400px; margin: -700px 0 0 -700px; border-radius: 50%; opacity: .55;
+    .rays { position: absolute; left: 1000px; top: 220px; width: 1400px; height: 1400px; margin: -700px 0 0 -700px; border-radius: 50%; opacity: .65;
       background: repeating-conic-gradient(from 0deg, #f7e18e40 0deg 4deg, transparent 4deg 15deg);
       -webkit-mask: radial-gradient(closest-side, #000 8%, transparent 62%); mask: radial-gradient(closest-side, #000 8%, transparent 62%); }
     /* Pixel sparkles in the mark's pip shape. */
@@ -79,12 +78,8 @@
         <img class="logo" src="../assets/logo/deckmate-256.png" alt="Deckmate logo">
         <h1>Deckmate</h1>
       </div>
-      <p class="slogan">You hold all the cards.</p>
-      <p class="tagline">A local <b>Markdown</b> project board<br>for <b>people</b> and <b>AI agents</b>.</p>
-      <div class="badges">
-        <code class="badge">npx deckmate</code>
-        <span class="badge badge-app"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 5.6 11 4.5v7.1H3zM12 4.3 21 3v8.6h-9zM3 12.4h8v7.1L3 18.4zM12 12.4h9V21l-9-1.3z"/></svg>Windows app</span>
-      </div>
+      <p class="slogan">You hold<br>all the cards.</p>
+      <p class="tagline">A local board for <b>people &amp; AI agents.</b><br>The same <b>Markdown files.</b> Yours.</p>
     </section>
     <div class="cards" aria-label="Five real cards from the sample project, fanned like a hand">
       <div class="floor"></div>
@@ -96,11 +91,18 @@
       <div class="card c4" style="--i: 4"><img src="social-cards.png" alt="A task owned by an AI agent"></div>
       </div>
     </div>
-    <i class="spark" style="--c: #f5c24c; left: 1206px; top: 64px"></i>
-    <i class="spark" style="--c: #a8eedf; left: 690px; top: 92px; width: 16px; height: 16px"></i>
-    <i class="spark" style="--c: #b08af3; left: 616px; top: 560px; width: 18px; height: 18px"></i>
-    <i class="spark" style="--c: #f7e18e; left: 1140px; top: 150px; width: 34px; height: 34px"></i>
-    <i class="spark" style="--c: #a8eedf; left: 1236px; top: 470px; width: 20px; height: 20px"></i>
+    <section class="entry" aria-label="Start with the Windows app, or use the CLI">
+      <div class="desktop">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12m-5-5 5 5 5-5M4 16v5h16v-5"/></svg>
+        <div><strong>Download for Windows</strong><small>Native app · Tauri 2 · Node.js included</small></div>
+      </div>
+      <div class="terminal"><span>For agents &amp; terminals</span><code>npx deckmate</code></div>
+    </section>
+    <i class="spark" style="--c: #f5c24c; left: 1206px; top: 44px"></i>
+    <i class="spark" style="--c: #a8eedf; left: 704px; top: 116px; width: 16px; height: 16px"></i>
+    <i class="spark" style="--c: #b08af3; left: 666px; top: 426px; width: 18px; height: 18px"></i>
+    <i class="spark" style="--c: #f7e18e; left: 1140px; top: 110px; width: 34px; height: 34px"></i>
+    <i class="spark" style="--c: #a8eedf; left: 1236px; top: 442px; width: 20px; height: 20px"></i>
     <i class="spark" style="--c: #f5c24c; left: 640px; top: 40px; width: 14px; height: 14px"></i>
   </main>
 </body>

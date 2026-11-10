@@ -38,6 +38,8 @@ npm run dev -- --data ../deckmate-demo
 npm run quiet -- <command>   # short output; the full log goes to .deckmate/quiet/
 ```
 
+The Windows desktop shell in `desktop/` is a Tauri app with its own requirements and loop; see [desktop/README.md](desktop/README.md).
+
 Agent commands from source mirror the published `deckmate` subcommands and call the same functions (`tools/project.ts`, `tools/deckmate-skills.ts`, `tools/deckmate-run.ts`, compiled into `dist/tools/` for the package):
 
 ```sh
@@ -51,6 +53,9 @@ npm run agents -- run <workflow> <area> --project <project> --dry # = npx deckma
 ### Checks explained
 
 - `npm test` includes regressions for byte preservation, hash conflicts, sandbox restrictions and idempotent card creation. Changes to the parser or the write path must come with tests.
+- Tests run in two Vitest projects: `npx vitest run --project unit` (at most four workers), then `npx vitest run --project browser` (one isolated file at a time). Vitest 5 schedules different worker budgets in separate groups. A file filter still works across both projects. Avoid overriding worker limits on busy machines.
+- Browser fixtures are built together once into a private temporary folder and served by one preview server; they do not use `dist/`, HMR or the shared `node_modules/.vite` cache. Each browser file keeps its own profile and any temporary project data. Concurrent Vitest invocations use independent builds and ports.
+- Install Chrome, Edge or Chromium, or set `DECKMATE_BROWSER` to an executable path (`BROWSER` is a fallback). An explicit missing path does not fall back to discovery. Without a browser, local runs print one final line counting skipped browser cases; `CI=true` or `DECKMATE_REQUIRE_BROWSER=1` makes absence an error. CI sets the preinstalled browser path explicitly.
 - `npm run check` is for the legacy section format (`features/**/*.md` with `### X.Y` slices): it compares the TypeScript parser with a project's own `Tools/board.py` on every file, verifies byte boundaries and write-back, and never modifies the project. It needs that project and Python, so it is not part of CI or the pull request checklist.
 
 ## Contributor License Agreement
@@ -70,6 +75,7 @@ Why a CLA: it lets the maintainer offer a paid hosted version of Deckmate and co
 3. Before submitting, run `npm run typecheck`, `npm test` and `npm run build` — all green. The PR template lists them as a checklist.
 4. For UI changes, attach screenshots (light and dark theme where relevant).
 5. If your change writes project data files, explain in the PR which bytes change and which are preserved.
+6. Every release section is written in both `CHANGELOG.md` and `CHANGELOG.ru.md` with the same version heading.
 
 ## Project rules for code and data
 

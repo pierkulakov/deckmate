@@ -13,6 +13,7 @@ import type {
 import type { FormatLanguage } from '../src/format-vocabulary.ts';
 import { parseTemplateLocales } from '../src/template-locales.ts';
 import { templateText } from '../src/template-text.ts';
+import { throwJourneyPublicationError } from './journey-publication.ts';
 import {
   assertManifestHash, orderedDependencies, publishJourney, readJourney, requireSourceDeck, requireTaskDeck,
   stepFileHashes, validateJourneyZones, validateStepZones, validText,
@@ -26,7 +27,6 @@ const messages = defineText({
   invalidStepEffort: (reference: string) => `Invalid template step Effort: ${reference}`,
   invalidStepPriority: (reference: string) => `Invalid template step Priority: ${reference}`,
   invalidStepZone: (reference: string) => `Invalid template step zone: ${reference}`,
-  partialSave: (written: string, directory: string, reason: string) => `Template partly saved. Written: ${written}; check ${directory} and retry. ${reason}`,
   unknownRole: (role: string) => `Unknown template role: ${role}`,
   invalidRoleTarget: (role: string) => `Invalid role assignment: ${role}`,
   invalidRoleDeck: (role: string) => `Invalid Deck for role: ${role}`,
@@ -63,7 +63,6 @@ const messages = defineText({
   invalidStepEffort: (reference: string) => `Некорректная цена шага шаблона: ${reference}`,
   invalidStepPriority: (reference: string) => `Некорректный приоритет шага шаблона: ${reference}`,
   invalidStepZone: (reference: string) => `Некорректная зона шага шаблона: ${reference}`,
-  partialSave: (written: string, directory: string, reason: string) => `Сохранение шаблона завершено не полностью. Записаны: ${written}; проверьте ${directory} и повторите. ${reason}`,
   unknownRole: (role: string) => `Неизвестная роль шаблона: ${role}`,
   invalidRoleTarget: (role: string) => `Некорректное назначение роли: ${role}`,
   invalidRoleDeck: (role: string) => `Некорректная колода для роли: ${role}`,
@@ -305,12 +304,7 @@ export async function saveJourneyTemplate(root: string, catalog: CatalogView, ed
     await writeNewTemplateFile(root, `${directory}/index.md`, index, body);
     written.push(`${directory}/index.md`);
   } catch (error) {
-    if (written.length > 0 || (error as { saved?: boolean }).saved) {
-      const failure = new Error(serverText(messages).partialSave(written.join(', '), directory, error instanceof Error ? error.message : String(error)));
-      Object.assign(failure, { saved: true });
-      throw failure;
-    }
-    throw error;
+    throwJourneyPublicationError(error, written, directory, 'template');
   }
   return written;
 }

@@ -4,8 +4,9 @@ import type { CatalogMember } from '../../src/catalog-contracts.ts';
 import type { ProjectPulse } from '../../src/pulse-contracts.ts';
 import type { DataSource } from '../../src/workspace-contracts.ts';
 import { failureMessage } from '../failure-message.ts';
-import { defineText, locale, textNow, useLang, useText, type Lang } from '../i18n.ts';
+import { defineText, formatNumber, locale, textNow, useLang, useText, type Lang } from '../i18n.ts';
 import { formatPlanningDate } from '../planning-metrics.ts';
+import { cachedProjectPulse, rememberProjectPulse } from '../pulse-cache.ts';
 import { CardOwnerAvatar } from './CardOwnerAvatar.tsx';
 import '../project-pulse.css';
 
@@ -157,7 +158,9 @@ async function readProjectPulse(response: Response): Promise<ProjectPulse> {
 }
 
 function loadingState(source: DataSource, key: string): PulseState {
-  return { source, key, status: 'loading', pulse: null, error: null };
+  // 2026-11-10: a cached pulse renders immediately and refreshes in the background; only the first load of a
+  // source shows the skeleton.
+  return { source, key, status: 'loading', pulse: cachedProjectPulse(source), error: null };
 }
 
 function relativeDay(offset: number, lang: Lang): string {
@@ -181,19 +184,26 @@ export function ProjectPulseStrip({ source, refreshKey, members, disabled, onInP
     requestController.current = controller;
     const request = ++requestNumber.current;
     setState(previous => previous.source === source
-      ? { ...previous, key, status: 'loading', error: null }
+      ? { ...previous, key, status: 'loading', error: null, pulse: previous.pulse ?? cachedProjectPulse(source) }
       : loadingState(source, key));
     try {
       const parameters = new URLSearchParams({ source });
       const response = await fetch(`/api/project-pulse?${parameters}`, { signal: controller.signal, cache: 'no-store' });
       const pulse = await readProjectPulse(response);
       if (controller.signal.aborted || request !== requestNumber.current) return;
+      rememberProjectPulse(source, pulse);
       setState({ source, key, status: 'ready', pulse, error: null });
     } catch (failure) {
       if (controller.signal.aborted || request !== requestNumber.current) return;
       const fallback = textNow(text).loadFailed;
       const message = failure instanceof SyntaxError ? textNow(text).invalidPulse : failureMessage(failure, fallback);
-      setState({ source, key, status: 'error', pulse: null, error: message });
+      const cached = cachedProjectPulse(source);
+      if (cached) {
+        // 2026-11-10: a failed background refresh keeps the last known numbers on screen instead of an error block.
+        setState({ source, key, status: 'ready', pulse: cached, error: null });
+      } else {
+        setState({ source, key, status: 'error', pulse: null, error: message });
+      }
     }
   }, [key, source]);
 
@@ -218,13 +228,12 @@ export function ProjectPulseStrip({ source, refreshKey, members, disabled, onInP
     return <section className="project-pulse project-pulse-grid project-pulse-loading" aria-label={t.pulse} aria-busy="true">
       {Array.from({ length: 5 }, (_, index) => <div className="project-pulse-segment" key={index}>
         {index === 0 && <span className="visually-hidden" role="status">{t.loading}</span>}
-        <span className="project-pulse-skeleton is-label" aria-hidden="true" /><span className="project-pulse-skeleton is-value" aria-hidden="true" /><span className="project-pulse-skeleton is-detail" aria-hidden="true" />
+        <span className="project-pulse-skeleton is-label" aria-hidden="true" /><span className="project-pulse-skeleton is-value" aria-hidden="true" /><span className={'project-pulse-skeleton is-detail' + (index === 2 ? ' is-chart' : '')} aria-hidden="true" />
       </div>)}
     </section>;
   }
 
-  const numberFormat = new Intl.NumberFormat(locale(lang));
-  const amount = (value: number) => numberFormat.format(value);
+  const amount = (value: number) => formatNumber(value, 3, lang);
   const loading = current.status === 'loading';
   const owners = pulse.inProgress.ownerIds.map(id => ({ id, label: members.find(member => member.id === id)?.label ?? id }));
   let reviewAge = t.noReview;
@@ -246,7 +255,7 @@ export function ProjectPulseStrip({ source, refreshKey, members, disabled, onInP
   const progressLabel = `${t.inProgress}: ${amount(pulse.inProgress.count)} ${t.taskNoun(pulse.inProgress.count)}`;
 
   return <section className="project-pulse project-pulse-grid" aria-label={t.pulse} aria-busy={loading}>
-    <button type="button" className="project-pulse-segment" disabled={disabled} onClick={onInProgress}
+    <button type="button" className="project-pulse-segment" data-pulse="started" disabled={disabled} onClick={onInProgress}
       aria-label={ownerNames ? `${progressLabel}; ${t.owners}: ${ownerNames}` : progressLabel}>
       <span className="project-pulse-label">{t.inProgress}</span>
       <span className="project-pulse-value">{amount(pulse.inProgress.count)}<small>{t.taskNoun(pulse.inProgress.count)}</small></span>
@@ -255,7 +264,7 @@ export function ProjectPulseStrip({ source, refreshKey, members, disabled, onInP
       </span> : <span className="project-pulse-detail">{pulse.inProgress.count > 0 ? t.noOwners : t.noStarted}</span>}
     </button>
 
-    <button type="button" className="project-pulse-segment" disabled={disabled} onClick={() => onReview(pulse.review.deckId)} title={oldestTitle}
+    <button type="button" className="project-pulse-segment" data-pulse="review" disabled={disabled} onClick={() => onReview(pulse.review.deckId)} title={oldestTitle}
       aria-label={`${t.review}: ${amount(pulse.review.count)} ${t.taskNoun(pulse.review.count)}; ${reviewAge}`}>
       <span className="project-pulse-label">{t.review}</span>
       <span className="project-pulse-value">{amount(pulse.review.count)}<small>{reviewAge}</small></span>
@@ -293,7 +302,7 @@ export function ProjectPulseStrip({ source, refreshKey, members, disabled, onInP
     </div>}
 
     <button type="button" className={'project-pulse-segment project-pulse-without-deck' + (pulse.withoutDeck > 0 ? ' is-warning' : '')}
-      disabled={disabled} onClick={onWithoutDeck}>
+      data-pulse="unassigned" disabled={disabled} onClick={onWithoutDeck}>
       <span className="project-pulse-label">{t.withoutDeck}</span>
       <span className="project-pulse-value">{amount(pulse.withoutDeck)}<small>{t.cardNoun(pulse.withoutDeck)}</small></span>
       <span className="project-pulse-detail">{t.sortIntoDecks}<ArrowRight size={13} aria-hidden="true" /></span>

@@ -10,6 +10,7 @@ import { sameCardTileData, type CardTileCatalog, type CardTileLookups } from '..
 import { familyChildren } from '../catalog-lookups.ts';
 import { HOVER_CARD_SHORTCUTS, markShortcutPropertyHover, matchShortcut, shortcutTargetBlocked } from '../keyboard-shortcuts.ts';
 import { attachmentSource, fetchCardAttachments } from '../attachments.ts';
+import { subscribeCardAttachments } from '../card-attachment-events.ts';
 import { CardIndicators } from './CardIndicators.tsx';
 import { statusClass } from './StatusMenu.tsx';
 import { CardFamilyPopover, SubCardProgress } from './CardFamily.tsx';
@@ -18,8 +19,9 @@ import { heroCountedTasks, heroFinished } from '../../src/hero-done.ts';
 import { useCardTilt } from '../useCardTilt.ts';
 import { cardHeroEffort } from './CardPropertiesPanel.tsx';
 import { CardOwnerAvatar, type CardQuickSettingsTab } from './CardQuickSettings.tsx';
+import { ownerProgressLabel } from './CardOwnerAvatar.tsx';
 import { TagColorIndicator, TagTitlePrefix } from './CardTags.tsx';
-import { defineText, locale, textNow, useLang, useText } from '../i18n.ts';
+import { defineText, formatNumber, textNow, useLang, useText } from '../i18n.ts';
 import { kindLabel, priorityLabel, stateLabel } from '../locales/common.ts';
 
 const text = defineText({
@@ -35,7 +37,6 @@ const text = defineText({
   selectCard: (title: string) => 'Select: ' + title,
   totalEffort: (effort: string) => 'Effort: own and Sub Cards — ' + effort,
   archived: 'Archived',
-  owner: (owner: string) => 'Owner: ' + owner,
   effort: (effort: string) => 'Effort: ' + effort,
   priority: (priority: string) => 'Priority: ' + priority,
   noPriority: 'No priority',
@@ -58,7 +59,6 @@ const text = defineText({
   selectCard: (title: string) => 'Выбрать: ' + title,
   totalEffort: (effort: string) => 'Оценка: своя и Sub Cards — ' + effort,
   archived: 'В архиве',
-  owner: (owner: string) => 'Исполнитель: ' + owner,
   effort: (effort: string) => 'Оценка: ' + effort,
   priority: (priority: string) => 'Приоритет: ' + priority,
   noPriority: 'Без приоритета',
@@ -81,10 +81,11 @@ export const taskStateIcons: Record<string, typeof Hourglass> = { done: Check, s
 export const emptyCards: CatalogCard[] = [];
 const emptyExcerpt: DocExcerptBlock[] = [];
 
+// 2026-11-10: Deck.tsx still provides indexedAt; keep its export until that caller can remove the unused provider.
 export const CardAttachmentRefreshContext = createContext<string | undefined>(undefined);
 
-export const CardTransferContext = createContext<{ enabled: boolean; active: boolean; canDrag: (cardId: string) => boolean; sourceIds?: ReadonlySet<string> }>({
-  enabled: false, active: false, canDrag: () => false,
+export const CardTransferContext = createContext<{ available: boolean; enabled: boolean; active: boolean; canDrag: (cardId: string) => boolean; sourceIds?: ReadonlySet<string> }>({
+  available: false, enabled: false, active: false, canDrag: () => false,
 });
 
 export function useCardTransferDrag(card: CatalogCard) {
@@ -116,12 +117,12 @@ export function OpenQuestionsBadge({ card }: { card: CatalogCard }) {
   const count = card.kind === 'doc' ? card.openQuestions?.length ?? 0 : 0;
   if (!count) return null;
   const warnings = card.openQuestionWarnings ?? [];
-  const formattedCount = new Intl.NumberFormat(locale(lang)).format(count);
+  const formattedCount = formatNumber(count, 3, lang);
   const title = t.openQuestions(formattedCount) + (warnings.length ? '. ' + warnings.join(' ') : '');
   return <span className={'catalog-card-open-questions' + (warnings.length ? ' has-warning' : '')} title={title} aria-label={title}><CircleHelp size={12} strokeWidth={2.4} aria-hidden="true" />{formattedCount}</span>;
 }
 
-function useAttachmentCount(cardId: string, refreshKey: string | undefined, tile: RefObject<HTMLElement | null>) {
+function useAttachmentCount(cardId: string, tile: RefObject<HTMLElement | null>) {
   const [count, setCount] = useState(0);
   const [nearViewport, setNearViewport] = useState(false);
   const source = attachmentSource();
@@ -140,12 +141,18 @@ function useAttachmentCount(cardId: string, refreshKey: string | undefined, tile
   useEffect(() => {
     if (!nearViewport) return;
     let active = true;
-    // 2026-11-05: keep the last count during refresh, so unrelated edits do not flash the badge.
-    void fetchCardAttachments(source, cardId)
-      .then(attachments => { if (active) setCount(attachments.files.length); })
-      .catch(() => { if (active) setCount(0); });
-    return () => { active = false; };
-  }, [cardId, source, refreshKey, nearViewport]);
+    let epoch = 0;
+    const refresh = () => {
+      const request = ++epoch;
+      void fetchCardAttachments(source, cardId)
+        .then(attachments => { if (active && request === epoch) setCount(attachments.files.length); })
+        // 2026-11-10: a failed refresh is not confirmation that the card has no attachments.
+        .catch(() => undefined);
+    };
+    const unsubscribe = subscribeCardAttachments(source, cardId, refresh);
+    refresh();
+    return () => { active = false; unsubscribe(); };
+  }, [cardId, source, nearViewport]);
   return count;
 }
 
@@ -169,25 +176,39 @@ interface CatalogCardTileProps {
   selectable?: boolean;
 }
 
-function CardAttachmentBadge({ cardId, refreshKey, tile }: { cardId: string; refreshKey?: string; tile: RefObject<HTMLElement | null> }) {
+function CardAttachmentBadge({ cardId, tile }: { cardId: string; tile: RefObject<HTMLElement | null> }) {
   const t = useText(text);
   const lang = useLang();
-  // 2026-11-05: attachment revisions refresh badges without invalidating every card face.
-  const revision = useContext(CardAttachmentRefreshContext);
-  const count = useAttachmentCount(cardId, revision ?? refreshKey, tile);
-  const formattedCount = new Intl.NumberFormat(locale(lang)).format(count);
+  const count = useAttachmentCount(cardId, tile);
+  const formattedCount = formatNumber(count, 3, lang);
   return count > 0 ? <span className="card-hand-indicator card-attachment-indicator" title={t.attachments(formattedCount)} aria-label={t.attachments(formattedCount)}><Paperclip size={12} aria-hidden="true" /><strong>{formattedCount}</strong></span> : null;
 }
 
-export const CatalogCardTile = memo(function CatalogCardTile({ card, lookups, members, tagDefinitions, catalog, currentMemberId, selected, checked, selectionActive, disabled, onOpen, onToggle, onFamilyOpen, onStart, onQuickSettings, selectable = true }: CatalogCardTileProps) {
+type TileTransfer = Pick<ReturnType<typeof useCardTransferDrag>, 'enabled' | 'isDragging' | 'anyDragging' | 'setNodeRef' | 'onPointerDown' | 'handle'>;
+const inactiveTransfer: TileTransfer = { enabled: false, isDragging: false, anyDragging: false,
+  setNodeRef: () => {}, onPointerDown: () => {}, handle: null };
+const sortingTransfer: TileTransfer = { ...inactiveTransfer, anyDragging: true };
+
+function TransferCardTile(props: CatalogCardTileProps) {
+  const transfer = useCardTransferDrag(props.card);
+  return <CardTileFace {...props} transfer={transfer} />;
+}
+
+// 2026-11-10: Hand already owns sorting. Even a disabled useDraggable subscribes to every DndContext move,
+// rebuilding the face and its Intl indicators; only transfer-capable surfaces need that subscription.
+// Keep their adapter mounted while a save disables dragging, so the owner ring updates in place.
+export const CatalogCardTile = memo(function CatalogCardTile(props: CatalogCardTileProps) {
+  const transfer = useContext(CardTransferContext);
+  const inactive = transfer.active ? sortingTransfer : inactiveTransfer;
+  return transfer.available ? <TransferCardTile {...props} /> : <CardTileFace {...props} transfer={inactive} />;
+}, sameCardTileProps);
+
+function CardTileFace({ card, lookups, members, tagDefinitions, catalog, currentMemberId, selected, checked, selectionActive, disabled, onOpen, onToggle, onFamilyOpen, onStart, onQuickSettings, selectable = true, transfer }: CatalogCardTileProps & { transfer: TileTransfer }) {
   const t = useText(text);
   const lang = useLang();
-  const numberFormat = new Intl.NumberFormat(locale(lang));
-  const effortFormat = new Intl.NumberFormat(locale(lang), { maximumFractionDigits: 20 });
   const [familyHovered, setFamilyHovered] = useState(false);
   const [hovered, setHovered] = useState(false);
   const tileElement = useRef<HTMLElement | null>(null);
-  const transfer = useCardTransferDrag(card);
   // 2026-11-09: limit tilt to ±8deg with an 850px perspective for a restrained effect.
   const { element, tilt, reset } = useCardTilt<HTMLElement>(8, checked || disabled || familyHovered || transfer.anyDragging);
   const children = card.kind === 'hero' ? familyChildren(lookups, card.id) : emptyCards;
@@ -206,20 +227,22 @@ export const CatalogCardTile = memo(function CatalogCardTile({ card, lookups, me
   const Icon = cardIcons[card.kind];
   const StateIcon = taskStateIcons[card.state ?? ''] ?? Hourglass;
   const parent = card.parentId ? lookups.cardById.get(card.parentId) : undefined;
+  const checklist = lookups.checklistByCard.get(card.id);
+  const ownerLabel = ownerProgressLabel(card.owner, checklist, lang);
   let actionLabel = t.open;
   if (selectionActive) actionLabel = checked ? t.deselect : t.select;
   let identityValue = card.version ?? cardKinds[card.kind];
-  if (showEffortTotal) identityValue = effortFormat.format(heroEffort);
+  if (showEffortTotal) identityValue = formatNumber(heroEffort, 20, lang);
   // Mono is for numbers: the kind word of a card without a number is set in the interface font.
   let identityClassName = card.version ? undefined : 'catalog-card-kind';
   if (showEffortTotal) identityClassName = 'catalog-card-effort';
-  const identityTitle = showEffortTotal ? t.totalEffort(effortFormat.format(heroEffort)) : undefined;
-  const effortLabel = card.effort == null ? '—' : effortFormat.format(card.effort);
+  const identityTitle = showEffortTotal ? t.totalEffort(formatNumber(heroEffort, 20, lang)) : undefined;
+  const effortLabel = card.effort == null ? '—' : formatNumber(card.effort, 20, lang);
   const cardPriorityLabel = card.priority ? priorityLabel(card.priority, lang) : t.noPriority;
   const cardStateLabel = stateLabel(card.state ?? 'not-started', lang);
   const style = { '--tilt-x': '0deg', '--tilt-y': '0deg', '--glare-x': '50%', '--glare-opacity': 0 } as CSSProperties;
   const canStart = card.kind === 'task' && card.state !== 'started' && Boolean(onStart) && !disabled;
-  const attachmentBadge = <CardAttachmentBadge cardId={card.id} refreshKey={catalog?.indexedAt} tile={tileElement} />;
+  const attachmentBadge = <CardAttachmentBadge cardId={card.id} tile={tileElement} />;
   function startWithSpace(event: KeyboardEvent) {
     if (!canStart || shortcutTargetBlocked(event) || matchShortcut(event, HOVER_CARD_SHORTCUTS)?.id !== 'hover-work') return;
     const target = event.target instanceof Element ? event.target : null;
@@ -235,7 +258,7 @@ export const CatalogCardTile = memo(function CatalogCardTile({ card, lookups, me
     window.addEventListener('keydown', listener, true);
     return () => window.removeEventListener('keydown', listener, true);
   }, [hovered, canStart, onStart]);
-  return <div ref={node => { transfer.setNodeRef(node); tileElement.current = node; }} className={'deck-card-space' + (hovered ? ' is-hovered' : '')} data-card-id={card.id} data-card-hovered={hovered || undefined} data-card-transfer-enabled={transfer.enabled || undefined} data-card-transfer-source={transfer.isDragging || undefined} onPointerEnter={event => { setHovered(true); tilt(event); }} onPointerDown={transfer.onPointerDown} onPointerMove={tilt} onPointerLeave={() => { setHovered(false); reset(); }} onKeyDown={event => { if (!hovered) startWithSpace(event.nativeEvent); }}>
+  return <div ref={node => { transfer.setNodeRef(node); tileElement.current = node; }} className={'deck-card-space' + (hovered ? ' is-hovered' : '')} data-card-id={card.id} data-card-hovered={hovered || undefined} data-card-transfer-enabled={transfer.enabled || undefined} data-card-transfer-source={transfer.isDragging || undefined} onPointerEnter={event => { if (!transfer.anyDragging) { setHovered(true); tilt(event); } }} onPointerDown={transfer.onPointerDown} onPointerMove={tilt} onPointerLeave={() => { setHovered(false); reset(); }} onKeyDown={event => { if (!hovered) startWithSpace(event.nativeEvent); }}>
     <article ref={element} className={`deck-card catalog-card-${card.kind} deck-state-${statusClass(card.kind === 'task' ? card.state ?? '' : '')}${familyDone ? ' is-family-done' : ''}${justDone ? ' is-just-done' : ''}${selected ? ' is-selected' : ''}${checked ? ' is-multi-selected' : ''}`} style={style} data-deck-card={card.id}>
       {transfer.handle}
       {selectable && <input className="catalog-card-checkbox" type="checkbox" checked={checked} disabled={disabled} aria-label={t.selectCard(card.title)} onChange={event => onToggle(card.id, Boolean((event.nativeEvent as MouseEvent).shiftKey))} />}
@@ -246,7 +269,7 @@ export const CatalogCardTile = memo(function CatalogCardTile({ card, lookups, me
         const button = event.currentTarget.querySelector<HTMLButtonElement>('.deck-card-open');
         if (button) onOpen(card, button, event.shiftKey);
       }}>
-        <button type="button" className="deck-card-open" title={card.title} onClick={event => onOpen(card, event.currentTarget, event.shiftKey)} disabled={disabled} aria-label={`${actionLabel}: ${card.title}, ${cardKinds[card.kind]}${card.version ? ` ${card.version}` : ''}${card.tags?.length ? ', ' + t.tags(card.tags.join(', ')) : ''}`} aria-pressed={selectionActive ? checked : selected}>
+        <button type="button" className="deck-card-open" onClick={event => onOpen(card, event.currentTarget, event.shiftKey)} disabled={disabled} aria-label={`${actionLabel}: ${card.title}, ${cardKinds[card.kind]}${card.version ? ` ${card.version}` : ''}${card.tags?.length ? ', ' + t.tags(card.tags.join(', ')) : ''}`} aria-pressed={selectionActive ? checked : selected}>
           <span className="deck-card-title"><TagTitlePrefix tags={card.tags} definitions={tagDefinitions} />{card.title}</span>
           {/* 2026-11-09: a Doc face opens on its own text; the button's label already names the card. */}
           {excerpt.length > 0 && <span className="deck-card-doc-excerpt" aria-hidden="true">{excerpt.map((block, index) => block.heading ? <b key={index}>{block.text}</b> : <span key={index}>{block.text}</span>)}</span>}
@@ -266,24 +289,28 @@ export const CatalogCardTile = memo(function CatalogCardTile({ card, lookups, me
       <div className="deck-card-band">{/* 2026-11-09: a finished Hero shows a done medallion in the owner's place; the owner stays in the open card. */}
         {familyDone
           ? <span className="deck-card-owner-medallion deck-card-done-medallion" role="img" title={doneLabel} aria-label={doneLabel}><Check size={14} strokeWidth={3.25} aria-hidden="true" /></span>
-          : card.owner && <span className="deck-card-owner-medallion" title={t.owner(card.owner)} aria-label={t.owner(card.owner)}><CardOwnerAvatar owner={card.owner} members={members} /></span>}
+          : card.owner && <span className="deck-card-owner-medallion" title={ownerLabel} aria-label={ownerLabel} role="img"><CardOwnerAvatar owner={card.owner} members={members} /></span>}
         <span className="card-material-glare" aria-hidden="true" />
         {card.kind === 'task' && <div className="deck-card-task-metrics"><span data-shortcut-property="effort" onPointerEnter={event => markShortcutPropertyHover(event.currentTarget, true)} onPointerLeave={event => markShortcutPropertyHover(event.currentTarget, false)} title={t.effort(effortLabel)}><Gauge size={18} /><strong>{effortLabel}</strong></span><span data-shortcut-property="priority" onPointerEnter={event => markShortcutPropertyHover(event.currentTarget, true)} onPointerLeave={event => markShortcutPropertyHover(event.currentTarget, false)} title={t.priority(cardPriorityLabel)}><Layers size={17} /><span className="visually-hidden">{cardPriorityLabel}</span></span>{attachmentBadge}</div>}
         {/* 2026-11-09: no attachment badge on the Hero band — it stacked above the crown and made the band taller. */}
         {card.kind === 'hero' && <div className="deck-card-identity">{showEffortTotal && <Gauge className="catalog-card-effort-icon" size={16} aria-hidden="true" data-shortcut-property="effort" onPointerEnter={event => markShortcutPropertyHover(event.currentTarget, true)} onPointerLeave={event => markShortcutPropertyHover(event.currentTarget, false)} />}<strong className={identityClassName} title={identityTitle}>{identityValue}</strong><Icon size={18} aria-hidden="true" /></div>}
         {/* 2026-11-09: one row on the Doc band — the type icon left, the word count right;
             open questions and attachments join the row only when the document has them. */}
-        {card.kind === 'doc' && <div className="deck-card-identity"><span className="deck-card-doc-kind" role="img" title={cardKinds.doc} aria-label={cardKinds.doc}><Icon size={18} aria-hidden="true" /></span>{openQuestionCount > 0 && <OpenQuestionsBadge card={card} />}{attachmentBadge}{wordCount > 0 && <strong className="deck-card-doc-words" title={t.wordCount(numberFormat.format(wordCount))} aria-label={t.wordCount(numberFormat.format(wordCount))}>{t.docWords(numberFormat.format(wordCount))}</strong>}</div>}
+        {card.kind === 'doc' && <div className="deck-card-identity"><span className="deck-card-doc-kind" role="img" title={cardKinds.doc} aria-label={cardKinds.doc}><Icon size={18} aria-hidden="true" /></span>{openQuestionCount > 0 && <OpenQuestionsBadge card={card} />}{attachmentBadge}{wordCount > 0 && <strong className="deck-card-doc-words" title={t.wordCount(formatNumber(wordCount, 3, lang))} aria-label={t.wordCount(formatNumber(wordCount, 3, lang))}>{t.docWords(formatNumber(wordCount, 3, lang))}</strong>}</div>}
         {progress && (children.length ? progress.children.length > 0 && <SubCardProgress cards={progress.children} cardsById={lookups.cardById} /> : <span className="catalog-card-progress">{t.noSubCards}</span>)}
       </div>
     </article>
   </div>;
-}, (previous, next) => previous.selected === next.selected && previous.checked === next.checked
+}
+
+function sameCardTileProps(previous: CatalogCardTileProps, next: CatalogCardTileProps) {
+  return previous.selected === next.selected && previous.checked === next.checked
   && previous.selectionActive === next.selectionActive && previous.disabled === next.disabled
   && previous.selectable === next.selectable && previous.currentMemberId === next.currentMemberId
   && previous.calendarDay === next.calendarDay
   && previous.onOpen === next.onOpen && previous.onToggle === next.onToggle
   && previous.onFamilyOpen === next.onFamilyOpen && previous.onStart === next.onStart
   && previous.onQuickSettings === next.onQuickSettings
-  && sameCardTileData(previous, next));
+  && sameCardTileData(previous, next);
+}
 CatalogCardTile.displayName = 'CatalogCardTile';

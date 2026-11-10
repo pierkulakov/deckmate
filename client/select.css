@@ -1,0 +1,65 @@
+/* 2026-11-10: base-select keeps native interaction while letting the picker follow the app's theme. */
+@supports (appearance: base-select) {
+  select:not([multiple]):is(:not([size]), [size="0"], [size="1"]),
+  .journey-catalog-role-select select:not([multiple]):is(:not([size]), [size="0"], [size="1"]) {
+    appearance: base-select;
+    /* 2026-11-10: base-select lays out as flex with stretch; the 12px chevron sat at the top of the row. */
+    align-items: center;
+    cursor: pointer;
+  }
+  select:not([multiple]):is(:not([size]), [size="0"], [size="1"]):disabled { cursor: default; }
+
+  select:not([multiple]):is(:not([size]), [size="0"], [size="1"])::picker(select) {
+    appearance: base-select;
+    margin-block: 4px;
+    min-width: anchor-size(width);
+    max-width: max(anchor-size(width), min(360px, 100vw - 16px));
+    max-height: min(320px, 50dvh);
+    overflow: auto;
+    padding: 4px;
+    border: 1px solid var(--line);
+    border-radius: var(--glass-radius);
+    background: var(--surface);
+    color: var(--ink);
+    box-shadow: var(--shadow);
+    font: 400 14px var(--font-sans);
+    scrollbar-width: thin;
+    scrollbar-color: var(--line) transparent;
+    animation: overlay-pop var(--motion-spring-quick) var(--ease-spring-quick);
+  }
+
+  select:not([multiple]):is(:not([size]), [size="0"], [size="1"]) option {
+    min-height: 32px;
+    padding: 6px 10px;
+    border-radius: var(--control-radius);
+    background: transparent;
+    color: var(--ink);
+    white-space: normal;
+    overflow-wrap: anywhere;
+    /* 2026-11-10: picker rows are choices; base-select drops the native pointer cursor. */
+    cursor: pointer;
+  }
+  /* 2026-11-10: inside the picker the highlighted row is the focus indicator; the global ring around a row inside a
+     framed list looked like a second frame. */
+  select:not([multiple]):is(:not([size]), [size="0"], [size="1"]) option:is(:hover, :focus, :focus-visible) { outline: none; background: var(--hover); }
+  select:not([multiple]):is(:not([size]), [size="0"], [size="1"]) option:disabled { color: var(--muted); opacity: .55; cursor: default; }
+  select:not([multiple]):is(:not([size]), [size="0"], [size="1"]) option::checkmark { color: var(--focus); margin-inline-end: 8px; }
+  select:not([multiple]):is(:not([size]), [size="0"], [size="1"])::picker-icon {
+    content: '';
+    width: 12px;
+    height: 12px;
+    flex-shrink: 0;
+    background: var(--muted);
+    mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='m3 6 5 5 5-5' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center / contain no-repeat;
+    transition: rotate var(--motion-feedback) var(--ease-out);
+  }
+  select:not([multiple]):is(:not([size]), [size="0"], [size="1"]):open::picker-icon { rotate: 180deg; }
+  /* 2026-11-10: retain the old external chevron only as a fallback in older engines. */
+  .journey-catalog-role-select > svg:last-child { display: none; }
+  .journey-catalog-role-select select option { background: transparent; }
+  .journey-catalog-role-select select option:is(:hover, :focus) { background: var(--hover); }
+  @media (prefers-reduced-motion: reduce) {
+    select:not([multiple]):is(:not([size]), [size="0"], [size="1"])::picker(select) { animation: none; }
+    select:not([multiple]):is(:not([size]), [size="0"], [size="1"])::picker-icon { transition: none; }
+  }
+}

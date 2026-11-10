@@ -2,6 +2,23 @@ import { defineConfig, type ProxyOptions } from 'vite';
 import tailwindcss from '@tailwindcss/vite';
 import { rewriteProxyOrigin } from './tools/dev-proxy.ts';
 import { thirdPartyNoticesPlugin } from './tools/third-party-notices.ts';
+import packageInfo from './package.json' with { type: 'json' };
+import { readFileSync } from 'node:fs';
+
+function earlyThemePlugin() {
+  const source = () => readFileSync(new URL('./desktop/launcher/theme.js', import.meta.url), 'utf8');
+  return {
+    name: 'deckmate-early-theme',
+    // 2026-11-09: a classic script must stay synchronous; Vite only bundles module scripts from HTML.
+    generateBundle() { this.emitFile({ type: 'asset' as const, fileName: 'theme.js', source: source() }); },
+    configureServer(server: import('vite').ViteDevServer) {
+      server.middlewares.use('/theme.js', (_request, response) => {
+        response.setHeader('Content-Type', 'text/javascript');
+        response.end(source());
+      });
+    },
+  } satisfies import('vite').Plugin;
+}
 
 const serverOrigin = `http://127.0.0.1:${process.env.DECKMATE_PORT ?? '4317'}`;
 const devPort = 4318;
@@ -22,7 +39,8 @@ function proxyToDeckmate(webSocket = false): ProxyOptions {
 
 export default defineConfig({
   root: 'client',
-  plugins: [tailwindcss(), thirdPartyNoticesPlugin()],
+  define: { __DECKMATE_VERSION__: JSON.stringify(packageInfo.version) },
+  plugins: [tailwindcss(), thirdPartyNoticesPlugin(), earlyThemePlugin()],
   build: {
     outDir: '../dist/client', emptyOutDir: true,
     // 2026-11-05: packaged init copies these covers into the demo; data URLs cannot serve as source files.
@@ -39,6 +57,13 @@ export default defineConfig({
     // 2026-11-07: Radix packages carry "use client" for Next.js; rolldown flags each copy as
     // MODULE_LEVEL_DIRECTIVE, which is irrelevant to this app. Everything else still warns.
     rolldownOptions: {
+      output: {
+        // 2026-11-10: keep the critical React runtime cacheable without pulling its optional server renderer into it.
+        codeSplitting: { groups: [{
+          name: 'react-runtime',
+          test: /[/\\]node_modules[/\\](?:react|scheduler)[/\\]|[/\\]node_modules[/\\]react-dom[/\\](?:index\.js$|client\.js$|cjs[/\\]react-dom(?:-client)?\.production\.js$)/u,
+        }] },
+      },
       onwarn(warning, defaultHandler) {
         if (warning.code === 'MODULE_LEVEL_DIRECTIVE' && warning.message.includes('"use client"')) return;
         defaultHandler(warning);

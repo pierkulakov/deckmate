@@ -8,7 +8,9 @@ import { CardOwnerAvatar } from './CardQuickSettings.tsx';
 import { EditorMediaInsert } from './EditorMediaInsert.tsx';
 import { cardIcons } from './CatalogCardTile.tsx';
 import { TagBadge } from './CardTags.tsx';
+import { EmptyState } from './EmptyState.tsx';
 import { defineText, useLang, useText } from '../i18n.ts';
+import { moveFocus } from '../focus.ts';
 import '../editor-commands.css';
 
 const text = defineText({
@@ -26,11 +28,11 @@ const text = defineText({
   media: 'Images and videos in the text',
   formatSelection: 'Format selected text',
   newTag: 'New tag: keep typing and finish with a space.',
-  noMatches: 'No matches. Change the query.',
   noMedia: 'There are no images or videos in the text yet. Paste a file or drag it into the field.',
   choose: '↑↓ select',
   insert: 'Enter / Tab insert',
   close: 'Esc close',
+  moveLines: 'Alt+↑/↓ move lines',
 }, {
   bold: 'Жирный',
   italic: 'Курсив',
@@ -46,11 +48,11 @@ const text = defineText({
   media: 'Картинки и видео в тексте',
   formatSelection: 'Форматирование выделенного текста',
   newTag: 'Новый тег: продолжайте ввод и завершите пробелом.',
-  noMatches: 'Совпадений нет. Измените запрос.',
   noMedia: 'В тексте ещё нет картинок и видео. Вставьте файл из буфера или перетащите его в поле.',
   choose: '↑↓ выбор',
   insert: 'Enter / Tab вставить',
   close: 'Esc закрыть',
+  moveLines: 'Alt+↑/↓ переместить строки',
 });
 
 const commandIcons: Record<string, LucideIcon> = { 'heading-1': Heading1, 'heading-2': Heading2, 'heading-3': Heading3,
@@ -63,7 +65,7 @@ const formats: { id: EditorFormat; label: keyof (typeof text)['en']; shortcut: s
   { id: 'code', label: 'code', shortcut: 'Ctrl/⌘+E', Icon: Code },
   { id: 'link', label: 'link', shortcut: 'Ctrl/⌘+K', Icon: Link },
 ];
-const formatKeys: Partial<Record<string, EditorFormat>> = { b: 'bold', i: 'italic', e: 'code', k: 'link' };
+const formatKeys: Partial<Record<string, EditorFormat>> = { KeyB: 'bold', KeyI: 'italic', KeyE: 'code', KeyK: 'link' };
 
 interface MenuPosition { left: number; top?: number; bottom?: number; width: number; maxHeight: number }
 
@@ -98,7 +100,7 @@ export function EditorCommandMenu({ value, onChange, catalog, disabled, label: t
   const selectedIndex = Math.min(selected, Math.max(0, options.length - 1));
 
   useImperativeHandle(ref, () => ({
-    focus: () => textareaRef.current?.focus({ preventScroll: true }),
+    focus: () => moveFocus(textareaRef.current, { preventScroll: true }),
     insert: markdown => {
       const textarea = textareaRef.current;
       if (!textarea || disabled || mediaRequest) return;
@@ -113,7 +115,7 @@ export function EditorCommandMenu({ value, onChange, catalog, disabled, label: t
     const requested = pendingSelection.current;
     if (!requested || !textareaRef.current) return;
     pendingSelection.current = null;
-    textareaRef.current.focus();
+    moveFocus(textareaRef.current);
     textareaRef.current.setSelectionRange(requested.start, requested.end);
     setSelection(requested);
   }, [value]);
@@ -176,7 +178,7 @@ export function EditorCommandMenu({ value, onChange, catalog, disabled, label: t
     if (!textarea || replacement.value.length > textarea.maxLength) return;
     if (replacement.value === value) return;
     pendingSelection.current = replacement;
-    textarea.focus();
+    moveFocus(textarea);
     // 2026-11-04: browser editing keeps keyboard undo for formatting and picker insertions.
     let start = 0;
     while (start < value.length && start < replacement.value.length && value[start] === replacement.value[start]) start++;
@@ -205,10 +207,9 @@ export function EditorCommandMenu({ value, onChange, catalog, disabled, label: t
     if (disabled || mediaRequest) return;
     if (event.nativeEvent.isComposing) return;
     if ((event.ctrlKey || event.metaKey) && !event.altKey) {
-      const key = event.key.toLowerCase();
       let format: EditorFormat | undefined;
-      if (!event.shiftKey) format = formatKeys[key];
-      if (event.shiftKey && key === 'x') format = 'strike';
+      if (!event.shiftKey) format = formatKeys[event.code];
+      if (event.shiftKey && event.code === 'KeyX') format = 'strike';
       if (format) { event.preventDefault(); event.stopPropagation(); formatSelection(format); return; }
     }
     if (event.altKey && !event.ctrlKey && !event.metaKey && (event.key === 'ArrowUp' || event.key === 'ArrowDown')) {
@@ -235,6 +236,7 @@ export function EditorCommandMenu({ value, onChange, catalog, disabled, label: t
   const visible = active && position !== null;
   const labels = { card: t.cards, member: t.members, command: t.commands, tag: t.projectTags, emoji: 'Emoji', media: t.media };
   const label = trigger ? labels[trigger.kind] : t.commands;
+  const emptyMessage = trigger?.kind === 'media' ? t.noMedia : undefined;
   return <>
     <textarea ref={textareaRef} className={'card-edit-text' + (dragging ? ' is-dragging-media' : '')} aria-label={textLabel ?? t.defaultLabel} autoFocus spellCheck={false}
       value={value} maxLength={maxLength} disabled={disabled} readOnly={Boolean(mediaRequest)} aria-autocomplete="list" aria-haspopup="listbox"
@@ -257,7 +259,7 @@ export function EditorCommandMenu({ value, onChange, catalog, disabled, label: t
         setFocused(false); setDismissed(false);
       }} />
     {mediaRequest && <EditorMediaInsert files={mediaRequest.files} disabled={disabled}
-      onCancel={() => { setMediaRequest(null); textareaRef.current?.focus(); }}
+      onCancel={() => { setMediaRequest(null); moveFocus(textareaRef.current); }}
       onInsert={markdown => {
         applyReplacement({ value: value.slice(0, mediaRequest.start) + markdown + value.slice(mediaRequest.end), start: mediaRequest.start + markdown.length, end: mediaRequest.start + markdown.length });
         setMediaRequest(null);
@@ -282,10 +284,16 @@ export function EditorCommandMenu({ value, onChange, catalog, disabled, label: t
             <span className={option.cardKind ? 'editor-command-deck' : 'editor-command-detail'}>{detail}</span>
           </button>;
         })}
-        {!options.length && <p className="editor-command-empty" role="status">{trigger?.kind === 'tag' ? t.newTag : t.noMatches}</p>}
-        {trigger?.kind === 'media' && !options.length && <p className="editor-command-empty">{t.noMedia}</p>}
+        {!options.length && (trigger?.query.trim()
+          ? <EmptyState variant="filtered" onReset={() => {
+              if (!trigger) return;
+              applyReplacement({ value: value.slice(0, selection.start - trigger.query.length) + value.slice(selection.start),
+                start: selection.start - trigger.query.length, end: selection.start - trigger.query.length });
+            }} />
+          : <EmptyState message={emptyMessage} />)}
+        {!options.length && trigger?.kind === 'tag' && <EmptyState message={t.newTag} />}
       </div>
-      <div className="editor-command-footer"><span>{t.choose}</span><span>{t.insert}</span><span>{t.close}</span></div>
+      <div className="editor-command-footer"><span>{t.choose}</span><span>{t.insert}</span><span>{t.close}</span><span>{t.moveLines}</span></div>
     </div>, document.body)}
   </>;
 }

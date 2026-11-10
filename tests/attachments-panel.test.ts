@@ -1,47 +1,16 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { spawn, type ChildProcess } from 'node:child_process';
-import { existsSync } from 'node:fs';
-import { mkdtemp, rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import path from 'node:path';
-import { createServer, type ViteDevServer } from 'vite';
-import tailwindcss from '@tailwindcss/vite';
-import { freePort } from './free-port.ts';
-import { waitForPageTarget } from './browser-target.ts';
+import { createBrowserSession } from './browser-session.ts';
+import { requireBrowser } from './browser-environment.ts';
 
-const browserPath = [process.env.DECKMATE_BROWSER, process.env.BROWSER,
-  'C:/Program Files/Google/Chrome/Application/chrome.exe', 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe',
-  '/usr/bin/google-chrome', '/usr/bin/chromium', '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome']
-  .find((candidate): candidate is string => Boolean(candidate && existsSync(candidate)));
-const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+const browserPath = requireBrowser();
 
 // 2026-11-09: exercise the real panel buttons, clipboard failures and short feedback without a DOM shim.
 describe.skipIf(!browserPath)('attachment row actions (browser)', () => {
-  let server: ViteDevServer | undefined;
-  let browser: ChildProcess | undefined;
-  let temporary: string | undefined;
-  let socket: WebSocket | undefined;
-  let sequence = 0;
-  const pending = new Map<number, { resolve: (value: any) => void; reject: (error: Error) => void }>();
-  const errors: string[] = [];
+  const session = createBrowserSession();
+  const { evaluate, until } = session;
+  let errors: string[] = [];
   const copyButton = '.attachment-copy-control button';
 
-  function send(method: string, params: object = {}): Promise<any> {
-    const id = ++sequence;
-    return new Promise((resolve, reject) => { pending.set(id, { resolve, reject }); socket!.send(JSON.stringify({ id, method, params })); });
-  }
-  async function evaluate(expression: string): Promise<any> {
-    const result = await send('Runtime.evaluate', { expression, returnByValue: true, awaitPromise: true });
-    if (result.exceptionDetails) throw new Error(result.exceptionDetails.exception?.description ?? result.exceptionDetails.text);
-    return result.result?.value;
-  }
-  async function until(expression: string, attempts = 100): Promise<void> {
-    for (let attempt = 0; attempt < attempts; attempt++) {
-      if (await evaluate(expression)) return;
-      await delay(50);
-    }
-    throw new Error('Timed out: ' + expression + '\n' + errors.join('\n'));
-  }
   async function render(options: object = {}) {
     await evaluate(`window.attachmentsTest.render(${JSON.stringify(options)})`);
     await until(`document.querySelectorAll('.attachments-row').length === 3`);
@@ -51,52 +20,13 @@ describe.skipIf(!browserPath)('attachment row actions (browser)', () => {
   }
 
   beforeAll(async () => {
-    temporary = await mkdtemp(path.join(tmpdir(), 'attachments-panel-test-'));
-    server = await createServer({ configFile: false, root: process.cwd(), cacheDir: path.join(temporary, 'vite'),
-      plugins: [tailwindcss(), { name: 'attachments-panel-fixture', configureServer(vite) {
-        vite.middlewares.use((request, response, next) => {
-          if (request.url?.split('?')[0] !== '/') return next();
-          response.setHeader('Content-Type', 'text/html');
-          response.end('<!doctype html><html><body><div id="root"></div><script type="module" src="/tests/fixtures/attachments-panel.tsx"></script></body></html>');
-        });
-      } }], server: { host: '127.0.0.1', port: 0 }, optimizeDeps: { entries: ['tests/fixtures/attachments-panel.tsx'] }, logLevel: 'error' });
-    await server.listen();
-    await server.warmupRequest('/tests/fixtures/attachments-panel.tsx');
-    const port = await freePort();
-    browser = spawn(browserPath!, ['--headless=new', '--disable-gpu', '--no-first-run', '--no-default-browser-check',
-      `--remote-debugging-port=${port}`, `--user-data-dir=${path.join(temporary, 'profile')}`, 'about:blank'], { stdio: 'ignore' });
-    const target = await waitForPageTarget(port, browser!);
-    socket = new WebSocket(target);
-    await new Promise(resolve => socket!.addEventListener('open', resolve, { once: true }));
-    socket.addEventListener('message', event => {
-      const message = JSON.parse(String(event.data));
-      if (message.id) {
-        const request = pending.get(message.id);
-        pending.delete(message.id);
-        if (message.error) request?.reject(new Error(JSON.stringify(message.error)));
-        else request?.resolve(message.result);
-      }
-      if (message.method === 'Runtime.exceptionThrown') errors.push(message.params.exceptionDetails.exception?.description ?? message.params.exceptionDetails.text);
-    });
-    await send('Runtime.enable');
-    await send('Page.enable');
-    await send('Emulation.setDeviceMetricsOverride', { width: 1280, height: 1000, deviceScaleFactor: 1, mobile: false });
-    await send('Page.navigate', { url: server.resolvedUrls!.local[0] });
-    await until(`Boolean(window.attachmentsTest) && document.querySelectorAll('.attachments-row').length === 3`, 600);
+    await session.open(browserPath!, { viewport: { width: 1280, height: 1000, scale: 1 } });
+    errors = session.errors;
+    await session.navigate('attachments-panel', `Boolean(window.attachmentsTest) && document.querySelectorAll('.attachments-row').length === 3`, 600);
   }, 90000);
 
   afterAll(async () => {
-    if (socket?.readyState === WebSocket.OPEN) {
-      await send('Browser.close').catch(() => {});
-      socket.close();
-    }
-    if (browser?.pid && browser.exitCode === null) {
-      const command = process.platform === 'win32' ? spawn('taskkill', ['/T', '/F', '/PID', String(browser.pid)], { stdio: 'ignore' }) : browser;
-      if (process.platform !== 'win32') browser.kill();
-      await new Promise(resolve => { if (command.exitCode !== null) resolve(null); else command.once('exit', resolve); });
-    }
-    await server?.close();
-    if (temporary) await rm(temporary, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+    await session.close();
   }, 20000);
 
   it.each([

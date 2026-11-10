@@ -168,7 +168,7 @@ it('refreshes on conflict while preserving the submitted draft revisions and rep
   const frozenAction = structuredClone(action);
   expect(await store.edit(snapshot, action)).toBe(false);
   expect(store.getSnapshot()).toMatchObject({ pending: false, loading: false, catalog: { indexedAt: 'external' } });
-  expect(store.getSnapshot().error).toContain('your form values are preserved');
+  expect(store.getSnapshot().error).toBe('conflict');
   expect(action).toEqual(frozenAction);
   expect(JSON.parse(String(fetchMock.mock.calls[1]![1]!.body))).toMatchObject(frozenAction);
   expect(fetchMock).toHaveBeenCalledTimes(3);
@@ -365,7 +365,7 @@ it.each([
 ])('retains an incomplete-save warning in either server language: %s', async warning => {
   const store = new CatalogStore('sandbox');
   fetchMock.mockResolvedValueOnce(response(view('initial')))
-    .mockResolvedValueOnce(response({ ...view('saved'), warnings: [warning] }));
+    .mockResolvedValueOnce(response({ ...view('saved'), savedWarning: warning }));
   await store.load();
   expect(await store.edit(snapshot, stateEdit())).toBe(true);
   expect(store.getSnapshot().warning).toBe(warning);

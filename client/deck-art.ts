@@ -7,11 +7,17 @@ const text = defineText({
   maps: 'Maps', factions: 'Factions', rules: 'Rules', 'design-notes': 'Notes', research: 'Research',
   knowledge: 'Knowledge', coding: 'Code', art: 'Art', animation: 'Animation', audio: 'Audio',
   'game-design': 'Game design', ui: 'Interface', tools: 'Tools', bugs: 'Bugs and QA', inbox: 'Inbox', marketing: 'Marketing',
+  characters: 'Characters', levels: 'Levels', story: 'Story', agents: 'Agents', releases: 'Releases', ideas: 'Ideas',
+  backend: 'Backend', database: 'Data', api: 'API', tests: 'Tests', security: 'Security', pipelines: 'Pipelines',
+  deploy: 'Deploy', performance: 'Performance', mobile: 'Mobile', analytics: 'Analytics',
 }, {
   units: 'Отряды', vehicles: 'Техника', buildings: 'Постройки', technologies: 'Технологии',
   maps: 'Карты', factions: 'Фракции', rules: 'Правила', 'design-notes': 'Заметки', research: 'Разборы',
   knowledge: 'Знания', coding: 'Код', art: 'Графика', animation: 'Анимация', audio: 'Звук',
   'game-design': 'Геймдизайн', ui: 'Интерфейс', tools: 'Инструменты', bugs: 'Баги и QA', inbox: 'Inbox', marketing: 'Маркетинг',
+  characters: 'Персонажи', levels: 'Уровни', story: 'Сюжет', agents: 'Агенты', releases: 'Релизы', ideas: 'Идеи',
+  backend: 'Бэкенд', database: 'Данные', api: 'API', tests: 'Тесты', security: 'Безопасность', pipelines: 'Конвейеры',
+  deploy: 'Деплой', performance: 'Скорость', mobile: 'Мобильное', analytics: 'Аналитика',
 });
 const urls = import.meta.glob('../assets/deck-art/*.webp', { eager: true, query: '?url', import: 'default' }) as Record<string, string>;
 
@@ -39,6 +45,22 @@ const catalogue: readonly { id: keyof typeof text.en; tone: string }[] = [
   { id: 'bugs', tone: '#CE3170' },
   { id: 'inbox', tone: '#5258B9' },
   { id: 'marketing', tone: '#BF333C' },
+  { id: 'characters', tone: '#985586' },
+  { id: 'levels', tone: '#3A682F' },
+  { id: 'story', tone: '#6953AD' },
+  { id: 'agents', tone: '#438425' },
+  { id: 'releases', tone: '#865238' },
+  { id: 'ideas', tone: '#D7D379' },
+  { id: 'backend', tone: '#162852' },
+  { id: 'database', tone: '#84CCA8' },
+  { id: 'api', tone: '#F1675F' },
+  { id: 'tests', tone: '#E89572' },
+  { id: 'security', tone: '#4C0927' },
+  { id: 'pipelines', tone: '#A1AC12' },
+  { id: 'deploy', tone: '#86D1F7' },
+  { id: 'performance', tone: '#FC8122' },
+  { id: 'mobile', tone: '#CBB5EA' },
+  { id: 'analytics', tone: '#A66569' },
 ];
 
 export const deckArt: readonly DeckArt[] = catalogue.flatMap(item => {

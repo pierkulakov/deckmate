@@ -163,8 +163,8 @@ export function useCardSelection(orderedIds: readonly string[], scopeKey: string
       const shortcut = matchShortcut(event, selectionShortcuts);
       if (!shortcut) return;
       if (shortcut.id === 'open-metrics' || shortcut.id === 'open-recent-activity') {
-        const label = shortcut.id === 'open-metrics' ? 'Info' : 'Activity';
-        const button = [...document.querySelectorAll<HTMLButtonElement>(`.deck-action-rail [aria-label="${label}"]`)]
+        const panel = shortcut.id === 'open-metrics' ? 'info' : 'activity';
+        const button = [...document.querySelectorAll<HTMLButtonElement>(`.deck-action-rail [data-deck-panel="${panel}"]`)]
           .find(candidate => candidate.getClientRects().length > 0 && !candidate.disabled);
         if (!button) return;
         event.preventDefault();

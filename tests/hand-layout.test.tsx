@@ -46,7 +46,7 @@ it.each(['en', 'ru'] as const)('%s: the picker keeps the full selected name in i
     const html = renderHand('?handMember=' + memberId);
     const select = html.match(/<select\b[^>]*>/u)?.[0];
     expect(select).toContain(`title="${label}"`);
-    expect(select).toContain(`aria-label="${lang === 'en' ? 'Whose Hand' : 'Чья рука'}"`);
+    expect(select).toContain(`aria-label="${lang === 'en' ? 'Whose Hand' : 'Чей Hand'}"`);
     expect(html).toContain(`<option value="long-member"${memberId === 'long-member' ? ' selected=""' : ''}>${longName}</option>`);
   }
 });

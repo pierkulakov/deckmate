@@ -1,5 +1,4 @@
 import { createHash } from 'node:crypto';
-import { isAlias, isMap, parseDocument, visit } from 'yaml';
 import type { CatalogView, RunConfiguration, RunRecord } from '../src/catalog-contracts.ts';
 import { invalidPlanning, legacyRunCarryStates, planningId, validatePlanningDetails, validatePlanningStatistics, validateRunConfiguration } from './run-model.ts';
 import { boundedText, prepareCardOptionsPatch, validDate } from './card-options.ts';
@@ -12,6 +11,7 @@ import { milestonesPath } from '../src/planning-files.ts';
 import { readProjectMarkdown } from './native-cards.ts';
 import { runsPath } from '../src/planning-files.ts';
 import { defineText, serverText } from './i18n.ts';
+import { parseYamlFrontMatter } from './yaml-front-matter.ts';
 
 /**
  * 2026-11-04: a Run is a recurring work period with dates.
@@ -61,12 +61,10 @@ function record(value: unknown): value is Record<string, unknown> {
 
 export function parseRunRegistry(bytes: Buffer): { runs: RunRecord[]; configurations: RunConfiguration[] } {
   if (bytes.length > 1024 * 1024) throw new Error(serverText(runText).sizeLimit);
-  const text = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(bytes);
-  const match = /^(?:\uFEFF)?---(\r?\n)([\s\S]*?)^---[ \t]*(?:\r?\n|$)/mu.exec(text);
-  if (!match || match.index !== 0) throw new Error(serverText(runText).yamlHeader);
-  const document = parseDocument(match[2]);
-  if (document.errors.length || !isMap(document.contents)) throw new Error(serverText(runText).invalidYaml);
-  visit(document, (_key, node) => { if (isAlias(node)) throw new Error(serverText(runText).noAliases); });
+  const { document } = parseYamlFrontMatter(bytes, {
+    headerError: serverText(runText).yamlHeader, yamlError: serverText(runText).invalidYaml,
+    aliases: 'reject', aliasError: serverText(runText).noAliases,
+  });
   const metadata: unknown = document.toJS({ maxAliasCount: 0 });
   if (!record(metadata) || metadata.schema !== 1 || !Array.isArray(metadata.runs) || metadata.runs.length > 1000) {
     throw new Error(serverText(runText).schema);
@@ -99,8 +97,6 @@ export function parseRunRegistry(bytes: Buffer): { runs: RunRecord[]; configurat
     ? first.number - second.number
     : first.start < second.start ? -1 : 1) };
 }
-
-export function parseRuns(bytes: Buffer): RunRecord[] { return parseRunRegistry(bytes).runs; }
 
 /** Invalid registries produce warnings; Sprint and Timeline remain usable. */
 export async function readRuns(root: string): Promise<RunsSource> {

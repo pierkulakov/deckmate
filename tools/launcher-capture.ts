@@ -1,0 +1,304 @@
+// Launcher start-screen frames: desktop/launcher/index.html in headless Edge/Chrome with the mock bridge
+// (a plain browser load has no window.deckmateDesktop, so launcher.js serves sample data).
+// Run: npm run capture:launcher — saves .deckmate/launcher-shots/<frame>.png plus frames.json (size, bytes, SHA-256 per frame).
+import { createHash } from 'node:crypto';
+import { realpathSync } from 'node:fs';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import path from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+import { openHeadlessBrowser, type HeadlessPage } from './layout-capture.ts';
+
+const here = path.dirname(fileURLToPath(import.meta.url));
+const pageUrl = pathToFileURL(path.join(here, '..', 'desktop', 'launcher', 'index.html')).href;
+const whatsNewUrl = pathToFileURL(path.join(here, '..', 'desktop', 'launcher', 'whats-new.html')).href;
+const output = process.env.DECKMATE_LAUNCHER_CAPTURE_OUTPUT || path.join(here, '..', '.deckmate', 'launcher-shots');
+
+interface Frame {
+  name: string; theme: 'dark' | 'light'; lang: 'en' | 'ru'; size: [number, number]; page?: 'whats-new';
+  state?: 'empty' | 'error' | 'hover-row' | 'focus-open' | 'focus-row' | 'focus-workspace';
+  scenario?: 'empty' | 'many' | 'missing' | 'opening' | 'error' | 'create';
+  error?: string; zoom?: number; reducedMotion?: boolean;
+  expand?: 'templates' | 'details';
+}
+
+const frames: Frame[] = [
+  { name: 'dark-en-1280', theme: 'dark', lang: 'en', size: [1280, 820] },
+  { name: 'light-ru-1280', theme: 'light', lang: 'ru', size: [1280, 820] },
+  { name: 'dark-en-960', theme: 'dark', lang: 'en', size: [960, 600] },
+  { name: 'light-ru-960', theme: 'light', lang: 'ru', size: [960, 600] },
+  { name: 'dark-en-empty', theme: 'dark', lang: 'en', size: [1280, 820], state: 'empty' },
+  { name: 'light-ru-empty', theme: 'light', lang: 'ru', size: [1280, 820], state: 'empty' },
+  { name: 'dark-en-error', theme: 'dark', lang: 'en', size: [1280, 820], state: 'error' },
+  { name: 'light-ru-error', theme: 'light', lang: 'ru', size: [1280, 820], state: 'error' },
+  { name: 'dark-en-focus-open', theme: 'dark', lang: 'en', size: [1280, 820], state: 'focus-open' },
+  { name: 'dark-en-focus-row', theme: 'dark', lang: 'en', size: [1280, 820], state: 'focus-row' },
+  { name: 'light-ru-focus-workspace', theme: 'light', lang: 'ru', size: [960, 600], state: 'focus-workspace' },
+  { name: 'light-ru-hover-row', theme: 'light', lang: 'ru', size: [1280, 820], state: 'hover-row' },
+  { name: 'whats-new-dark-en', theme: 'dark', lang: 'en', size: [760, 680], page: 'whats-new' },
+  { name: 'whats-new-dark-ru', theme: 'dark', lang: 'ru', size: [760, 680], page: 'whats-new' },
+  { name: 'whats-new-light-en', theme: 'light', lang: 'en', size: [760, 680], page: 'whats-new' },
+  { name: 'whats-new-light-ru', theme: 'light', lang: 'ru', size: [760, 680], page: 'whats-new' },
+];
+
+// 2026-11-10: explicit URL fixtures make the same edge cases reproducible in a normal browser, not just in screenshots.
+const errorCodes = ['invalid-path', 'missing', 'not-empty', 'create-failed', 'start-failed', 'timeout', 'load-failed', 'save-failed'];
+for (const theme of ['dark', 'light'] as const) {
+  for (const lang of ['en', 'ru'] as const) {
+    for (const size of [[960, 600], [1280, 820]] as [number, number][]) {
+      for (const scenario of ['empty', 'many', 'missing', 'opening', 'create'] as const) {
+        frames.push({ name: `${theme}-${lang}-${scenario}-${size[0]}`, theme, lang, size, scenario });
+      }
+    }
+    for (const error of errorCodes) {
+      frames.push({ name: `${theme}-${lang}-error-${error}`, theme, lang, size: [960, 600], scenario: 'error', error });
+      frames.push({ name: `${theme}-${lang}-error-${error}-1280`, theme, lang, size: [1280, 820], scenario: 'error', error });
+    }
+    frames.push({ name: `${theme}-${lang}-templates`, theme, lang, size: [960, 600], scenario: 'empty', expand: 'templates' });
+    frames.push({ name: `${theme}-${lang}-details`, theme, lang, size: [960, 600], scenario: 'error', error: 'start-failed', expand: 'details' });
+  }
+}
+for (const zoom of [0.5, 2]) {
+  for (const scenario of ['many', 'empty', 'create'] as const) {
+    frames.push({ name: `light-ru-${scenario}-zoom-${zoom}`, theme: 'light', lang: 'ru', size: [960, 600], scenario, zoom, reducedMotion: true });
+  }
+}
+
+// Every script sent to the page is a fixed string picked by key: nothing from the frame table is spliced into code.
+const THEME_SCRIPTS: Record<string, string> = {
+  dark: `localStorage.setItem('deckmate-theme', 'dark')`,
+  light: `localStorage.setItem('deckmate-theme', 'light')`,
+};
+const LANG_SCRIPTS: Record<string, string> = {
+  en: `localStorage.setItem('deckmate-language', 'en')`,
+  ru: `localStorage.setItem('deckmate-language', 'ru')`,
+};
+const STATE_SCRIPTS: Record<string, string> = {
+  list: `document.getAnimations().forEach(a => a.finish())`,
+  empty: `document.getAnimations().forEach(a => a.finish());
+    state.recent = []; state.workspace = []; renderWorkspace(); renderRecent();
+    document.getElementById('open-folder').focus();`,
+  error: `document.getAnimations().forEach(a => a.finish()); document.getElementById('open-folder').click();`,
+  'hover-row': `document.getAnimations().forEach(a => a.finish()); document.querySelectorAll('.recent-item')[1].classList.add('is-hover-demo');`,
+  'focus-open': `document.getAnimations().forEach(a => a.finish())`,
+  'focus-row': `document.getAnimations().forEach(a => a.finish())`,
+  'focus-workspace': `document.getAnimations().forEach(a => a.finish())`,
+};
+const FOCUS_CHECKS: Record<string, string> = {
+  'focus-open': `document.activeElement === document.getElementById('open-folder')`,
+  'focus-row': `document.activeElement === document.querySelector('#recent-list .recent-open')`,
+  'focus-workspace': `document.activeElement === document.querySelector('#workspace-list .recent-open')`,
+};
+const MAX_TAB_PRESSES = 48;
+
+// The launcher CSP allows inline styles (style-src 'unsafe-inline'), so page-state overrides enter as <style> elements.
+const INJECT_STYLE = 'css => { const style = document.createElement("style"); style.textContent = css; document.head.append(style); return true; }';
+// The settle keyframes only animate from hidden, so with animations off the frames show the settled state directly.
+const NO_MOTION = '*, *::before, *::after { animation: none !important; transition: none !important; }';
+const HOVER_DEMO = '.recent-item.is-hover-demo .recent-open { background: var(--surface); } .recent-item.is-hover-demo .recent-remove { opacity: 1; }';
+
+const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
+function scriptFor(table: Record<string, string>, key: string, what: string): string {
+  if (!Object.hasOwn(table, key)) throw new Error(`Unknown ${what}: ${key}`);
+  return table[key];
+}
+
+// Polls a page-side predicate until it returns true or the timeout passes.
+async function pollPage(page: HeadlessPage, expression: string, timeoutMs: number, intervalMs = 50): Promise<boolean> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (await page.evaluate(expression)) return true;
+    await sleep(intervalMs);
+  }
+  return false;
+}
+
+// The previous document may already report readyState 'complete', so a flag on the old page marks the wait as being for the new one.
+async function navigateAndWait(page: HeadlessPage, what: string, url = pageUrl): Promise<void> {
+  await page.evaluate('window.__deckmateCaptureOldDocument = true');
+  await page.send('Page.navigate', { url });
+  const loaded = await pollPage(page, `!window.__deckmateCaptureOldDocument && document.readyState === 'complete'`, 10000);
+  if (!loaded) throw new Error(`${what}: the launcher page did not finish loading within 10 s`);
+}
+
+// Waits until the launcher finished its first render and the fonts are loaded.
+async function waitForPageReady(page: HeadlessPage, frame: string, root = 'launcher'): Promise<void> {
+  const busyCleared = await pollPage(page, `!document.getElementById('${root}').hasAttribute('aria-busy')`, 5000);
+  if (!busyCleared) throw new Error(`${frame}: the launcher is still aria-busy after 5 s`);
+  await page.evaluate('document.fonts.ready.then(() => true)');
+}
+
+// Moves keyboard focus with real Tab key events, so :focus-visible matches a user's focus.
+async function tabUntilFocused(page: HeadlessPage, matches: string, frameName: string): Promise<void> {
+  for (let press = 0; press < MAX_TAB_PRESSES; press++) {
+    if (await page.evaluate(matches)) return;
+    for (const type of ['keyDown', 'keyUp']) {
+      await page.send('Input.dispatchKeyEvent', { type, key: 'Tab', code: 'Tab', windowsVirtualKeyCode: 9 });
+    }
+    await sleep(50);
+  }
+  if (!(await page.evaluate(matches))) throw new Error(`${frameName}: target not focused after ${MAX_TAB_PRESSES} Tab presses`);
+}
+
+async function verifyLauncherInteractions(page: HeadlessPage): Promise<void> {
+  await navigateAndWait(page, 'keyboard checks');
+  await waitForPageReady(page, 'keyboard checks');
+  await page.evaluate(`window.__launcherCalls = []; window.__launcherPending = [];
+    bridge.openProject = folder => { window.__launcherCalls.push(folder); return new Promise(resolve => window.__launcherPending.push(resolve)); };
+    document.querySelector('#last-list .recent-open').focus();`);
+  const key = async (name: string, code: number) => {
+    for (const type of ['keyDown', 'keyUp']) await page.send('Input.dispatchKeyEvent', {
+      type, key: name, code: name, windowsVirtualKeyCode: code,
+      text: type === 'keyDown' && name === 'Enter' ? '\r' : undefined,
+    });
+  };
+  await key('Enter', 13);
+  await key('ArrowDown', 40);
+  await key('Enter', 13);
+  const switched = await page.evaluate(`window.__launcherCalls.length === 2 && window.__launcherCalls[0] !== window.__launcherCalls[1] && !page.openFolder.disabled`);
+  if (!switched) {
+    const details = await page.evaluate(`JSON.stringify({calls:window.__launcherCalls, focus:document.activeElement.outerHTML, status:page.statusText.textContent, busy, opening})`);
+    throw new Error(`Keyboard: Enter/ArrowDown must open another project while the first is starting: ${details}`);
+  }
+  await page.evaluate(`window.__launcherPending[0]({ok:false, code:'missing'})`);
+  await sleep(30);
+  if (!await page.evaluate(`page.status.dataset.phase === 'starting'`)) throw new Error('Keyboard: stale result replaced current progress');
+  await page.evaluate(`window.__launcherPending[1]({ok:false, code:'timeout'})`);
+  if (!await pollPage(page, `page.status.dataset.phase === 'error'`, 2000)) throw new Error('Keyboard: timeout has no recovery');
+  await page.evaluate(`document.querySelector('[data-lang="ru"]').click()`);
+  if (!await pollPage(page, `page.statusText.textContent.includes('20 секунд')`, 2000)) throw new Error('Language switch cleared the error');
+  await page.evaluate(`page.createProject.click()`);
+  if (!await pollPage(page, `!page.createPanel.hidden`, 2000)) throw new Error('Create confirmation did not open');
+  await key('Escape', 27);
+  if (!await page.evaluate(`page.createPanel.hidden && document.activeElement === page.createProject`)) throw new Error('Escape did not restore creation focus');
+  await page.evaluate(`document.querySelector('#recent-list .recent-open').focus()`);
+  await key('Delete', 46);
+  if (!await pollPage(page, `page.statusText.textContent.includes('не удалены')`, 2000)) throw new Error('Delete did not confirm files were retained');
+  console.log('keyboard: Enter, arrows, superseding launch, translated recovery, Escape and Delete passed');
+}
+
+interface Shot { name: string; width: number; height: number; bytes: number; sha256: string; zoom?: number }
+
+async function captureFrame(page: HeadlessPage, frame: Frame, destination: string): Promise<Shot> {
+  const [width, height] = frame.size;
+  const zoom = frame.zoom ?? 1;
+  await page.send('Emulation.setDeviceMetricsOverride', { width: width / zoom, height: height / zoom, deviceScaleFactor: zoom, mobile: false });
+  await page.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: frame.reducedMotion ? 'reduce' : 'no-preference' }] });
+  // The settings are written on the loaded page; the reload below re-runs theme.js and launcher.js against them.
+  await page.evaluate(scriptFor(THEME_SCRIPTS, frame.theme, 'theme'));
+  await page.evaluate(scriptFor(LANG_SCRIPTS, frame.lang, 'language'));
+  const url = new URL(frame.page === 'whats-new' ? whatsNewUrl : pageUrl);
+  if (frame.scenario) url.searchParams.set('scenario', frame.scenario);
+  if (frame.error) url.searchParams.set('error', frame.error);
+  await navigateAndWait(page, frame.name, url.href);
+  await page.callFunction(INJECT_STYLE, NO_MOTION);
+  await waitForPageReady(page, frame.name, frame.page === 'whats-new' ? 'whats-new' : 'launcher');
+
+  const state = frame.state ?? 'list';
+  if (frame.page !== 'whats-new') await page.evaluate(scriptFor(STATE_SCRIPTS, state, 'state'));
+  if (state === 'error' || frame.scenario === 'error') {
+    const failed = await pollPage(page, `document.getElementById('status').dataset.phase === 'error'`, 4000);
+    if (!failed) throw new Error(`${frame.name}: the status phase is not 'error' after 4 s`);
+  }
+  if (frame.scenario === 'opening' && !await pollPage(page, `document.getElementById('status').dataset.phase === 'starting'`, 2000)) {
+    throw new Error(`${frame.name}: no opening feedback`);
+  }
+  if (frame.scenario === 'create' && !await pollPage(page, `!document.getElementById('create-panel').hidden`, 2000)) {
+    throw new Error(`${frame.name}: no creation confirmation`);
+  }
+  if (Object.hasOwn(FOCUS_CHECKS, state)) await tabUntilFocused(page, FOCUS_CHECKS[state], frame.name);
+  await sleep(250);
+  if (state === 'hover-row') {
+    await page.callFunction(INJECT_STYLE, HOVER_DEMO);
+    await sleep(150);
+  }
+  if (frame.page !== 'whats-new') {
+    const overflow = await page.evaluate(`document.documentElement.scrollWidth > innerWidth`);
+    if (overflow) throw new Error(`${frame.name}: horizontal overflow`);
+    if (frame.scenario === 'opening' && await page.evaluate(`document.getElementById('open-folder').disabled`)) {
+      throw new Error(`${frame.name}: choosing another project is blocked`);
+    }
+  }
+  if (frame.expand === 'templates') await page.evaluate(`document.querySelector('.template-help').open = true`);
+  if (frame.expand === 'details') await page.evaluate(`document.getElementById('status-details').open = true`);
+  const shot = await page.send('Page.captureScreenshot', { format: 'png' });
+  const png = Buffer.from(shot.result.data, 'base64');
+  const [pngWidth, pngHeight] = [png.readUInt32BE(16), png.readUInt32BE(20)];
+  if (pngWidth !== width || pngHeight !== height) {
+    throw new Error(`${frame.name}: expected ${width}x${height} at device scale 1, got ${pngWidth}x${pngHeight}`);
+  }
+  await writeFile(destination, png);
+  console.log(`${frame.name}: ${pngWidth}x${pngHeight}, ${png.length} bytes`);
+  return { name: frame.name, width: pngWidth, height: pngHeight, bytes: png.length, sha256: createHash('sha256').update(png).digest('hex'), zoom };
+}
+
+// 2026-11-09: README captures must follow release versions without changing the launcher's standalone browser mock.
+export async function captureLauncherReadme(destination: string): Promise<Shot> {
+  const root = path.join(here, '..');
+  const [deckmate, desktop] = await Promise.all(['package.json', 'desktop/package.json'].map(async file =>
+    JSON.parse(await readFile(path.join(root, file), 'utf8')) as { version: string }));
+  const page = await openHeadlessBrowser({ width: 1280, height: 820, scale: 1 });
+  try {
+    const source = String.raw`(() => {
+      const now = Date.now();
+      const recent = [
+        { path: 'D:\\Projects\\Hollow Signal', name: 'Hollow Signal', lastOpened: new Date(now - 90e3).toISOString() },
+        { path: 'D:\\Projects\\demo', name: 'demo', lastOpened: new Date(now - 5 * 3600e3).toISOString() },
+        { path: 'C:\\Users\\Someone\\Documents\\Долгий путь к релизу', name: 'Долгий путь к релизу', lastOpened: new Date(now - 3 * 86400e3).toISOString() },
+      ];
+      const workspace = [
+        { path: recent[0].path, name: recent[0].name, missing: false },
+        { path: recent[2].path, name: recent[2].name, missing: false },
+        { path: 'D:\\Projects\\Old project', name: 'Old project', missing: true },
+      ];
+      window.deckmateDesktop = {
+        async getState() { return { recent, workspace, lastProject: recent[0].path, version: ${JSON.stringify(desktop.version)}, deckmateVersion: ${JSON.stringify(deckmate.version)}, locale: 'en-US' }; },
+        async chooseFolder() { return 'D:\\Projects\\New Deck'; },
+        async openProject() { return { ok: false, code: 'missing' }; },
+        async createProject() { return { ok: false, code: 'not-empty' }; },
+        async removeRecent() { return { ok: true }; },
+        async setLanguage() { return { ok: true }; },
+        onStatus() { return () => {}; },
+      };
+    })()`;
+    // 2026-11-09: layout-capture rejects CDP error replies, so a failed registration arrives as a rejection.
+    try {
+      await page.send('Page.addScriptToEvaluateOnNewDocument', { source });
+    } catch (error) {
+      throw new Error(`Cannot register launcher bridge: ${error instanceof Error ? error.message : String(error)}`);
+    }
+    await navigateAndWait(page, 'initial load');
+    const shot = await captureFrame(page, frames[0], destination);
+    const footer = await page.evaluate('document.getElementById("version").textContent');
+    const expected = deckmate.version === desktop.version ? `Deckmate ${deckmate.version}` : `Deckmate ${deckmate.version} · Desktop ${desktop.version}`;
+    if (footer !== expected) throw new Error(`Unexpected launcher version: ${footer}`);
+    if (page.consoleErrors.length) throw new Error(`console errors during capture: ${page.consoleErrors.join(' | ')}`);
+    return shot;
+  } finally {
+    await page.close();
+  }
+}
+
+async function main(): Promise<void> {
+  if (process.argv.includes('--readme')) {
+    await captureLauncherReadme(path.join(here, '..', 'docs', 'screenshots', 'desktop-start.png'));
+    return;
+  }
+  const page = await openHeadlessBrowser({ width: frames[0].size[0], height: frames[0].size[1], scale: 1 });
+  try {
+    await mkdir(output, { recursive: true });
+    await navigateAndWait(page, 'initial load');
+    await verifyLauncherInteractions(page);
+    const shots: Shot[] = [];
+    for (const frame of frames) shots.push(await captureFrame(page, frame, path.join(output, `${frame.name}.png`)));
+    await sleep(300);
+    if (page.consoleErrors.length) throw new Error(`console errors during capture: ${page.consoleErrors.join(' | ')}`);
+    const report = { capturedAt: new Date().toISOString(), page: 'desktop/launcher/index.html', deviceScaleFactor: 1, frames: shots };
+    await writeFile(path.join(output, 'frames.json'), JSON.stringify(report, null, 2) + '\n');
+    console.log(`frames.json: ${shots.length} frames, ${shots.reduce((total, entry) => total + entry.bytes, 0)} bytes of PNG`);
+  } finally {
+    await page.close();
+  }
+}
+
+if (process.argv[1] && realpathSync(process.argv[1]) === realpathSync(fileURLToPath(import.meta.url))) await main();

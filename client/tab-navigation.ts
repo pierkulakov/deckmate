@@ -1,3 +1,4 @@
+import { moveFocus } from './focus.ts';
 import type { KeyboardEvent } from 'react';
 
 /** Keep focus and selection together in the app's automatically activated tab lists. */
@@ -13,6 +14,6 @@ export function navigateTabs(event: KeyboardEvent<HTMLElement>) {
   if (event.key === 'End') next = tabs.length - 1;
   event.preventDefault();
   event.stopPropagation();
-  tabs[next].focus();
+  moveFocus(tabs[next]);
   tabs[next].click();
 }

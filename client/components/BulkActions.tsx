@@ -19,6 +19,8 @@ import { BULK_SHORTCUTS, matchShortcut, shortcutTargetBlocked } from '../keyboar
 import { currentMember } from '../current-member.ts';
 import { orderedRunChoices, runChoiceLabel } from '../run-label.ts';
 import { failureMessage } from '../failure-message.ts';
+import { moveFocus } from '../focus.ts';
+import { AgentQueueHint } from './AgentQueueHint.tsx';
 import '../bulk-actions.css';
 
 const text = defineText({
@@ -28,6 +30,7 @@ const text = defineText({
   sandbox: "Changes are only available in sandbox",
   restoreFirst: "Restore cards from Trash first",
   tasksOnly: "Select only Task Cards",
+  individualReturn: "Open each card to return it from review with a reason.",
   tasksDocs: "Select Task or Doc Cards",
   noNested: "Selected cards have Sub Cards: nested families are not supported",
   unarchiveFirst: "Remove cards from Archive first",
@@ -130,6 +133,7 @@ const text = defineText({
   sandbox: "Изменения доступны только в sandbox",
   restoreFirst: "Сначала восстановите карточки из корзины",
   tasksOnly: "Выберите только Task Cards",
+  individualReturn: "Откройте каждую карточку для возврата с приёмки с указанием причины.",
   tasksDocs: "Выберите Task или Doc Cards",
   noNested: "У выбранных карточек есть Sub Cards: вложенные семьи недоступны",
   unarchiveFirst: "Сначала верните карточки из архива",
@@ -203,10 +207,10 @@ const text = defineText({
   uiRestoreFromTrash: "Восстановить из корзины",
   uiCurrent: "Сейчас",
   uiDeck: "Колода",
-  uiAddToHand: "В руку",
-  uiRemoveFromHand: "Убрать из руки",
+  uiAddToHand: "В Hand",
+  uiRemoveFromHand: "Убрать из Hand",
   uiUnassigned: "Без исполнителя",
-  uiFindAHand: "Найти руку…",
+  uiFindAHand: "Найти Hand…",
   uiFindAnOwner: "Найти исполнителя…",
   uiBookmarked: "С закладкой",
   uiNotBookmarked: "Без закладки",
@@ -517,7 +521,10 @@ export function BulkActions({ cards, catalog, pending, onAction, onOpenDeck, sou
         });
         return { kind: 'duplicate', deckId: draft.deckId || null, properties: draft.properties, copies };
       }
-      case 'done': return { kind: 'state', state: draft.mode === 'add' ? 'done' : 'not-started' };
+      case 'done': {
+        if (draft.mode === 'remove' && selected.some(card => card.state === 'review')) return null;
+        return { kind: 'state', state: draft.mode === 'add' ? 'done' : 'not-started' };
+      }
       case 'archive': return { kind: 'options', patch: { archived: true } };
       case 'unarchive': return { kind: 'options', patch: { archived: false } };
       case 'delete': return { kind: 'options', patch: { deleted: true } };
@@ -525,8 +532,8 @@ export function BulkActions({ cards, catalog, pending, onAction, onOpenDeck, sou
     }
   }
 
-  function modeControl(addLabel: string, removeLabel: string) {
-    return <div className="bulk-mode-choice">{(['add', 'remove'] as const).map(mode => <label key={mode}><input type="radio" name={id + '-mode'} value={mode} checked={draft.mode === mode} onChange={() => update('mode', mode)} />{mode === 'add' ? addLabel : removeLabel}</label>)}</div>;
+  function modeControl(addLabel: string, removeLabel: string, blockRemove = false) {
+    return <div className="bulk-mode-choice">{(['add', 'remove'] as const).map(mode => <label key={mode}><input type="radio" name={id + '-mode'} value={mode} checked={draft.mode === mode} disabled={mode === 'remove' && blockRemove} onChange={() => update('mode', mode)} />{mode === 'add' ? addLabel : removeLabel}</label>)}</div>;
   }
   function searchInput(placeholder: string) {
     return <label className="bulk-search"><Search size={15} /><span className="visually-hidden">{placeholder}</span><input data-autofocus type="search" value={draft.query} onChange={event => update('query', event.target.value)} placeholder={placeholder} /></label>;
@@ -552,6 +559,8 @@ export function BulkActions({ cards, catalog, pending, onAction, onOpenDeck, sou
           {!members.length && <p className="bulk-help">{t.noMembers}</p>}
         </div>
         {menu === 'hand' && <p className="bulk-help">{t.handHint}</p>}
+        {menu === 'owner' && members.some(member => member.kind === 'agent') && <AgentQueueHint />}
+        {menu === 'hand' && draft.mode === 'add' && members.find(member => member.id === draft.memberId)?.kind === 'agent' && <AgentQueueHint assignment="hand" />}
       </>;
       case 'bookmark': return <>{currentValues(card => card.bookmarked ? t.uiBookmarked : t.uiNotBookmarked)}{modeControl(t.uiBookmarkAll, t.uiClearBookmarks)}</>;
       case 'run': case 'milestone': {
@@ -584,7 +593,7 @@ export function BulkActions({ cards, catalog, pending, onAction, onOpenDeck, sou
       case 'convert': return <><p className="bulk-help">{t.convertHint}</p><label className="bulk-field">{t.uiType}<select value={draft.cardKind} onChange={event => { update('cardKind', event.target.value as 'task' | 'doc'); update('deckId', ''); }}><option value="doc">{t.uiDocCard}</option><option value="task">{t.uiTask}</option></select></label>{deckPicker()}</>;
       case 'duplicate': return <>{deckPicker()}<p className="bulk-help">{t.copyHint}</p><fieldset className="bulk-checkboxes"><legend>{t.uiCopyProperties}</legend>{copyProperties.map(property => <label key={property.id}><input type="checkbox" checked={draft.properties.includes(property.id)} onChange={event => update('properties', event.target.checked ? [...draft.properties, property.id] : draft.properties.filter(value => value !== property.id))} />{property.label}</label>)}</fieldset></>;
       case 'export': return <><p className="bulk-help">{t.exportHint}</p><fieldset className="bulk-checkboxes"><legend>{t.uiColumns}</legend>{cardExportColumns.map(column => <label key={column.id}><input type="checkbox" checked={draft.columns.includes(column.id)} onChange={event => update('columns', event.target.checked ? [...draft.columns, column.id] : draft.columns.filter(value => value !== column.id))} />{column.label}</label>)}</fieldset><Button type="button" variant="ghost" size="sm" onClick={() => update('columns', [...defaultCardExportColumns])}>{t.uiDefaultColumns}</Button></>;
-      case 'done': return <>{currentValues(card => stateLabel(card.state ?? 'not-started', lang))}{modeControl(t.uiMarkAsDone, t.reopen(stateLabel('not-started', lang)))}</>;
+      case 'done': return <>{currentValues(card => stateLabel(card.state ?? 'not-started', lang))}{modeControl(t.uiMarkAsDone, t.reopen(stateLabel('not-started', lang)), selected.some(card => card.state === 'review'))}{selected.some(card => card.state === 'review') && <p className="bulk-help">{t.individualReturn}</p>}</>;
       case 'archive': return <p>{t.archiveConfirm(selected.length)}</p>;
       case 'unarchive': return <p>{t.unarchiveConfirm(selected.length)}</p>;
       case 'delete': return <><p>{t.deleteConfirm(selected.length)}</p>{selected.some(card => card.kind === 'hero') && <p className="bulk-help">{t.deleteHeroHint}</p>}</>;
@@ -623,9 +632,9 @@ export function BulkActions({ cards, catalog, pending, onAction, onOpenDeck, sou
         const target = dialog.current?.querySelector<HTMLElement>('[data-autofocus]')
           ?? dialog.current?.querySelector<HTMLElement>('.bulk-dialog-body :is(input,select,button):not(:disabled)')
           ?? dialog.current?.querySelector<HTMLElement>('.bulk-dialog-footer button:not(:disabled)');
-        target?.focus();
+        moveFocus(target);
       }}
-      onCloseAutoFocus={event => { event.preventDefault(); if (opener.current?.isConnected) opener.current.focus({ preventScroll: true }); }}
+      onCloseAutoFocus={event => { event.preventDefault(); if (opener.current?.isConnected) moveFocus(opener.current, { preventScroll: true }); }}
       onEscapeKeyDown={event => { event.preventDefault(); closeMenu(); }}>
       <header className="bulk-dialog-header"><div><Dialog.Title>{actionLabel}</Dialog.Title><Dialog.Description>{t.selectedCount(selected.length)}</Dialog.Description></div><Button type="button" variant="ghost" size="icon" aria-label={t.close} onClick={closeMenu}><X size={17} /></Button></header>
       {conflict && <div className="bulk-action-warning" role="alert">{t.conflict}<Button type="button" variant="outline" size="sm" disabled={busy} onClick={() => { setBaseSignature(signature); setError(''); }}>{t.useCurrent}</Button></div>}

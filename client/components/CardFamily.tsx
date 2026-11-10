@@ -1,4 +1,5 @@
 import { readStoredValue } from '../storage.ts';
+import { failureMessage } from '../failure-message.ts';
 import { useCallback, useEffect, useId, useMemo, useRef, useState, Fragment, type CSSProperties, type PointerEvent, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
@@ -23,8 +24,11 @@ import '../card-dependencies.css';
 import '../card-history.css';
 import { useCardLayoutMotion } from '../useCardLayoutMotion.ts';
 import { defineText, locale, textNow, useLang, useText } from '../i18n.ts';
+import { moveFocus } from '../focus.ts';
 import { kindLabel, priorityLabel, stateLabel } from '../locales/common.ts';
 import { runLabel } from '../run-label.ts';
+import { CardValueHint } from './CardValueHint.tsx';
+import { ActivityAttribution } from './ActivityAttribution.tsx';
 
 /** One count label for the preview toggle and the family popover. Russian keeps the product term Sub Cards
  *  untranslated, as every other Russian string does, so the count goes after a colon instead of a declined noun. */
@@ -64,6 +68,7 @@ const text = defineText({
   invalidHistory: 'The server returned an invalid history page.',
   serverUnavailable: 'Could not reach the server. Try again.',
   historyFailed: 'Could not load history.',
+  retryHistory: 'Try again',
   closeHistory: 'Close history',
   noCreated: 'no creation entry in the journal',
   historyEmpty: 'This card’s history will start with its first change through Deckmate.',
@@ -191,6 +196,7 @@ const text = defineText({
   invalidHistory: 'Сервер вернул некорректную страницу истории.',
   serverUnavailable: 'Не удалось связаться с сервером. Повторите попытку.',
   historyFailed: 'Не удалось загрузить историю.',
+  retryHistory: 'Повторить',
   closeHistory: 'Закрыть историю',
   noCreated: 'записи о создании нет в журнале',
   historyEmpty: 'История этой карточки начнётся с первого изменения через Deckmate.',
@@ -387,7 +393,7 @@ export function DependencyGate({ card, cardsById, disabled = false, onReveal }: 
  * The open card's dependency section lists prerequisites and dependents, with catalog search to add
  * and a remove button to unlink. Writes native-card dependsOn; legacy and Journey cards are read-only.
  */
-function CardDependenciesSection({ card, catalog, cardsById, disabled, writable, onEdit, onOpen, onClose }: {
+export function CardDependenciesSection({ card, catalog, cardsById, disabled, writable, onEdit, onOpen, onClose }: {
   card: CatalogCard; catalog: CatalogView; cardsById: ReadonlyMap<string, CatalogCard>; disabled: boolean; writable: boolean;
   onEdit?: (action: CatalogAction) => Promise<boolean>; onOpen: (card: CatalogCard) => void; onClose: () => void;
 }) {
@@ -425,7 +431,7 @@ function CardDependenciesSection({ card, catalog, cardsById, disabled, writable,
       const saved = await onEdit(({ action: 'set-card-dependencies', cardId: target.id, sourceHash: target.sourceHash, dependsOn: next }));
       if (!saved) setNotice(t.changeNotSaved);
     } catch (error) {
-      setNotice(error instanceof Error ? error.message : t.saveDependenciesFailed);
+      setNotice(failureMessage(error, t.saveDependenciesFailed));
     } finally {
       setSavingId(null);
     }
@@ -440,7 +446,7 @@ function CardDependenciesSection({ card, catalog, cardsById, disabled, writable,
 
   return <section className="card-dependencies" aria-label={t.dependencies(card.title)}>
     <div className="card-dependencies-heading">
-      <h3>{t.dependenciesAction} · {card.title}</h3>
+      <h3 title={card.title} aria-label={t.dependencies(card.title)}>{t.dependenciesAction}</h3>
       <Button type="button" variant="ghost" size="icon" aria-label={t.closeDependencies} onClick={onClose}><X size={15} /></Button>
     </div>
     {readonlyReason && <p className="card-dependencies-note">{readonlyReason}</p>}
@@ -511,6 +517,15 @@ function HistoryDetailLine({ detail, titlePattern, titlesById, disabled, onOpenB
 
 const escapedPattern = (text: string): string => text.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&');
 
+/** Only unambiguous card names can become links in History. */
+export function uniqueCardTitles(cards: readonly CatalogCard[]): Map<string, string> {
+  const byTitle = new Map<string, string[]>();
+  for (const card of cards) byTitle.set(card.title, [...(byTitle.get(card.title) ?? []), card.id]);
+  const unique = new Map<string, string>();
+  for (const [title, ids] of byTitle) if (ids.length === 1) unique.set(title, ids[0]);
+  return unique;
+}
+
 /** Match longer card names first so "Card 1" cannot consume the start of "Card 11". */
 function detailTitlePattern(titlesById: ReadonlyMap<string, string>): RegExp | null {
   if (!titlesById.size) return null;
@@ -522,7 +537,7 @@ function detailTitlePattern(titlesById: ReadonlyMap<string, string>): RegExp | n
  * Card History uses the earliest journal entry for Created and lists events newest first, with cursor pagination.
  * The journal is written only to the test copy. Deck passes source explicitly; the default is sandbox.
  */
-function CardHistorySection({ card, source = 'sandbox', refreshKey, disabled, titlesById, onOpenById, onClose }: {
+export function CardHistorySection({ card, source = 'sandbox', refreshKey, disabled, titlesById, onOpenById, onClose }: {
   card: CatalogCard; source?: DataSource; refreshKey: string; disabled: boolean;
   titlesById: ReadonlyMap<string, string>; onOpenById: (cardId: string) => void; onClose: () => void;
 }) {
@@ -535,6 +550,9 @@ function CardHistorySection({ card, source = 'sandbox', refreshKey, disabled, ti
   const [state, setState] = useState<CardHistoryState>({ status: 'loading', error: null, events: [], nextCursor: null, warnings: [], created: null, requestCursor: null });
   const requestNumber = useRef(0);
   const controller = useRef<AbortController | null>(null);
+  const retryButton = useRef<HTMLButtonElement>(null);
+  const historyHeading = useRef<HTMLHeadingElement>(null);
+  const retryFocused = useRef(false);
   // 2026-11-07: a catalog reindex (refresh) refetches the first page in the background and merges it into the
   // loaded list, so older pages and the scroll position survive the constant reindexing while an agent works.
   const load = useCallback(async (cursor: string | null, refresh = false) => {
@@ -543,8 +561,7 @@ function CardHistorySection({ card, source = 'sandbox', refreshKey, disabled, ti
     controller.current = active;
     const request = ++requestNumber.current;
     if (!refresh) {
-      setState(previous => cursor === null ? { status: 'loading', error: null, events: [], nextCursor: null, warnings: [], created: null, requestCursor: null }
-        : { ...previous, status: 'loading', error: null, requestCursor: cursor });
+      setState(previous => ({ ...previous, status: 'loading', requestCursor: cursor }));
     }
     const parameters = new URLSearchParams({ source, cardId: card.id, limit: '20' });
     if (cursor) parameters.set('cursor', cursor);
@@ -561,7 +578,7 @@ function CardHistorySection({ card, source = 'sandbox', refreshKey, disabled, ti
       setState(previous => {
         if (refresh && previous.events.length > 0) {
           const merged = [...new Map([...result.events, ...previous.events].map(event => [event.id, event])).values()];
-          return { ...previous, events: merged, warnings: [...new Set([...previous.warnings, ...result.warnings])], created: result.created };
+          return { ...previous, status: 'ready', error: null, events: merged, warnings: [...new Set([...previous.warnings, ...result.warnings])], created: result.created };
         }
         const combined = cursor === null ? result.events : [...new Map([...previous.events, ...result.events].map(event => [event.id, event])).values()];
         return { status: 'ready', error: null, events: combined, nextCursor: result.nextCursor,
@@ -589,18 +606,24 @@ function CardHistorySection({ card, source = 'sandbox', refreshKey, disabled, ti
   }, [load, refreshKey, state.status]);
   const current = state;
   const loading = current.status === 'loading';
+  useEffect(() => {
+    if (!current.error && retryFocused.current) {
+      retryFocused.current = false;
+      moveFocus(historyHeading.current, { preventScroll: true });
+    }
+  }, [current.error]);
   let previousDay = '';
   return <section className="card-history" aria-label={t.historyOf(card.title)} aria-busy={loading}>
     <div className="card-history-heading">
-      <h3>{t.historyHeading(card.title)}</h3>
+      <h3 ref={historyHeading} tabIndex={-1} title={card.title} aria-label={t.historyHeading(card.title)}>{t.historyAction}</h3>
       <Button type="button" variant="ghost" size="icon" aria-label={t.closeHistory} onClick={onClose}><X size={15} /></Button>
     </div>
-    <p className="card-history-created">
+    {current.status === 'ready' && <p className="card-history-created">
       <strong>{t.created}</strong>
       {current.created
         ? <><time dateTime={current.created.at} title={historyFullFormat.format(new Date(current.created.at))}>{historyDayFormat.format(new Date(current.created.at))}</time><span>{current.created.actor}</span></>
         : <span>{t.noCreated}</span>}
-    </p>
+    </p>}
     <div className="card-history-feed">
       {current.events.map(event => {
         const date = new Date(event.at);
@@ -612,7 +635,7 @@ function CardHistorySection({ card, source = 'sandbox', refreshKey, disabled, ti
           <article className="card-history-event">
             <time dateTime={event.at} title={historyFullFormat.format(date)}>{historyTimeFormat.format(date)}</time>
             <div className="card-history-event-body">
-              <p>{event.summary}</p>
+              <ActivityAttribution event={event} source={source} cardId={card.id} /><p>{event.summary}</p>
               {event.details.length > 0 && <ul className="card-history-details">
                 {event.details.slice(0, 8).map((detail, index) => <HistoryDetailLine key={index} detail={detail} titlePattern={titlePattern} titlesById={titlesById} disabled={disabled} onOpenById={onOpenById} />)}
               </ul>}
@@ -624,7 +647,7 @@ function CardHistorySection({ card, source = 'sandbox', refreshKey, disabled, ti
     {current.status === 'ready' && current.events.length === 0 && <p className="card-history-empty">{t.historyEmpty}</p>}
     {current.warnings.length > 0 && <p className="card-history-warning">{t.historyWarnings(current.warnings.join(' '))}</p>}
     {loading && <p className="card-history-loading" role="status"><LoaderCircle size={12} className="spin" />{current.events.length ? t.loadingMore : t.loadingHistory}</p>}
-    {current.status === 'error' && <p className="card-history-error" role="alert">{current.error}</p>}
+    {current.error && <div className="card-history-error" role="alert"><p>{current.error}</p><Button ref={retryButton} type="button" variant="outline" size="sm" disabled={loading} onClick={() => { retryFocused.current = document.activeElement === retryButton.current; void load(current.requestCursor); }}>{t.retryHistory}</Button></div>}
     {current.nextCursor && current.status === 'ready' && <div className="card-history-more"><Button type="button" variant="outline" size="sm" disabled={disabled || loading} onClick={() => void load(current.nextCursor)}>{t.showMore}</Button></div>}
   </section>;
 }
@@ -768,7 +791,7 @@ export function CardFamilyPanel({ hero, card, children, openedId, catalog, disab
     dirtyCallback.current?.(false);
     sessionCallback.current?.(null);
   }, []);
-  useEffect(() => { if (searchOpen) searchInput.current?.focus(); }, [searchOpen]);
+  useEffect(() => { if (searchOpen) moveFocus(searchInput.current); }, [searchOpen]);
   // The sections open under the Sub Card list; a gate on a row reveals them out of sight otherwise.
   useEffect(() => {
     if (dependenciesOpen || historyOpen) panel.current?.querySelector('.card-dependencies, .card-history')?.scrollIntoView({ block: 'nearest' });
@@ -797,7 +820,7 @@ export function CardFamilyPanel({ hero, card, children, openedId, catalog, disab
     requestAnimationFrame(() => {
       // The trigger is found by a stable attribute: its aria-label follows the interface language.
       const target = creationOpener.current?.isConnected ? creationOpener.current : panel.current?.querySelector<HTMLButtonElement>('[data-new-subcard]');
-      target?.focus({ preventScroll: true });
+      moveFocus(target, { preventScroll: true });
     });
   }
 
@@ -853,14 +876,7 @@ export function CardFamilyPanel({ hero, card, children, openedId, catalog, disab
     setDependenciesOpen(true);
     if (target.id !== card.id) onOpen(target);
   }
-  // Only unambiguous card names can become links in History.
-  const titlesById = useMemo(() => {
-    const byTitle = new Map<string, string[]>();
-    for (const candidate of catalog.cards) byTitle.set(candidate.title, [...(byTitle.get(candidate.title) ?? []), candidate.id]);
-    const unique = new Map<string, string>();
-    for (const [title, ids] of byTitle) if (ids.length === 1) unique.set(title, ids[0]);
-    return unique;
-  }, [catalog.cards]);
+  const titlesById = useMemo(() => uniqueCardTitles(catalog.cards), [catalog.cards]);
   const openCardById = useCallback((cardId: string) => {
     const target = cardsById.get(cardId);
     if (target) onOpen(target);
@@ -1007,11 +1023,11 @@ function SortableSubCard({ card, hero, current, deckName, disabled, writable, ca
       <div className="card-family-row-main">
         {showHandle && <button type="button" ref={sortable.setActivatorNodeRef} className="card-family-drag-handle" {...sortable.attributes} onKeyDown={event => sortable.listeners?.onKeyDown?.(event)} aria-disabled={!canReorder} tabIndex={canReorder ? 0 : -1} aria-label={t.moveSubCard(card.title)} title={t.reorderHint}><GripVertical size={16} /></button>}
         <div className="card-family-row-body">
-          <button type="button" className="card-family-row-open" disabled={disabled} onClick={() => onOpen(card)} aria-current={current ? 'true' : undefined} title={deckName + (card.state ? ' · ' + stateLabel(card.state, lang) : '')}>
+          <CardValueHint text={card.title} measure=".card-family-row-open > strong"><button type="button" className="card-family-row-open" disabled={disabled} onClick={() => onOpen(card)} aria-current={current ? 'true' : undefined} aria-label={t.openSubCard(card.title) + ' · ' + deckName + (card.state ? ' · ' + stateLabel(card.state, lang) : '')} title={card.title + ' · ' + deckName + (card.state ? ' · ' + stateLabel(card.state, lang) : '')}>
             <strong>{card.version && <small>{card.version}</small>}<TagTitlePrefix tags={card.tags} definitions={catalog.projectTags} />{card.title}</strong>
-          </button>
+          </button></CardValueHint>
           <CardTags tags={card.tags} definitions={catalog.projectTags} compact />
-          <div className="card-family-row-details">{visualState === 'accepted' && <span className="card-family-row-state" role="img" title={stateLabel('done', lang)} aria-label={stateLabel('done', lang)}><Check size={16} /></span>}<CardMetrics card={card} members={members} showOwner={false} compact />
+          <div className="card-family-row-details">{card.kind === 'task' && <span className="card-family-row-state">{visualState === 'accepted' && <Check size={16} aria-hidden="true" />}{stateLabel(card.state ?? 'not-started', lang)}</span>}<CardMetrics card={card} members={members} showOwner={false} compact />
             <button type="button" className="card-family-row-owner" disabled={disabled || !writable || !onOwner} title={t.owner(card.owner ?? t.unassigned)}
               aria-label={t.assignOwner(card.title, card.owner ?? t.unassigned)} onClick={event => onOwner?.(card, event.currentTarget)}>
               <CardOwnerAvatar owner={card.owner} members={members} />{card.owner && <span>{card.owner}</span>}

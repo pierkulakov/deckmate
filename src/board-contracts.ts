@@ -23,6 +23,7 @@ export interface BoardSummary {
   linkedCardIds: string[];
   updatedAt: string;
   access: BoardAccess;
+  warnings?: string[];
 }
 export interface BoardDocument extends BoardSummary { scene: BoardScene }
 

@@ -9,6 +9,7 @@ import '../../client/card-material.css';
 import '../../client/motion.css';
 
 const root = createRoot(document.getElementById('root')!);
+const requests: unknown[] = [];
 let instance = 0;
 const base: CatalogCard = { id: 'card:hero', kind: 'hero', title: 'Test Hero', path: 'cards/hero.md', version: null,
   state: null, owner: null, markdown: '', sourceHash: 'hero-hash', range: null, deckId: 'mixed', trackIds: [], parentId: null };
@@ -31,9 +32,12 @@ const catalog: CatalogView = { rootIdentity: 'hero-return-test', documents: [], 
     steps: children.map(card => ({ id: card.journey!.stepId, title: card.title, markdown: '', deckId: 'mixed', owner: null, dependsOn: [] })) }] };
 
 // 2026-11-08: the real Deck owns navigation and Escape; only the HTTP data source is a fixture.
-window.fetch = async input => {
+window.fetch = async (input, init) => {
   const url = new URL(String(input), location.origin);
-  if (url.pathname === '/api/catalog') return Response.json(catalog);
+  if (url.pathname === '/api/catalog') {
+    if (init?.method === 'POST') requests.push(JSON.parse(String(init.body)));
+    return Response.json(catalog);
+  }
   if (url.pathname === '/api/card-content') {
     const card = catalog.cards.find(card => card.id === url.searchParams.get('cardId'))!;
     return Response.json({ cardId: card.id, title: card.title, markdown: card.markdown, sourceHash: card.sourceHash });
@@ -43,7 +47,9 @@ window.fetch = async input => {
 };
 
 async function render(options: { card?: string; lang?: 'en' | 'ru'; theme?: 'light' | 'dark'; width?: number; longContent?: boolean;
-  kind?: CatalogCard['kind']; tags?: string[]; withoutJourney?: boolean } = {}) {
+  kind?: CatalogCard['kind']; tags?: string[]; withoutJourney?: boolean; review?: boolean } = {}) {
+  requests.length = 0;
+  children[2].state = options.review ? 'review' : 'not-started';
   hero.kind = options.kind ?? 'hero';
   hero.state = hero.kind === 'task' ? 'not-started' : null;
   hero.tags = options.tags;
@@ -64,7 +70,7 @@ async function render(options: { card?: string; lang?: 'en' | 'ru'; theme?: 'lig
     snapshot={{ projectName: 'Hero return', source: 'sandbox', writable: true, editMode: 'direct', iteration: { number: 1, goal: '', start: '' } }} /></main>);
 }
 
-Object.assign(window, { heroReturnTest: { render, async removeHero() {
+Object.assign(window, { heroReturnTest: { render, requests, async removeHero() {
   catalog.cards = catalog.cards.filter(card => card.id !== hero.id);
   await catalogStore('sandbox').refresh();
 } } });

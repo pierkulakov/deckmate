@@ -1,44 +1,47 @@
-.deck-activity { --activity-inset: 36px; min-width: 0; max-width: 503px; }
-/* Activity rows reserve 24px for the author and 12px before the event plate. 2026-11-06: the heading, filters, day labels and
-   messages start at that same 36 px line, the plate's left edge, so the column reads as one edge. */
-.deck-activity .deck-activity-heading, .deck-overview .deck-activity .deck-activity-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 24px; margin: 0 0 12px; padding-left: var(--activity-inset); }
-.deck-activity .deck-activity-heading h2 { margin: 0; font-size: 18px; font-weight: 700; line-height: 24px; }
-.deck-activity-heading > button { flex-shrink: 0; width: 24px; height: 24px; }
+.deck-activity { --activity-inset: 0px; min-width: 0; max-width: 503px; }
+/* 2026-11-10: standalone and summary history share the panel edge and the home's label row. */
+/* 2026-11-10: the panel's heading row takes the workbench's first row (deck-workbench.css). */
+.deck-activity.glass-panel { padding: var(--workbench-row-inset, var(--space-3)) var(--space-4) var(--space-4); }
+.deck-activity .deck-activity-heading { align-items: flex-start; min-height: 32px; }
+.deck-activity-heading .panel-title { padding-top: var(--space-1); }
+.deck-activity-heading .panel-actions button { flex-shrink: 0; width: 30px; height: 30px; }
 .deck-activity-filters { display: flex; flex-wrap: wrap; gap: 5px; margin: 0 0 12px var(--activity-inset); }
-.deck-activity-chip { display: inline-flex; align-items: center; gap: 5px; flex: 0 0 auto; min-height: 24px; padding: 2px 8px; border: 1px solid var(--line); border-radius: 4px; background: transparent; color: var(--muted); font-size: 11px; line-height: 1.4; white-space: nowrap; transition: background-color var(--motion-feedback), color var(--motion-feedback), border-color var(--motion-feedback), opacity var(--motion-feedback), transform var(--motion-feedback) var(--ease-out); }
-.deck-activity-chip:hover:not(:disabled) { background: var(--hover); color: var(--ink); }
+.deck-activity-chip { display: inline-flex; align-items: center; gap: 5px; flex: 0 1 auto; max-width: 100%; padding: 4px 8px; font-size: 12px; line-height: 16px; overflow-wrap: anywhere; transition: background-color var(--motion-feedback), border-color var(--motion-feedback), color var(--motion-feedback), opacity var(--motion-feedback), transform var(--motion-feedback) var(--ease-out); }
 /* 2026-11-06: pressed chips move 1 px like every .ui-button; the global button transition has no transform. */
 .deck-activity-chip:active:not(:disabled) { transform: translateY(1px); }
-.deck-activity-chip[aria-pressed="true"] { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }
-.deck-activity-chip span { font: 10px 'Geist Mono', monospace; font-variant-numeric: tabular-nums; }
-.deck-activity-chip-clear { border-style: dashed; }
+.deck-activity-chip[aria-pressed="true"] .page-number { color: inherit; }
 .deck-activity-day + .deck-activity-day { margin-top: 24px; }
-.deck-activity-day h3 { margin: 0 0 12px var(--activity-inset); color: var(--muted); font-size: 12px; font-weight: 700; line-height: 14px; }
+.deck-activity-day h3 { margin: 0 0 12px var(--activity-inset); color: var(--muted); font-size: 12px; font-weight: 600; line-height: 14px; }
 .deck-activity-day time { font-variant-numeric: tabular-nums; }
 .deck-activity-day > ol { display: grid; gap: 4px; list-style: none; padding: 0; margin: 0; }
 .deck-activity .deck-activity-day .deck-activity-event { display: grid; grid-template-columns: 24px minmax(0, 1fr); align-items: start; gap: 12px; padding: 0; }
-.deck-activity-avatar { display: grid; place-items: center; width: 24px; height: 24px; margin-top: 6.5px; border-radius: 50%; background: var(--hover); color: var(--ink); font-size: 12px; font-weight: 700; line-height: 24px; }
-.deck-activity-event-body { min-width: 0; padding: 8px 12px; border-radius: 4px; background: var(--canvas); color: var(--ink); }
-.deck-activity-event-line { display: flex; align-items: flex-start; gap: 16px; min-height: 21px; }
+.deck-activity-avatar { display: grid; place-items: center; width: 24px; height: 24px; margin-top: 6.5px; border-radius: 50%; background: var(--hover); color: var(--ink); font-size: 12px; font-weight: 500; line-height: 24px; }
+/* 2026-11-10: an event is text beside its author's avatar, not another framed card inside the panel (a nested box read
+   as another capsule). */
+.deck-activity-event-body { min-width: 0; padding: 2px 0 0; color: var(--ink); }
+.deck-activity-event-line { display: flex; align-items: flex-start; gap: 8px; min-height: 21px; }
 .deck-activity-icon { display: flex; align-items: center; flex: 0 0 16px; min-height: 21px; color: var(--muted); }
 .deck-activity-description { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px; flex: 1; min-width: 0; font-size: 14px; line-height: 21px; }
 .deck-activity .deck-activity-description .deck-activity-summary { flex: 1 0 100%; margin: 0; min-width: 0; max-width: 100%; font-size: 14px; font-weight: 400; line-height: 21px; color: var(--ink); overflow-wrap: anywhere; }
 .deck-activity-cards { display: flex; flex-wrap: wrap; align-items: baseline; flex: 1 1 100%; gap: 4px; min-width: 0; }
-.deck-activity .deck-activity-event .deck-activity-cards button { flex: 0 0 auto; min-width: 0; max-width: 100%; border: 0; border-radius: 4px; padding: 0 4px; background: var(--gold-chip); color: var(--gold-chip-ink); text-align: left; font: inherit; font-weight: 700; line-height: 17px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; transition: background-color var(--motion-feedback); }
-.deck-activity .deck-activity-event .deck-activity-cards button:hover:not(:disabled) { background: var(--hover); color: var(--ink); }
-.deck-activity-disclosure { padding: 0; background: none; border: 0; text-align: left; cursor: pointer; }
-.deck-activity-disclosure:hover { text-decoration: underline; text-underline-offset: 3px; }
+.deck-activity .deck-activity-event .deck-activity-cards button { flex: 0 0 auto; min-width: 0; max-width: 100%; border: 0; border-radius: var(--control-radius); padding: 0 4px; background: var(--gold-chip); color: var(--gold-chip-ink); text-align: left; font: inherit; font-weight: 500; letter-spacing: .01em; line-height: 17px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; transition: background-color var(--motion-feedback), color var(--motion-feedback); }
+@media (hover: hover) { .deck-activity .deck-activity-event .deck-activity-cards button:hover:not(:disabled) { background: var(--hover); color: var(--ink); } }
+.deck-activity-disclosure { padding: 0; background: none; border: 0; border-radius: var(--control-radius); font-weight: 500; text-align: left; cursor: pointer; }
+@media (hover: hover) { .deck-activity-disclosure:hover:not(:disabled) { text-decoration: underline; text-underline-offset: 3px; } }
 .deck-activity-details { padding-top: 8px; font-size: 12px; line-height: 1.6; color: var(--muted); overflow-wrap: anywhere; }
 .deck-activity-details p { margin: 0 0 8px; }
 .deck-activity-details .deck-activity-cards { flex-wrap: wrap; }
 .deck-activity .deck-activity-details .deck-activity-cards button { white-space: normal; overflow-wrap: anywhere; }
 .deck-activity-details ul, .deck-activity-warnings ul { padding-left: 15px; margin: 8px 0 0; }
 .deck-activity-details li + li, .deck-activity-warnings li + li { margin-top: 5px; }
-.deck-activity .deck-activity-empty { margin: 0 0 0 var(--activity-inset); color: var(--muted); font-size: 12px; line-height: 1.6; }
-.deck-activity .deck-activity-loading { display: flex; align-items: center; gap: 7px; margin: 12px 0 0 var(--activity-inset); font-size: 12px; color: var(--muted); }
-.deck-activity-warnings { margin: 12px 0 0 var(--activity-inset); padding: 9px; border-radius: 6px; background: var(--warning-bg); color: var(--warning-ink); font-size: 11px; line-height: 1.5; overflow-wrap: anywhere; }
-.deck-activity-warnings summary { cursor: pointer; }
+.deck-activity .deck-activity-empty, .deck-activity .deck-activity-loading { margin: 0; padding: 0; color: var(--muted); font-size: 12px; line-height: 1.6; }
+.deck-activity-empty p, .deck-activity-loading p { margin: 0; overflow-wrap: anywhere; }
+.deck-activity-loading p { display: flex; align-items: center; gap: 7px; }
+.deck-activity-loading svg { flex-shrink: 0; }
+.deck-activity-warnings { margin: 12px 0 0 var(--activity-inset); padding: 9px; border-radius: var(--glass-radius); background: var(--warning-bg); color: var(--warning-ink); font-size: 11px; line-height: 1.5; overflow-wrap: anywhere; }
+.deck-activity-warnings summary { border-radius: var(--control-radius); font-weight: 500; cursor: pointer; }
 .deck-activity-error { margin: 12px 0 0 var(--activity-inset); }
+.deck-activity-error .ui-empty { padding: 0; margin: 0; }
 .deck-activity-error p { margin: 0 0 8px; font-size: 12px; line-height: 1.5; color: var(--danger); overflow-wrap: anywhere; }
 .deck-activity-more { margin: 12px 0 0 var(--activity-inset); }
 @media (max-width: 600px) { .deck-activity-event-line .deck-activity-cards > button:not(:first-child) { display: none; } }

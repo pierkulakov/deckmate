@@ -15,10 +15,17 @@ import {
 import { defineText, textNow, useText } from '../i18n.ts';
 import { failureMessage } from '../failure-message.ts';
 import { attachmentMarkdown, removeAttachmentLinks } from '../attachment-markdown.ts';
+import { subscribeCardAttachments } from '../card-attachment-events.ts';
+import { ErrorState } from './ErrorState.tsx';
+import { LoadingState } from './LoadingState.tsx';
+import { EmptyState } from './EmptyState.tsx';
 import '../attachments-panel.css';
 
 const text = defineText({
   loadFailed: 'Could not load attachments.',
+  loading: 'Loading attachments…',
+  empty: 'No attachments yet.',
+  attachments: 'Attachments',
   pasteFailed: 'The attachment was saved, but the image could not be inserted into the text because the card text changed. Paste it again.',
   readFailed: 'Could not read the file.',
   notSaved: (name: string) => `“${name}”: attachment not saved. Check that the list is current and try again.`,
@@ -58,6 +65,9 @@ const text = defineText({
   browse: 'browse',
 }, {
   loadFailed: 'Не удалось загрузить вложения.',
+  loading: 'Загружаем вложения…',
+  empty: 'Вложений пока нет.',
+  attachments: 'Вложения',
   pasteFailed: 'Вложение сохранено, но вставить картинку в текст не удалось — текст карточки изменился. Повторите вставку.',
   readFailed: 'Не удалось прочитать файл.',
   notSaved: (name: string) => `«${name}»: вложение не сохранено. Проверьте актуальность списка и повторите.`,
@@ -117,6 +127,7 @@ export function AttachmentsPanel({ card, catalog, writable, onEdit }: Attachment
   const t = useText(text);
   const [view, setView] = useState<CardAttachments | null>(null);
   const [listFailure, setListFailure] = useState('');
+  const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
@@ -126,11 +137,17 @@ export function AttachmentsPanel({ card, catalog, writable, onEdit }: Attachment
   const [viewerIndex, setViewerIndex] = useState<number | null>(null);
   const [pendingRemoval, setPendingRemoval] = useState<{ file: string; count: number } | null>(null);
   const viewRef = useRef<CardAttachments | null>(null);
-  const uploadInFlight = useRef(false);
+  const operationInFlight = useRef(false);
+  const reloadPending = useRef(false);
+  const loadEpoch = useRef(0);
+  const mounted = useRef(false);
   const fileInput = useRef<HTMLInputElement>(null);
   const panel = useRef<HTMLElement>(null);
 
   const source = attachmentSource();
+  const identity = source + ':' + card.id;
+  const currentIdentity = useRef(identity);
+  currentIdentity.current = identity;
   const sortedFiles = view ? sortAttachmentFiles(view.files, sortOrder) : [];
   const images = sortedFiles.filter(file => file.kind === 'image' && !file.missing);
   const visibleFiles = sortedFiles.filter(file => filter === 'all' || file.kind === filter);
@@ -147,24 +164,54 @@ export function AttachmentsPanel({ card, catalog, writable, onEdit }: Attachment
   ];
 
   const load = useCallback(async () => {
+    if (!mounted.current || currentIdentity.current !== identity) return;
+    const epoch = ++loadEpoch.current;
+    setLoading(true);
     try {
-      const next = await fetchCardAttachments(attachmentSource(), card.id);
+      const next = await fetchCardAttachments(source, card.id);
+      if (epoch !== loadEpoch.current) return;
       viewRef.current = next;
       setView(next);
       setListFailure('');
     } catch (failure) {
+      if (epoch !== loadEpoch.current) return;
       setListFailure(failureMessage(failure, textNow(text).loadFailed));
+    } finally {
+      if (epoch === loadEpoch.current) setLoading(false);
     }
-  }, [card.id]);
+  }, [card.id, source, identity]);
 
   useEffect(() => { viewRef.current = view; }, [view]);
-  useEffect(() => { void load(); }, [load]);
+  useEffect(() => {
+    mounted.current = true;
+    const unsubscribe = subscribeCardAttachments(source, card.id, () => {
+      if (operationInFlight.current) { reloadPending.current = true; return; }
+      void load();
+    });
+    viewRef.current = null;
+    setView(null);
+    setListFailure('');
+    reloadPending.current = false;
+    void load();
+    return () => { mounted.current = false; loadEpoch.current += 1; unsubscribe(); };
+  }, [card.id, source, load]);
+
+  function finishOperation() {
+    operationInFlight.current = false;
+    setBusy(false);
+    setLoading(false);
+    if (reloadPending.current) {
+      reloadPending.current = false;
+      void load();
+    }
+  }
 
   /** Pasting also inserts the uploaded images into the card text; every pasted link is collected
    *  and written in a single edit, because each write replaces the text and would drop earlier links. */
   async function uploadFiles(selected: File[], origin: UploadOrigin) {
-    if (!writable || uploadInFlight.current || selected.length === 0) return;
-    uploadInFlight.current = true;
+    if (!writable || operationInFlight.current || selected.length === 0) return;
+    operationInFlight.current = true;
+    loadEpoch.current += 1;
     setBusy(true);
     setError('');
     setNotice('');
@@ -190,21 +237,22 @@ export function AttachmentsPanel({ card, catalog, writable, onEdit }: Attachment
       const inserted = await onEdit({ action: 'update-card-content', cardId: card.id, sourceHash: card.sourceHash, title: card.title, markdown });
       if (!inserted) setNotice(t.pasteFailed);
     } finally {
-      uploadInFlight.current = false;
-      setBusy(false);
+      finishOperation();
     }
   }
 
   /** An attachment inserted into the card text asks first: deleting it alone would leave a broken image there. */
   function requestRemoval(file: CardAttachment) {
-    if (!view || busy) return;
+    if (!view || operationInFlight.current) return;
     const { count } = removeAttachmentLinks(card.markdown, card.path, file.file);
     if (count) setPendingRemoval({ file: file.file, count });
     else void removeAttachment(file.file, false);
   }
 
   async function removeAttachment(file: string, dropLinks: boolean) {
-    if (!view || busy) return;
+    if (!view || operationInFlight.current) return;
+    operationInFlight.current = true;
+    loadEpoch.current += 1;
     setPendingRemoval(null);
     setBusy(true);
     setError('');
@@ -219,7 +267,7 @@ export function AttachmentsPanel({ card, catalog, writable, onEdit }: Attachment
       const saved = await onEdit({ action: 'remove-attachment', cardId: card.id, attachmentsHash: view.hash, file });
       if (saved) await load();
       else setError(t.notRemoved);
-    } finally { setBusy(false); }
+    } finally { finishOperation(); }
   }
 
   function changeSortOrder(next: AttachmentSortOrder) {
@@ -247,12 +295,13 @@ export function AttachmentsPanel({ card, catalog, writable, onEdit }: Attachment
   const uploadDisabled = !writable || busy;
   const count = sortedFiles.length;
   // Empty panels invite uploads; populated panels show the attached file count.
-  const heading = count === 0 && writable ? t.addAttachments : t.heading(count);
-  const hasMessages = Boolean(listFailure || error || notice || (view && view.warnings.length > 0));
+  let heading = t.attachments;
+  if (view) heading = count === 0 && writable ? t.addAttachments : t.heading(count);
+  const hasMessages = Boolean(error || notice || (view && view.warnings.length > 0));
   const previousImageLabel = sortOrder === 'newest' ? t.previousNewest : t.previousOldest;
   const nextImageLabel = sortOrder === 'newest' ? t.nextNewest : t.nextOldest;
 
-  return <section ref={panel} className={'attachments-panel' + (dragActive ? ' is-drop-target' : '')} aria-label={t.panel(card.title)} aria-busy={busy}
+  return <section ref={panel} className={'attachments-panel' + (dragActive ? ' is-drop-target' : '')} aria-label={t.panel(card.title)} aria-busy={busy || loading}
     onDragOver={event => { if (!uploadDisabled) { event.preventDefault(); setDragActive(true); } }}
     onDragLeave={event => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDragActive(false); }}
     onDrop={event => { event.preventDefault(); setDragActive(false); if (!uploadDisabled) void uploadFiles(Array.from(event.dataTransfer.files), 'drop'); }}>
@@ -271,11 +320,13 @@ export function AttachmentsPanel({ card, catalog, writable, onEdit }: Attachment
           title={t.uploadHint} onClick={() => fileInput.current?.click()}>{t.browse}</button></span>
         {busy && <LoaderCircle size={14} className="spin attachments-busy" aria-label={t.saving} />}
       </div>}
-      {listFailure && <p className="attachments-message is-error" role="alert">{listFailure}</p>}
       {error && <p className="attachments-message is-error" role="alert">{error}</p>}
       {notice && <p className="attachments-message" role="status">{notice}</p>}
       {view !== null && view.warnings.length > 0 && <p className="attachments-message" role="status">{view.warnings.join(' · ')}</p>}
     </div>}
+    <ErrorState variant="inline" className="attachments-message is-error" message={listFailure} pending={loading} onRetry={load} />
+    {loading && !view && !listFailure && <LoadingState variant="skeleton" message={t.loading} />}
+    <LoadingState variant="keep-data" active={loading && Boolean(view)} message={t.loading} />
     <ul className="attachments-list">
       {visibleFiles.map(file => {
         const viewable = file.kind === 'image' && !file.missing;
@@ -308,7 +359,8 @@ export function AttachmentsPanel({ card, catalog, writable, onEdit }: Attachment
         </li>;
       })}
     </ul>
-    {count > 0 && visibleFiles.length === 0 && <p className="attachments-message">{t.emptyFilter}</p>}
+    {view && count === 0 && !loading && !listFailure && <EmptyState message={t.empty} />}
+    {count > 0 && visibleFiles.length === 0 && <EmptyState variant="filtered" message={t.emptyFilter} onReset={() => setFilter('all')} />}
     {viewerIndex !== null && images[viewerIndex] && <AttachmentImageViewer images={images} index={viewerIndex} source={source}
       previousLabel={previousImageLabel} nextLabel={nextImageLabel} onIndexChange={setViewerIndex} onClose={() => setViewerIndex(null)} />}
   </section>;

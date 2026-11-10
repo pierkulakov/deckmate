@@ -12,6 +12,7 @@ import { defineText, locale, useLang, useText } from '../i18n.ts';
 import { priorityLabel } from '../locales/common.ts';
 import { orderedRunChoices, runChoiceLabel } from '../run-label.ts';
 import { subCardWeight } from '../sub-card-state.ts';
+import { moveFocus } from '../focus.ts';
 import '../card-properties.css';
 
 const text = defineText({
@@ -48,6 +49,7 @@ const text = defineText({
   runLabel: 'Run',
   milestoneLabel: 'Milestone',
   dueDate: 'Due Date',
+  immediate: 'Selections save immediately. Custom Effort and Due Date require Save.',
 }, {
   stale: 'Изменение не сохранено. Проверьте сообщение каталога и повторите действие.',
   connection: 'Не удалось сохранить изменение. Проверьте соединение и повторите действие.',
@@ -82,6 +84,7 @@ const text = defineText({
   runLabel: 'Run',
   milestoneLabel: 'Milestone',
   dueDate: 'Срок',
+  immediate: 'Выбор сохраняется сразу. Своя оценка и срок — кнопкой «Сохранить».',
 });
 
 type Selector = 'dueDate';
@@ -143,7 +146,7 @@ export function CardPropertiesPanel({ id, card, catalog, disabled, visible, onEd
     return () => { mounted.current = false; };
   }, []);
   useEffect(() => {
-    if (selector) panel.current?.querySelector<HTMLElement>('[data-property-selector] input, [data-property-selector] button')?.focus();
+    if (selector) moveFocus(panel.current?.querySelector<HTMLElement>('[data-property-selector] input, [data-property-selector] button'));
   }, [selector]);
 
   function revision(text: string): DraftRevision {
@@ -226,9 +229,10 @@ export function CardPropertiesPanel({ id, card, catalog, disabled, visible, onEd
   }
 
   return <section ref={panel} id={id} className="card-properties-panel" aria-label={t.propertiesAria} aria-busy={busy}>
+    <p className="card-properties-save-hint">{t.immediate}</p>
     <section className="card-properties-section" data-property="owner">
       <div className="card-properties-heading"><h3>{t.ownerLabel}</h3>{pickButton('owner', t.ownerLabel)}</div>
-      <div className="card-properties-owner-value"><button type="button" className="card-properties-owner" disabled={controlsDisabled} aria-expanded={false} onClick={event => openQuickSettings('owner', event.currentTarget)}>
+       <div className="card-properties-owner-value"><button type="button" className="card-properties-owner" title={value.owner || t.unassigned} disabled={controlsDisabled} aria-expanded={false} onClick={event => openQuickSettings('owner', event.currentTarget)}>
         <CardOwnerAvatar owner={value.owner} members={catalog.members ?? []} /><span>{value.owner || t.unassigned}</span>
       </button></div>
     </section>

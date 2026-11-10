@@ -25,6 +25,8 @@ export function watchProjectFiles(root: string, onChange: (relativePath: string)
     if (closed) return;
     const relativePath = relative(root, absolutePath).split(sep).join('/');
     if (!/^(?:(?:features|docs|cards)\/.+|tasks\/[^/]+|tasks\/(?:journeys|journey-templates|(?:deckmate|freetion)-activity)\/.+)\.md$/u.test(relativePath)
+      && !/^tasks\/(?:deckmate|freetion)-assets\/cards\/[^/]+\/attachments\.md$/u.test(relativePath)
+      && !/^tasks\/journeys\/[^/]+\/\.deckmate-operation\.json$/u.test(relativePath)
       && !/^boards\/[^/]+\.excalidraw$/u.test(relativePath)) return;
     const scheduled = pendingNotifications.get(relativePath);
     if (scheduled !== undefined) clearTimeout(scheduled);

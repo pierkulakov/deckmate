@@ -4,9 +4,10 @@ import type { BulkEditRequest, BulkOutcome, CardOptions } from '../src/bulk-cont
 import type { CatalogCard } from '../src/catalog-contracts.ts';
 import { deckAcceptsCard } from '../src/catalog-contracts.ts';
 import { resolveMember } from '../src/members.ts';
-import { catalogPath, parseManifestBytes, patchLegacyScalar, readManifest, guardianAcceptanceRefusal, readProjectCatalog, readFreshProjectCatalog } from './catalog.ts';
+import { catalogPath, parseManifestBytes, patchLegacyScalar, readManifest, validateCardState, readProjectCatalog, readFreshProjectCatalog } from './catalog.ts';
 import { readCardContent } from './card-content.ts';
 import { patchLegacyCardStates } from './card-properties.ts';
+import { validateOwner, validateEffort, validatePriority } from './card-property-validation.ts';
 import { prepareCardOptionsPatch, readCardOptions } from './card-options.ts';
 import { readIteration } from './document.ts';
 import { validateCardFamily } from './card-family.ts';
@@ -17,9 +18,6 @@ import { cardStates, cardStateWords, readCardState, writeCardState } from '../sr
 const bulkText = defineText({
   invalidFields: "Invalid bulk action fields.",
   chooseProperty: "Choose a property to change.",
-  owner: "Owner must be one line of up to 120 characters or null.",
-  effort: "Effort must be a finite nonnegative number or null.",
-  priority: "Invalid Priority.",
   selectionSize: "Select 1 to 1000 cards.",
   currentVersions: "Current catalog and property versions are required.",
   actionRequired: "A bulk action is required.",
@@ -52,9 +50,6 @@ const bulkText = defineText({
 }, {
   invalidFields: "Недопустимые поля массового действия.",
   chooseProperty: "Выберите свойство для изменения.",
-  owner: "Исполнитель — одна строка до 120 символов или null.",
-  effort: "Оценка — конечное число не меньше нуля или null.",
-  priority: "Недопустимый приоритет.",
   selectionSize: "Выберите от 1 до 1000 карточек.",
   currentVersions: "Нужны актуальные версии каталога и свойств.",
   actionRequired: "Нужно массовое действие.",
@@ -101,9 +96,9 @@ function checkedKeys(value: unknown, keys: string[]): asserts value is Record<st
 function validateProperties(change: Extract<BulkEditRequest['change'], {kind: 'properties'}>) {
   checkedKeys(change, ['kind', 'owner', 'effort', 'priority']);
   if (Object.keys(change).length < 2) throw new Error(serverText(bulkText).chooseProperty);
-  if (Object.hasOwn(change, 'owner') && change.owner !== null && (typeof change.owner !== 'string' || !change.owner.trim() || change.owner.length > 120 || /[\r\n\u0000]/u.test(change.owner))) throw new Error(serverText(bulkText).owner);
-  if (Object.hasOwn(change, 'effort') && change.effort !== null && (typeof change.effort !== 'number' || !Number.isFinite(change.effort) || change.effort < 0)) throw new Error(serverText(bulkText).effort);
-  if (Object.hasOwn(change, 'priority') && change.priority !== null && !['high', 'medium', 'low'].includes(change.priority ?? '')) throw new Error(serverText(bulkText).priority);
+  if (Object.hasOwn(change, 'owner')) validateOwner(change.owner);
+  if (Object.hasOwn(change, 'effort')) validateEffort(change.effort, 'bulk');
+  if (Object.hasOwn(change, 'priority')) validatePriority(change.priority, 'bulk');
 }
 async function currentHash(root: string, relative: string): Promise<string> {
   try { return digest(await readProjectMarkdown(root, relative)); }
@@ -184,16 +179,14 @@ export async function editCatalogBulk(root: string, edit: BulkEditRequest, actor
       fields(card, patch);
     }
   } else if (change.kind === 'state') {
-    checkedKeys(change, ['kind', 'state']);
+    checkedKeys(change, ['kind', 'state', 'returnReason']);
     const state = readCardState(change.state);
     if (!state) throw new Error(serverText(bulkText).invalidState);
     if (selected.some(card => card.kind !== 'task')) throw new Error(serverText(bulkText).stateTaskOnly);
-    // Bulk acceptance also requires the request actor to be a guardian of the deck.
-    if (state === 'done') {
-      for (const card of selected) {
-        const refusal = card.state === 'done' ? null : guardianAcceptanceRefusal(catalog, card, actorMemberId, null);
-        if (refusal) throw new Error(refusal);
-      }
+    const returning = new Set(selected.filter(card => card.state === 'review' && state !== 'review' && state !== 'done').map(card => card.id));
+    for (const card of selected) {
+      validateCardState(catalog, card, { action: 'set-card-state', cardId: card.id, sourceHash: card.sourceHash,
+        manifestHash: edit.manifestHash, state, returnReason: returning.has(card.id) || !returning.size ? change.returnReason : null }, actorMemberId);
     }
     const legacyByPath = new Map<string, CatalogCard[]>();
     for (const card of selected) {

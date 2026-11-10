@@ -276,6 +276,24 @@ it('shows open questions and recorded answers after resolution without inventing
   expect(parseOpenQuestions((await readCardContent(root, docId)).markdown).questions).toHaveLength(0);
 });
 
+it('shows answers recorded under an English “Decided” heading', async () => {
+  // 2026-11-09: matching only the Russian heading made every answer in an English project vanish from the brief.
+  const { root, config } = await fixture();
+  offline();
+  const manifestPath = path.join(root, 'tasks/deckmate.md');
+  await writeFile(manifestPath, (await readFile(manifestPath, 'utf8')).replace('schema: 1\n', 'schema: 1\nformatLanguage: en\n'));
+  const rulePath = path.join(root, 'features/example.md');
+  await writeFile(rulePath, (await readFile(rulePath, 'utf8')).replace('## Решено', '## Decided').replace('## Открыто', '## Open questions'));
+  await askQuestion(config, taskId, 'Which colour?');
+  const catalog = await readProjectCatalog(root);
+  const content = await readCardContent(root, docId);
+  await writeCatalog(config, 'sandbox', { action: 'record-decision', cardId: docId, sourceHash: content.sourceHash,
+    manifestHash: catalog.manifestHash, questionIndex: 0, questionText: 'Which colour?', answer: 'Blue.', memberId: 'reviewer' }, 'reviewer');
+  const result = await brief(root, taskId);
+  expect(result.markdown).toContain('Blue. — Reviewer');
+  expect(result.markdown).toContain('answers are not linked to individual questions');
+});
+
 it('reads a Journey instruction with its version and detects stale step files', async () => {
   const { root } = await fixture();
   const journeyId = randomUUID();

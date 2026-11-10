@@ -14,7 +14,7 @@ import type { FastifyInstance } from 'fastify';
 
 vi.mock('node:fs/promises', async original => {
   const actual = await original<typeof import('node:fs/promises')>();
-  return { ...actual, writeFile: vi.fn(actual.writeFile) };
+  return { ...actual, writeFile: vi.fn(actual.writeFile), open: vi.fn(actual.open) };
 });
 const roots: string[] = [];
 const apps: FastifyInstance[] = [];
@@ -75,11 +75,12 @@ it('rejects stale manifest and an external card added between validation and pub
   const root = await fixture();
   const before = await readFile(path.join(root, 'tasks/deckmate.md'));
   await expect(editProjectCatalog(root, { ...await request(root, 'target', 'mixed'), manifestHash: '0'.repeat(64) })).rejects.toThrow('CATALOG_CONFLICT');
-  const actual = vi.mocked(filesystem.writeFile).getMockImplementation()!;
+  const actual = vi.mocked(filesystem.open).getMockImplementation()!;
   let inserted = false;
-  vi.mocked(filesystem.writeFile).mockImplementation(async (...args) => {
+  // 2026-11-09: the manifest is published through the shared guarded writer, whose temporary file is opened in tasks/.
+  vi.mocked(filesystem.open).mockImplementation(async (...args) => {
     const result = await actual(...args);
-    if (!inserted && String(args[0]).includes('deckmate.md.') && String(args[0]).endsWith('.tmp')) {
+    if (!inserted && path.basename(path.dirname(String(args[0]))) === 'tasks' && String(args[0]).endsWith('.tmp')) {
       inserted = true;
       await createManagedMarkdown(root, 'cards/22222222-2222-4222-8222-222222222222.md', { deckmate: 'card', schema: 1, id: '22222222-2222-4222-8222-222222222222', kind: 'task', title: 'Concurrent', state: 'план', owner: null, deckId: 'target', trackIds: [], parentId: null }, 'External card\n');
     }

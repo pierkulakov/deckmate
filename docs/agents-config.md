@@ -1,6 +1,6 @@
 # Deckmate agent configuration
 Project file: `tasks/deckmate-agents.md`. Put YAML frontmatter between `---` markers and human-readable notes below the closing marker.
-See `assets/templates/deckmate-agents.md` for an example with Claude Code and Codex CLI launchers.
+See [`assets/templates/deckmate-agents.md`](../assets/templates/deckmate-agents.md) for an example with Claude Code and Codex CLI launchers.
 ## Keys
 | Key | Type and requirement | Meaning |
 |---|---|---|

@@ -5,8 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
   <title>Deckmate</title>
-  <link rel="stylesheet" href="launcher.css">
   <script src="theme.js"></script>
+  <link rel="stylesheet" href="tokens.css">
+  <link rel="stylesheet" href="launcher.css">
 </head>
 <body>
   <main class="launcher" id="launcher" aria-busy="true">
@@ -20,22 +21,23 @@
         <h1 class="wordmark">Deckmate</h1>
       </header>
       <p class="tagline" data-text="tagline"></p>
+      <p class="ownership" data-text="ownership"></p>
 
-      <div class="actions">
+      <div class="actions" id="actions">
         <div class="action">
           <button type="button" class="button button-primary" id="open-folder">
             <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 14 1.5-2.9A2 2 0 0 1 9.24 10H20a2 2 0 0 1 1.94 2.5l-1.54 6a2 2 0 0 1-1.95 1.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H18a2 2 0 0 1 2 2v2"/></svg>
             <span data-text="openFolder"></span>
             <kbd class="shortcut" aria-hidden="true">Ctrl+O</kbd>
           </button>
-          <p class="hint" data-text="openHint"></p>
+          <p class="hint" id="open-hint" data-text="openHint"></p>
         </div>
         <div class="action">
           <button type="button" class="button button-secondary" id="create-project">
             <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
             <span data-text="createProject"></span>
           </button>
-          <p class="hint" data-text="createHint"></p>
+          <p class="hint" id="create-hint" data-text="createHint"></p>
         </div>
       </div>
 
@@ -52,7 +54,35 @@
       </div>
     </section>
 
-    <section class="recent" aria-labelledby="recent-heading">
+    <div class="project-sections">
+    <section class="welcome" id="welcome" aria-labelledby="welcome-heading" hidden>
+      <h2 id="welcome-heading" data-text="welcomeTitle"></h2>
+      <p data-text="welcomeIntro"></p>
+      <ol class="next-steps">
+        <li data-text="welcomeFolder"></li>
+        <li data-text="welcomeDemo"></li>
+        <li data-text="welcomeWork"></li>
+      </ol>
+      <details class="template-help">
+        <summary data-text="templateTitle"></summary>
+        <p data-text="templateHelp"></p>
+      </details>
+    </section>
+    <section class="create-panel" id="create-panel" aria-labelledby="create-heading" hidden>
+      <h2 id="create-heading" data-text="createTitle" tabindex="-1"></h2>
+      <p data-text="createSummary"></p>
+      <p class="chosen-folder" id="create-folder" dir="auto"></p>
+      <p data-text="createNext"></p>
+      <div class="create-actions">
+        <button type="button" class="button button-primary" id="create-confirm" data-text="createConfirm"></button>
+        <button type="button" class="button button-secondary" id="create-back" data-text="back"></button>
+      </div>
+    </section>
+    <section class="last-project" id="last-project" aria-labelledby="last-heading" hidden>
+      <div class="recent-head"><h2 id="last-heading" data-text="lastProject"></h2></div>
+      <ul class="recent-list" id="last-list" aria-labelledby="last-heading"></ul>
+    </section>
+    <section class="recent" id="recent" aria-labelledby="recent-heading">
       <div class="recent-head">
         <h2 id="recent-heading" data-text="recent"></h2>
         <span class="count" id="recent-count" hidden></span>
@@ -60,11 +90,25 @@
       <ul class="recent-list" id="recent-list" aria-labelledby="recent-heading"></ul>
       <p class="recent-empty" id="recent-empty" data-text="recentEmpty" hidden></p>
     </section>
+    <section class="workspace" id="workspace" aria-labelledby="workspace-heading">
+      <div class="recent-head">
+        <h2 id="workspace-heading" data-text="workspace"></h2>
+        <span class="count" id="workspace-count" hidden></span>
+        <button type="button" class="workspace-add" id="workspace-add" data-text="addProject"></button>
+      </div>
+      <p class="workspace-hint" id="workspace-hint" data-text="reorderHint"></p>
+      <ul class="recent-list" id="workspace-list" aria-labelledby="workspace-heading" aria-describedby="workspace-hint"></ul>
+      <p class="workspace-empty" id="workspace-empty" data-text="workspaceEmpty" hidden></p>
+    </section>
+    </div>
 
     <footer class="bar">
-      <div class="status" id="status" role="status" aria-live="polite">
-        <span class="status-dot" id="status-dot"></span>
-        <span class="status-text" id="status-text" data-text="statusIdle"></span>
+      <div class="status" id="status">
+        <span class="status-dot" id="status-dot" aria-hidden="true"></span>
+        <div class="status-copy">
+          <span class="status-text" id="status-text" role="status" aria-live="polite" aria-atomic="true" data-text="statusIdle"></span>
+          <details id="status-details" hidden><summary data-text="details"></summary><pre id="status-technical"></pre></details>
+        </div>
         <button type="button" class="link" id="status-retry" hidden data-text="retry"></button>
       </div>
       <div class="bar-tools">
@@ -80,6 +124,7 @@
       </div>
     </footer>
   </main>
+  <script src="tauri-bridge.js"></script>
   <script src="launcher.js"></script>
 </body>
 </html>

@@ -198,13 +198,13 @@ export function CardOrdering({ value, onChange, disabled = false, inDeck = false
     return multiSort && rank !== null ? <span className="card-ordering-rank" aria-hidden="true">{new Intl.NumberFormat(locale(lang)).format(rank)}</span> : null;
   }
 
-  return <section className="deck-panel card-ordering" aria-labelledby={headingId}>
-    <div className="card-ordering-heading">
-      <h3 id={headingId}>{t.uiOrdering}</h3>
+  return <section className="deck-panel card-ordering glass-panel" aria-labelledby={headingId}>
+    <div className="card-ordering-heading panel-head">
+      <h3 className="panel-title" id={headingId}>{t.uiOrdering}</h3>
       <Tooltip.Provider delayDuration={250}>
         <Tooltip.Root>
           <Tooltip.Trigger asChild>
-            <button type="button" className="card-ordering-help" aria-label={t.learnMore}><CircleHelp size={16} aria-hidden="true" /></button>
+            <button type="button" className="card-ordering-help control control-ghost" aria-label={t.learnMore}><CircleHelp size={16} aria-hidden="true" /></button>
           </Tooltip.Trigger>
           <Tooltip.Portal>
             <Tooltip.Content className="card-ordering-help-card" side="bottom" align="end" sideOffset={6}>
@@ -227,7 +227,7 @@ export function CardOrdering({ value, onChange, disabled = false, inDeck = false
                 const step = { order: row.key, direction };
                 const rank = rankOf(step);
                 const Icon = direction === 'desc' ? ArrowDownWideNarrow : ArrowUpNarrowWide;
-                return <button key={direction} type="button" className="deck-panel-button is-icon" aria-pressed={rank !== null}
+                return <button key={direction} type="button" className="deck-panel-button control is-icon" aria-pressed={rank !== null}
                   aria-label={t.directionLabel(row.label, direction === 'desc')}
                   title={`${row.label} · ${direction === 'desc' ? row.descending : row.ascending}`}
                   onClick={event => choose(step, event)}><Icon size={16} aria-hidden="true" />{rankBadge(rank)}</button>;
@@ -239,7 +239,7 @@ export function CardOrdering({ value, onChange, disabled = false, inDeck = false
             <div className="card-ordering-pair" role="group" aria-label={t.uiTags}>
               {tagScopes.map(entry => {
                 const pressed = value.order === 'tags' && value.tagScope === entry.scope;
-                return <button key={entry.scope} type="button" className={'deck-panel-button is-icon' + (entry.scope === 'both' ? ' is-narrow' : '')} aria-pressed={pressed}
+                return <button key={entry.scope} type="button" className={'deck-panel-button control is-icon' + (entry.scope === 'both' ? ' is-narrow' : '')} aria-pressed={pressed}
                   aria-label={t.tagLabel(entry.label)} title={t.tagsHint(entry.label)}
                   onClick={event => choose({ order: 'tags', direction: 'asc' }, event, entry.scope)}>{entry.content}{rankBadge(pressed ? 1 : null)}</button>;
               })}
@@ -258,7 +258,7 @@ export function CardOrdering({ value, onChange, disabled = false, inDeck = false
             let hint: string = hintLabel;
             if (order.key === 'manual') hint = t.manualHint;
             else if (order.flips) hint = t.flipHint(hintLabel, shown === 'asc' ? t.ascending : t.descending);
-            return <button key={order.key} type="button" className="deck-panel-button is-wide" aria-pressed={selected || Boolean(secondary)} title={hint}
+            return <button key={order.key} type="button" className="deck-panel-button control is-wide" aria-pressed={selected || Boolean(secondary)} title={hint}
               onClick={event => choose({ order: order.key, direction: next }, event)}>
               <span>{order.label}</span>{rankBadge(selected ? 1 : secondary ? value.then.indexOf(secondary) + 2 : null)}
             </button>;
@@ -276,8 +276,8 @@ export function CardOrdering({ value, onChange, disabled = false, inDeck = false
       {defaultView && <div className="card-ordering-default" role="group" aria-label={t.uiDefaultView}>
         <span>{t.uiDefaultView}</span>
         <div>
-          <button type="button" className="deck-panel-button" disabled={!defaultView.canReset} title={t.resetHint} onClick={defaultView.onReset}>{t.uiReset}</button>
-          <button type="button" className="deck-panel-button" disabled={!defaultView.canSave} title={t.saveHint} onClick={defaultView.onSave}>{t.uiSave}</button>
+          <button type="button" className="deck-panel-button control" disabled={!defaultView.canReset} title={t.resetHint} onClick={defaultView.onReset}>{t.uiReset}</button>
+          <button type="button" className="deck-panel-button control" disabled={!defaultView.canSave} title={t.saveHint} onClick={defaultView.onSave}>{t.uiSave}</button>
         </div>
       </div>}
     </fieldset>

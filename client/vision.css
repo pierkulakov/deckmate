@@ -40,6 +40,15 @@
 .is-mini .deckmate-card-properties { border: 0; padding: 0; margin: 0; }
 
 .deckmate-vision-smart { padding: 10px 12px; gap: 7px; justify-content: center; }
+.deckmate-vision-video {
+  width: 100%; height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: var(--space-3); padding: var(--space-6); overflow: auto; text-align: center;
+  border: 1px solid var(--line); border-radius: var(--space-2); background: var(--surface); color: var(--ink); font-family: var(--font-sans);
+}
+.deckmate-vision-video p { margin: 0; color: var(--muted); }
+.vision-video-address { max-width: 100%; overflow-wrap: anywhere; color: var(--muted); }
+.deckmate-vision-video a { flex-shrink: 0; }
+.deckmate-vision-video a:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
 .deckmate-smart-head { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .deckmate-smart-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; font-weight: 500; letter-spacing: -.2px; }
 .deckmate-smart-state { flex-shrink: 0; padding: 1px 6px; border-radius: 3px; background: var(--accent-soft); color: var(--accent); font-size: 10px; }
@@ -50,37 +59,60 @@
 .deckmate-smart-capped { margin-left: auto; font-size: 9px; border-radius: 3px; padding: 1px 5px; background: var(--warning-bg); color: var(--warning-ink); }
 .deckmate-smart-label { margin: 0; font-size: 9px; color: var(--card-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
-/* --- Side panel: node tools --------------------------------------------------- */
-.vision-tools { display: flex; flex-direction: column; gap: 5px; margin-top: 22px; padding-top: 14px; border-top: 1px solid var(--line); }
-.vision-tools h3, .vision-text-refs h3 { display: flex; align-items: center; gap: 7px; margin: 0 0 4px; font-size: 12px; font-weight: 500; color: var(--ink); }
-.vision-tools h3 svg, .vision-text-refs h3 svg { color: var(--muted); }
-.vision-tools > p, .vision-tools small { font-size: 10px; line-height: 1.6; color: var(--muted); margin: 0 0 4px; }
+/* --- 2026-11-10: the tab chrome builds on the shared home grammar (surface.css) -------------------------------- */
+/* 2026-11-10: the sidebar uses one flat sheet; --shelf-inset narrows its inner inset. */
+.vision-links { --shelf-inset: var(--space-3); padding: var(--space-4) var(--space-3) calc(var(--space-4) + var(--notifications-clearance, 0px)); border-left: 0; background: none; }
+/* 2026-11-10: the sidebar is one glass sheet of sections (surface.css .glass-sheet), not a column of separate panels. */
+.vision-stack { min-width: 0; }
+/* workspace.css styles .vision-links headings and paragraphs by element; the panel title needs the shared 17/600 back. */
+.vision-panel .panel-title { display: flex; align-items: center; gap: 8px; margin: 0; color: var(--ink); font-size: 17px; font-weight: 600; line-height: 24px; }
+.vision-panel .panel-title > svg { flex-shrink: 0; color: var(--muted); }
+.vision-note { margin: 0 0 var(--space-2); }
+/* Panel fields use the shared recessed well. */
+.vision-tools select, .vision-tools input, .vision-selected-row select, .vision-selected-row input { height: 30px; padding: 0 8px; font-size: 11px; }
+.vision-tools .ui-button { flex-shrink: 0; }
+.vision-tools > .inline-error { color: var(--danger); }
+.vision-error { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-3); }
+.vision-error > span { flex: 1; }
 .vision-tool-row { display: flex; gap: 5px; align-items: center; }
-.vision-tool-row select { flex: 1; min-width: 0; }
-.vision-tool-row input { flex: 1; min-width: 0; }
-.vision-tool-row.vision-smart-controls { display: grid; grid-template-columns: minmax(0, 1fr); }
+.vision-tool-row select, .vision-tool-row input { flex: 1; min-width: 0; }
+.vision-tool-row.vision-smart-controls { display: grid; grid-template-columns: minmax(0, 1fr); gap: 5px; }
 .vision-smart-controls select { width: 100%; }
 .vision-smart-controls .ui-button { justify-self: start; }
-/* 2026-11-06: fields take the shared small button's 30 px height, so a row's select, input and button share one top and bottom line. */
-.vision-tools select, .vision-tools input { height: 30px; color: var(--ink); background: var(--surface); border: 1px solid var(--line); border-radius: 5px; padding: 0 8px; font-size: 11px; }
-.vision-tools .ui-button { flex-shrink: 0; }
-.vision-selected { display: flex; flex-direction: column; gap: 5px; margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--line); }
-.vision-selected h3 { margin: 0; font-size: 12px; font-weight: 500; }
+.vision-selected { display: flex; flex-direction: column; gap: 5px; }
 .vision-selected-row { display: flex; gap: 5px; align-items: center; font-size: 11px; color: var(--muted); }
-.vision-text-refs { display: flex; flex-direction: column; gap: 5px; margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--line); }
-.vision-ref-row { display: flex; align-items: center; gap: 7px; padding: 7px 9px; border: 1px solid var(--card-edge); border-radius: 5px;
+.vision-text-refs { display: flex; flex-direction: column; gap: 5px; }
+.vision-ref-row { display: flex; align-items: center; gap: 7px; padding: 7px 9px; border: 1px solid var(--control-line); border-radius: var(--control-radius);
   background: var(--card-face); color: var(--card-ink); font-size: 11px; text-align: left; }
-.vision-ref-row:hover:not(:disabled) { border-color: var(--card-highlight); }
+.vision-ref-row:hover:not(:disabled) { border-color: var(--button-line); background: var(--hover); }
 .vision-ref-row small { display: block; margin-top: 3px; overflow: hidden; color: var(--card-muted); font-size: 9px; font-family: 'Geist Mono', monospace; text-overflow: ellipsis; white-space: nowrap; }
 .vision-ref-row > svg { flex-shrink: 0; margin-left: auto; color: var(--card-muted); }
 .vision-ref-kind { flex-shrink: 0; width: 18px; height: 18px; display: grid; place-items: center; border-radius: 4px;
   background: var(--accent-soft); color: var(--accent); font: 600 10px 'Geist Mono', monospace; }
-.vision-ref-note { font-size: 10px; color: var(--muted); line-height: 1.6; margin: 2px 0 0; }
+.vision-ref-note { margin: 2px 0 0; }
+/* The sidebar search uses the shared recessed well. */
+.vision-search { min-height: 30px; padding: 0 8px; color: var(--muted); margin: 0 0 var(--space-2); }
+.vision-results, .vision-linked-list { margin-top: var(--space-2); }
+/* Panel empty states use the shared EmptyState, at the sidebar's tighter spacing. */
+.vision-panel .ui-empty { padding: var(--space-2) 0; }
 
-/* --- Toolbar: access menu ----------------------------------------------------- */
-.vision-toolbar-fields, .vision-toolbar-details, .vision-toolbar-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; min-width: 0; }
-.vision-toolbar-details { margin-right: auto; }
-.vision-access { display: inline-flex; }
+/* --- 2026-11-10: the board name remains the page title rather than a boxed field. ------------------------------ */
+.vision-toolbar.page-head { min-height: 0; margin: 0; padding: 10px var(--space-4) 10px var(--shelf-inset, var(--space-4)); border-bottom: 1px solid var(--line); background: none; }
+/* The name stays bare until hover, then reads as a flat field; it is a title first, never a boxed input.
+   The qualified selector outweighs workspace.css's element rule for .vision-toolbar inputs. */
+.vision-toolbar .vision-board-name { width: 100%; max-width: 460px; border: 0; border-radius: var(--control-radius); padding: 0 4px; background: transparent; }
+.vision-board-name:hover:not(:disabled) { background: var(--hover); }
+.vision-board-name:disabled { opacity: .6; }
+/* The caption keeps the save word and the board reference on one quiet line under the name. */
+.vision-toolbar .vision-save-state { display: inline; margin: 0; }
+/* workspace.css boxes .vision-toolbar select by element; the picker needs the recessed field at higher specificity.
+   2026-11-10: flex-shrink must be 0 — a shrinkable item contributes its min-content to the row's intrinsic width and
+   the action buttons wrapped under it at every window width. */
+.vision-toolbar .vision-board-picker { flex: 0 0 230px; min-width: 140px; width: auto; padding: 0 8px; font-size: 12px;
+  border: var(--control-hairline) solid var(--control-field-line); border-radius: var(--control-radius); background: var(--control-field); color: var(--ink); }
+.vision-toolbar .vision-board-picker:focus { border-color: var(--focus); }
+.vision-toolbar-actions { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-2); min-width: 0; }
+.vision-access { display: inline-flex; padding: 0 9px; }
 .vision-access-state { font-size: 10px; color: var(--muted); }
 .vision-access-state.is-locked { color: var(--warning-ink); }
 
@@ -100,11 +132,11 @@
 .vision-canvas .excalidraw:focus-visible::after { content: ''; position: absolute; inset: 0; z-index: var(--zIndex-layerUI); outline: inherit; outline-offset: inherit; pointer-events: none; }
 
 @media (max-width: 760px) {
-  .vision-toolbar { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; padding: 12px 16px; }
-  .vision-toolbar-fields { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; }
-  .vision-toolbar .vision-toolbar-fields > select, .vision-toolbar .vision-toolbar-fields > input { width: 100%; min-width: 0; }
-  .vision-toolbar-details { margin-right: 0; justify-content: space-between; }
-  .vision-toolbar-actions { gap: 8px; }
+  /* 2026-11-10: under the head row the tools wrap whole: the board picker takes one full-width line, then the access
+     pill and the action buttons share the next one, so nothing runs past the window edge. */
+  .vision-toolbar.page-head { padding: 10px var(--space-2); }
+  .vision-toolbar .page-tools { flex-basis: 100%; margin-inline-start: 0; }
+  .vision-toolbar .vision-board-picker { flex-basis: 100%; }
 }
 
 /* 2026-11-06: while the remembered board is read, the canvas area shows the shared loading state instead of an empty board that

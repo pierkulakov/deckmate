@@ -13,9 +13,11 @@ npx deckmate skills status
 
 Add `--project <project folder>` to work on another folder. From a Deckmate source checkout, `npm run skills -- install --project <project folder>` runs the same command.
 
-`install` copies the package to `<project>/.claude/skills/deckmate/` and `<project>/.agents/skills/deckmate/`. It adds `deckmateHome` to the manifest frontmatter (`tasks/deckmate.md`): the absolute path to the Deckmate package or source folder, used to find its workflows and `docs/`. Installation requires a project manifest. `status` shows the source version and each installed copy's version. Run `install` again to update, also after `npx` fetched a new Deckmate version; commit the copies with the project like any other file.
+`install` copies the entire `skills/deckmate/` tree, including workflows, references, lenses, genres, and engines, to `<project>/.claude/skills/deckmate/` (Claude Code) and `<project>/.agents/skills/deckmate/` (Codex and compatible hosts). No other host-specific folder is installed. It records the absolute package/source path as `deckmateHome` in `tasks/deckmate.md` (or the existing legacy `tasks/freetion.md`); the runner uses it as a fallback. The installed skill is self-contained and does not require repository documentation in the user's project.
 
-Agents run the board commands from the project folder with `npx deckmate project <command>` (add `--read-only` or set `DECKMATE_READ_ONLY=1` for read-only work); see the command list in [catalog.md](catalog.md#sqlite-short-references-and-the-agent-interface).
+Installation requires an existing project manifest. Both `install` and `status` accept `--from <Deckmate folder>` to select a package/source tree; otherwise they use the running package, not the manifest's recorded home. `status` reports source version, installed versions, and byte-for-byte `matches`/`differs` (or not installed). Reinstall to update, including after an `npx` cache path changes. Before replacing anything, `install` compares both copies with the package: copies containing local changes (package files that were modified, or files that exist only in the copy) are listed and nothing is replaced; pass `--force` to replace them and lose the local changes. Copies that only miss package files are updated without `--force`. Every check, including a fresh read of the project manifest, runs before the first file is replaced; if an install still fails halfway, its error names the steps that were applied and those that were not. Installation preserves other skills; keep custom lenses/genres in `tasks/`, not in these managed copies. Commit the installed copies with the project.
+
+Agents run board commands with Node.js 26+ and no server required: `npx deckmate project <command> --data <absolute-project>` (or `deckmate project …` on PATH). From a source checkout, `npm run project -- <command> --data <project>` is equivalent. `deckmate project <command> --help` (and `-h`) prints that command's arguments, options and one example, from every entry point. Explicit `--data` avoids environment defaults; it does not disable a configured `DECKMATE_WRITE` sandbox. `--source sandbox` selects the writable root in direct/sandbox mode; live writes are rejected. Add `--read-only` or set `DECKMATE_READ_ONLY=1` for research. See [catalog.md](catalog.md#sqlite-short-references-and-the-agent-interface).
 
 ## Command
 
@@ -27,17 +29,18 @@ Agents run the board commands from the project folder with `npx deckmate project
 | `audit` | Deck (ID or title) or Journey (`p-ref`) | Coverage, returns, and inactive cards; proposals with costs. |
 | `plan` | None or `c-ref` | Rules for managing cards, decks, Heroes, Journeys, Runs, milestones, tags, and questions in Markdown. |
 | `profile` | None | A project profile in `tasks/deckmate-project.md`: genre, references, and players, based on project documents and your answers. |
-| `work` | `c-ref` or member | The executor's route: `next` → `brief` → `show --lines` → `ask` → `report`. |
+| `work` | `c-ref` or member | The executor's route: `next` → `brief` → `show --lines` / `step` → `state started` → `ask` if blocked → checks → `report --state review`. |
 | `review` | `c-ref` | Acceptance based on specification tolerances, diffs, and tests, not the executor's report. |
 
-The project is the current folder or the nearest ancestor with a manifest. Before the card-creation step, `analyze` and `audit` write only their research output to the workflow's output folder. Cards require your approval of a specific list and must be created through Deckmate (UI, API, or CLI); the skill never edits SQLite.
+The skill locates the current folder or nearest ancestor with a manifest and passes it explicitly. The CLI itself does not search ancestors: data selection is `--data`, then `DECKMATE_DATA`, then cwd; skills/agents use `--project`, then cwd. Before approval of cards, `analyze` and `audit` write only their research output. Individual cards require the UI or HTTP `create-card`; there is no CLI `create-card`. CLI `project init` applies starter templates, while top-level `init <folder>` creates a demo. The skill never edits SQLite or lifts a project-wide read-only restriction to create cards.
 
 ## Package contents
 
 | Path | Contents | Maintainer |
 |---|---|---|
-| `SKILL.md` | Router: locate the project and Deckmate, delegate work, limit context, and enforce write rules. | Deckmate |
+| `SKILL.md` | Router: locate the project, select a workflow, delegate only with permission, limit context, and enforce write rules. | Deckmate |
 | `workflows/` | The six workflows above; the calling model performs `## Step N — … (self)`, while `## Assignment: <role>` (or the Russian `## Задание: <role>`) is extracted for an agent. | Deckmate |
+| `references/api.md` | Self-contained HTTP setup, hash guards, card/deck creation, questions/answers, audit reads, and review rules; API actions are distinguished from CLI commands. | Deckmate |
 | `lenses/` | Domain lenses (`fx`, `units`, `map-editor`): requirements, questions, references, warning signs, and checks. A project lens at `<project>/tasks/deckmate-lenses/<area>.md` takes precedence. | Deckmate and the project |
 | `genres/` | Genre guides for the ten starter genres plus `rts`, `tactics`, `shooter` and `4x` (`strategy` routes to the three strategy sub-genres): references, player sources, and pitfalls. Project guides go in `<project>/tasks/deckmate-genres/<key>.md`. | Deckmate and the project |
 | `engines/` | `unity`, `unreal`, `godot`: where to look, how to measure, and pitfalls. The engine is detected from project files. | Deckmate |
@@ -46,11 +49,11 @@ See `skills/deckmate/lenses/README.md` and `skills/deckmate/genres/README.md` fo
 
 ## Project profile and agent configuration
 
-Two project files; templates are in `assets/templates/`.
+Two optional project files under `<project>/tasks/`; source/package templates are in `assets/templates/`. The profile workflow includes its own complete example, so agents need not locate those templates.
 
 | File | Purpose | When absent |
 |---|---|---|
-| `deckmate-project.md` | Genre, game concept, platform, references and what to study in each, player sources, and paths to principles and goals. | The workflow asks for this information and offers to save it; the genre guide provides the research framework. |
+| `deckmate-project.md` | `genre`, `description` (game concept), `platform`, `references` (`game`/`take`), `players` (text with links/questions), and project-relative `principles`/`goal` paths. | The workflow asks for missing information and offers to save it; unknown text/paths stay empty. A project genre guide overrides the bundled guide. |
 | `deckmate-agents.md` | Launchers (`command` with `{prompt}`, `{cwd}`, `{tools}`), routing for `research` / `code` / `docs` / `synthesis`, and concurrency limits. | All assignments are handed to you for manual execution. |
 
 Configuration format and roles: [agents-config.md](agents-config.md). These files contain no API keys; launchers read their own secrets.
@@ -66,8 +69,86 @@ npx deckmate agents run <workflow> <area> [--roles research,code] [--lens <path>
 
 From a Deckmate source checkout, `npm run agents -- run <workflow> <area> --project <folder> …` runs the same command.
 
-`run` extracts the workflow's `## Assignment:` sections, substitutes `{area}`, `{project}`, `{date}`, `{out}`, `{engine}`, `{lens}`, `{profile}`, and `{genre}`, writes `{out}/tz-<role>.md`, launches each role's command, and waits. Each role writes its result to `{out}/<role>.md`. `--dry` only writes assignments and prints commands; inspect these first. Use `--lens` when the domain differs from the deck name and `--out` when the project must remain read-only. The summary marks roles without launchers for manual execution. The calling model synthesizes results with `synthesis: self`.
+`run` extracts `## Assignment:` sections (present in bundled `analyze`/`audit` only), substitutes `{area}`, `{project}`, `{date}`, `{out}`, `{engine}`, `{lens}`, `{profile}`, and `{genre}`, writes `{out}/tz-<role>.md`, launches configured role commands, and waits. The default output is `<project>/research_notes/<area>-<YYYY-MM-DD>/`. Each role writes `{out}/<role>.md`; the calling model synthesizes results. Other workflows have self steps only; the runner does not execute them.
+
+`--dry` still writes assignments but launches nothing. Inspect them first and launch only with the user's permission; if delegation is prohibited, perform roles sequentially yourself. Preserve `--roles`, `--lens`, and `--out` between preview and execution. Differing existing assignment text is rejected: choose another output folder rather than overwriting work. Use `--lens` for a different domain name and an external `--out` for a read-only project. Missing launchers are marked for manual execution; a launcher failure produces nonzero exit status.
+
+Workflow/lens/genre lookup checks installed `.agents`, installed `.claude`, project `skills/deckmate`, then the package tree selected by `deckmateHome`. Project lenses in `tasks/deckmate-lenses/` and genre guides in `tasks/deckmate-genres/` take priority; an explicit `--lens` wins over all lens defaults. A stale package path can be refreshed by reinstalling from the current package.
+
+## A full pass: from `next` to acceptance
+
+One complete executor route with a reviewer's acceptance, using the real CLI (`npx deckmate project …`, or `npm run project -- …` from a source checkout; add `--data <project>` unless the environment already selects the folder):
+
+1. Pick up the next card for a member:
+
+   ```sh
+   npx deckmate project next <member>
+   ```
+
+   ```json
+   { "source": "sandbox", "member": "casey", "card": { "ref": "c-4i9uf9xerl", "title": "Reproduce the Bug: Coupon freezes checkout", "state": "not-started", "path": "cards/…md", "sourceHash": "…" } }
+   ```
+
+2. Read the card, its rules and what to read next (`--json` adds `truncated` and `readNext`):
+
+   ```sh
+   npx deckmate project brief c-4i9uf9xerl
+   ```
+
+   ```text
+   # c-4i9uf9xerl · Reproduce the Bug: Coupon freezes checkout
+   File cards/…md:22-33 · sourceHash …
+   State not-started · owner Casey · Deck Quality · Dependencies: none recorded
+   …card text, journey step, related cards, events, and Read next ranges…
+   ```
+
+3. Read the exact ranges the brief points to, and a Journey step through its pipeline:
+
+   ```sh
+   npx deckmate project show c-4i9uf9xerl --lines 22-33
+   npx deckmate project step p-c2k6tb1e8p reproduce
+   ```
+
+   ```json
+   { "path": "cards/…md", "from": 22, "to": 33, "totalLines": 33, "markdown": "…", "sourceHash": "…", "tokens": 125 }
+   ```
+
+4. Mark work started, and ask a blocking question if needed:
+
+   ```sh
+   npx deckmate project state c-4i9uf9xerl started --member <you>
+   npx deckmate project ask c-4i9uf9xerl "Which environment should I record first?"
+   ```
+
+   ```json
+   { "question": "Which environment should I record first?", "link": "/r/c-4i9uf9xerl?source=sandbox", "existing": false, "warnings": [] }
+   ```
+
+5. Submit the result for review from a UTF-8 Markdown file:
+
+   ```sh
+   npx deckmate project report c-4i9uf9xerl --file report.md --member <you> --state review
+   ```
+
+   ```json
+   { "id": "card:…", "ref": "c-4i9uf9xerl", "source": "sandbox", "requestedState": "review", "warnings": [], "via": "files" }
+   ```
+
+6. A reviewer returns the card with a reason, or accepts it after the human owner's decision:
+
+   ```sh
+   npx deckmate project state c-4i9uf9xerl started --member <reviewer> --reason "Steps are not reproducible: fix the environment section."
+   npx deckmate project state c-4i9uf9xerl done --member <reviewer>
+   ```
+
+   ```json
+   { "id": "card:…", "ref": "c-4i9uf9xerl", "source": "sandbox", "from": "review", "state": "done", "warnings": [], "via": "files" }
+   ```
+
+A `--reason` is recorded only when returning a card from review; accepting needs no reason. Never mark your own work accepted.
 
 ## Limit context
 
-The skill prohibits reading entire files: use `brief <c-ref> --budget 1500` → a suggested range with `show <c-ref> --lines a-b` → `find <text> --fields brief`. Follow `readNext` when `truncated` is true. Read agent output starting with the summary and table.
+Read the selected skill workflow completely, but bound project-content reads: `brief <c-ref> --budget 1500` → required ranges through `show <file-card-ref> --lines a-b` or a direct file-range reader; `find <text> --fields brief` returns `{ cards, tokens }` with absolute-line `hits`. Journey ranges need `step <p-ref> <step-id>`, not an invented card ref. Increase a rejected brief budget to its reported minimum. Default brief output is Markdown with Read next ranges; `--json` exposes `truncated` and `readNext`. Hand truncation instead needs a larger limit (at most 100). Read role results starting with the summary and table.
+
+Submit Tasks with `report <c-ref> --file <UTF-8-report.md> --member <you> --state review`; report headings must be level 5 or deeper. A reviewer returns with `state <c-ref> started --member <reviewer> --reason "<required, actual; fix>"` or accepts after the human owner's decision with `state <c-ref> done --member <reviewer>`. Guardians restrict acceptance when configured; without them the code does not enforce human-only or independent acceptance, but the skill forbids accepting one's own work. Blocked is dependency-derived, not a state. `raise-decision`/`record-decision` are HTTP actions, not CLI commands; inspect the saved rule Doc's `Decided` section if `brief` omits an answer.

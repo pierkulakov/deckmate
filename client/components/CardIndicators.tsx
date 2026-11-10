@@ -39,7 +39,7 @@ const text = defineText({
   changeRun: (label: string) => `${label}, изменить Run`,
   changeMilestone: (label: string) => `${label}, изменить Milestone`,
   run: (label: string, start: string, end: string, phase: string) => `${label} · ${start} – ${end} · ${phase}`,
-  hands: (members: string) => 'Руки: ' + members,
+  hands: (members: string) => 'Hand: ' + members,
   noSlot: 'без слота',
   slot: (number: string) => 'слот ' + number,
   milestone: (title: string, date: string, total: number, acceptedState: string, accepted: string) => `Milestone: ${title} · ${date} · карточек: ${new Intl.NumberFormat(locale('ru')).format(total)} · ${acceptedState} ${accepted}`,
@@ -87,7 +87,7 @@ function PlanningIndicator({ tab, className, title, actionLabel, style, disabled
     onPointerDown={event => event.stopPropagation()} onClick={event => { event.stopPropagation(); onOpen(event.currentTarget); }}>{children}</button>;
 }
 
-export function CardIndicators({ card, lookups, members, catalog, currentMemberId, variant, onQuickSettings, quickSettingsDisabled }: {
+export function CardIndicators({ card, lookups, members, catalog, currentMemberId, variant, onQuickSettings, quickSettingsDisabled, onDependencies, dependenciesDisabled }: {
   card: CatalogCard;
   lookups: CardTileLookups;
   members: CatalogMember[];
@@ -96,6 +96,8 @@ export function CardIndicators({ card, lookups, members, catalog, currentMemberI
   variant: 'tile' | 'table' | 'preview';
   onQuickSettings?: (tab: 'run' | 'milestone', anchor: HTMLButtonElement) => void;
   quickSettingsDisabled?: boolean;
+  onDependencies?: () => void;
+  dependenciesDisabled?: boolean;
 }) {
   const t = useText(text);
   const lang = useLang();
@@ -153,6 +155,7 @@ export function CardIndicators({ card, lookups, members, catalog, currentMemberI
     : t.unknownMilestone(card.milestone ?? '');
   const gateTitle = t.dependencies(numberFormat.format(incoming.length), numberFormat.format(incomingOpen), numberFormat.format(outgoing.length));
   const dueLabel = card.dueDate && due ? t.due(formatDate(card.dueDate), due.label) : '';
+  const Gate = onDependencies ? 'button' : 'span';
 
   return <span className={`card-indicators is-${variant}`} role="group" aria-label={t.cardProperties}>
     {card.deleted && <span className="card-indicator card-trash-indicator" role="img" title={t.deleted} aria-label={t.deleted}><Trash2 aria-hidden="true" /></span>}
@@ -165,9 +168,9 @@ export function CardIndicators({ card, lookups, members, catalog, currentMemberI
       <HandIcon fill={primaryHandId === defaultMemberId ? 'currentColor' : 'none'} aria-hidden="true" />
       {primarySlot !== undefined && <strong>{numberFormat.format(primarySlot + 1)}</strong>}
     </span>}
-    {hasGate && <span className={`card-indicator card-gate-indicator${incomingOpen > 0 ? ' is-blocked' : ''}`} role="img" title={gateTitle} aria-label={gateTitle}>
+    {hasGate && <Gate type={onDependencies ? 'button' : undefined} disabled={onDependencies ? dependenciesDisabled : undefined} onClick={onDependencies} className={`card-indicator card-gate-indicator${incomingOpen > 0 ? ' is-blocked' : ''}${onDependencies ? ' card-indicator-button' : ''}`} role={onDependencies ? undefined : 'img'} title={gateTitle} aria-label={gateTitle}>
       <span className="card-gate-numbers"><span>{dependencyCount(incoming.length, numberFormat)}</span><Link2 aria-hidden="true" /><span>{dependencyCount(outgoing.length, numberFormat)}</span></span>
       <span className="card-gate-tracks" aria-hidden="true"><span><i style={{ width: `${incoming.length ? incomingAccepted / incoming.length * 100 : 0}%` }} /></span><span><i style={{ width: `${outgoing.length ? outgoingAccepted / outgoing.length * 100 : 0}%` }} /></span></span>
-    </span>}
+    </Gate>}
   </span>;
 }

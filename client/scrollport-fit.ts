@@ -5,15 +5,18 @@ import { useLayoutEffect, useRef, type RefObject } from 'react';
  * lower than its pinned offset until the page scrolls (the deck view keeps the neighbor rail above the toolbar), so
  * the measured space — not the pinned-offset formula in CSS — is the cap; New Card has measured this way since
  * 2026-11-04, and the open card shares the same cap (2026-11-08), so its material band stays inside the viewport
- * without scrolling the page. Sets <variable> on the element the resolver returns; nothing happens when the resolver
- * finds no element (Focus Mode's portal lives outside .workspace-main).
+ * without scrolling the page. Sets <variable> on the element the resolver returns, and on the element `share` returns
+ * so siblings (the open card's section column and Sub Cards panel) end at the same visible bottom; nothing happens when
+ * the resolver finds no element (Focus Mode's portal lives outside .workspace-main).
  */
-export function useScrollportFitHeight(resolve: (start: HTMLElement) => HTMLElement | null, variable: string): RefObject<HTMLElement | null> {
+export function useScrollportFitHeight(resolve: (start: HTMLElement) => HTMLElement | null, variable: string,
+  share?: (panel: HTMLElement) => HTMLElement | null): RefObject<HTMLElement | null> {
   const start = useRef<HTMLElement>(null);
   useLayoutEffect(() => {
     const element = start.current ? resolve(start.current) : null;
     if (!element) return;
     const panel: HTMLElement = element;
+    const shared = share?.(panel) ?? null;
     const scrollport = panel.closest<HTMLElement>('.workspace-main');
     const viewport = window.visualViewport;
     let frame = 0;
@@ -30,6 +33,7 @@ export function useScrollportFitHeight(resolve: (start: HTMLElement) => HTMLElem
       const height = Math.max(0, Math.floor((bottom - top) / scale - 12));
       const value = height + 'px';
       if (panel.style.getPropertyValue(variable) !== value) panel.style.setProperty(variable, value);
+      if (shared && shared.style.getPropertyValue(variable) !== value) shared.style.setProperty(variable, value);
     }
     function schedule() {
       if (!frame) frame = requestAnimationFrame(() => { frame = 0; measure(); });
@@ -44,12 +48,13 @@ export function useScrollportFitHeight(resolve: (start: HTMLElement) => HTMLElem
     viewport?.addEventListener('scroll', schedule);
     return () => {
       observer.disconnect(); cancelAnimationFrame(frame);
+      shared?.style.removeProperty(variable);
       scrollport?.removeEventListener('scroll', schedule);
       window.removeEventListener('resize', schedule);
       window.removeEventListener('scroll', schedule);
       viewport?.removeEventListener('resize', schedule);
       viewport?.removeEventListener('scroll', schedule);
     };
-  }, [resolve, variable]);
+  }, [resolve, variable, share]);
   return start;
 }

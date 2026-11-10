@@ -2,7 +2,7 @@ import { loadConfig } from '../server/config.ts';
 import { resolveDataPath } from '../server/data-paths.ts';
 import { CatalogService } from '../server/catalog-service.ts';
 import { readProjectCatalog } from '../server/catalog.ts';
-import type { CatalogQuery } from '../src/catalog-contracts.ts';
+import type { CatalogJourney, CatalogQuery, CatalogView } from '../src/catalog-contracts.ts';
 import type { DataSource } from '../src/workspace-contracts.ts';
 import { Boards } from '../server/boards.ts';
 import { resolveReference, shortReference } from '../src/references.ts';
@@ -18,6 +18,7 @@ import { readStaleCards } from '../server/agent-queue.ts';
 import { runAsScript } from '../server/cli-entry.ts';
 import { adoptLegacyEnvironment, environmentValue } from '../server/environment.ts';
 import { cardStates, cardStateWords, readCardState } from '../src/format-vocabulary.ts';
+import { defineText, serverText } from '../server/i18n.ts';
 
 const switches = new Set(['brief', 'json', 'samples', 'dry', 'read-only']);
 const allowed = ['source', 'text', 'deck', 'track', 'kind', 'state', 'owner', 'limit', 'fields', 'lines', 'budget',
@@ -25,37 +26,137 @@ const allowed = ['source', 'text', 'deck', 'track', 'kind', 'state', 'owner', 'l
   'member', 'since', 'file', 'brief', 'json', 'stale-hours', 'to', 'samples', 'dry', 'reason',
   // Data folder and write access, as for the board (2026-11-05).
   'data', 'read-only'];
-const contextOptions: Record<string, string[]> = { fields: ['find', 'summary', 'show'], lines: ['show'], budget: ['brief'], json: ['brief'], since: ['changes', 'inbox'], samples: ['init'], dry: ['init'], reason: ['state'] };
+/** 2026-11-09: options every command accepts; a command's own options come from its spec below. */
+const commonOptions = ['data', 'source', 'read-only'];
 const builtInCommands = ['summary', 'show', 'find', 'map', 'track', 'brief', 'changes', 'hand', 'step', 'pipelines', 'pipeline', 'boards', 'board', 'rebuild'];
+
+/** 2026-11-09: one spec per command drives both option validation and `deckmate project <command> --help`. */
+interface CommandSpec { args: string; options: readonly string[]; example: string }
+
+const commandSpecs: Record<string, CommandSpec> = {
+  map: { args: '', options: [], example: 'deckmate project map --data <project>' },
+  summary: { args: '[track]', options: ['track', 'limit', 'stale-hours', 'fields'], example: 'deckmate project summary --track sound --data <project>' },
+  show: { args: '<c-ref>', options: ['fields', 'lines'], example: 'deckmate project show c-1a2b3c4d5e --lines 12-40' },
+  find: { args: '[text]', options: ['text', 'deck', 'track', 'kind', 'state', 'owner', 'limit', 'fields'], example: 'deckmate project find "шаги" --kind task --owner glm --fields brief' },
+  track: { args: '<track>', options: ['text', 'deck', 'kind', 'state', 'owner', 'limit', 'fields'], example: 'deckmate project track sound --kind task' },
+  brief: { args: '<c-ref>', options: ['budget', 'json'], example: 'deckmate project brief c-1a2b3c4d5e --budget 1500 --json' },
+  changes: { args: '<c-ref>', options: ['since'], example: 'deckmate project changes c-1a2b3c4d5e --since 2026-11-09T00:00:00Z' },
+  hand: { args: '[member]', options: ['limit'], example: 'deckmate project hand --limit 10 --data <project>' },
+  step: { args: '<p-ref> <step-id>', options: [], example: 'deckmate project step p-1a2b3c4d5e step-01' },
+  pipelines: { args: '', options: [], example: 'deckmate project pipelines --data <project>' },
+  pipeline: { args: '<p-ref>', options: [], example: 'deckmate project pipeline p-1a2b3c4d5e' },
+  boards: { args: '', options: [], example: 'deckmate project boards --data <project>' },
+  board: { args: '<v-ref>', options: [], example: 'deckmate project board v-1a2b3c4d5e' },
+  rebuild: { args: '', options: [], example: 'deckmate project rebuild --data <project>' },
+  init: { args: '[template]', options: ['samples', 'dry', 'member'], example: 'deckmate project init action --dry --samples' },
+  next: { args: '[member]', options: ['member', 'stale-hours', 'brief'], example: 'deckmate project next glm --data <project>' },
+  ask: { args: '<c-ref> "<question>"', options: ['member', 'to'], example: 'deckmate project ask c-1a2b3c4d5e "Какой целевой FPS?" --member glm' },
+  report: { args: '<c-ref>', options: ['file', 'member', 'state'], example: 'deckmate project report c-1a2b3c4d5e --file report.md --member glm --state review' },
+  state: { args: '<c-ref> <state>', options: ['member', 'reason'], example: 'deckmate project state c-1a2b3c4d5e done --member reviewer' },
+  inbox: { args: '[member]', options: ['member', 'since', 'limit'], example: 'deckmate project inbox glm --since 2026-11-09T00:00:00Z' },
+};
+
+/** Placeholders shown in help; a missing hint means the option is a valueless switch. */
+const optionHints: Record<string, string> = {
+  source: '<sandbox|live>', data: '<project>', text: '<text>', deck: '<id>', track: '<id>', kind: '<task|hero|doc>',
+  state: '<state>', owner: '<id>', limit: '<n>', fields: '<brief>', lines: '<a-b>', budget: '<tokens>',
+  member: '<id>', since: '<timestamp|sourceHash>', 'stale-hours': '<hours>', to: '<id>', file: '<path>', reason: '<text>',
+};
+
+const messages = defineText({
+  overviewHelp: (commands: string) => `Usage: deckmate project <command> [arguments] [--data <project>] [--source <sandbox|live>] [--read-only]\nCommands: ${commands}.\nRun deckmate project <command> --help for the command's arguments, options and an example.\nThe agent route is in skills/deckmate/workflows/work.md.`,
+  commandHelp: (command: string, args: string, options: readonly string[], example: string) =>
+    `Usage: deckmate project ${command}${args ? ' ' + args : ''} ${options.map(optionSyntax).join(' ')}\nExample: ${example}`,
+  anyArguments: '[arguments]',
+  unknownOption: (option: string) => `Unknown option ${option}. Run deckmate project --help to list the commands and their options.`,
+  optionNotAvailable: (option: string, command: string, options: readonly string[]) =>
+    `--${option} is not available for ${command}. Options for ${command}: ${options.map(name => '--' + name).join(', ')}. Run deckmate project ${command} --help for an example.`,
+  unknownCommand: (command: string, commands: string) => `Unknown command "${command}". Commands: ${commands}.`,
+  missingValue: (option: string) => `Missing value for ${option}.`,
+  fieldsValue: '--fields accepts only brief.',
+  sourceValue: '--source must be live or sandbox.',
+  journeyOperation: (state: string, file: string) => `Unfinished Journey operation (${state}): ${file}. Pending reads use the coherent original snapshot; conflict/invalid reads use working files. Reading does not recover the operation.`,
+}, {
+  overviewHelp: (commands: string) => `Использование: deckmate project <команда> [аргументы] [--data <проект>] [--source <sandbox|live>] [--read-only]\nКоманды: ${commands}.\nЗапустите deckmate project <команда> --help, чтобы увидеть аргументы, опции и пример команды.\nМаршрут агента — в skills/deckmate/workflows/work.md.`,
+  commandHelp: (command: string, args: string, options: readonly string[], example: string) =>
+    `Использование: deckmate project ${command}${args ? ' ' + args : ''} ${options.map(optionSyntax).join(' ')}\nПример: ${example}`,
+  anyArguments: '[аргументы]',
+  unknownOption: (option: string) => `Неизвестная опция ${option}. Запустите deckmate project --help, чтобы увидеть команды и их опции.`,
+  optionNotAvailable: (option: string, command: string, options: readonly string[]) =>
+    `--${option} не применима к команде ${command}. Опции команды ${command}: ${options.map(name => '--' + name).join(', ')}. Запустите deckmate project ${command} --help для примера.`,
+  unknownCommand: (command: string, commands: string) => `Неизвестная команда "${command}". Команды: ${commands}.`,
+  missingValue: (option: string) => `Не указано значение для ${option}.`,
+  fieldsValue: '--fields допускает только brief.',
+  sourceValue: '--source должен быть live или sandbox.',
+  journeyOperation: (state: string, file: string) => `Незавершённая операция Journey (${state}): ${file}. При pending читается согласованный исходный снимок; при conflict/invalid — рабочие файлы. Чтение не завершает операцию.`,
+});
+
+function journeyReadStatus(journey: CatalogJourney, catalog: CatalogView) {
+  const pending = journey.pendingOperation;
+  if (!pending) return {};
+  const journalPath = journey.path.replace(/index\.md$/u, '.deckmate-operation.json');
+  return { pendingOperation: { ...pending, journalPath }, warnings: [
+    ...catalog.warnings.filter(warning => warning.startsWith(journey.path + ':')),
+    serverText(messages).journeyOperation(pending.state, journalPath),
+  ] };
+}
+
+function optionSyntax(name: string): string {
+  const hint = optionHints[name];
+  return hint ? `[--${name} ${hint}]` : `[--${name}]`;
+}
+
+function commandHelp(command: string): string {
+  const text = serverText(messages);
+  const spec = commandSpecs[command];
+  // 2026-11-09: a command module added by a package has no spec here, so help shows only the shared options.
+  const args = spec ? spec.args : text.anyArguments;
+  const options = spec ? [...spec.options, ...commonOptions] : commonOptions;
+  const example = spec ? spec.example : `deckmate project ${command} --data <project>`;
+  return text.commandHelp(command, args, options, example);
+}
+
+function isProjectCommand(command: string): boolean {
+  return builtInCommands.includes(command) || commandModuleUrl(command) !== null;
+}
 // 2026-11-05: command modules are .ts in the source tree and .js in the package (dist/tools/commands/).
 const moduleExtension = path.extname(fileURLToPath(import.meta.url));
 const commandsDirectory = new URL('./commands/', import.meta.url);
 
-interface ProjectArguments { command: string; positionals: string[]; options: Map<string, string> }
+interface ProjectArguments { command: string; positionals: string[]; options: Map<string, string>; help: boolean; namedCommand: boolean }
 
 /** 2026-11-05: options may stand before or after the command; the first positional argument names the command. */
 function parseProjectArguments(args: readonly string[]): ProjectArguments {
+  const text = serverText(messages);
   const options = new Map<string, string>();
   const words: string[] = [];
+  let help = false;
   for (let index = 0; index < args.length; index += 1) {
     const argument = args[index];
-    if (!argument.startsWith('--')) { words.push(argument); continue; }
+    // 2026-11-09: --help and -h are accepted at any position and answered before any validation.
+    if (argument === '--help' || argument === '-h') { help = true; continue; }
+    if (!argument.startsWith('--')) {
+      // 2026-11-09: a lone -x used to reach the command lookup and failed with a misleading "Unknown command".
+      if (argument.length > 1 && argument.startsWith('-')) throw new Error(text.unknownOption(argument));
+      words.push(argument);
+      continue;
+    }
     const key = argument.slice(2);
-    if (!allowed.includes(key)) throw new Error(`Unknown option ${argument}.`);
+    if (!allowed.includes(key)) throw new Error(text.unknownOption(argument));
     // 2026-11-05: boolean command switches must not consume the next positional argument.
     if (switches.has(key)) { options.set(key, 'true'); continue; }
     const value = args[++index];
-    if (!value || value.startsWith('--')) throw new Error(`Missing value for ${argument}.`);
+    if (!value || value.startsWith('--')) throw new Error(text.missingValue(argument));
     options.set(key, value);
   }
   const [command = 'map', ...positionals] = words;
-  for (const [key, commands] of Object.entries(contextOptions)) {
-    if (options.has(key) && !commands.includes(command)) throw new Error(`--${key} is only available for ${commands.join(', ')}.`);
-  }
-  if (options.has('fields') && options.get('fields') !== 'brief') throw new Error('--fields accepts only brief.');
-  const source = options.get('source') ?? 'sandbox';
-  if (source !== 'live' && source !== 'sandbox') throw new Error('--source must be live or sandbox.');
-  return { command, positionals, options };
+  return { command, positionals, options, help, namedCommand: words.length > 0 };
+}
+
+/** Every option the command accepts, for validation and error hints. */
+function commandOptions(command: string): readonly string[] | null {
+  const spec = commandSpecs[command];
+  return spec ? [...spec.options, ...commonOptions] : null;
 }
 
 function commandModuleUrl(command: string): URL | null {
@@ -87,17 +188,40 @@ function printJson(value: object, countTokens = false, compact = false): void {
 
 /** `npm run project -- <command>` and `deckmate project <command>`. */
 export async function projectCli(args = process.argv.slice(2)): Promise<void> {
+  const text = serverText(messages);
+  let { command, positionals, options, help, namedCommand } = parseProjectArguments(args);
+  // 2026-11-09: `help [command]` is the word form of --help, as before, but now it can also name a command.
+  if (namedCommand && command === 'help') {
+    const [requested = '', ...rest] = positionals;
+    command = requested;
+    positionals = rest;
+    namedCommand = requested !== '';
+    // 2026-11-10: the word form must only print usage; without this, `help state <card> started` ran the write.
+    help = true;
+  }
   // 2026-11-06: --help and -h answer with usage instead of "Unknown option".
-  if (args.some(argument => argument === '--help' || argument === '-h') || args[0] === 'help') {
-    console.log(`Usage: deckmate project <command> [arguments] [--data <project>] [--source sandbox|live]\nCommands: ${knownCommands().join(', ')}.\nThe agent route is in skills/deckmate/workflows/work.md.`);
+  if (help) {
+    if (namedCommand && !isProjectCommand(command)) {
+      throw new Error(text.unknownCommand(command, knownCommands().join(', ')));
+    }
+    console.log(namedCommand ? commandHelp(command) : text.overviewHelp(knownCommands().join(', ')));
     return;
   }
-  const { command, positionals, options } = parseProjectArguments(args);
   const commandFile = command === 'boards' || command === 'board' ? null : commandModuleUrl(command);
   if (!commandFile && !builtInCommands.includes(command)) {
-    throw new Error(`Unknown command "${command}". Commands: ${knownCommands().join(', ')}.`);
+    throw new Error(text.unknownCommand(command, knownCommands().join(', ')));
   }
+  // 2026-11-09: a shipped command rejects options meant for another command instead of silently ignoring them;
+  // a command module from a package declares no spec here, so its own options stay accepted as before.
+  const accepted = commandOptions(command);
+  if (accepted) {
+    for (const key of options.keys()) {
+      if (!accepted.includes(key)) throw new Error(text.optionNotAvailable(key, command, accepted));
+    }
+  }
+  if (options.has('fields') && options.get('fields') !== 'brief') throw new Error(text.fieldsValue);
   const source = (options.get('source') ?? 'sandbox') as DataSource;
+  if (source !== 'live' && source !== 'sandbox') throw new Error(text.sourceValue);
   const briefFields = options.get('fields') === 'brief';
   selectDataFolder(options.get('data'));
   const config = await loadConfig({ readOnly: options.has('read-only') });
@@ -162,6 +286,7 @@ export async function projectCli(args = process.argv.slice(2)): Promise<void> {
         boards: await new Boards(config).list(source), warnings: catalog.warnings, indexedAt: catalog.indexedAt }, null, 2));
     } else if (command === 'pipelines') {
       console.log(JSON.stringify((catalog.journeys ?? []).map(journey => ({ ref: shortReference('p', journey.id), title: journey.title, version: journey.version, path: journey.path,
+        ...journeyReadStatus(journey, catalog),
         steps: journey.steps.map(step => ({ id: step.id, title: step.title, dependsOn: step.dependsOn, path: journey.path.replace(/index\.md$/u, `steps/${step.id}.md`) })) })), null, 2));
     } else if (command === 'pipeline' || command === 'step') {
       const journey = resolveReference(catalog.journeys ?? [], 'p', positionals[0] ?? '');
@@ -170,8 +295,8 @@ export async function projectCli(args = process.argv.slice(2)): Promise<void> {
         const step = journey.steps.find(candidate => candidate.id === positionals[1]);
         if (!step) throw new Error(`Step not found. Steps of ${shortReference('p', journey.id)}: ${journey.steps.map(candidate => candidate.id).join(', ')}.`);
         console.log(JSON.stringify({ pipeline: shortReference('p', journey.id), version: journey.version,
-          path: journey.path.replace(/index\.md$/u, `steps/${step.id}.md`), ...step }, null, 2));
-      } else console.log(JSON.stringify({ ...journey, steps: journey.steps.map(({ markdown, ...step }) => step) }, null, 2));
+          path: journey.path.replace(/index\.md$/u, `steps/${step.id}.md`), ...step, ...journeyReadStatus(journey, catalog) }, null, 2));
+      } else console.log(JSON.stringify({ ...journey, steps: journey.steps.map(({ markdown, ...step }) => step), ...journeyReadStatus(journey, catalog) }, null, 2));
     } else if (command === 'show') {
       const card = resolveReference(catalog.cards, 'c', positionals[0] ?? '');
       if (!card) throw new Error('Card not found. Pass a card ID or c-ref from find.');

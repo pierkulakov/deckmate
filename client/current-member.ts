@@ -1,8 +1,8 @@
 import { readStoredValue } from './storage.ts';
 import type { CatalogMember } from '../src/catalog-contracts.ts';
 
-// «Me» in a local tool without accounts (2026-11-04): the member last chosen in «Your Hand» or in the notification
-// panel; without a choice — the first human of the registry, else the first member, like the default Hand.
+// 2026-11-10: only the explicit acting-member picker changes authorship; viewing another Hand does not.
+// General edits retain the registry fallback; a human decision requires an explicit choice in its form.
 const storageKey = 'deckmate-current-member';
 const changeEvent = 'deckmate:current-member';
 

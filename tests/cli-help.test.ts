@@ -83,6 +83,7 @@ it('prints the same skills help for deckmate skills --help, -h and the npm scrip
   expect(viaDeckmate).toBe(viaScript);
   expect(await capturedOutput(() => skillsCli(['-h']))).toBe(viaScript);
   expect(viaDeckmate).toContain('Usage: deckmate skills <install|status>');
+  expect(viaDeckmate).toContain("rules block in the project's AGENTS.md");
   expect(viaDeckmate).toContain('--force');
   expect(viaDeckmate).toContain('deckmate agents run <workflow> <area>');
   const subprocess = await execute(process.execPath, [toolFile('tools/deckmate-skills.ts'), '--help'], { cwd: workspace, windowsHide: true });

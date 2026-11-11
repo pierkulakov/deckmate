@@ -4,6 +4,17 @@ Notable changes are grouped by version using [Keep a Changelog](https://keepacha
 
 ## [Unreleased]
 
+## [0.7.1] - 2026-11-11
+
+### Agents
+
+- **Board rules in the project.** `deckmate skills install` adds a marked block to the project's `AGENTS.md`: the commands for taking and handing in a card, one way to create cards through the running board with a ready request, and when to open the skill. Text outside the markers is never touched; a repeated install rewrites only its own block, and `skills status` reports its state.
+- **One way to create cards.** The skill no longer suggests writing card files by hand: cards are created and changed through the running board, and the rules say what to do when no board answers.
+
+### Desktop
+
+- **Documented port.** Desktop serves the open project on port 4317 first, its last port second and any free port last, so an agent or script that follows the documentation finds the board. A shell that used another port moves once; the theme, panel width and acting member kept in the board's browser storage start afresh.
+
 ## [0.7.0] - 2026-11-11
 
 ### Interface
@@ -236,7 +247,8 @@ First public release.
 - Third-party notices: `dist/client/third-party-licenses.md` now carries full license texts for bundled packages that ship no license file and for code embedded in prebuilt packages (Chevrotain, Langium, the vscode-languageserver libraries and lodash-es inside `@mermaid-js/parser`, js-yaml inside `mermaid`); the build fails on an empty section or on undeclared embedded code.
 - Source-checkout instructions also open the demo, and the `/deckmate` analyze and audit workflows move new cards to `discussing` after creating them.
 
-[Unreleased]: https://github.com/pierkulakov/deckmate/compare/v0.7.0...HEAD
+[Unreleased]: https://github.com/pierkulakov/deckmate/compare/v0.7.1...HEAD
+[0.7.1]: https://github.com/pierkulakov/deckmate/compare/v0.7.0...v0.7.1
 [0.7.0]: https://github.com/pierkulakov/deckmate/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/pierkulakov/deckmate/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/pierkulakov/deckmate/compare/v0.4.0...v0.5.0

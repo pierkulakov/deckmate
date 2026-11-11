@@ -127,8 +127,16 @@ fn free_port() -> io::Result<u16> {
     Ok(TcpListener::bind(("127.0.0.1", 0))?.local_addr()?.port())
 }
 
+/// The port the CLI serves on and the documentation names.
+pub const DOCUMENTED_PORT: u16 = 4317;
+
+/// 2026-11-11: the documented port comes first, so an agent or script that follows the documentation finds the
+/// board of the open project without being told where it is. The saved port is the second choice and any free
+/// port the last. A shell that used another port moves once: the board's browser-side preferences (theme, panel
+/// width, acting member) belong to the origin and start afresh on the documented one.
 pub fn choose_port(saved: Option<u16>) -> io::Result<u16> {
-    if let Some(port) = saved.filter(|port| *port != 0) {
+    let saved = saved.filter(|port| *port != 0 && *port != DOCUMENTED_PORT);
+    for port in [DOCUMENTED_PORT].into_iter().chain(saved) {
         match TcpListener::bind(("127.0.0.1", port)) {
             Ok(_) => return Ok(port),
             Err(error) if error.kind() == io::ErrorKind::AddrInUse => (),
@@ -549,14 +557,30 @@ pub(crate) mod tests {
     use super::*;
 
     #[test]
-    fn keeps_available_saved_port_and_falls_back_when_taken() {
-        let occupied = TcpListener::bind(("127.0.0.1", 0)).unwrap();
-        let port = occupied.local_addr().unwrap().port();
-        assert_ne!(choose_port(Some(port)).unwrap(), port);
-        drop(occupied);
-        assert_eq!(choose_port(Some(port)).unwrap(), port);
-        assert_ne!(choose_port(None).unwrap(), 0);
-        assert_ne!(choose_port(Some(0)).unwrap(), 0);
+    fn prefers_the_documented_port_then_the_saved_one_then_any_free_port() {
+        let other = TcpListener::bind(("127.0.0.1", 0)).unwrap();
+        let saved = other.local_addr().unwrap().port();
+        drop(other);
+        // The documented port can be busy on the machine that runs the tests; the order must hold either way.
+        match TcpListener::bind(("127.0.0.1", DOCUMENTED_PORT)) {
+            Ok(holder) => {
+                assert_eq!(choose_port(Some(saved)).unwrap(), saved);
+                let taken = TcpListener::bind(("127.0.0.1", saved)).unwrap();
+                let fallback = choose_port(Some(saved)).unwrap();
+                assert!(fallback != saved && fallback != DOCUMENTED_PORT && fallback != 0);
+                drop(taken);
+                assert_ne!(choose_port(None).unwrap(), DOCUMENTED_PORT);
+                assert_ne!(choose_port(Some(DOCUMENTED_PORT)).unwrap(), DOCUMENTED_PORT);
+                drop(holder);
+                assert_eq!(choose_port(Some(saved)).unwrap(), DOCUMENTED_PORT);
+                assert_eq!(choose_port(None).unwrap(), DOCUMENTED_PORT);
+                assert_eq!(choose_port(Some(0)).unwrap(), DOCUMENTED_PORT);
+            }
+            Err(_) => {
+                assert_eq!(choose_port(Some(saved)).unwrap(), saved);
+                assert_ne!(choose_port(None).unwrap(), DOCUMENTED_PORT);
+            }
+        }
     }
 
     #[test]

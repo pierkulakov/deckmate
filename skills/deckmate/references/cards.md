@@ -1,6 +1,6 @@
 # Cards and native files
 
-Use one card as the source of truth for its result, properties, questions and reports. Create or change cards only after approval of the specific list; use the CLI, UI, HTTP, or the native format below rather than SQLite.
+Use one card as the source of truth for its result, properties, questions and reports. Create or change cards only after approval of the specific list, through the running server ([HTTP and startup rule](api.md)), never by hand or through SQLite. Reading and the guarded CLI `next`, `brief`, `report`, `state` and `ask` still work without a server.
 
 ## Task
 
@@ -28,9 +28,11 @@ A Doc holds a small rule or reference without a delivery workflow state.
 
 ## Card file format
 
+This format is a reference for reading existing cards, not instructions to create or edit card files by hand. Use the running server for creation and content/property changes.
+
 A native card is one UTF-8 file at `cards/<uuid>.md`; the filename UUID must exactly match frontmatter `id`. Its canonical ID is `card:<uuid>`; UUIDv4 and deterministic UUIDv8 are supported. Commands accept that full ID or the c-ref they print, but file links use full canonical IDs.
 
-Required frontmatter keys are `deckmate: card`, `schema: 1`, `id`, `kind: task | hero | doc`, single-line `title`, `state`, `owner`, `deckId`, `trackIds`, and `parentId`. Quote YAML string values, especially titles containing colons; use explicit `null` for an unset state/owner/deck/parent and `[]` for no Tracks. Optional keys are `iteration` (nonnegative integer or null), `dependsOn` (unique canonical card IDs), `effort` (finite number ≥ 0 or null), `priority` (`high | medium | low` or null), and Journey provenance managed by Deckmate. Markdown after the closing `---` is the card body. Write `state` by hand only in a new file (`not-started` for a Task); change an existing card's state with `deckmate project state`, which records the transition and its reason.
+Required frontmatter keys are `deckmate: card`, `schema: 1`, `id`, `kind: task | hero | doc`, single-line `title`, `state`, `owner`, `deckId`, `trackIds`, and `parentId`. YAML strings are quoted, especially titles containing colons; unset state/owner/deck/parent use explicit `null`, and no Tracks uses `[]`. Optional keys are `iteration` (nonnegative integer or null), `dependsOn` (unique canonical card IDs), `effort` (finite number ≥ 0 or null), `priority` (`high | medium | low` or null), and Journey provenance managed by Deckmate. Markdown after the closing `---` is the card body. New Tasks start `not-started`; change an existing card's state with `deckmate project state`, which records the transition and its reason.
 
 Example dependent Task:
 
@@ -74,9 +76,9 @@ Choose `deckId`, Track IDs and parent IDs from `map`/`show`; do not add native c
 
 Only existing active prerequisites outside `done` block; missing, archived and deleted ones do not. Nevertheless, fix broken links: `map` warns about an unknown/incompatible deck, missing parent, or missing dependency. Malformed YAML or an ID/filename mismatch produces a warning and the file is not loaded as a card. Invalid states, duplicate dependency entries, negative/non-numeric effort, and unknown priority values are rejected in file warnings; reread after correcting them.
 
-Check `map` warnings after writing card files, then take each new c-ref from `find "<title>" --fields brief`; refs do not exist before the first read.
+Check `map` warnings after server writes, then take each new c-ref from `find "<title>" --fields brief`; refs do not exist before the first read.
 
-Hand, tags, Run, milestone and due date are card options, not front matter: they live in `tasks/deckmate-card-options.md` under `cards:` keyed by canonical ID (`card:<uuid>:` → `handMemberIds: [builder]`, `handOrder: { builder: 0 }` for the position in each Hand, `run: <run-id>`, `milestone: <id>`, `dueDate: YYYY-MM-DD`, `tags: [...]`). While no server is running you may add or edit only your card's block by hand, keep the YAML valid and check `hand <member>` and `map` afterwards; with a server running use the UI or `bulk-edit-cards` ([HTTP](api.md)), because a hand edit there races the server's writes.
+Hand, tags, Run, milestone and due date are card options, not front matter: they live in `tasks/deckmate-card-options.md` under `cards:` keyed by canonical ID (`card:<uuid>:` → `handMemberIds: [builder]`, `handOrder: { builder: 0 }` for the position in each Hand, `run: <run-id>`, `milestone: <id>`, `dueDate: YYYY-MM-DD`, `tags: [...]`). Change them only through the running server's UI or `bulk-edit-cards` ([HTTP](api.md)); do not edit shared card options by hand.
 
 Check `map` warnings again after editing card options. Keep writes to one card sequential: “The source changed in the files” is the stale-hash guard, not permission to overwrite; reread before retrying.
 
@@ -90,6 +92,6 @@ Keep the report to 60 lines: lead with a five-line Summary naming card, absolute
 
 Keep one top-level list item per question in `## Open questions` (legacy `## Открыто`); nested options are not separate questions. The section ends at the next H1/H2 or a `#### Report` heading. `ask` appends and links a Decision Task only for a top-level rule Doc; without one, contact the person directly rather than waiting.
 
-`ask` stores question punctuation Markdown-escaped (for example, `\?`, `\,`); match the saved bytes exactly when editing the question in a file.
+`ask` stores question punctuation Markdown-escaped (for example, `\?`, `\,`); match the saved text exactly when resolving the question through the server.
 
 With the person's approval, HTTP `record-decision` moves the exact answer into `## Decided` (legacy `## Решено`), removes the open item, and accepts its Decision Task. Read the saved rule Doc to verify the answer; a bounded `brief` can omit it. See [HTTP actions](api.md).

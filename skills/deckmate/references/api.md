@@ -1,10 +1,10 @@
 # HTTP actions used by this skill
 
-Every endpoint here needs a running local Deckmate server with the intended project open. For offline card content use [native files](cards.md#card-file-format); CLI writes probe the [configured port](cli.md#common-options). Do not write to an unrelated server or use these action names as `deckmate project` commands.
+Create and change cards only through a running local Deckmate server with the intended project open, never by writing card files by hand. If `http://127.0.0.1:4317` does not answer, start `npx deckmate --no-open` in the project folder in the background and wait for a response. If it cannot start, stop and tell the person; do not use a file-based fallback. Stop a server you started yourself when finished. CLI `report`, `state` and `ask` remain available without a server; their guarded writes probe the [configured port](cli.md#common-options). Do not write to an unrelated server or use these action names as `deckmate project` commands.
 
 ## Authorize and protect writes
 
-1. Use the server's loopback URL (default `http://127.0.0.1:4317`, but its port may differ). `GET /api/snapshot?source=sandbox` returns `token`, `editMode`, effective source and write availability. A read-only restriction is not permission to restart in writable mode.
+1. `GET http://127.0.0.1:4317/api/snapshot?source=sandbox` returns `token`, `editMode`, effective source and write availability. If it does not answer, start the server as described above and wait; if startup fails, stop and tell the person. A read-only restriction is not permission to restart in writable mode. If the intended server uses another approved loopback port, use its URL instead and verify the project before writing.
 2. `GET /api/catalog?source=sandbox` returns canonical IDs, members, current objects and hashes. Resolve c-refs/p-refs with CLI `show`/`pipeline` when needed. Catalog reads in writable mode may perform housekeeping; for read-only research prefer CLI `--read-only` or an already read-only server.
 3. Send writes as JSON to `POST /api/catalog` with `Content-Type: application/json`, `x-deckmate-token: <token>`, and `x-deckmate-actor: <registered-member-id>`. The actor is recorded in activity; without the header it is unknown.
 4. Every action sends `action`, `source: "sandbox"`, and fresh `manifestHash`, plus its listed fields. Card updates also need the card's current whole-file `sourceHash`; CardOptions, Run, Milestone, Journey and attachment operations use their respective current hashes.
@@ -16,6 +16,15 @@ Every endpoint here needs a running local Deckmate server with the intended proj
 
 Use `POST /api/catalog` with the shared fields above; success returns the updated catalog.
 - `create-card`: `cardId: "card:<uuid>"`, `kind: "task" | "hero" | "doc"`, `title`, `markdown`, `deckId`, `trackIds`, `parentId`, `owner`, `effort`, `priority`. Send unset parent/owner/effort/priority as `null`, Tracks as `[]`; `deckId: null` uses a compatible Inbox or leaves the card Unassigned. Task starts `not-started`; Hero/Doc state is null.
+
+Minimal creation sequence: (1) `GET /api/snapshot?source=sandbox` for `token`; (2) `GET /api/catalog?source=sandbox` for `manifestHash`; (3) `POST /api/catalog` with the token/actor headers above and this body:
+
+```json
+{"action":"create-card","source":"sandbox","manifestHash":"<manifestHash>","cardId":"card:<new UUID>","kind":"task","title":"<title>","markdown":"","deckId":null,"trackIds":[],"parentId":null,"owner":null,"effort":null,"priority":null}
+```
+
+`deckId: null` sends the card to Inbox when compatible; take `manifestHash` for the next request from the response.
+
 - `update-card-content`: `cardId`, `sourceHash`, `title`, `markdown`. Read the full editable text first with `GET /api/card-content?source=sandbox&cardId=<URL-encoded canonical ID>` → `{ cardId, title, markdown, sourceHash }`; catalog previews are not complete bodies. Only title/body change, not properties.
 - Title: nonempty single line, ≤1000 characters; Markdown: ≤200000 characters, may be empty. Explicit Deck/Track IDs must exist; the Deck must accept the card kind. Hero has no parent; Task/Doc may have one active top-level Hero/Doc parent.
 

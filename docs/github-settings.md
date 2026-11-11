@@ -91,8 +91,8 @@ Keep `package.json`, `package-lock.json`, `desktop/package.json`, `desktop/src-t
 With the current token-based workflow, confirm that `NPM_TOKEN` is present, unexpired and permitted to publish, and that both updater-signing secrets and their offline recovery copy are available. After owner approval and successful CI/CodeQL, create and push the version tag from the verified commit:
 
 ```sh
-git tag -a v0.7.0 -m "Deckmate 0.7.0"
-git push origin v0.7.0
+git tag -a v0.7.1 -m "Deckmate 0.7.1"
+git push origin v0.7.1
 ```
 
 [release.yml](../.github/workflows/release.yml) runs `preflight → desktop → release`:
@@ -127,7 +127,7 @@ Use the workflow's retry path above for asset recovery and publication; it share
 For read-only inspection with an authenticated maintainer `gh` session:
 
 ```pwsh
-$tag = 'v0.7.0'
+$tag = 'v0.7.1'
 $raw = gh release view $tag --json databaseId,isDraft
 if ($LASTEXITCODE -ne 0) { throw 'Release lookup failed; do not create another draft.' }
 $release = $raw | ConvertFrom-Json

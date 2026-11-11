@@ -1,5 +1,5 @@
-import { createHash } from 'node:crypto';
-import { lstat, mkdir, readFile, readdir, realpath, rm, writeFile } from 'node:fs/promises';
+import { createHash, randomUUID } from 'node:crypto';
+import { lstat, mkdir, readFile, readdir, realpath, rename, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { isDeepStrictEqual, parseArgs } from 'node:util';
 import { isMap, isScalar } from 'yaml';
@@ -11,6 +11,9 @@ import { readProjectMarkdown, replaceProjectMarkdown } from '../server/native-ca
 import { packagePath } from '../server/package-path.ts';
 
 const destinations = ['.claude/skills/deckmate', '.agents/skills/deckmate'];
+const rulesStart = '<!-- deckmate:agent-rules:start -->';
+const rulesEnd = '<!-- deckmate:agent-rules:end -->';
+type AgentRulesStatus = 'missing-file' | 'missing-block' | 'matches' | 'differs';
 
 /** 2026-11-09: files a reinstall would overwrite or delete, per installed copy. */
 export interface SkillCopyEdits { destination: string; changed: string[]; added: string[] }
@@ -19,6 +22,7 @@ const messages = defineText({
   skillsHelp: `Usage: deckmate skills <install|status> [--project <folder>] [--from <Deckmate folder>] [--force]
 
 install  Copy this Deckmate's skills/deckmate package into the project's .claude/skills and .agents/skills folders.
+         Add or update the marked Deckmate rules block in the project's AGENTS.md; preserve text outside it.
 status   Compare the installed copies with this package, byte for byte.
 --force  install: replace copies that contain local changes; without it install lists them and changes nothing.
 
@@ -39,12 +43,22 @@ See deckmate --help for the full overview.`,
   },
   manifestChanged: (manifest: string) =>
     `${manifest}: the project manifest changed while deckmate skills install was checking the project; nothing was replaced. Re-run deckmate skills install.`,
+  invalidRules: (filename: string) => `${filename}: expected exactly one ordered pair of Deckmate agent-rules markers on separate lines, or no markers. Nothing was changed.`,
+  regularFile: (filename: string) => `${filename}: expected a regular file, not a link or folder.`,
+  rulesChanged: (filename: string) => `${filename}: the file changed while deckmate skills install was running; it was not replaced. Re-run deckmate skills install.`,
+  missingRules: (source: string) => `${source}: project-rules.md: file not found.`,
+  'missing-file': 'no file',
+  'missing-block': 'no block',
+  matches: 'matches',
+  differs: 'differs',
+  rulesUpdated: (filename: string) => `Updated: ${filename}`,
   stoppedInstall: (step: string, reason: string, applied: string[], pending: string[]) =>
     `deckmate skills install stopped at ${step} (${reason}); ${step} may be partially written. Applied: ${applied.join(', ') || 'none'}. Not applied: ${pending.join(', ') || 'none'}. Fix the problem and re-run deckmate skills install.`,
 }, {
   skillsHelp: `Использование: deckmate skills <install|status> [--project <папка>] [--from <папка Deckmate>] [--force]
 
 install  Скопировать пакет skills/deckmate этого Deckmate в папки .claude/skills и .agents/skills проекта.
+         Добавить или обновить блок правил Deckmate между маркерами в AGENTS.md проекта; остальной текст сохранить.
 status   Сравнить установленные копии с этим пакетом байт в байт.
 --force  install: заменить копии с локальными правками; без флага install перечисляет их и ничего не меняет.
 
@@ -65,6 +79,15 @@ status   Сравнить установленные копии с этим па
   },
   manifestChanged: (manifest: string) =>
     `${manifest}: манифест проекта изменился во время проверки в deckmate skills install; ничего не заменено. Повторите deckmate skills install.`,
+  invalidRules: (filename: string) => `${filename}: нужна ровно одна упорядоченная пара маркеров Deckmate agent-rules на отдельных строках либо отсутствие маркеров. Ничего не изменено.`,
+  regularFile: (filename: string) => `${filename}: нужен обычный файл, не ссылка и не папка.`,
+  rulesChanged: (filename: string) => `${filename}: файл изменился во время deckmate skills install; он не заменён. Повторите deckmate skills install.`,
+  missingRules: (source: string) => `${source}: project-rules.md: файл не найден.`,
+  'missing-file': 'нет файла',
+  'missing-block': 'нет блока',
+  matches: 'совпадает',
+  differs: 'отличается',
+  rulesUpdated: (filename: string) => `Обновлён: ${filename}`,
   stoppedInstall: (step: string, reason: string, applied: string[], pending: string[]) =>
     `deckmate skills install остановился на шаге ${step} (${reason}); шаг ${step} может быть применён частично. Применено: ${applied.join(', ') || 'ничего'}. Не применено: ${pending.join(', ') || 'ничего'}. Исправьте проблему и повторите deckmate skills install.`,
 });
@@ -132,6 +155,76 @@ export async function guardProjectPath(project: string, target: string): Promise
   }
 }
 
+async function readAgentRules(project: string, filename: string): Promise<Buffer | null> {
+  await guardProjectPath(project, filename);
+  try {
+    if (!(await lstat(filename)).isFile()) throw new Error(serverText(messages).regularFile(filename));
+    return await readFile(filename);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null;
+    throw error;
+  }
+}
+
+function patchAgentRules(before: Buffer | null, rules: Buffer, filename: string): { after: Buffer; status: AgentRulesStatus } {
+  const text = before?.toString('utf8') ?? '';
+  const newline = text.match(/\r?\n/u)?.[0] ?? '\n';
+  const content = rules.toString('utf8').replace(/(?:\r?\n)+$/u, '').replace(/\r?\n/gu, newline);
+  const start = text.indexOf(rulesStart);
+  const end = text.indexOf(rulesEnd);
+  if (start < 0 && end < 0) {
+    let separator = '';
+    if (text && text !== '\uFEFF') {
+      separator = newline + newline;
+      if (text.endsWith(newline)) separator = newline;
+      if (text.endsWith(newline + newline)) separator = '';
+    }
+    const block = Buffer.from(`${separator}${rulesStart}${newline}${content}${newline}${rulesEnd}${newline}`);
+    return { after: Buffer.concat([before ?? Buffer.alloc(0), block]), status: before === null ? 'missing-file' : 'missing-block' };
+  }
+  const onOwnLine = (index: number, marker: string) => {
+    const previous = text.slice(0, index);
+    const following = text.slice(index + marker.length);
+    return (previous === '' || previous === '\uFEFF' || previous.endsWith('\n'))
+      && (following === '' || following.startsWith('\n') || following.startsWith('\r\n'));
+  };
+  if (start < 0 || end < start + rulesStart.length || text.lastIndexOf(rulesStart) !== start
+    || text.lastIndexOf(rulesEnd) !== end || !onOwnLine(start, rulesStart) || !onOwnLine(end, rulesEnd)) {
+    throw new Error(serverText(messages).invalidRules(filename));
+  }
+  const from = Buffer.byteLength(text.slice(0, start + rulesStart.length));
+  const to = Buffer.byteLength(text.slice(0, end));
+  const after = Buffer.concat([before!.subarray(0, from), Buffer.from(`${newline}${content}${newline}`), before!.subarray(to)]);
+  return { after, status: before!.equals(after) ? 'matches' : 'differs' };
+}
+
+async function checkAgentRules(project: string, filename: string, before: Buffer | null): Promise<void> {
+  const current = await readAgentRules(project, filename);
+  if (before === null ? current !== null : current === null || !before.equals(current)) {
+    throw new Error(serverText(messages).rulesChanged(filename));
+  }
+}
+
+async function replaceAgentRules(project: string, filename: string, before: Buffer | null, after: Buffer): Promise<void> {
+  const temporary = path.join(path.dirname(filename), `.AGENTS.md.${randomUUID()}.tmp`);
+  await guardProjectPath(project, filename);
+  await guardProjectPath(project, temporary);
+  try {
+    await writeFile(temporary, after, { flag: 'wx' });
+    await checkAgentRules(project, filename, before);
+    await guardProjectPath(project, filename);
+    await rename(temporary, filename);
+  } finally {
+    await rm(temporary, { force: true });
+  }
+}
+
+function projectRules(files: Map<string, Buffer>, source: string): Buffer {
+  const rules = files.get('project-rules.md');
+  if (!rules) throw new Error(serverText(messages).missingRules(source));
+  return rules;
+}
+
 async function treeFiles(directory: string): Promise<Map<string, Buffer>> {
   const files = new Map<string, Buffer>();
   async function visit(current: string) {
@@ -180,6 +273,9 @@ export async function installSkills(project: string, from = packagePath()) {
   const source = path.join(home, 'skills/deckmate');
   const files = await treeFiles(source);
   const version = skillVersion(files, source);
+  const agentRulesFile = path.join(root, 'AGENTS.md');
+  const agentRulesBefore = await readAgentRules(root, agentRulesFile);
+  const agentRules = patchAgentRules(agentRulesBefore, projectRules(files, source), agentRulesFile);
   const relative = await resolveDataPath(root, 'tasks/deckmate.md');
   const manifest = path.join(root, relative);
   let before: Buffer;
@@ -201,6 +297,7 @@ export async function installSkills(project: string, from = packagePath()) {
     copies.push({ label: destinations[index], target, files: await installedFiles(target) });
   }
   if (!(await readProjectMarkdown(root, relative)).equals(before)) throw new Error(text.manifestChanged(manifest));
+  await checkAgentRules(root, agentRulesFile, agentRulesBefore);
   const steps: Array<{ label: string; run: () => Promise<void> }> = [];
   for (const copy of copies) {
     if (sameFiles(files, copy.files)) continue;
@@ -219,6 +316,10 @@ export async function installSkills(project: string, from = packagePath()) {
       await replaceProjectMarkdown(root, relative, createHash('sha256').update(before).digest('hex'), after);
     } });
   }
+  const rulesChanged = agentRules.status !== 'matches';
+  if (rulesChanged) {
+    steps.push({ label: 'AGENTS.md', run: () => replaceAgentRules(root, agentRulesFile, agentRulesBefore, agentRules.after) });
+  }
   const applied: string[] = [];
   for (const step of steps) {
     try {
@@ -230,7 +331,7 @@ export async function installSkills(project: string, from = packagePath()) {
       throw new Error(text.stoppedInstall(step.label, (error as Error).message, applied, pending));
     }
   }
-  return { home, manifest, version };
+  return { home, manifest, version, agentRules: rulesChanged ? agentRulesFile : null };
 }
 
 /**
@@ -261,6 +362,8 @@ export async function skillsStatus(project: string, from = packagePath()) {
   const source = path.join(home, 'skills/deckmate');
   const files = await treeFiles(source);
   const version = skillVersion(files, source);
+  const agentRulesFile = path.join(root, 'AGENTS.md');
+  const agentRules = patchAgentRules(await readAgentRules(root, agentRulesFile), projectRules(files, source), agentRulesFile).status;
   const installations = [];
   for (const destination of destinations) {
     const directory = path.join(root, destination);
@@ -269,7 +372,7 @@ export async function skillsStatus(project: string, from = packagePath()) {
     installations.push({ path: directory, version: installed.has('SKILL.md') ? skillVersion(installed, directory) : null,
       matches: sameFiles(files, installed) });
   }
-  return { home, version, installations };
+  return { home, version, installations, agentRules };
 }
 
 /** `npm run skills -- <install|status>` and `deckmate skills <install|status>`; the project defaults to the current folder. */
@@ -292,10 +395,12 @@ export async function skillsCli(args = process.argv.slice(2)): Promise<void> {
     }
     const installed = await installSkills(project, values.from);
     console.log(`Installed: ${installed.version} into ${destinations.join(' and ')}\nSource: ${installed.home}\nManifest: ${installed.manifest}`);
+    if (installed.agentRules) console.log(text.rulesUpdated(installed.agentRules));
   } else {
     if (values.force) throw new Error(text.forceInstallOnly);
     const status = await skillsStatus(project, values.from);
     console.log(`Source: ${status.home}\nVersion: ${status.version}`);
+    console.log(`AGENTS.md | ${text[status.agentRules]}`);
     for (const entry of status.installations) {
       console.log(`${entry.path} | ${entry.version ?? 'not installed'} | ${entry.matches ? 'matches' : 'differs'}`);
     }

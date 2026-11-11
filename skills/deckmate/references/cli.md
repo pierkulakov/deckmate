@@ -1,6 +1,6 @@
 # Project CLI
 
-`deckmate project` reads project Markdown directly and can write without a server; writes first probe the configured port (see [Common options](#common-options)). Use an explicit `--data <project>` and references printed by prior commands. JSON is pretty-printed except compact `--fields brief` responses.
+`deckmate project` reads project Markdown directly; reading, `next`, `brief`, `report`, `state` and `ask` work without a server. Guarded CLI writes first probe the configured port (see [Common options](#common-options)). For card creation and content/property changes use only the running server, following the [HTTP startup rule](api.md); do not write card files by hand. Use an explicit `--data <project>` and references printed by prior commands. JSON is pretty-printed except compact `--fields brief` responses.
 
 ## summary
 
@@ -192,6 +192,6 @@ Blocked is calculated from existing active unfinished dependencies, not stored a
 ## Other entry points
 
 - `deckmate init <folder>` creates a demo in a new or empty folder and never replaces existing files; it is not `deckmate project init`.
-- `deckmate skills install|status --project <project> [--from <Deckmate-folder>] [--force]` installs into both `.claude/skills/deckmate` and `.agents/skills/deckmate`, or compares them without writing. Install records `deckmateHome`; replacing local changes needs `--force`.
+- `deckmate skills install|status --project <project> [--from <Deckmate-folder>] [--force]` installs into both `.claude/skills/deckmate` and `.agents/skills/deckmate`, or compares them without writing. Install records `deckmateHome` and updates the marked Deckmate rules block in the project's `AGENTS.md`, preserving all text outside it; status also checks that block. Replacing local changes in skill copies needs `--force`, but the rules block is always managed by Deckmate.
 - Install needs `tasks/deckmate.md` (or its legacy manifest); otherwise it fails with “cannot read the project manifest”. Create the board first with `deckmate project init <template> --data <project>` or `deckmate init <folder>`, then install.
 - `deckmate agents run <workflow> <area> --project <project> [--dry] [--roles research,code] [--lens <file>] [--out <folder>]` writes assignments and optionally launches configured roles. `--dry` never launches but still writes `tz-*.md`.

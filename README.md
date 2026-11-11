@@ -28,7 +28,7 @@
   <a href="https://github.com/pierkulakov/deckmate/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-AGPL--3.0--only-9258e5?style=flat&amp;labelColor=27242f" alt="License: AGPL-3.0-only" /></a>
 </p>
 
-<p align="center"><sub>0.7.0 · Early release · macOS planned · Project file format (schema 1) may change before 1.0.</sub></p>
+<p align="center"><sub>0.7.1 · Early release · macOS planned · Project file format (schema 1) may change before 1.0.</sub></p>
 
 <p align="center">
   <a href="#quick-start">Quick start</a> · <a href="#use-it-with-your-project">Your project</a> · <a href="#how-it-works">Concepts</a> · <a href="#decks-inbox-and-sub-cards">Decks and Inbox</a> · <a href="#working-with-ai-agents">Agents</a> · <a href="#faq">FAQ</a>
@@ -90,7 +90,7 @@ Without a project, choose **Open folder…** to select a folder, or **Create pro
 
 Pin up to 30 projects to **Workspace** from the start screen or the board's project menu. Reorder or remove them without deleting their folders; switch with a click or `Ctrl+1`–`Ctrl+9` for the first nine. Projects are not pinned merely by opening them.
 
-The last local project opens on the next launch if its folder is available; network folders are not reopened automatically. Use **File → Switch project…** (`Ctrl+Shift+P`) to return to the start screen, or `Ctrl+O` to open another folder. Desktop runs the local server on `127.0.0.1`, reusing its saved port when available and choosing a free port otherwise. Project data remains in the project folder.
+The last local project opens on the next launch if its folder is available; network folders are not reopened automatically. Use **File → Switch project…** (`Ctrl+Shift+P`) to return to the start screen, or `Ctrl+O` to open another folder. Desktop runs the local server on `127.0.0.1`, on port 4317 — the same address the CLI uses, so an agent or script finds the open project's board at `http://127.0.0.1:4317/`. If that port is busy, Desktop reuses its last port or chooses a free one. Project data remains in the project folder.
 
 Settings — workspace, recent projects, language, updates, zoom and window position — live in `%APPDATA%\Deckmate\desktop.json`; the server log is `server.log` next to it, and the disposable index is in `%APPDATA%\Deckmate\index`.
 
@@ -247,6 +247,8 @@ npx deckmate project report <card-ref> --file report.md --member <member> --stat
 Assigning an owner never starts a model. The example submits work for review; a reviewer can then accept it. The server rejects self-acceptance by a known agent that owns the card or authored an earlier report; an independent agent can review another member's work. People are not subject to this self-acceptance restriction. If a deck has Guardians, the accepting member must also be a Guardian. See the [acceptance contract](docs/catalog.md#acceptance-and-agent-reports--2026-11-11) for actor identification and report-specific rules.
 
 Deckmate also ships an agent skill in the open Agent Skills format. Once the project has its first deck or member, `npx deckmate skills install` copies it into the project for Claude Code and other agents; then `/deckmate work <card>`, `/deckmate plan`, `/deckmate review <card>` and other scenarios guide the model through the board. See [docs/skills.md](docs/skills.md), the [data contract](docs/catalog.md) and the [local API](docs/api.md).
+
+Installation also adds or updates the board rules in the project's `AGENTS.md` between `<!-- deckmate:agent-rules:start -->` and `<!-- deckmate:agent-rules:end -->`, preserving all other text.
 
 ## FAQ
 

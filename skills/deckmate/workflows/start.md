@@ -19,7 +19,7 @@ Run commands from the project folder with `deckmate project <command> … --data
 6. Write the project profile — `workflows/profile.md` → `tasks/deckmate-project.md`; its `genre` key selects the genre guide.
 7. Read `genres/<key>.md` and `engines/<engine>.md` for the first playable and its checks; if the board is separate from the engine project, use the engine the person names, not failed file detection.
 8. Propose the first playable: one Hero for the core hypothesis with 3–5 child Tasks, each with one verifiable result (`references/cards.md#task`); get the person's approval of the exact list.
-9. Create the approved cards offline as [native files](../references/cards.md#card-file-format); with a server running, UI / HTTP [create-card](../references/api.md#card-content) is an alternative.
+9. Create or change approved cards only through the running server's UI / HTTP [create-card](../references/api.md#card-content), following the [server startup rule](../references/api.md); never write card files by hand.
    → Check `map` warnings first, then `find <title> --fields brief` for the saved cards and c-refs.
 10. Put the first Tasks in the builder's Hand — UI drag or HTTP Hand membership (`references/api.md`).
     → `hand <member>` lists them; `next <member>` returns the first ready one.

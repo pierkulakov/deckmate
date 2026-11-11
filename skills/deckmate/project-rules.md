@@ -10,7 +10,8 @@ Take and hand in a card with commands; they work on the files and need no server
 
 Create or change cards only through the running board:
 
-1. `GET http://127.0.0.1:4317/api/snapshot?source=sandbox` returns `token`. If nothing answers, start `npx deckmate --no-open` in the project folder in the background and wait for the address to answer. If it cannot start, stop and tell the person; do not look for another way.
+1. `GET http://127.0.0.1:4317/api/snapshot?source=sandbox` returns `token` and `projectName`. If nothing answers, start `npx deckmate --no-open` in the project folder in the background and wait for the address to answer. If it cannot start, stop and tell the person; do not look for another way.
+   `projectName` is the name of the project folder. If it is not this folder's name, that board belongs to another open project: write nothing there. Start this project's own board with `npx deckmate --no-open --port 4327` and use that address in the next steps.
 2. `GET /api/catalog?source=sandbox` returns `manifestHash`.
 3. `POST /api/catalog` with the headers `Content-Type: application/json`, `x-deckmate-token: <token>` and `x-deckmate-actor: <member id>`, and this body for each new card:
 

@@ -1,6 +1,6 @@
 {
   "name": "deckmate",
-  "version": "0.7.0",
+  "version": "0.7.1",
   "description": "A local Markdown project board for teams of people and AI agents. Card decks, Runs and Journeys as plain files in your repository; no account, no cloud sync.",
   "license": "AGPL-3.0-only",
   "author": "pierkulakov",

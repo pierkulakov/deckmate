@@ -28,7 +28,7 @@
   <a href="https://github.com/pierkulakov/deckmate/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-AGPL--3.0--only-9258e5?style=flat&amp;labelColor=27242f" alt="License: AGPL-3.0-only" /></a>
 </p>
 
-<p align="center"><sub>0.7.0 · Early release · macOS planned · Project file format (schema 1) may change before 1.0.</sub></p>
+<p align="center"><sub>0.7.1 · Early release · macOS planned · Project file format (schema 1) may change before 1.0.</sub></p>
 
 <p align="center">
   <a href="#quick-start">Quick start</a> · <a href="#use-it-with-your-project">Your project</a> · <a href="#how-it-works">Concepts</a> · <a href="#decks-inbox-and-sub-cards">Decks and Inbox</a> · <a href="#working-with-ai-agents">Agents</a> · <a href="#faq">FAQ</a>

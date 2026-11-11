@@ -28,7 +28,7 @@
   <a href="https://github.com/pierkulakov/deckmate/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-AGPL--3.0--only-9258e5?style=flat&amp;labelColor=27242f" alt="Лицензия: AGPL-3.0-only" /></a>
 </p>
 
-<p align="center"><sub>0.7.0 · Ранний релиз · macOS в планах · Формат файлов проекта (схема 1) может измениться до версии 1.0.</sub></p>
+<p align="center"><sub>0.7.1 · Ранний релиз · macOS в планах · Формат файлов проекта (схема 1) может измениться до версии 1.0.</sub></p>
 
 <p align="center">
   <a href="#быстрый-старт">Быстрый старт</a> · <a href="#со-своим-проектом">Свой проект</a> · <a href="#как-это-устроено">Понятия</a> · <a href="#колоды-inbox-и-sub-cards">Колоды и Inbox</a> · <a href="#работа-с-ии-агентами">Агенты</a> · <a href="#вопросы">Вопросы</a>

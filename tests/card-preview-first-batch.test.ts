@@ -54,31 +54,45 @@ describe.skipIf(!browserPath)('open card first UX batch (real browser)', () => {
   }, 90000);
   afterAll(async () => { await page?.close(); }, 20000);
 
+  it.each(['dark', 'light'] as const)('shows tags without a heading row and opens their Properties section from a tag in %s', async theme => {
+    await render({ tags: 6, theme, lang: 'ru' });
+    expect(await page.evaluate(`Boolean(document.querySelector('.card-preview-tags-heading, .card-preview-tags-actions'))`)).toBe(false);
+    expect(await page.evaluate(`document.querySelectorAll('.card-preview-tags .tag-badge-link').length`)).toBe(6);
+    await click('.card-preview-tags .tag-badge-link');
+    expect(await page.evaluate(`document.querySelectorAll('.card-properties-tag-chip').length`)).toBe(6);
+    await key('Escape');
+  });
+
+  it('omits the tag block on a card without tags', async () => {
+    await render({ tags: 0, writable: false });
+    expect(await page.evaluate(`Boolean(document.querySelector('.card-preview-tags'))`)).toBe(false);
+  });
+
   it.each(['task', 'hero', 'doc'])('%s backlinks exclude inactive, self, code and YAML links and guard dirty navigation', async kind => {
     await render({ kind, backlinks: 2, markdown: `[Self](/r/${shortReference('c', 'card:preview')})` });
-    expect(await page.evaluate(`Boolean(document.querySelector('.card-preview-backlinks'))`)).toBe(true);
-    await click('.card-preview-relations > summary');
+    expect(await page.evaluate(`Boolean(document.querySelector('.card-preview-sheet .card-preview-backlinks'))`)).toBe(false);
+    await click('.card-preview-action-rail button[aria-controls$="-dependencies"]');
     expect(await page.evaluate(`[...document.querySelectorAll('.card-preview-backlinks button')].map(button => button.textContent)`)).toEqual(['incoming-0', 'incoming-1']);
-    await click('.card-preview-action-rail button');
-    await click('.card-properties-section[data-property="dueDate"] .card-properties-pick');
-    // 2026-11-11: a properties draft leaves backlinks visible beside the panel but must lock their navigation.
-    await page.evaluate(`(() => { const input = document.querySelector('.card-properties-date input');
-      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(input, '2026-12-12'); input.dispatchEvent(new Event('input', { bubbles: true })); input.dispatchEvent(new Event('change', { bubbles: true })); })()`);
+    await click('.card-content-edit-action');
+    await until(`Boolean(document.querySelector('.card-edit-text'))`);
+    await page.send('Input.insertText', { text: 'Unsaved text ' });
     await until(`document.querySelector('.card-preview-backlinks button').disabled`);
     await click('.card-preview-backlinks button');
     expect(await page.evaluate('window.firstBatch.selections')).toEqual([]);
-    await click('.card-properties-date button:last-child');
-    await key('Escape');
+    await click('.card-edit-link.is-cancel');
+    await click('.card-draft-banner-actions button:last-child');
     await until(`!document.querySelector('.card-preview-backlinks button').disabled`);
     await click('.card-preview-backlinks button');
     await until(`document.querySelector('.card-preview-title')?.textContent === 'incoming-0'`);
     expect(await page.evaluate('window.firstBatch.selections')).toEqual(['card:incoming-0']);
   });
 
-  it('caps backlinks at 50 and names the remaining sources', async () => {
+  it('keeps every backlink reachable from the dependency rail, including after the fiftieth', async () => {
     await render({ backlinks: 52 });
-    expect(await page.evaluate(`document.querySelectorAll('.card-preview-backlinks button').length`)).toBe(50);
-    expect(await page.evaluate(`document.querySelector('.card-preview-backlinks > p').textContent`)).toBe('and 2 more');
+    await click('.card-preview-action-rail button[aria-controls$="-dependencies"]');
+    expect(await page.evaluate(`document.querySelectorAll('.card-related-slot .card-preview-backlinks button').length`)).toBe(52);
+    await click('.card-preview-backlinks li:last-child button');
+    expect(await page.evaluate('window.firstBatch.selections')).toEqual(['card:incoming-51']);
   });
 
   it.each(['light', 'dark'])('shows exactly four state icons, fills only matching states and keeps contrast in %s', async theme => {
@@ -354,7 +368,7 @@ describe.skipIf(!browserPath)('open card first UX batch (real browser)', () => {
           count: buttons.length, fit: rect.left >= 0 && rect.right <= innerWidth, overflow: document.documentElement.scrollWidth > innerWidth };
       })()`);
       expect(controls.aligned).toBe(true);
-      expect(controls.count).toBe(5);
+      expect(controls.count).toBe(6);
       expect(controls.fit).toBe(true);
       expect(controls.overflow).toBe(false);
       await openReview();
@@ -382,19 +396,19 @@ describe.skipIf(!browserPath)('open card first UX batch (real browser)', () => {
     }
   });
 
-  it('keeps 20 tags in collapsed connections, opens their full section and restores keyboard focus', async () => {
+  it('keeps tags visible above ID, opens their full section and restores keyboard focus', async () => {
     await render({ tags: 20 });
-    expect(await page.evaluate(`document.querySelector('.card-preview-relations').open`)).toBe(false);
-    await click('.card-preview-relations > summary');
-    expect(await page.evaluate(`document.querySelectorAll('.card-preview-relations .tag-badge-link').length`)).toBe(20);
-    await click('.card-preview-relations .tag-badge-link');
+    expect(await page.evaluate(`Boolean(document.querySelector('.card-preview-relations, .card-preview-sheet .card-indicators'))`)).toBe(false);
+    expect(await page.evaluate(`document.querySelectorAll('.card-preview-tags .tag-badge-link').length`)).toBe(20);
+    expect(await page.evaluate(`document.querySelector('.card-preview-tags').getBoundingClientRect().bottom <= document.querySelector('.card-id-chip').getBoundingClientRect().top`)).toBe(true);
+    await click('.card-preview-tags .tag-badge-link');
     expect(await page.evaluate(`document.querySelectorAll('.card-properties-tag-chip').length`)).toBe(20);
     expect(await page.evaluate(`document.activeElement.classList.contains('card-properties-tag-chip')`)).toBe(true);
     await key('Escape');
-    expect(await page.evaluate(`document.activeElement === document.querySelector('.card-preview-relations .tag-badge-link')`)).toBe(true);
+    expect(await page.evaluate(`document.activeElement === document.querySelector('.card-preview-tags .tag-badge-link')`)).toBe(true);
     expect(await page.evaluate('window.firstBatch.outerEscapes()')).toBe(0);
     await render();
-    expect(await page.evaluate(`document.querySelector('.card-preview-relations')`)).toBe(null);
+    expect(await page.evaluate(`Boolean(document.querySelector('.card-preview-tags'))`)).toBe(false);
   });
 
   it.each(['conflict', 'network'])('keeps the return reason and lesson choice after %s and closes only on success', async failure => {
@@ -503,14 +517,14 @@ describe.skipIf(!browserPath)('open card first UX batch (real browser)', () => {
 
   it('exposes Sub Card state and full title to readers and keyboard tooltips', async () => {
     await render({ family: true, kind: 'hero', lang: 'ru' });
-    expect(await page.evaluate(`document.querySelector('.card-family-row-state').textContent`)).toBe('В работе');
-    expect(await page.evaluate(`document.querySelector('.card-family-row-open').getAttribute('aria-label')`)).toContain('Полное название Sub Card '.repeat(20));
+    expect(await page.evaluate(`document.querySelector('.card-family-list .card-family-row-state').textContent`)).toBe('В работе');
+    expect(await page.evaluate(`document.querySelector('.card-family-list .card-family-row-open').getAttribute('aria-label')`)).toContain('Полное название Sub Card '.repeat(20));
     // 2026-11-10: reveal the fixture's separate family before focusing it; Radix closes hints on ancestor scrolls.
     await key('Tab');
-    await page.evaluate(`document.querySelector('.card-family-row-open').scrollIntoView({ block: 'center', behavior: 'instant' })`);
+    await page.evaluate(`document.querySelector('.card-family-list .card-family-row-open').scrollIntoView({ block: 'center', behavior: 'instant' })`);
     await delay(60);
     const focus = await page.evaluate(`(() => {
-      const button = document.querySelector('.card-family-row-open'), title = button.querySelector('strong');
+      const button = document.querySelector('.card-family-list .card-family-row-open'), title = button.querySelector('strong');
       button.focus({ preventScroll: true });
       return { focused: document.activeElement === button, disabled: button.disabled,
         clipped: title.scrollHeight > title.clientHeight + 1 || title.scrollWidth > title.clientWidth + 1 };
@@ -521,7 +535,7 @@ describe.skipIf(!browserPath)('open card first UX batch (real browser)', () => {
     expect(page.consoleErrors).toEqual([]);
   });
 
-  it('pins Edit, save status and the blocker warning while connections scroll with the text', async () => {
+  it('pins tags, Edit, save status and the blocker warning while the text scrolls', async () => {
     const markdown = Array.from({ length: 60 }, (_, index) => `Paragraph ${index + 1} keeps the card text going past the window.`).join(String.fromCharCode(10).repeat(2));
     await render({ markdown, tags: 1, dependencies: true });
     const measure = () => page.evaluate(`(() => {
@@ -531,14 +545,14 @@ describe.skipIf(!browserPath)('open card first UX batch (real browser)', () => {
       return { scrollable: scroller.scrollHeight - scroller.clientHeight,
         dockTop: Math.round(box('.card-preview-dock').top), gapToBand: Math.round(box('.card-preview-material-band').top - box('.card-preview-dock').bottom),
         shown: ['.card-preview-dock .card-preview-blocker-note', '.card-preview-dock .card-content-edit-action', '.card-preview-dock .card-content-save-status'].map(shown),
-        inScroller: ['.card-content-edit-action', '.card-content-save-status', '.card-preview-relations'].map(selector => scroller.contains(document.querySelector(selector))),
-        row: Math.round(box('.card-preview-dock-row').height),
+        inScroller: ['.card-content-edit-action', '.card-content-save-status', '.card-preview-tags'].map(selector => scroller.contains(document.querySelector(selector))),
+        row: Math.round(box('.card-preview-dock-actions').height),
         dockOpaque: getComputedStyle(document.querySelector('.card-preview-dock')).backgroundColor !== 'rgba(0, 0, 0, 0)' };
     })()`);
     const top = await measure();
     expect(top.scrollable).toBeGreaterThan(400);
     expect(top.shown).toEqual([true, true, true]);
-    expect(top.inScroller).toEqual([false, false, true]);
+    expect(top.inScroller).toEqual([false, false, false]);
     expect(top.gapToBand).toBe(0);
     expect(top.row).toBeLessThanOrEqual(32);
     expect(top.dockOpaque).toBe(true);

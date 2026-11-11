@@ -38,7 +38,7 @@ const file = { file: 'tasks/deckmate-assets/cards/test/file.pdf', name: 'Recover
   bytes: 128, addedAt: '2026-11-10T00:00:00Z', addedBy: null };
 const state = { fail: [] as string[], hold: [] as string[], reads: {} as Record<string, number>, releases: {} as Record<string, () => void>,
   files: [file], retries: 0, resets: 0, created: 0, opened: 0, retryFail: false, releaseRetry: () => {}, fastRetry: false, active: true, notificationsEmpty: false, membersEmpty: false,
-  longMessage: null as string | null, notificationAccess: null as WorkspaceSnapshot | null };
+  catalogEmpty: false, longMessage: null as string | null, notificationAccess: null as WorkspaceSnapshot | null };
 window.fetch = async input => {
   const path = new URL(String(input), location.origin).pathname;
   state.reads[path] = (state.reads[path] ?? 0) + 1;
@@ -52,7 +52,9 @@ window.fetch = async input => {
       cards: [{ cardId: card.id, title: card.title, state: card.state, changes: [], hiddenChanges: 0 }] },
       ...(state.notificationAccess ? [{ id: 'owned', title: 'Owned cards', total: 1, hidden: 0, dismissible: true, latestAt: '2026-11-10T00:00:00Z',
         cards: [{ cardId: card.id, title: card.title, state: card.state, changes: [], hiddenChanges: 0 }] }] : [])] });
-  return Response.json(state.membersEmpty ? { ...catalog, members: [] } : catalog);
+  // The catalog branch also serves the Level badge's quest facts: catalogEmpty reproduces a project with no decks.
+  const servedCatalog = state.catalogEmpty ? { ...catalog, spaces: [], decks: [] } : catalog;
+  return Response.json(state.membersEmpty ? { ...servedCatalog, members: [] } : servedCatalog);
 };
 
 function Components() {

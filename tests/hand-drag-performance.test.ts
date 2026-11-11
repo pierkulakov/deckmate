@@ -85,6 +85,38 @@ describe.skipIf(!browserPath)('Hand navigation history (browser)', () => {
     expect(result.top, JSON.stringify(result)).toBe(0);
   });
 
+  it.each([375, 1440])('Team Hands share the deck footprint, metric bands and slot numbers at %i px', async width => {
+    await open(width, '&handTab=team');
+    for (const dark of [true, false]) {
+      await page!.evaluate(`document.documentElement.classList.toggle('dark', ${dark})`);
+      const result = await page!.evaluate(`(() => {
+        const panel = document.querySelector('#hand-tab-panel');
+        const tiles = [...panel.querySelectorAll('.deck-card')];
+        return { count: tiles.length, old: panel.querySelectorAll('.sprint-task').length,
+          overflow: panel.scrollWidth > panel.clientWidth,
+          badTiles: tiles.filter(tile => { const box = tile.getBoundingClientRect(); return box.width !== 115 || box.height !== 147; }).length,
+          badBands: tiles.filter(tile => tile.querySelector('.deck-card-band').getBoundingClientRect().height !== (tile.classList.contains('catalog-card-hero') ? 29 : 24)).length,
+          hero: panel.querySelector('.catalog-card-hero .deck-card-metrics').textContent,
+          slot: panel.querySelector('.catalog-card-hero .card-hand-number').textContent,
+          handSlot: document.querySelector('.hand-slot .catalog-card-hero .card-hand-number').textContent,
+          metadataInside: panel.querySelectorAll('.deck-card .hand-team-card-meta').length,
+          medallions: panel.querySelectorAll('.deck-card-owner-medallion').length };
+      })()`);
+      expect(result.count).toBeGreaterThan(7);
+      expect(result.old).toBe(0);
+      expect(result.overflow).toBe(false);
+      expect(result.badTiles).toBe(0);
+      expect(result.badBands).toBe(0);
+      expect(result.hero).toContain('13');
+      expect(result.slot).toBe(result.handSlot);
+      expect(result.metadataInside).toBe(0);
+      expect(result.medallions).toBeGreaterThan(0);
+    }
+    await page!.evaluate(`document.querySelector('#hand-tab-panel .deck-card-open').click()`);
+    await until(`Boolean(document.querySelector('.card-preview'))`);
+    expect(page!.consoleErrors).toEqual([]);
+  });
+
   it.each([375, 1440])('returns to the selected Run tab and scroll position at %i px', async width => {
     await open(width);
     await page!.evaluate(`history.replaceState({ preserved: 'yes' }, '', location.href); document.querySelector('#hand-tab-runs').click()`);
@@ -769,9 +801,10 @@ describe.skipIf(!browserPath)('Hand pointer drag work (browser)', () => {
   it('shows each decorated tag once in the Team Hand card', async () => {
     page = await openHand();
     await page.evaluate(`document.querySelector('#hand-tab-team').click()`);
-    await waitFor(`document.querySelector('.hand-card .tag-badge')`);
-    expect(await page.evaluate(`document.querySelectorAll('.hand-card .card-title-tags').length`)).toBe(0);
-    expect(await page.evaluate(`document.querySelector('.hand-card .tag-badge').textContent`)).toContain('sound');
+    await waitFor(`document.querySelector('.hand-team-card .deck-card-title .card-tag-emoji')`);
+    expect(await page.evaluate(`document.querySelector('.hand-team-card .deck-card-title').textContent`)).toContain('🔈');
+    expect(await page.evaluate(`document.querySelector('.hand-team-card').querySelectorAll('.deck-card-title .card-tag-emoji').length`)).toBe(1);
+    expect(await page.evaluate(`document.querySelectorAll('.hand-team-card .tag-badge').length`)).toBe(0);
   });
 
   it('removes queue cards and cards owned by someone else, restoring focus after the save', async () => {

@@ -644,6 +644,25 @@ describe.skipIf(!browserPath)('shared interface states and recovery (browser)', 
     expect(await page.evaluate(`document.querySelectorAll('.level-chapter-head[aria-expanded="true"]').length`)).toBe(2);
   });
 
+  // 2026-11-11: a project with no decks has no cover to click; the first quest names an action that exists there,
+  // and «Show me» rings that action instead of searching for a missing cover. The components screen loads no
+  // catalog, so the flag is set before the quests screen makes the badge's first catalog read.
+  it('points the first quest at creating a deck when the project has no decks', async () => {
+    await reset('components');
+    await page.evaluate(`statesTest.state.catalogEmpty=true;statesTest.render('quests')`);
+    await until(`Boolean(document.querySelector('.level-badge'))`);
+    await page.evaluate(`document.querySelector('.level-badge').click()`);
+    await until(`Boolean(document.querySelector('.level-panel'))`);
+    expect(await page.evaluate(`document.querySelector('.level-quest-hint p').textContent`)).toContain('Create space');
+    await page.evaluate(`window.action=document.createElement('button');action.type='button';action.className='deck-gallery-add';action.textContent='Create space';document.body.append(action)`);
+    await page.evaluate(`document.querySelector('.level-quest-hint .ui-button').click()`);
+    await until(`Boolean(document.querySelector('.deck-gallery-add.show-me-ring'))`);
+    await page.evaluate(`action.remove()`);
+    await page.evaluate(`statesTest.setLang('ru')`);
+    await until(`document.documentElement.lang === 'ru'`);
+    expect(await page.evaluate(`document.querySelector('.level-quest-hint p').textContent`)).toContain('Создать пространство');
+  });
+
   it('retains the notification focus surface when a retry returns no notifications', async () => {
     await reset('notifications', ['/api/notifications']);
     await until(`Boolean(document.querySelector('.notifications-trigger'))`);

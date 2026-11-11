@@ -193,23 +193,118 @@ describe.skipIf(!browserPath)('Vision tab chrome (browser)', () => {
     await page.send('Emulation.setDeviceMetricsOverride', { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false });
     await page.send('Emulation.setTouchEmulationEnabled', { enabled: false });
     await page.send('Page.navigate', { url: `${browserFixtureUrl('vision-chrome')}?theme=${theme}&lang=ru&mode=nodes` });
-    await until(`document.querySelectorAll('[data-node-case]').length === 9`);
+    await until(`document.querySelectorAll('[data-node-case]').length === 18`);
     await page.evaluate('document.fonts.ready');
     const nodes = await page.evaluate(`Array.from(document.querySelectorAll('[data-node-case]'), host => {
       const node=host.firstElementChild, r=node.getBoundingClientRect();
-      const metadata=[...node.querySelectorAll('.card-face-state, .card-face-due, .deckmate-card-effort, .deckmate-card-properties')].map(item => item.getBoundingClientRect());
+      const metadata=[...node.querySelectorAll('.vision-lane-main, .deckmate-card-title, .card-face-state, .card-face-due, .deckmate-card-effort, .deckmate-card-properties')].map(item => item.getBoundingClientRect());
+      const tags=node.querySelector('.card-tags'), tag=tags.querySelector('.tag-badge'), tagRect=tags.getBoundingClientRect();
       return { name:host.dataset.nodeCase, width:r.width, height:r.height, overflowX:node.scrollWidth-node.clientWidth, overflowY:node.scrollHeight-node.clientHeight,
-        metadataFits:metadata.every(m => m.left >= r.left && m.right <= r.right && m.top >= r.top && m.bottom <= r.bottom), text:node.textContent };
+        metadataFits:metadata.every(m => m.left >= r.left && m.right <= r.right && m.top >= r.top && m.bottom <= r.bottom), text:node.textContent,
+        tagFits:tagRect.left >= r.left && tagRect.right <= r.right && tagRect.top >= r.top && tagRect.bottom <= r.bottom,
+        tagWidth:tag.getBoundingClientRect().width, tagTitle:tag.title,
+        accessible:node.querySelector('.deckmate-card-opener').getAttribute('aria-label') };
     })`);
     const sizes = new Map([['lane', [280, 44]], ['mini', [280, 110]], ['full', [300, 230]]]);
     for (const node of nodes) {
       const view = node.name.split('-')[0];
       expect([node.width, node.height], node.name).toEqual(sizes.get(view));
       expect([node.overflowX, node.overflowY, node.metadataFits], node.name).toEqual([0, 0, true]);
+      expect(node.tagFits, node.name).toBe(true);
+      expect(node.tagWidth, node.name).toBeGreaterThan(0);
+      expect(node.tagTitle, node.name).toBe('Очень длинное название русского тега для проверки локализации');
       if (node.name.endsWith('blocked')) expect(node.text).toContain('Просрочено');
-      if (node.name.endsWith('questions')) expect(node.text).toContain('Вопросов: 1');
-      if (view !== 'lane') expect(node.text).toMatch(/(?:Оц\. |Оценка: )0/u);
+      if (node.name.endsWith('questions')) {
+        expect(node.text).toContain('Заблокирована');
+        expect(node.accessible).toContain('Ждёт 1');
+        expect(node.accessible).toContain('Вопросов: 1');
+      }
+      if (node.name.endsWith('questions-only')) expect(node.text).toContain('Вопросов: 1');
+      // A Doc Card carries no metrics; every other node shows its estimate, a zero included.
+      const estimate = /(?:Оц\. |Оценка: |Оценка: своя и Sub Cards — )0/u;
+      if (node.text.startsWith('Doc')) expect(node.text).not.toMatch(estimate);
+      else if (view !== 'lane') expect(node.text).toMatch(estimate);
     }
+  });
+
+  it.each(['dark', 'light'] as const)('shows priority in each task and Hero node without overflowing in %s', async theme => {
+    await page.send('Page.navigate', { url: `${browserFixtureUrl('vision-chrome')}?theme=${theme}&lang=ru&mode=nodes` });
+    await until(`document.querySelectorAll('[data-node-case]').length === 18`);
+    await page.evaluate('document.fonts.ready');
+    const nodes = await page.evaluate(`Array.from(document.querySelectorAll('[data-node-case]'), host => {
+      const node = host.firstElementChild, icon = node.querySelector('.vision-card-priority-icon svg');
+      const r = node.getBoundingClientRect(), p = icon?.getBoundingClientRect();
+      return { name: host.dataset.nodeCase, doc: node.classList.contains('kind-doc'), label: node.querySelector('.deckmate-card-opener').getAttribute('aria-label'), hasIcon: !!icon,
+        fits: !icon || (p.width >= 16 && p.left >= r.left && p.right <= r.right && p.top >= r.top && p.bottom <= r.bottom),
+        overflowX: node.scrollWidth - node.clientWidth, overflowY: node.scrollHeight - node.clientHeight };
+    })`);
+    for (const node of nodes) {
+      if (node.doc) expect(node.hasIcon).toBe(false);
+      else {
+        expect(node.hasIcon, node.name).toBe(true);
+        expect(node.label, node.name).toContain('Приоритет: Высокий');
+      }
+      expect([node.fits, node.overflowX, node.overflowY], node.name).toEqual([true, 0, 0]);
+    }
+  });
+
+  it.each(['dark', 'light'] as const)('carries the started and review state metals on both node sizes in %s', async theme => {
+    await page.send('Page.navigate', { url: `${browserFixtureUrl('vision-chrome')}?theme=${theme}&lang=ru&mode=nodes` });
+    await until(`document.querySelectorAll('[data-node-case]').length === 18`);
+    await page.evaluate('document.fonts.ready');
+    const measured = await page.evaluate(`(() => {
+      const probe = document.createElement('span');
+      const tokenColor = name => { probe.style.color = 'var(--' + name + ')'; document.body.append(probe); const color = getComputedStyle(probe).color; probe.remove(); return color; };
+      // 2026-11-11: a Task node in progress or on review carries the tile band's state metal on its footer row.
+      return ['mini', 'full'].flatMap(view => [
+        ['started', 'started-metal', 'started-metal-ink', 'В работе'],
+        ['on-review', 'review-metal', 'review-metal-ink', 'Приёмка'],
+      ].map(([id, metal, ink, word]) => {
+        const host = document.querySelector('[data-node-case="' + view + '-' + id + '"]');
+        const node = host.firstElementChild;
+        const band = node.querySelector('.is-state-band');
+        const wordElement = node.querySelector('.deckmate-card-state-word');
+        const r = node.getBoundingClientRect(), b = band.getBoundingClientRect();
+        return { name: view + '-' + id, size: Math.round(r.width) + 'x' + Math.round(r.height),
+          overflowX: node.scrollWidth - node.clientWidth, overflowY: node.scrollHeight - node.clientHeight,
+          bandFits: b.left >= r.left && b.right <= r.right && b.top >= r.top && b.bottom <= r.bottom,
+          bandBottomGap: Math.round(r.bottom - b.bottom), bandMetal: getComputedStyle(band).backgroundColor, expectedMetal: tokenColor(metal),
+          wordInk: getComputedStyle(wordElement).color, expectedInk: tokenColor(ink), word: wordElement.textContent,
+          faceWord: node.querySelector('.card-face-state')?.textContent ?? '' };
+      })).concat([(() => {
+        const lane = document.querySelector('[data-node-case="lane-started"]');
+        return { name: 'lane-started', laneBand: Boolean(lane.querySelector('.is-state-band')),
+          laneWord: lane.querySelector('.card-face-state').textContent, overflowY: lane.firstElementChild.scrollHeight - lane.firstElementChild.clientHeight };
+      })()]);
+    })()`);
+    for (const node of measured) {
+      if (node.name === 'lane-started') {
+        expect(node.laneBand).toBe(false);
+        expect(node.laneWord).toBe('В работе');
+        expect(node.overflowY).toBe(0);
+        continue;
+      }
+      expect(node.size, node.name).toBe(node.name.startsWith('mini') ? '280x110' : '300x230');
+      expect([node.overflowX, node.overflowY, node.bandFits], node.name).toEqual([0, 0, true]);
+      expect(node.bandBottomGap, node.name).toBeLessThanOrEqual(1);
+      expect(node.bandMetal, node.name).toBe(node.expectedMetal);
+      expect(node.wordInk, node.name).toBe(node.expectedInk);
+      expect(node.word, node.name).toBe(node.name.endsWith('started') ? 'В работе' : 'Приёмка');
+      expect(node.faceWord, node.name).toBe('');
+    }
+  });
+
+  it('keeps each bounded tag list separate from the node opener', async () => {
+    await page.send('Page.navigate', { url: `${browserFixtureUrl('vision-chrome')}?theme=dark&lang=ru&mode=nodes` });
+    await until(`document.querySelectorAll('[data-node-case]').length === 18`);
+    expect(await page.evaluate(`Array.from(document.querySelectorAll('[data-node-case] .card-tags'), tags => Boolean(tags.closest('button, [role="button"]'))).every(nested => !nested)`)).toBe(true);
+    await page.evaluate(`document.querySelector('[data-node-case="mini-blocked"]').setAttribute('role', 'button')`);
+    await page.evaluate(`(() => { const tags = document.querySelector('[data-node-case="mini-blocked"] .card-tags'); const control = document.createElement('button'); tags.append(control); control.click(); control.remove(); })()`);
+    expect(await page.evaluate('window.visionTest.nodeOpened')).toEqual([]);
+    await page.evaluate(`document.querySelector('[data-node-case="mini-blocked"] .card-tags').click()`);
+    expect(await page.evaluate('window.visionTest.nodeOpened')).toEqual(['blocked']);
+    await page.evaluate(`document.querySelector('[data-node-case="mini-blocked"] .deckmate-card-opener').click()`);
+    expect(await page.evaluate('window.visionTest.nodeOpened')).toEqual(['blocked', 'blocked']);
   });
 
   it('does not emit runtime or invalid nesting errors', () => {

@@ -339,7 +339,9 @@ describe.skipIf(!browserPath)('Inbox flows (browser)', () => {
     expect(await evaluate(`document.querySelector('.confirm-strip-confirm').textContent`)).toBe('Удалить');
     await click('.confirm-strip-confirm');
     await until(`!document.querySelector('.catalog-space') && document.activeElement.matches('.deck-gallery-add')`);
-    expect(await evaluate(`document.querySelector('.catalog-spaces .catalog-empty').textContent`)).toBe('Пространств пока нет. Создайте первое пространство кнопкой + и добавьте в него колоды.');
+    // 2026-11-11: the first-run catalog is the shared scene empty state with the one available action.
+    expect(await evaluate(`(() => { const empty = document.querySelector('.catalog-spaces .ui-empty'); return { title: empty.querySelector('h2').textContent, message: empty.querySelector('p').textContent, action: empty.querySelector('.ui-button')?.textContent ?? null, scene: empty.classList.contains('ui-empty-scene') }; })()`))
+      .toEqual({ title: 'Пространств пока нет.', message: 'Создайте первое пространство и добавьте в него колоды.', action: 'Создать пространство', scene: true });
     await click('.deck-gallery-add');
     await until(`Boolean(document.querySelector('.space-preset-form'))`);
   });

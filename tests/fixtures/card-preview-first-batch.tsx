@@ -13,6 +13,7 @@ import '../../client/card-material.css';
 const root = createRoot(document.getElementById('root')!);
 const requests: unknown[] = [];
 const selections: string[] = [];
+const tagSearches: string[] = [];
 const historyCursors: (string | null)[] = [];
 let current: CatalogCard;
 let historyFails = false;
@@ -90,15 +91,15 @@ function Fixture({ options }: { options: Options }) {
     token: 'fixture-token', iteration: { number: 1, goal: '', start: '' } };
   return <div style={{ width: 'min(496px, 100%)', margin: '24px auto' }}>
     <CardPreview card={card} catalog={catalog} snapshot={snapshot}
-      writable={options.writable ?? true} pending={options.pending ?? false} onClose={noop} onSelect={next => { selections.push(next.id); setCard(next); }} onDirtyChange={noop} onEdit={edit} />
+      writable={options.writable ?? true} pending={options.pending ?? false} onClose={noop} onSelect={next => { selections.push(next.id); setCard(next); }} onDirtyChange={noop} onEdit={edit} onShowTagCards={tag => tagSearches.push(tag)} />
     {options.family && <CardFamilyPanel hero={card} card={card} children={[child]} openedId={card.id} catalog={catalog} disabled={false} writable={false} onOpen={noop} onCreate={noop} onAttach={noop} />}
   </div>;
 }
 function render(options: Options = {}) {
-  requests.length = 0; selections.length = 0; historyCursors.length = 0; historyFails = false; holdHistory = false; holdEdit = false; outerEscapes = 0; editFailure = null;
+  requests.length = 0; selections.length = 0; tagSearches.length = 0; historyCursors.length = 0; historyFails = false; holdHistory = false; holdEdit = false; outerEscapes = 0; editFailure = null;
   setLang(options.lang ?? 'en');
   document.documentElement.classList.toggle('dark', options.theme === 'dark');
   root.render(<Fixture key={++instance} options={options} />);
 }
-Object.assign(window, { firstBatch: { render, requests, selections, historyCursors, failEdit: (failure: typeof editFailure) => { editFailure = failure; }, holdEdit: () => { holdEdit = true; }, finishEdit: () => { holdEdit = false; finishEdit?.(); }, outerEscapes: () => outerEscapes, failHistory: (fail: boolean) => { historyFails = fail; }, holdHistory: () => { holdHistory = true; }, finishHistory: () => { holdHistory = false; finishHistory?.(); } } });
+Object.assign(window, { firstBatch: { render, requests, selections, tagSearches, historyCursors, failEdit: (failure: typeof editFailure) => { editFailure = failure; }, holdEdit: () => { holdEdit = true; }, finishEdit: () => { holdEdit = false; finishEdit?.(); }, outerEscapes: () => outerEscapes, failHistory: (fail: boolean) => { historyFails = fail; }, holdHistory: () => { holdHistory = true; }, finishHistory: () => { holdHistory = false; finishHistory?.(); } } });
 render();

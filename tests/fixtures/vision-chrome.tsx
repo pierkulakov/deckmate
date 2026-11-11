@@ -22,6 +22,7 @@ const board: BoardDocument = { id: 'board-1', title: 'Chrome board', hash: 'hash
     { id: 'far', type: 'rectangle', x: 1000, y: 300, width: 200, height: 100 },
   ], { regenerateIds: false }).map(element => element.id === 'near' ? { ...element, type: 'embeddable' } : element) as unknown as Record<string, unknown>[], appState: {}, files: {} } };
 const list: BoardSummary[] = [board];
+const nodeOpened: string[] = [];
 const catalog: CatalogView = { rootIdentity: 'vision-chrome-test', documents: [], cards: [
   { id: 'c-1', kind: 'task', path: 'cards/one.md', version: null, title: 'One', state: 'not-started', owner: null, markdown: '',
     sourceHash: 'h1', range: null, deckId: 'd-1', trackIds: [], parentId: null, tags: [] },
@@ -47,21 +48,24 @@ async function render() {
   const dark = params.get('theme') !== 'light';
   document.documentElement.classList.toggle('dark', dark);
   localStorage.setItem('deckmate-vision-board-sandbox', 'board-1');
-  Object.assign(window, { visionTest: { warm: () => warmVisionCanvas(new AbortController().signal), setLang } });
+  Object.assign(window, { visionTest: { warm: () => warmVisionCanvas(new AbortController().signal), setLang, nodeOpened } });
   if (params.get('warm') === 'before') await warmVisionCanvas(new AbortController().signal);
   if (params.get('mode') === 'nodes') {
     const base = { ...catalog.cards[0], title: 'Длинное название карточки о вечернем пароме и его маршруте', owner: 'Очень длинное имя участника проекта',
-      effort: 0, priority: 'high' as const, iteration: 14, tags: ['worldbuilding', 'audio', 'lighting'], markdown: 'Описание с подробностями маршрута и результата. '.repeat(12) };
+      effort: 0, priority: 'high' as const, iteration: 14, tags: ['Очень длинное название русского тега для проверки локализации', 'audio', 'lighting'], markdown: 'Описание с подробностями маршрута и результата. '.repeat(12) };
     const cards: CatalogCard[] = [
       { ...base, id: 'blocked', dependsOn: ['c-1'], dueDate: '2020-01-01' },
+      { ...base, id: 'started', state: 'started' },
+      { ...base, id: 'on-review', state: 'review' },
       { ...base, id: 'questions', kind: 'doc', state: null, dependsOn: ['c-1'], openQuestions: [{ text: 'Когда?', taskRef: null }] },
+      { ...base, id: 'questions-only', kind: 'doc', state: null, openQuestions: [{ text: 'Когда?', taskRef: null }] },
       { ...base, id: 'hero', kind: 'hero', state: null },
     ];
     const lookups = buildCatalogLookups([...catalog.cards, ...cards]);
     createRoot(document.getElementById('root')!).render(<div style={{ display: 'flex', gap: 24, padding: 24 }}>
       {(['lane', 'mini', 'full'] as const).map(view => <div key={view} style={{ display: 'grid', gap: 24, alignContent: 'start' }}>
         {cards.map(card => <div key={card.id} data-node-case={`${view}-${card.id}`} style={visionCardSize[view]}>
-          <VisionCardNode card={card} cardId={card.id} view={view} catalog={catalog} lookups={lookups} interactive onOpen={() => {}} />
+          <VisionCardNode card={card} cardId={card.id} view={view} catalog={catalog} lookups={lookups} interactive onOpen={id => nodeOpened.push(id)} />
         </div>)}
       </div>)}
     </div>);

@@ -184,11 +184,25 @@ describe('onboarding quests', () => {
   it('gives every quest but install-skill a Show me destination', () => {
     for (const quest of chapters.flatMap(chapter => chapter.quests)) {
       expect(Boolean(quest.view || quest.target), quest.id).toBe(quest.id !== 'install-skill');
-      if (!quest.target) continue;
-      for (const part of quest.target.split(',')) {
-        expect(part.trim(), quest.id).not.toBe('');
-        expect(part.trim(), quest.id).toMatch(/^[.[#]/u);
+      for (const selector of [quest.target, quest.targetWithoutDecks]) {
+        if (!selector) continue;
+        for (const part of selector.split(',')) {
+          expect(part.trim(), quest.id).not.toBe('');
+          expect(part.trim(), quest.id).toMatch(/^[.[#]/u);
+        }
       }
+    }
+  });
+
+  // 2026-11-11: a project with no decks has no cover to click, so the first quest must offer wording and a target
+  // that exist there: the gallery «+» action and the template start button.
+  it('redirects the open-deck quest to deck-creating actions when the project has no decks', () => {
+    const quest = questById.get('open-deck')!;
+    expect(quest.bodyWithoutDecks).toBeDefined();
+    expect(quest.targetWithoutDecks!.split(',').map(part => part.trim())).toEqual(['.deck-gallery-add', '.project-template-start > .ui-button']);
+    for (const other of chapters.flatMap(chapter => chapter.quests)) {
+      if (other.id === 'open-deck') continue;
+      expect(other.bodyWithoutDecks, other.id).toBeUndefined();
     }
   });
 });

@@ -3,7 +3,7 @@ import type { CatalogCard, CatalogView } from '../src/catalog-contracts.ts';
 import { shortReference } from '../src/references.ts';
 
 vi.stubGlobal('document', { documentElement: { lang: '' }, cookie: '' });
-const { parseSearch, RESULT_LIMIT, runSearch, toggleTagOr, withoutToken } = await import('../client/search-query.ts');
+const { parseSearch, RESULT_LIMIT, runSearch, toggleTagOr, withoutToken, suggestTagFilters, completeTagFilter, matchedTagsFirst } = await import('../client/search-query.ts');
 
 beforeEach(() => {
   vi.useFakeTimers({ toFake: ['Date'] });
@@ -94,6 +94,59 @@ describe('search query compatibility', () => {
 
   it('ignores empty tag alternatives without losing the remaining tag', () => {
     checkCases([['#RED|', ['a', 'c']], ['#|#RED', ['a', 'c']], ['!#RED||', ['b', 'h', 'u']]]);
+  });
+
+  it('suggests tag prefixes with and without #, counts cards once and commits an exact filter', () => {
+    const catalog = fixture([
+      card('play', { tags: ['bug', 'Playtest', 'Playtest'] }), card('longer', { tags: ['Playtesting'] }),
+      card('hidden', { tags: ['Playtest'], archived: true }), card('trash', { tags: ['Playtest'], deleted: true }),
+    ]);
+    catalog.projectTags = [{ name: 'Playtest', color: '#cc5c65' }, { name: 'План', color: '#687e9c' }];
+    for (const query of ['pla', '#PLA']) {
+      const suggestions = suggestTagFilters(catalog, query);
+      expect(suggestions.map(({ name, count }) => [name, count])).toEqual([['Playtest', 1], ['Playtesting', 1]]);
+      const completed = completeTagFilter(query, suggestions[0]);
+      expect(completed).toBe('#Playtest ');
+      expectCards(catalog, completed, ['play']);
+    }
+    expectCards(catalog, '#pla', []);
+    expect(suggestTagFilters(catalog, 'playtest').map(({ name }) => name)).toEqual(['Playtest', 'Playtesting']);
+    expect(suggestTagFilters(catalog, '#пл').map(({ name, count }) => [name, count])).toEqual([['План', 0]]);
+    expect(suggestTagFilters(catalog, 'lay')).toEqual([]);
+    for (const query of ['#Playtest ', 'deck:pla', '@pla', '$pla']) expect(suggestTagFilters(catalog, query)).toEqual([]);
+  });
+
+  it('completes the current alternative without losing negation, OR or surrounding filters', () => {
+    const catalog = fixture([card('both', { tags: ['bug', 'playtest'] }), card('other', { tags: ['playtesting'] })]);
+    const query = 'kind:task !#bug|#pla @none';
+    const caret = query.indexOf(' @none');
+    const suggestion = suggestTagFilters(catalog, query, caret)[0];
+    expect(completeTagFilter(query, suggestion)).toBe('kind:task !#bug|#playtest @none');
+    expectCards(catalog, completeTagFilter(query, suggestion), ['other']);
+    expect(toggleTagOr('#bug #playtest !#other')).toBe('#bug|#playtest !#other');
+  });
+
+  it('keeps quoted tag names exact, including spaces, pipes and quotes, through parsing and OR toggles', () => {
+    const name = 'play test|"русский"';
+    const catalog = fixture([card('exact', { tags: [name] }), card('prefix', { tags: [name + ' next'] })]);
+    const query = '!#' + JSON.stringify(name);
+    expect(parseSearch(query)).toMatchObject([{ kind: 'tag', value: name, negated: true, raw: query, start: 0, end: query.length }]);
+    expectCards(catalog, query, ['prefix']);
+    expectCards(catalog, query.slice(1), ['exact']);
+    const completed = completeTagFilter('pla', suggestTagFilters(catalog, 'pla')[0]);
+    expectCards(catalog, completed, ['exact']);
+    const joined = toggleTagOr(query.slice(1) + ' #bug');
+    expectCards(catalog, joined, ['exact']);
+    expect(toggleTagOr(joined)).toBe(query.slice(1) + ' #bug');
+    for (const token of parseSearch(joined)) expect(joined.slice(token.start, token.end)).toBe(token.raw);
+  });
+
+  it('puts positive matching tags before other badges without mutating assignments', () => {
+    const tags = Object.freeze(['bug', 'audio', 'Playtest', 'later']);
+    expect(matchedTagsFirst(tags, '#playtest !#bug')).toEqual(['Playtest', 'bug', 'audio', 'later']);
+    expect(matchedTagsFirst(tags, 'pla')).toEqual(['Playtest', 'bug', 'audio', 'later']);
+    expect(matchedTagsFirst(tags, '#audio|#playtest')).toEqual(['audio', 'Playtest', 'bug', 'later']);
+    expect(tags).toEqual(['bug', 'audio', 'Playtest', 'later']);
   });
 
   it('preserves case-sensitive canonical IDs while matching parent titles without case', () => {

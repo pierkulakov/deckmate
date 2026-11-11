@@ -47,8 +47,8 @@ window.fetch = async (input, init) => {
   return Response.json({ files: [], warnings: [], events: [], nextCursor: null, created: null });
 };
 
-async function render(options: { card?: string; lang?: 'en' | 'ru'; theme?: 'light' | 'dark'; width?: number; longContent?: boolean;
-  kind?: CatalogCard['kind']; tags?: string[]; withoutJourney?: boolean; review?: boolean } = {}) {
+async function render(options: { card?: string; query?: string; lang?: 'en' | 'ru'; theme?: 'light' | 'dark'; width?: number; longContent?: boolean;
+  kind?: CatalogCard['kind']; tags?: string[]; withoutJourney?: boolean; review?: boolean; family?: boolean } = {}) {
   requests.length = 0;
   children[2].state = options.review ? 'review' : 'not-started';
   hero.kind = options.kind ?? 'hero';
@@ -56,6 +56,15 @@ async function render(options: { card?: string; lang?: 'en' | 'ru'; theme?: 'lig
   hero.tags = options.tags;
   children[1].tags = options.tags ?? ['related'];
   catalog.cards = options.withoutJourney ? [hero] : [hero, ...children];
+  if (options.family) catalog.cards = [hero,
+    { ...children[0], journey: undefined, effort: 2 },
+    { ...children[1], journey: undefined, owner: 'Alex', effort: 5, priority: 'high', handMemberIds: ['alex'], handOrder: { alex: 90 }, dueDate: '2000-01-01' },
+    { ...children[2], journey: undefined, state: 'review', effort: 3 },
+    { ...child('planned', 'Plan Arena', 'not-started'), journey: undefined, effort: 1 },
+    { ...child('blocked', 'Integrate Arena', 'not-started'), journey: undefined, dependsOn: [children[1].id] },
+    { ...child('question', 'Input decisions', null), kind: 'doc', journey: undefined, openQuestions: [{ text: 'Which input?', taskRef: null }] },
+    { ...base, id: 'card:unrelated', title: 'Other Hero', path: 'cards/unrelated.md' },
+  ];
   children[1].markdown = options.longContent
     ? Array.from({ length: 30 }, (_, index) => `Paragraph ${index + 1}: long card text must leave its editor actions visible.`).join('\n\n')
     : buildMarkdown;
@@ -64,11 +73,13 @@ async function render(options: { card?: string; lang?: 'en' | 'ru'; theme?: 'lig
   document.documentElement.classList.toggle('dark', options.theme !== 'light');
   localStorage.setItem('deckmate-summary-collapsed', 'true');
   localStorage.setItem('deckmate-left-panel-width-v5', String(options.width ?? 503));
-  const query = new URLSearchParams({ view: 'deck', deck: 'mixed', catalogSource: 'sandbox', layout: 'cards' });
+  const query = new URLSearchParams(options.query ?? { view: 'deck', deck: 'mixed', catalogSource: 'sandbox', layout: 'cards' });
   if (options.card) query.set('card', options.card);
   history.replaceState(null, '', '?' + query);
+  const snapshot = { projectName: 'Hero return', source: 'sandbox' as const, writable: true, editMode: 'direct' as const,
+    token: 'fixture-token', iteration: { number: 1, goal: '', start: '' } };
   root.render(<main className="workspace-main" style={{ height: '100vh', overflowY: 'auto' }}><Deck key={++instance} refreshKey={0}
-    snapshot={{ projectName: 'Hero return', source: 'sandbox', writable: true, editMode: 'direct', iteration: { number: 1, goal: '', start: '' } }} /></main>);
+    snapshot={snapshot} /></main>);
 }
 
 Object.assign(window, { heroReturnTest: { render, requests, async removeHero() {

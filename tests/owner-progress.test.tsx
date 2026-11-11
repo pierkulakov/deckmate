@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { CardOwnerAvatar, ownerProgressLabel } from '../client/components/CardOwnerAvatar.tsx';
+import { CardOwnerAvatar, ownerInitials, ownerProgressLabel } from '../client/components/CardOwnerAvatar.tsx';
 import { setLang } from '../client/i18n.ts';
 
 vi.hoisted(() => vi.stubGlobal('document', { documentElement: { lang: '' }, cookie: '' }));
@@ -11,6 +11,16 @@ beforeEach(() => {
   setLang('en');
 });
 afterEach(() => vi.unstubAllGlobals());
+
+it.each(['en', 'ru'] as const)('uses the same Unicode initials for people in %s', lang => {
+  setLang(lang);
+  expect(ownerInitials('  Мария   Иванова Петрова ', lang)).toBe('МИ');
+  expect(ownerInitials('éclair 😀 test', lang)).toBe('É😀');
+  expect(ownerInitials('   ', lang)).toBe('');
+  expect(ownerInitials(null, lang)).toBe('');
+  const html = renderToStaticMarkup(<CardOwnerAvatar owner="  Мария   Иванова Петрова " members={[]} />);
+  expect(html).toContain('>МИ</span>');
+});
 
 // 2026-11-10: the owner medallion has no ring, which read as a heavy outline;
 // the checklist stays in the owner's accessible name and tooltip.
@@ -28,7 +38,8 @@ describe('owner checklist label', () => {
       const label = lang === 'en' ? 'Owner: Maya Chen · checklist 1 of 3' : 'Исполнитель: Maya Chen · чек-лист 1 из 3';
       expect(html).toContain(`role="img" title="${label}" aria-label="${label}"`);
       expect(html).not.toContain('owner-progress-ring');
-      expect(html).toContain(kind === 'human' ? 'lucide-user-round' : 'lucide-bot');
+      if (kind === 'human') { expect(html).toContain('>MC</span>'); expect(html).not.toContain('lucide-user-round'); }
+      else expect(html).toContain('lucide-bot');
     }
   });
 });

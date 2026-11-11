@@ -42,8 +42,13 @@ describe.skipIf(!browserPath)('client audit regressions (browser)', () => {
     await key(' ', 'Space');
     await until('audit.state.opened === 1');
     expect(await evaluate(`Boolean(document.querySelector('.hand-slot.is-drag-source'))`)).toBe(false);
-    await key('Tab');
-    expect(await evaluate(`document.activeElement.classList.contains('deck-card-settings')`)).toBe(true);
+    expect(await evaluate(`Boolean(document.querySelector('.hand-slot .deck-card-settings, .hand-slot .deck-card-owner-medallion'))`)).toBe(false);
+    // 2026-11-11: editable band metrics precede the separate drag handle in the native Tab order.
+    for (const property of ['effort', 'priority']) {
+      await key('Tab');
+      expect(await evaluate(`document.activeElement.getAttribute('data-shortcut-property')`)).toBe(property);
+      expect(await evaluate(`Boolean(document.querySelector('.hand-slot.is-drag-source'))`)).toBe(false);
+    }
     await key('Tab');
     expect(await evaluate(`document.activeElement.classList.contains('hand-slot-handle')`)).toBe(true);
     await until(`getComputedStyle(document.activeElement).opacity === '1'`);

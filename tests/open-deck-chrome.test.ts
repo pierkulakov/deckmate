@@ -40,8 +40,7 @@ describe.skipIf(!browserPath)('open-deck chrome', () => {
   afterAll(async () => { await page?.close(); }, 20000);
 
   async function automation() {
-    await page.send('Page.navigate', { url: browserFixtureUrl('open-deck-chrome') + '?automationTest=1' });
-    await until(`Boolean(document.querySelector('.deck-automation-toggle'))`);
+    await navigateTo(browserFixtureUrl('open-deck-chrome') + '?automationTest=1', `document.querySelector('.deck-automation-toggle')`);
     await page.evaluate(`document.querySelector('.deck-automation-toggle').click()`);
     await until(`Boolean(document.querySelector('.deck-automation-menu textarea'))`);
     await page.evaluate(`(() => { const field = document.querySelector('.deck-automation-menu textarea'); Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set.call(field, 'My draft'); field.dispatchEvent(new Event('input', { bubbles: true })); })()`);
@@ -62,7 +61,7 @@ describe.skipIf(!browserPath)('open-deck chrome', () => {
   it('keeps automation input through Escape and exposes its form to Tab', async () => {
     await automation();
     const key = async (key: string, code: number) => { for (const type of ['keyDown', 'keyUp']) await page.send('Input.dispatchKeyEvent', { type, key, windowsVirtualKeyCode: code }); };
-    await page.evaluate(`document.querySelector('.deck-automation-menu input[type=text]').focus()`);
+    await page.evaluate(`document.querySelector('.deck-automation-menu input[type=search]').focus()`);
     await key('Tab', 9);
     expect(await page.evaluate(`document.activeElement === document.querySelector('.deck-automation-menu textarea')`)).toBe(true);
     await key('Escape', 27);
@@ -142,14 +141,18 @@ describe.skipIf(!browserPath)('open-deck chrome', () => {
     if (count) expect(result.label).toContain('Задач на приёмке: ' + count);
   });
 
-  it.each([{ order: 'state', compact: false, state: false, priority: true },
-    { order: 'priority', compact: false, state: true, priority: false },
-    { order: 'state', compact: true, state: true, priority: true }])(
-    'suppresses only metadata repeated by a visible $order heading, compact=$compact', async ({ order, compact, state, priority }) => {
+  it.each([{ order: 'state', compact: false },
+    { order: 'priority', compact: false },
+    { order: 'state', compact: true }])(
+    'keeps state text off the tile face while retaining priority metrics with $order headings, compact=$compact', async ({ order, compact }) => {
       await navigateTo(browserFixtureUrl('open-deck-chrome') + `?view=deck&catalogSource=sandbox&deck=work&order=${order}${compact ? '&compact=1' : ''}`,
         `document.querySelector('.deck-card')`);
-      expect(await page.evaluate(`Boolean(document.querySelector('.deck-card .card-face-state'))`)).toBe(state);
-      expect(await page.evaluate(`Boolean(document.querySelector('.deck-card .deck-card-priority'))`)).toBe(priority);
+      // The tile face carries no workflow word under any grouping or density: the band says the state.
+      expect(await page.evaluate(`Boolean(document.querySelector('.deck-card .card-face-state'))`)).toBe(false);
+      expect(await page.evaluate(`Boolean(document.querySelector('.deck-card .deck-card-priority'))`)).toBe(false);
+      expect(await page.evaluate(`document.querySelector('.deck-card [data-shortcut-property="priority"] .priority-icon').title`)).toBe('Приоритет: Высокий');
+      expect(await page.evaluate(`document.querySelector('.deck-card [data-shortcut-property="priority"] .priority-icon').querySelectorAll('svg path').length`)).toBe(3);
+      expect(await page.evaluate(`document.querySelector('.deck-card-open').getAttribute('aria-label')`)).toContain('Приоритет: Высокий');
     });
 
   it.each([{ width: 2560, height: 1440 }, { width: 1440, height: 900 }])(
@@ -222,7 +225,11 @@ describe.skipIf(!browserPath)('open-deck chrome', () => {
     await page.send('Emulation.setDeviceMetricsOverride', { width: 375, height: 600, deviceScaleFactor: 1, mobile: false });
     await page.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 1 });
     const point = (selector: string) => page.callFunction(`selector => { const r = document.querySelector(selector).getBoundingClientRect(); return { x: r.x + r.width / 2, y: r.y + r.height / 2, id: 1 }; }`, selector);
-    const move = async (selector: string) => { await page.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [await point(selector)] }); };
+    const move = async (selector: string) => {
+      // 2026-11-11: switching dock modes moves its targets; use settled geometry before the next touch move.
+      await waitForLayout(page.evaluate, '.card-transfer-targets');
+      await page.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [await point(selector)] });
+    };
     try {
       for (const ending of ['touchCancel', 'Escape', 'group', 'deck']) {
         await navigateTo(browserFixtureUrl('open-deck-chrome') + '?view=deck&catalogSource=sandbox&deck=work&order=priority',
@@ -338,6 +345,8 @@ describe.skipIf(!browserPath)('open-deck chrome', () => {
       }
       await panel(2);
       expect(await page.evaluate(`(() => { const tag = document.querySelector('.deck-tag-row .tag-badge-name'); return tag.textContent === '#очень-длинный-русский-тег-без-сокращений' && getComputedStyle(tag).whiteSpace === 'normal' && tag.scrollWidth <= tag.clientWidth; })()`)).toBe(true);
+      await page.evaluate(`document.querySelectorAll('.deck-tags-purpose button')[1].click()`);
+      await until(`document.querySelectorAll('.deck-tags-purpose button')[1].getAttribute('aria-pressed') === 'true'`);
       const before = await page.evaluate(`document.querySelector('.catalog-workbench').getBoundingClientRect().top`);
       await page.evaluate(`document.querySelector('.deck-tags-panel button.deck-tag-row:not([disabled])').click()`);
       await until(`Boolean(document.querySelector('.card-selection-bar'))`);

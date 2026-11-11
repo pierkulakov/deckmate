@@ -232,14 +232,103 @@ describe.skipIf(!browserPath)('application shell (browser)', () => {
     await render('app', { searchMetadata: true, lang }, 1280);
     await search('Task 0');
     await until(`Boolean(document.querySelector('.global-search-row'))`);
-    const row = await evaluate(`(()=>{const row=[...document.querySelectorAll('.global-search-row')].find(e=>e.title.endsWith(': Task 0'));return {text:row.textContent,states:[...row.querySelectorAll('.card-face-state')].map(e=>e.textContent),due:row.querySelector('.card-face-due')?.textContent,tags:row.querySelectorAll('.card-tags').length,prefix:row.querySelectorAll('.tag-title-prefix').length}})()`);
-    expect(row.states).toContain(lang === 'ru' ? 'Ждёт 1' : 'Waiting: 1');
+    const row = await evaluate(`(()=>{const row=[...document.querySelectorAll('.global-search-row')].find(e=>e.title.endsWith(': Task 0'));return {text:row.textContent,states:[...row.querySelectorAll('.card-face-state')].map(e=>e.textContent),statusTitle:row.querySelector('.card-face-status')?.title,due:row.querySelector('.card-face-due')?.textContent,tags:row.querySelectorAll('.card-tags').length,prefix:row.querySelectorAll('.tag-title-prefix').length}})()`);
+    expect(row.states).toContain(lang === 'ru' ? 'Заблокирована' : 'Blocked');
+    expect(row.statusTitle).toContain(lang === 'ru' ? 'Ждёт 1' : 'Waiting: 1');
     expect(row.due).toBe(lang === 'ru' ? 'Просрочено' : 'Overdue');
     expect(row.text).toContain('Maya Chen');
     expect(row.tags).toBe(1);
     expect(row.prefix).toBe(0);
     await key('Enter');
     await until(`new URLSearchParams(location.search).get('card') === 'card:shell-0'`);
+  });
+
+  it.each(['en', 'ru'])('search shows the shared Hero total from unfiltered children in %s', async lang => {
+    await render('app', {}, 1440);
+    await evaluate(`window.metricsFetch = window.fetch; window.fetch = async (...args) => {
+      const response = await window.metricsFetch(...args);
+      if (new URL(String(args[0]), location.href).pathname !== '/api/catalog') return response;
+      const data = await response.json();
+      const hero = data.cards[1];
+      data.decks = data.decks.map(deck => deck.id === hero.deckId ? { ...deck, title: 'Очень длинное русское название колоды с окружением' } : deck);
+      data.cards = data.cards.map((card, index) => {
+        if (index === 1) return { ...card, kind: 'hero', title: 'Metrics Hero', effort: null };
+        if (index === 2) return { ...card, parentId: hero.id, effort: 3 };
+        if (index === 3) return { ...card, parentId: hero.id, effort: null };
+        if (index === 4) return { ...card, parentId: hero.id, effort: 99, archived: true };
+        return card;
+      });
+      return Response.json(data);
+    }`);
+    try {
+      for (const width of [375, 1440]) for (const theme of ['dark', 'light']) {
+        await render('app', { searchMetadata: true, lang, theme }, width);
+        await search('Metrics Hero');
+        await until(`Boolean(document.querySelector('.global-search-row .card-metrics-effort'))`);
+        const result = await evaluate(`(() => { const row = document.querySelector('.global-search-row'); const effort = row.querySelector('.card-metrics-effort'); const deck = row.querySelector('.global-search-deck'); return { label: effort.getAttribute('aria-label'), icon: !!effort.querySelector('.effort-icon'), count: document.querySelectorAll('.global-search-row').length, overflow: row.scrollWidth > row.clientWidth, deckWrap: getComputedStyle(deck).whiteSpace, deckOverflow: deck.scrollWidth > deck.clientWidth }; })()`);
+        expect(result.label).toBe(lang === 'en' ? 'Effort: own and Sub Cards — 4' : 'Оценка: своя и Sub Cards — 4');
+        expect(result.icon).toBe(true);
+        expect(result.count).toBe(1);
+        expect(result.overflow).toBe(false);
+        expect(result.deckWrap).toBe('normal');
+        expect(result.deckOverflow).toBe(false);
+      }
+    } finally {
+      await evaluate('window.fetch = window.metricsFetch; delete window.metricsFetch');
+      await render('app');
+    }
+  });
+
+  it.each(['en', 'ru'])('tag search suggests decorated prefixes and commits with the keyboard in %s', async lang => {
+    await render('app', { searchMetadata: true, lang }, 1280);
+    for (const query of ['ar', '#ar']) {
+      await search(query);
+      await until(`Boolean(document.querySelector('.global-search-tag-suggestion'))`);
+      expect(await evaluate(`(()=>{const row=document.querySelector('.global-search-tag-suggestion');return {name:row.querySelector('.tag-badge-name').textContent,glyph:row.querySelector('.tag-badge-glyph').textContent,count:row.querySelector('.page-number').textContent}})()`))
+        .toEqual({ name: 'art', glyph: '🎨', count: '1' });
+      await key('Enter');
+      await until(`document.querySelector('.global-search input').value === '#art '`);
+      expect(await evaluate(`document.querySelector('.global-search input').getAttribute('aria-expanded')`)).toBe('true');
+      await until(`document.querySelectorAll('.global-search-results .global-search-row').length === 1`);
+      expect(await evaluate(`document.querySelector('.global-search-results .tag-badge-name').textContent`)).toBe('art');
+    }
+  });
+
+  it('tag panel separates showing from selection, keeps counts stable and resets zero matches', async () => {
+    await render('app', { deck: true, searchMetadata: true, lang: 'ru' }, 1440);
+    await click('.deck-action-rail [aria-label="Теги"]');
+    await until(`Boolean(document.querySelector('.deck-tags-panel'))`);
+    expect(await evaluate(`document.querySelector('.deck-tags-purpose [aria-pressed="true"]').textContent`)).toBe('Показать');
+    await click('.deck-tag-row.is-project');
+    await until(`document.querySelectorAll('.deck-table-row').length === 1`);
+    expect(await evaluate(`document.querySelector('.deck-tags-summary').textContent`)).toContain('Показано 1 из 40');
+    expect(await evaluate(`document.querySelector('.card-selection-toolbar') === null`)).toBe(true);
+    await click('.deck-tag-row:not(.is-project)');
+    await until(`document.querySelectorAll('.deck-table-row').length === 0`);
+    expect(await evaluate(`document.querySelector('.deck-tags-summary').textContent`)).toContain('Показано 0 из 40');
+    await click('.deck-tags-modes button:last-child');
+    await until(`document.querySelectorAll('.deck-table-row').length === 40`);
+    expect(await evaluate(`[...document.querySelectorAll('.deck-tags-modes button')].map(button=>button.textContent)`)).toEqual(['Все', 'Любой']);
+    await click('.deck-tags-purpose button:last-child');
+    await until(`document.querySelectorAll('.deck-table-row.is-multi-selected').length === 40`);
+    expect(await evaluate(`document.querySelector('.deck-tags-summary').textContent`)).toContain('Выделено 40');
+    await click('.deck-tags-reset');
+    await until(`document.querySelectorAll('.deck-table-row.is-multi-selected').length === 0`);
+    expect(await evaluate(`document.querySelectorAll('.deck-table-row').length`)).toBe(40);
+    await click('.deck-tags-purpose button:first-child');
+    await click('.deck-tag-row.is-project');
+    await until(`document.querySelectorAll('.deck-table-row').length === 1`);
+    await click('.deck-tags-purpose button:last-child');
+    await until(`document.querySelectorAll('.deck-table-row.is-multi-selected').length === 1`);
+    expect(await evaluate(`document.querySelectorAll('.deck-table-row').length`)).toBe(40);
+    await click('.card-selection-clear');
+    await until(`document.querySelector('.deck-tags-summary').textContent.includes('Выделено 0')`);
+    expect(await evaluate(`document.querySelector('.deck-tag-row.is-project').getAttribute('aria-pressed')`)).toBe('false');
+    await click('.deck-action-rail [aria-label="Порядок"]');
+    expect(await evaluate(`document.querySelector('.card-ordering-rows').textContent`)).toContain('По первому тегу');
+    await click('.card-ordering [aria-label="По первому тегу: Теги проекта"]');
+    await until(`Boolean(document.querySelector('.catalog-group-filter .tag-badge-glyph'))`);
+    expect(await evaluate(`document.querySelector('.deck-table-tags .tag-badge-glyph').textContent`)).toBe('🎨');
   });
 
   it('Hand card navigation preserves the viewed member and a browser return step', async () => {

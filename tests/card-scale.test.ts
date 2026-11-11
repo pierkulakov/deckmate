@@ -40,10 +40,10 @@ describe.skipIf(!browserPath)('card proportions in the real workbench', () => {
         gap: getComputedStyle(first.querySelector('.deck-grid')).columnGap,
         title: font(tile + ' .deck-card-title'), titleBox: box(tile + ' .deck-card-title'),
         strip: box(tile + ' .card-family-trigger'), stripFont: font(tile + ' .card-family-trigger'),
-        band: box(tile + ' .deck-card-band'), bandFont: font(tile + ' .card-face-status'), status: box(tile + ' .card-face-status'),
+        band: box(tile + ' .deck-card-band'), stateWord: Boolean(document.querySelector(tile + ' .card-face-status')),
         heroBand: box('[data-deck-card="card:scale-0"] .deck-card-band'),
         emptyHeroBand: box('[data-deck-card="card:scale-4"] .deck-card-band'),
-        indicator: box(tile + ' .card-indicator > svg'), effort: box(tile + ' .deck-card-effort'), owner: box(tile + ' .deck-card-owner'), ownerFont: font(tile + ' .deck-card-owner .card-owner-avatar'),
+        indicator: box(tile + ' .card-hand-indicator > svg'), effort: box(tile + ' .deck-card-metrics'), effortFont: font(tile + ' .deck-card-metrics strong'), priorityIcon: box(tile + ' .priority-icon svg'), owner: box(tile + ' .deck-card-owner-medallion'), ownerFont: font(tile + ' .deck-card-owner .card-owner-avatar'),
         lane: font('.catalog-group-filter'), laneToTile: Math.min(...cards.map(r => r.y)) - label.bottom,
         nextLane: next.querySelector('.catalog-group-filter').getBoundingClientRect().y - Math.max(...cards.map(r => r.bottom)), rule: box('.catalog-group-rule'),
         laneTextToTile: Math.min(...cards.map(r => r.y)) - labelText.bottom,
@@ -65,21 +65,24 @@ describe.skipIf(!browserPath)('card proportions in the real workbench', () => {
         checklist: font('.card-preview-document .check-item'), checklistPitch: checks[1].y - checks[0].y,
         context: box('.card-preview-context .deck-picker-pill'), contextFont: font('.card-preview-context .deck-picker-pill'),
         stateRow: box('.card-preview-state-actions'), stateIcon: box('.card-preview-state-actions svg'),
-        edit: box('.card-content-edit-action'), editFont: font('.card-content-edit-action'), idVisible: Boolean(document.querySelector('.card-id-chip')), tagFont: font('.card-preview-relations .tag-badge-name'),
-        previewBand: box('.card-preview-material-band'), previewLabel: font('.card-preview-property-shortcut > span'),
+        edit: box('.card-content-edit-action'), editFont: font('.card-content-edit-action'), idVisible: Boolean(document.querySelector('.card-id-chip')), tagFont: font('.card-preview-tags .tag-badge-name'),
+        previewBand: box('.card-preview-material-band'), previewLabel: font('.card-preview-property-label'),
+        previewLabelVisible: Boolean(box('.card-preview-property-label')?.width),
         previewPropertyIcon: box('.card-preview-property-shortcut > svg'), previewPropertyName: document.querySelector('.card-preview-property-shortcut')?.getAttribute('aria-label'),
         previewValue: font('.card-preview-property-shortcut > strong'),
         previewOwner: box('.card-preview-owner-shortcut'), railIcon: box('.card-preview-action-rail svg'), railPitch: rail[1].y - rail[0].y,
         titlesFit: [...document.querySelectorAll('.catalog-card-task .deck-card-title')].every(title => {
-          const r = title.getBoundingClientRect(), context = title.closest('.deck-card').querySelector('.deck-card-context').getBoundingClientRect();
+          const r = title.getBoundingClientRect(), context = title.closest('.deck-card').querySelector('.deck-card-face-meta').getBoundingClientRect();
           return title.scrollWidth <= title.clientWidth && r.height <= 51 && r.height % 17 === 0 && r.bottom <= context.top;
         }),
-        statusFits: [...document.querySelectorAll('.deck-card :is(.card-face-state, .card-face-due, .deck-card-effort)')].every(element => {
-          const r = element.getBoundingClientRect(), band = element.closest('.deck-card-band').getBoundingClientRect();
-          return element.scrollWidth <= element.clientWidth && r.x >= band.x && r.right <= band.right && r.bottom <= band.bottom;
+        statusFits: [...document.querySelectorAll('.deck-card .card-face-status')].every(element => {
+          const r = element.getBoundingClientRect(), face = element.closest('.deck-card-face').getBoundingClientRect();
+          const hand = element.parentElement.querySelector('.deck-card-hand-row')?.getBoundingClientRect();
+          return element.scrollWidth <= element.clientWidth && r.x >= face.x && r.right <= face.right && r.bottom <= (hand?.top ?? face.bottom);
         }),
         footerTextFits: [...document.querySelectorAll('.card-preview-property-shortcut > :is(span, svg, strong)')].every(part => {
           const r = part.getBoundingClientRect(), band = box('.card-preview-material-band'), owner = box('.card-preview-owner-shortcut');
+          if (!r.width || !r.height) return true;
           const overlapsOwner = r.x < owner.x + owner.width && r.right > owner.x && r.y < owner.bottom && r.bottom > owner.y;
           return !overlapsOwner && r.x >= band.x && r.right <= band.x + band.width && r.y >= band.y && r.bottom <= band.bottom;
         }),
@@ -93,9 +96,9 @@ describe.skipIf(!browserPath)('card proportions in the real workbench', () => {
     expect(measurements.checklist).toEqual(measurements.body);
     expect(measurements.checklistPitch).toBe(34);
     expect(measurements.readingInset).toBe('16px');
-    expect(measurements.previewBand.height).toBe(44);
-    expect(measurements.previewOwner).toMatchObject({ width: 36, height: 36 });
-    expect(measurements.previewOwner.y + 18).toBe(measurements.previewBand.y);
+    expect(measurements.previewBand.height).toBe(64);
+    expect(measurements.previewOwner).toMatchObject({ width: 56, height: 56 });
+    expect(measurements.previewOwner.y + 28).toBe(measurements.previewBand.y);
     expect(measurements.footerTextFits).toBe(true);
     expect(measurements.railIcon).toMatchObject({ width: 20, height: 20 });
     expect(measurements.dock.bottom).toBe(measurements.previewBand.y);
@@ -110,7 +113,7 @@ describe.skipIf(!browserPath)('card proportions in the real workbench', () => {
       expect(measurements.preview.bottom).toBe(measurements.workspace.bottom - 12);
       expect(measurements.preview.height).toBe(measurements.workspace.bottom - 12 - measurements.preview.y);
       expect(measurements.divider.y).toBe(measurements.shell.y);
-      expect(measurements.divider.bottom).toBeGreaterThanOrEqual(measurements.preview.bottom);
+      expect(measurements.divider.bottom).toBe(measurements.preview.bottom);
       expect(measurements.panelsOverflow).toBe('auto');
     } else {
       expect(measurements.panelsOverflow).toBe('auto');
@@ -152,29 +155,35 @@ describe.skipIf(!browserPath)('card proportions in the real workbench', () => {
       expect(measurements.stateIcon).toMatchObject({ width: 16, height: 16 });
       expect(measurements.edit.height).toBe(30);
       expect(measurements.editFont).toEqual(['14px', '600', '16px']);
-      expect(measurements.idVisible).toBe(false);
+      expect(measurements.idVisible).toBe(true);
       expect(measurements.tagFont[0]).toBe('12px');
-      expect(measurements.previewLabel).toBeNull();
-      expect(measurements.previewPropertyIcon).toMatchObject({ width: width === 375 ? 16 : 19, height: width === 375 ? 16 : 19 });
+      expect(measurements.previewLabel).toEqual(['13px', '600', '18px']);
+      expect(measurements.previewLabelVisible).toBe(measurements.preview.width > 400);
+      expect(measurements.previewPropertyIcon).toMatchObject({ width: 22, height: 22 });
       expect(measurements.previewPropertyName).toMatch(/^Оценка:/u);
-      expect(measurements.previewValue).toEqual(['15px', '600', '20px']);
+      expect(measurements.previewValue).toEqual(['20px', '500', '24px']);
       // 2026-11-10: tile dimensions remain shared across views.
       expect(measurements.tile).toMatchObject({ width: 115, height: 147 });
       expect(measurements.gap).toBe('16px');
       expect(measurements.title).toEqual(['14px', '500', '17px']);
-      expect(measurements.titleBox.height).toBe(34);
+      expect(measurements.titleBox.height).toBe(51);
       expect(measurements.strip.height).toBe(18);
       expect(measurements.stripFont).toEqual(['9.5px', '600', '14px']);
       expect(measurements.titleBox.y - measurements.strip.bottom).toBe(7);
       expect(measurements.titleBox.x - measurements.tile.x).toBe(8);
-      expect(measurements.band.height).toBe(Math.max(27, measurements.status.height + 9));
-      expect(measurements.bandFont).toEqual(['12px', '500', '16px']);
-      expect(measurements.heroBand.height).toBe(35);
-      expect(measurements.emptyHeroBand.height).toBe(27);
-      expect(measurements.indicator).toBeUndefined();
+      expect(measurements.band.height).toBe(24);
+      // The tile face carries no workflow word; the band and the accessible name say the state.
+      expect(measurements.stateWord).toBe(false);
+      expect(measurements.heroBand.height).toBe(29);
+      expect(measurements.emptyHeroBand.height).toBe(29);
+      expect(measurements.indicator).toMatchObject({ width: 16, height: 16 });
       expect(measurements.effort.height).toBe(16);
-      expect(measurements.owner).toMatchObject({ width: 24, height: 24 });
-      expect(measurements.ownerFont).toEqual(['12px', '600', '12px']);
+      expect(measurements.effortFont).toEqual(['13px', '700', '16px']);
+      expect(measurements.priorityIcon).toMatchObject({ width: 14, height: 14 });
+      expect(measurements.owner).toMatchObject({ width: 23, height: 23 });
+      expect(measurements.owner.x + measurements.owner.width / 2).toBe(measurements.tile.x + measurements.tile.width / 2);
+      expect(Math.abs(measurements.owner.y + measurements.owner.height / 2 - measurements.band.y)).toBeLessThanOrEqual(1);
+      expect(measurements.ownerFont).toEqual(['8px', '600', '8px']);
       expect(measurements.statusFits).toBe(true);
       expect(measurements.lane).toEqual(['13px', '500', '14px']); // 2026-11-10: 13px lane labels and a 500 control label follow the Foil Rule.
       if (width >= 1440) {
@@ -200,7 +209,8 @@ describe.skipIf(!browserPath)('card proportions in the real workbench', () => {
           expect(initial.journey.y).toBeGreaterThan(initial.dock.y);
           expect(initial.journey.bottom).toBeLessThan(initial.previewBand.y);
           if (!long) {
-            expect(initial.scrollable).toBe(0);
+            // 2026-11-11: the restored chrome can leave a partial reading line to scroll; the dock remains pinned.
+            expect(initial.scrollable).toBeLessThanOrEqual(parseFloat(initial.body[2]));
             continue;
           }
           expect(initial.scrollable).toBeGreaterThan(1000);
@@ -234,11 +244,12 @@ describe.skipIf(!browserPath)('card proportions in the real workbench', () => {
           const rail = document.querySelector('.card-preview-action-rail').getBoundingClientRect();
           const divider = document.querySelector('.catalog-resize-line').getBoundingClientRect();
           const mark = getComputedStyle(document.querySelector('.card-preview-action-rail button[aria-pressed="true"]'));
-          return { gap: rect.x - rail.right, top: rect.y, dividerTop: divider.y, width: rect.width, radius: mark.borderRadius };
+          return { gap: rect.x - rail.right, top: rect.y, bottom: rect.bottom, dividerTop: divider.y, dividerBottom: divider.bottom, width: rect.width, radius: mark.borderRadius };
         }`, panel);
         expect(column.gap).toBe(12);
         expect(column.top).toBe(initial.shell.y - 8);
         expect(column.dividerTop).toBe(column.top);
+        expect(column.dividerBottom).toBe(column.bottom);
         expect(column.width).toBe(379);
         expect(column.radius).toBe('2px');
         const opened = await measure();
@@ -251,6 +262,33 @@ describe.skipIf(!browserPath)('card proportions in the real workbench', () => {
       expect(page.errors).toEqual([]);
     }, 20000);
   }
+
+  it('keeps the sticky divider level with the visible panel while the outer card list scrolls', async () => {
+    await page.send('Emulation.setDeviceMetricsOverride', { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false });
+    await open('&many=1');
+    await selectCard();
+    expect(await page.evaluate(`getComputedStyle(document.querySelector('.catalog-resize-line')).position`)).toBe('sticky');
+    for (const [button, panel] of [[null, null], ['[aria-controls$="-properties"]', '.card-properties-slot:not([hidden])'], ['[data-card-family]', '.catalog-family-layer > .card-family-panel']]) {
+      if (button) {
+        await page.callFunction(`button => document.querySelector('.card-preview-action-rail button' + button).click()`, button);
+        await page.until(`Boolean(document.querySelector(${JSON.stringify(panel)}))`);
+      }
+      for (const offset of [0, 400]) {
+        await page.callFunction(`offset => { document.querySelector('.workspace-main').scrollTop = offset; }`, offset);
+        await waitForLayout(page.evaluate, '.card-preview, .catalog-resize-line, .card-properties-slot, .card-family-panel');
+        const current = await measure();
+        const top = panel ? await page.callFunction(`selector => document.querySelector(selector).getBoundingClientRect().top`, panel) : current.shell.y;
+        expect(current.divider.y).toBe(top);
+        expect(current.divider.bottom).toBe(current.preview.bottom);
+        if (offset) expect(await page.evaluate(`document.querySelector('.workspace-main').scrollTop`)).toBeGreaterThan(0);
+      }
+      if (button) {
+        await page.callFunction(`button => document.querySelector('.card-preview-action-rail button' + button).click()`, button);
+        await page.until(`!document.querySelector(${JSON.stringify(panel)})`);
+      }
+    }
+    expect(page.errors).toEqual([]);
+  }, 20000);
 
   it('migrates the old saved width and bounds the responsive defaults', async () => {
     for (const [width, expected] of [[900, 420], [1440, 502], [1920, 607], [2600, 754], [3200, 780]]) {
@@ -335,7 +373,7 @@ describe.skipIf(!browserPath)('card proportions in the real workbench', () => {
         const title = getComputedStyle(root.querySelector('.card-preview-title'));
         const body = getComputedStyle(root.querySelector('.markdown'));
         return [band.height, owner.width, owner.height, title.fontSize, title.fontWeight, body.fontSize, body.lineHeight];
-      })()`)).toEqual([44, 36, 36, '22px', '600', '16px', '22px']);
+      })()`)).toEqual([64, 56, 56, '22px', '600', '16px', '22px']);
       if (process.env.DECKMATE_SCALE_CAPTURE) {
         const destination = path.resolve('.deckmate/inbox/ux/card-scale', 'column-' + process.env.DECKMATE_SCALE_CAPTURE + '-hero-' + width + '-' + theme + '.png');
         await mkdir(path.dirname(destination), { recursive: true });
@@ -385,6 +423,13 @@ describe.skipIf(!browserPath)('card proportions in the real workbench', () => {
     await page.send('Emulation.setDeviceMetricsOverride', { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false });
     await open();
     const tile = '[data-deck-card="card:scale-1"]';
+    expect(await page.callFunction(`selector => {
+      const tile = document.querySelector(selector);
+      return [getComputedStyle(tile.querySelector('.deck-card-owner-medallion')).borderTopWidth,
+        getComputedStyle(tile.querySelector('.card-owner-avatar')).borderTopWidth,
+        getComputedStyle(tile.querySelector('.deck-card-settings')).outlineStyle,
+        getComputedStyle(tile.querySelector('.deck-card-settings')).boxShadow];
+    }`, tile)).toEqual(['1px', '0px', 'none', 'none']);
     await page.callFunction(`selector => document.querySelector(selector + ' .deck-card-open').focus()`, tile);
     async function key(key: string, code: number) {
       for (const type of ['keyDown', 'keyUp']) await page.send('Input.dispatchKeyEvent', { type, key, code: key, windowsVirtualKeyCode: code,
@@ -392,6 +437,7 @@ describe.skipIf(!browserPath)('card proportions in the real workbench', () => {
     }
     await key('Tab', 9);
     expect(await page.evaluate(`document.activeElement.className`)).toBe('deck-card-settings');
+    expect(await page.evaluate(`document.activeElement.matches(':focus-visible') && getComputedStyle(document.activeElement).outlineWidth === '2px'`)).toBe(true);
     await page.until(`getComputedStyle(document.activeElement).opacity === '1'`);
     expect(await page.evaluate(`getComputedStyle(document.activeElement).opacity`)).toBe('1');
     await key('Enter', 13);
@@ -406,11 +452,151 @@ describe.skipIf(!browserPath)('card proportions in the real workbench', () => {
     await open();
     const target = await page.callFunction(`selector => {
       const button = document.querySelector(selector + ' .deck-card-settings'), r = button.getBoundingClientRect();
-      const card = button.closest('.deck-card').getBoundingClientRect();
-      return { width:r.width, height:r.height, opacity:getComputedStyle(button).opacity, inside:r.x >= card.x && r.right <= card.right && r.y >= card.y && r.bottom <= card.bottom };
+      const band = button.closest('.deck-card-band').getBoundingClientRect();
+      return { width:r.width, height:r.height, opacity:getComputedStyle(button).opacity, top:r.top - band.top };
     }`, tile);
-    expect(target).toEqual({ width: 44, height: 44, opacity: '1', inside: true });
+    expect(target).toEqual({ width: 44, height: 44, opacity: '1', top: 0 });
+    await page.callFunction(`selector => document.querySelector(selector).scrollIntoView({ block: 'center', behavior: 'instant' })`, tile);
+    await waitForLayout(page.evaluate, tile);
+    const points = await page.callFunction(`selector => {
+      const card = document.querySelector(selector), band = card.querySelector('.deck-card-band').getBoundingClientRect();
+      const center = band.left + band.width / 2;
+      const button = (x, y) => document.elementFromPoint(x, y)?.closest('button')?.className ?? '';
+      const metric = property => { const r = card.querySelector('[data-shortcut-property="' + property + '"]').getBoundingClientRect();
+        return button(r.x + r.width / 2, r.y + r.height / 2); };
+      return { face: { x: center + 18, y: band.top - 8 }, faceHit: button(center + 18, band.top - 8),
+        owner: { x: center, y: band.top + 8 }, ownerHit: button(center, band.top + 8), effort: metric('effort'), priority: metric('priority'),
+        effortEdge: button(band.left + 4, band.bottom - 2), priorityEdge: button(band.right - 6, band.bottom - 2) };
+    }`, tile);
+    expect(points.faceHit).toContain('deck-card-open');
+    expect(points.ownerHit).toContain('deck-card-settings');
+    expect(points.effort).toContain('deck-card-metric');
+    expect(points.priority).toContain('deck-card-metric');
+    // The band is too low for a 44px target, so each metric's target reaches the tile's edge and the band's bottom.
+    expect(points.effortEdge).toContain('deck-card-metric');
+    expect(points.priorityEdge).toContain('deck-card-metric');
+    await page.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [points.face] });
+    await page.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+    await page.until(`Boolean(document.querySelector('.card-preview-sheet'))`);
+    await open();
+    await page.callFunction(`selector => document.querySelector(selector).scrollIntoView({ block: 'center', behavior: 'instant' })`, tile);
+    await waitForLayout(page.evaluate, tile);
+    const ownerPoint = await page.callFunction(`selector => {
+      const r = document.querySelector(selector + ' .deck-card-settings').getBoundingClientRect();
+      return { x: r.x + r.width / 2, y: r.y + 8 };
+    }`, tile);
+    await page.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [ownerPoint] });
+    await page.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+    await page.until(`Boolean(document.querySelector('.card-quick-settings'))`);
+    expect(await page.evaluate(`document.querySelector('.card-quick-tabs [role="tab"][aria-selected="true"]').getAttribute('aria-label')`)).toBe('Исполнитель');
     await page.send('Emulation.setTouchEmulationEnabled', { enabled: false });
+    expect(page.errors).toEqual([]);
+  }, 20000);
+
+  it('keeps touch grips clear of English and Russian titles, with and without a parent', async () => {
+    await page.send('Emulation.setDeviceMetricsOverride', { width: 375, height: 812, deviceScaleFactor: 1, mobile: false });
+    await page.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 1 });
+    try {
+      await open('&order=manual');
+      await page.evaluate(`document.querySelector('.deck-overview-collapse')?.click()`);
+      for (const id of ['card:scale-1', 'card:scale-2']) for (const text of ['Paint the harbor color script', 'Подготовить звуки деревянного причала']) {
+        const result = await page.callFunction(`(id, text) => {
+          const card = document.querySelector('[data-deck-card="' + id + '"]');
+          const title = card.querySelector('.deck-card-title');
+          title.textContent = text;
+          const grip = card.querySelector('.card-transfer-handle').getBoundingClientRect();
+          const bounds = title.getBoundingClientRect(), range = document.createRange(), node = title.firstChild;
+          const overlap = [];
+          for (let i = 0; i < node.length; i++) {
+            range.setStart(node, i); range.setEnd(node, i + 1);
+            const r = range.getBoundingClientRect();
+            if (r.bottom <= bounds.bottom + .5 && r.top < grip.bottom && r.bottom > grip.top && r.left < grip.right && r.right > grip.left)
+              overlap.push(node.textContent[i]);
+          }
+          const tile = card.getBoundingClientRect();
+          return { overlap, width: tile.width, height: tile.height, padding: getComputedStyle(title).paddingRight };
+        }`, id, text);
+        expect(result.overlap, id + ': ' + text).toEqual([]);
+        expect(result).toMatchObject({ width: 115, height: 147, padding: '20px' });
+      }
+      await page.evaluate(`document.querySelector('[data-deck-card="card:scale-1"] .card-transfer-handle').scrollIntoView({ block: 'center', behavior: 'instant' })`);
+      await waitForLayout(page.evaluate, '[data-deck-card="card:scale-1"]');
+      const start = await page.evaluate(`(() => { const r = document.querySelector('[data-deck-card="card:scale-1"] .card-transfer-handle').getBoundingClientRect();
+        return { x: r.x + r.width / 2, y: r.y + r.height / 2, id: 1 }; })()`);
+      await page.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [start] });
+      await page.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ ...start, x: start.x + 20 }] });
+      await page.until(`Boolean(document.querySelector('.card-transfer-targets'))`);
+      await page.send('Input.dispatchTouchEvent', { type: 'touchCancel', touchPoints: [] });
+      await page.until(`!document.querySelector('.card-transfer-targets')`);
+      expect(page.errors).toEqual([]);
+    } finally { await page.send('Emulation.setTouchEmulationEnabled', { enabled: false }); }
+  }, 20000);
+
+  it('clears the sticky divider and keyboard focus above the first ungrouped row', async () => {
+    for (const width of [1440, 375]) for (const theme of ['dark', 'light']) {
+      await page.send('Emulation.setDeviceMetricsOverride', { width, height: 900, deviceScaleFactor: 1, mobile: false });
+      await open('&order=manual&theme=' + theme);
+      await page.evaluate(`document.querySelector('.deck-overview-collapse')?.click()`);
+      await waitForLayout(page.evaluate, '.catalog-card-grid, .deck-open-toolbar');
+      for (const selected of [false, true]) {
+        if (selected) await page.evaluate(`document.querySelector('.catalog-card-grid .catalog-card-checkbox').click()`);
+        await waitForLayout(page.evaluate, '.catalog-card-grid, .deck-open-toolbar');
+        await page.send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Tab', code: 'Tab', windowsVirtualKeyCode: 9 });
+        await page.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Tab', code: 'Tab', windowsVirtualKeyCode: 9 });
+        await page.evaluate(`document.querySelector('.catalog-card-grid .catalog-card-checkbox').focus({ preventScroll: true })`);
+        const result = await page.evaluate(`(() => {
+          const checkbox = document.querySelector('.catalog-card-grid .catalog-card-checkbox');
+          const box = checkbox.getBoundingClientRect(), header = document.querySelector('.deck-open-toolbar').getBoundingClientRect();
+          const style = getComputedStyle(checkbox);
+          return { clearance: box.top - parseFloat(style.outlineWidth) - parseFloat(style.outlineOffset) - (header.bottom + 8),
+            focus: checkbox.matches(':focus-visible'), selected: checkbox.checked,
+            offset: parseFloat(style.top), padding: getComputedStyle(document.querySelector('.catalog-card-grid')).paddingTop };
+        })()`);
+        expect(result.focus).toBe(true);
+        expect(result.selected).toBe(selected);
+        expect(result.offset).toBe(-8);
+        expect(result.padding).toBe('12px');
+        expect(result.clearance).toBeGreaterThanOrEqual(0);
+        if (!selected) for (const [x, y] of [[-8, -8], [-8, 8], [8, -8], [8, 8]]) {
+          await page.callFunction(`(x, y) => {
+            const card = document.querySelector('.catalog-card-grid .deck-card');
+            card.style.setProperty('--tilt-x', x + 'deg'); card.style.setProperty('--tilt-y', y + 'deg');
+            getComputedStyle(card).transform;
+            card.getAnimations().forEach(animation => { try { animation.finish(); } catch {} });
+          }`, x, y);
+          const clearance = await page.evaluate(`(() => {
+            const box = document.querySelector('.catalog-card-grid .catalog-card-checkbox').getBoundingClientRect();
+            const header = document.querySelector('.deck-open-toolbar').getBoundingClientRect();
+            return box.top - 4 - (header.bottom + 8);
+          })()`);
+          expect(clearance, `tilt ${x}/${y}`).toBeGreaterThanOrEqual(0);
+        }
+        if (!selected) await page.evaluate(`(() => {
+          const card = document.querySelector('.catalog-card-grid .deck-card');
+          card.style.setProperty('--tilt-x', '0deg'); card.style.setProperty('--tilt-y', '0deg');
+          getComputedStyle(card).transform;
+          card.getAnimations().forEach(animation => { try { animation.finish(); } catch {} });
+        })()`);
+      }
+    }
+    expect(page.errors).toEqual([]);
+  }, 30000);
+
+  it('clears the separate sticky selection dock in the all-cards scope', async () => {
+    await page.send('Emulation.setDeviceMetricsOverride', { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false });
+    const url = new URL('?view=deck&catalogSource=sandbox&scope=all&order=manual', browserFixtureUrl('card-scale'));
+    await page.send('Page.navigate', { url: url.href });
+    await page.until(`Boolean(document.querySelector('.catalog-card-grid .catalog-card-checkbox'))`);
+    await waitForLayout(page.evaluate, '.catalog-card-grid');
+    await page.evaluate(`document.querySelector('.catalog-card-grid .catalog-card-checkbox').click()`);
+    await page.until(`Boolean(document.querySelector('.catalog-selection-dock'))`);
+    await waitForLayout(page.evaluate, '.catalog-card-grid, .catalog-selection-dock');
+    const clearance = await page.evaluate(`(() => {
+      const box = document.querySelector('.catalog-card-grid .catalog-card-checkbox').getBoundingClientRect();
+      const dock = document.querySelector('.catalog-selection-dock').getBoundingClientRect();
+      return box.top - 4 - (dock.bottom + 8);
+    })()`);
+    expect(clearance).toBeGreaterThanOrEqual(0);
     expect(page.errors).toEqual([]);
   }, 20000);
 });

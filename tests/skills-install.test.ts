@@ -1,5 +1,5 @@
 import { afterEach, expect, it } from 'vitest';
-import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { parse } from 'yaml';
@@ -10,6 +10,10 @@ const version = '2026-11-05';
 const manifestText = '\uFEFF---\r\n# Каталог для теста — 2026-11-05\r\nschema: 1\r\nspaces: []\r\ndecks: []\r\ntracks: []\r\nmembership: []\r\n---\r\n\r\n# Проект\r\nТело  с  пробелами.\r\n';
 const skillText = `---\nname: deckmate\ndescription: Собственный тестовый пакет\nmetadata:\n  version: ${version}\n---\n# Скилл для теста\n`;
 const legacySkillText = `---\nname: deckmate\ndescription: Собственный тестовый пакет\nversion: ${version}\n---\n# Скилл для теста\n`;
+const rulesText = '## Deckmate board\n\nПравила доски.\n';
+const rulesStart = '<!-- deckmate:agent-rules:start -->';
+const rulesEnd = '<!-- deckmate:agent-rules:end -->';
+const rulesBlock = `${rulesStart}\n${rulesText}${rulesEnd}\n`;
 
 afterEach(async () => {
   for (const directory of directories.splice(0)) {
@@ -34,6 +38,7 @@ async function fixture(manifest = 'tasks/deckmate.md') {
   const home = path.join(directory, 'Deckmate source');
   const project = path.join(directory, 'Проект with spaces');
   await put(home, 'skills/deckmate/SKILL.md', skillText);
+  await put(home, 'skills/deckmate/project-rules.md', rulesText);
   await put(home, 'skills/deckmate/workflows/analyze.md', '## Задание: research\nОбласть: {area}.\n');
   await put(home, 'skills/deckmate/lenses/fx.md', '# Линза теста\n');
   await put(home, 'skills/deckmate/engines/unity.md', '# Движок теста\n');
@@ -66,9 +71,10 @@ it('copies the complete package to both clients and adds exactly one manifest li
   const { home, project, manifest } = await fixture();
   const before = await snapshot(project);
   const result = await installSkills(project, home);
-  expect(result).toEqual({ home, manifest, version });
+  expect(result).toEqual({ home, manifest, version, agentRules: path.join(project, 'AGENTS.md') });
   const expectedFiles = await snapshot(path.join(home, 'skills/deckmate'));
-  expect(Object.keys(expectedFiles)).toHaveLength(4);
+  expect(Object.keys(expectedFiles)).toHaveLength(5);
+  expect(await readFile(path.join(project, 'AGENTS.md'))).toEqual(Buffer.from(rulesBlock));
   for (const client of ['.claude', '.agents']) {
     expect(await snapshot(path.join(project, client, 'skills/deckmate'))).toEqual(expectedFiles);
     const foreignPath = path.join(client, 'skills/foreign/SKILL.md');
@@ -85,9 +91,13 @@ it('repeats installation without changing any project bytes', async () => {
   const { home, project } = await fixture();
   await installSkills(project, home);
   const before = await snapshot(project);
-  await installSkills(project, home);
+  const filename = path.join(project, 'AGENTS.md');
+  const metadata = await stat(filename);
+  expect((await installSkills(project, home)).agentRules).toBeNull();
+  expect((await stat(filename)).mtimeMs).toBe(metadata.mtimeMs);
+  expect((await stat(filename)).ino).toBe(metadata.ino);
   expect(await snapshot(project)).toEqual(before);
-  expect(await skillsStatus(project, home)).toMatchObject({ home, version,
+  expect(await skillsStatus(project, home)).toMatchObject({ home, version, agentRules: 'matches',
     installations: [
       { version, matches: true },
       { version, matches: true },
@@ -102,6 +112,7 @@ it('reads a top-level version from copies installed before metadata.version', as
     await put(project, `${client}/skills/deckmate/SKILL.md`, legacySkillText);
   }
   const status = await skillsStatus(project, home);
+  expect(status.agentRules).toBe('matches');
   expect(status.installations.map(installation => installation.version)).toEqual([version, version]);
   expect(status.installations.every(installation => !installation.matches)).toBe(true);
 });
@@ -120,6 +131,7 @@ it('reports absent installations without writing files', async () => {
   const { home, project } = await fixture();
   const before = await snapshot(project);
   const status = await skillsStatus(project, home);
+  expect(status.agentRules).toBe('missing-file');
   expect(status.installations).toHaveLength(2);
   expect(status.installations.map(installation => ({ version: installation.version, matches: installation.matches })))
     .toEqual([{ version: null, matches: false }, { version: null, matches: false }]);
@@ -175,5 +187,52 @@ it('rejects a missing manifest before installing any package files', async () =>
   await rm(manifest);
   const before = await snapshot(project);
   await expect(installSkills(project, home)).rejects.toThrow(/deckmate\.md|freetion\.md/u);
+  expect(await snapshot(project)).toEqual(before);
+});
+
+it.each(['', '\n', '\n\n'])('appends rules preserving BOM, CRLF and every existing byte (ending %j)', async ending => {
+  const { home, project } = await fixture();
+  const before = '\uFEFF# Свои правила\r\nСохранить  пробелы.' + ending.replaceAll('\n', '\r\n');
+  await put(project, 'AGENTS.md', before);
+  expect((await skillsStatus(project, home)).agentRules).toBe('missing-block');
+  await installSkills(project, home);
+  const separator = '\r\n'.repeat(2 - ending.length);
+  expect(await readFile(path.join(project, 'AGENTS.md'))).toEqual(Buffer.from(before + separator + rulesBlock.replaceAll('\n', '\r\n')));
+});
+
+it('replaces only the managed content and keeps both marker lines and surrounding bytes', async () => {
+  const { home, project } = await fixture();
+  const prefix = `\uFEFF# Свои правила\r\n\r\n${rulesStart}`;
+  const suffix = `${rulesEnd}\r\n\r\n# После\r\nСвой  текст без последнего перевода строки`;
+  await put(project, 'AGENTS.md', prefix + '\r\nСтарая версия.\r\n' + suffix);
+  expect((await skillsStatus(project, home)).agentRules).toBe('differs');
+  await installSkills(project, home);
+  expect(await readFile(path.join(project, 'AGENTS.md'))).toEqual(Buffer.from(prefix + '\r\n' + rulesText.replaceAll('\n', '\r\n') + suffix));
+  expect((await skillsStatus(project, home)).agentRules).toBe('matches');
+});
+
+it.each([
+  rulesStart,
+  rulesEnd,
+  `${rulesEnd}\n${rulesStart}`,
+  `${rulesStart}\n${rulesStart}\n${rulesEnd}`,
+  `${rulesStart}\n${rulesEnd}\n${rulesEnd}`,
+  rulesBlock + rulesBlock,
+  `inline ${rulesStart}\n${rulesEnd}`,
+  `${rulesStart}\n${rulesEnd} trailing text`,
+])('rejects malformed or repeated markers before any install writes: %j', async content => {
+  const { home, project } = await fixture();
+  await put(project, 'AGENTS.md', content);
+  const before = await snapshot(project);
+  await expect(installSkills(project, home)).rejects.toThrow(/AGENTS\.md: expected exactly one ordered pair/u);
+  await expect(skillsStatus(project, home)).rejects.toThrow(/agent-rules markers/u);
+  expect(await snapshot(project)).toEqual(before);
+});
+
+it('rejects an AGENTS.md directory before any install writes', async () => {
+  const { home, project } = await fixture();
+  await mkdir(path.join(project, 'AGENTS.md'));
+  const before = await snapshot(project);
+  await expect(installSkills(project, home)).rejects.toThrow(/AGENTS\.md: expected a regular file/u);
   expect(await snapshot(project)).toEqual(before);
 });

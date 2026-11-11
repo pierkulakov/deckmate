@@ -50,7 +50,7 @@ Read the selected workflow fully, then only the references it names. For `analyz
 
 ## Ground rules
 
-1. Files are the source of truth; change cards through the CLI, UI, HTTP, or the documented native card format — never SQLite.
+1. Files are the source of truth, never SQLite. Create and change cards only through the running server (UI / [HTTP](references/api.md)), never by hand. If `http://127.0.0.1:4317` does not answer, start `npx deckmate --no-open` in the project folder in the background and wait for a response; if startup fails, stop and tell the person. Reading, `next`, `brief`, `report`, `state` and `ask` still work without a server.
 2. Use the c-refs and p-refs that commands print; never invent or shorten them.
 3. Create or change cards only after the person approves the specific list.
 4. Submit to `review`; an agent never accepts its own work — [acceptance policy](workflows/review.md#acceptance-policy).

@@ -219,3 +219,24 @@ it('keeps assignment sections to the analyze and audit workflows', async () => {
     .filter(name => name !== 'workflows/analyze.md' && name !== 'workflows/audit.md');
   expect(misplaced, `Assignment markers belong in analyze.md and audit.md only: ${misplaced.join(', ')}`).toEqual([]);
 });
+
+it('routes card creation to the running server and keeps the native format read-only', async () => {
+  const files = await readSkillFiles();
+  const text = (relative: string) => files.find(file => file.relative === relative)!.text;
+  for (const relative of ['SKILL.md', 'references/api.md']) {
+    expect(text(relative)).toContain('http://127.0.0.1:4317');
+    expect(text(relative)).toContain('npx deckmate --no-open');
+    expect(text(relative)).toMatch(/background and wait/u);
+    expect(text(relative)).toMatch(/stop and tell the person/u);
+  }
+  const api = text('references/api.md');
+  const rules = text('project-rules.md');
+  const creationBody = (source: string) => JSON.parse(/\{"action":"create-card"[^\n]+\}/u.exec(source)![0]);
+  expect(creationBody(api)).toEqual(creationBody(rules));
+  expect(api.indexOf('GET http://127.0.0.1:4317/api/snapshot')).toBeLessThan(api.indexOf('GET /api/catalog?source=sandbox'));
+  expect(api.indexOf('GET /api/catalog?source=sandbox')).toBeLessThan(api.indexOf('POST /api/catalog'));
+  expect(text('references/cards.md')).toContain('reference for reading existing cards, not instructions to create or edit card files by hand');
+  for (const file of files.filter(file => file.relative.startsWith('workflows/'))) {
+    expect(file.text, file.relative).not.toMatch(/(?:create[^\n]*offline as|create native cards|edit its native file|through UI \/ \[native files\])/iu);
+  }
+});

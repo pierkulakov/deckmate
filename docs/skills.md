@@ -13,6 +13,8 @@ deckmate skills status --project <folder>
 
 Install copies the skill to `.claude/skills/deckmate` and `.agents/skills/deckmate`; status compares both copies with the package. Reinstall to update. Local changes in a copy stop replacement: `deckmate skills install --project <folder> --force` replaces them and loses those changes. Keep project-specific guides in `tasks/`, not the managed copies.
 
+Installation also adds or updates the board rules in the project's `AGENTS.md` between `<!-- deckmate:agent-rules:start -->` and `<!-- deckmate:agent-rules:end -->`, preserving everything outside the markers. Status checks this block as well.
+
 Ask for `/deckmate <workflow>` in a compatible agent, or simply describe the situation. The agent chooses the workflow and asks before creating or changing a proposed list of cards. Use `--data <project>` on project commands to select the project explicitly. From a source checkout, `npm run project -- <command> … --data <project>` is equivalent.
 
 ## What do you want to do?

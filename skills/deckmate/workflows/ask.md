@@ -19,7 +19,7 @@
    → Inspect the saved decision, not just [notifications](../references/cli.md#inbox). Pause the session rather than polling continuously.
 6. Have the person record the answer:
    - **Rule Doc:** open its question in the UI, choose **Answer**, select the answering human, and record the decision. Alternatively, with that human's approval, use HTTP `record-decision` via [the API reference](../references/api.md), not a CLI command. The answer lands in `## Decided`, the open item is removed, and the linked Decision Task is accepted.
-   - **No rule Doc:** the person replies directly; save the approved answer under `## Decided` in the Task body with the answering person and local date, then remove the resolved local question through UI / [native files](../references/cards.md#card-file-format). `record-decision` is for a rule Doc, not a Task.
+   - **No rule Doc:** the person replies directly; save the approved answer under `## Decided` in the Task body with the answering person and local date, then remove the resolved local question only through the running server's UI / HTTP `update-card-content` ([server startup rule](../references/api.md)), never by hand. `record-decision` is for a rule Doc, not a Task.
 7. Verify `deckmate project show <rule-c-ref> --lines <a-b> --data <project>`.
    → Read the saved `## Decided` range and check the answer, human, date, and removal of the open question; check the linked Decision Task's completion. For a local-only question, use the source Task's c-ref and answer range instead. If the answer is ambiguous or saving warned, clarify or reconcile before resuming.
 8. When the answer resolves the blocker, run `deckmate project state <c-ref> started --member <you> --data <project>` as you actually resume.

@@ -15,7 +15,7 @@ Deckmate is a local project board over Markdown. The files in the user's project
 | `assets/` | Fonts, logo, deck art, starter project templates and Journey templates. |
 | `desktop/` | Tauri 2 shell: Rust in `desktop/src-tauri/`, start screen, window and menu, the bundled Node server as a sidecar; its own package.json, see [desktop/README.md](desktop/README.md). |
 | `tests/` | Vitest suites. |
-| `docs/` | Data contract ([catalog.md](docs/catalog.md)), local API ([api.md](docs/api.md)), skills and agent configuration. |
+| `docs/` | Data contract ([catalog.md](docs/catalog.md)), local API ([api.md](docs/api.md)), UI map ([ui-map.md](docs/ui-map.md)), skills and agent configuration. |
 
 [DESIGN.md](DESIGN.md) describes tokens, card materials and layout; [PRODUCT.md](PRODUCT.md) describes who the product is for and its principles.
 

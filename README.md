@@ -28,7 +28,7 @@
   <a href="https://github.com/pierkulakov/deckmate/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-AGPL--3.0--only-9258e5?style=flat&amp;labelColor=27242f" alt="License: AGPL-3.0-only" /></a>
 </p>
 
-<p align="center"><sub>Early release · macOS planned · Project file format (schema 1) may change before 1.0.</sub></p>
+<p align="center"><sub>0.7.0 · Early release · macOS planned · Project file format (schema 1) may change before 1.0.</sub></p>
 
 <p align="center">
   <a href="#quick-start">Quick start</a> · <a href="#use-it-with-your-project">Your project</a> · <a href="#how-it-works">Concepts</a> · <a href="#decks-inbox-and-sub-cards">Decks and Inbox</a> · <a href="#working-with-ai-agents">Agents</a> · <a href="#faq">FAQ</a>
@@ -40,7 +40,7 @@
 
 ### Desktop
 
-Deckmate Desktop is a lightweight Tauri 2 app for Windows 10 and 11 (x64); macOS support is planned. Download the installer (`Deckmate.Setup.<version>.exe`) or portable zip (`Deckmate-<version>-win-x64.zip`) from the [latest release](https://github.com/pierkulakov/deckmate/releases/latest). The installer is about 32 MB; the installed app is about 131 MB. The builds are not Windows code-signed, so SmartScreen may warn about an unknown publisher: choose **More info → Run anyway**.
+Deckmate Desktop is a lightweight Tauri 2 app for Windows 10 and 11 (x64); macOS support is planned. Download the installer (`Deckmate.Setup.<version>.exe`) or portable zip (`Deckmate-<version>-win-x64.zip`) from the [latest release](https://github.com/pierkulakov/deckmate/releases/latest). The builds are not Windows code-signed, so SmartScreen may warn about an unknown publisher: choose **More info → Run anyway**.
 
 Run the installer and launch Deckmate from its icon, or unzip the portable build and start `Deckmate.exe`. The app includes Node.js 26 for its local server; no terminal is needed. Open a project folder or choose **Create project…** to fill an empty folder with a sample project.
 
@@ -111,44 +111,46 @@ These CLI settings can also live in `.env.local` in the folder you start from �
 | **Card** | A native card is a Markdown file in `cards/`; existing project documents can also appear as cards. A **Task** has a state, owner, effort and priority; a **Doc** holds rules and reference text. |
 | **Hero** | A feature card. Its **Sub Cards** are the tasks that build it, and its progress comes from them. |
 | **Hand** | A teammate's queue: seven focus slots, an ordered reserve and a pile of accepted cards with weekly counts. |
-| **Run** and **Milestone** | A dated iteration and a dated goal on the Timeline. Unfinished cards move to the next Run. |
+| **Run** and **Milestone** | A dated iteration and a dated goal on the Timeline. Selected groups of unfinished Tasks carry into the next Run; cancelled Tasks stay behind. |
 | **Journey** | A repeatable recipe of steps, such as concept → model → review. Applying it creates Sub Cards, each with its own instructions for a person or an agent. |
 | **Track** | A thread that links cards across decks, such as a release or a feature area. |
 | **Vision** | An Excalidraw canvas with live links to cards. |
 
-Start on **Decks**: document and card counts sit under the project name; source warnings open from the same line. Jump from the project pulse to work in progress, reviews, the current Run or cards that need a deck. Compact covers show card counts and task progress. Arrange decks with the mouse or keyboard. Reorder spaces with the arrows in their headers or the Position field in space settings. Search deck names to find a deck even inside a collapsed space.
+Start on **Decks**: document and card counts sit under the project name; source warnings open from the same line. Jump from the project pulse to work in progress, reviews, the current Run or cards that need a deck. Compact covers show card counts and task progress. Arrange decks with the mouse or keyboard. Reorder spaces from their header menus or the Position field in space settings. Search deck names to find a deck even inside a collapsed space.
 
 Open a deck to work with its cards, description, progress and activity:
 
-![An open Deck with Hero Sub Card progress strips, task states, owners and effort](https://raw.githubusercontent.com/pierkulakov/deckmate/main/docs/screenshots/deck.png)
+![An open deck with text task states, owner avatars, effort and Hero Sub Card progress](https://raw.githubusercontent.com/pierkulakov/deckmate/main/docs/screenshots/deck.png)
 
-A Hero tile shows Sub Card progress as a quiet line, with each step sized by its effort. When it has eligible Task Sub Cards and all of them are accepted, the Hero gains holographic foil, an iridescent rim and a done medallion; `wont-do` tasks are excluded. The foil follows the pointer; with reduced motion or touch it stays still. Doc Sub Cards appear in the Hero's family too, but only Task Sub Cards count towards its progress; the Sub Cards panel flags those without a deck. Drop a Task that has no Sub Cards into an Asset deck and Deckmate offers to make it a Hero. A native Hero without eligible Task Sub Cards can be marked done by hand from its Sub Cards bar. Doc Cards read as pages: a copper band with the word count, and the start of the text on the tile.
+Task tiles spell out their state or blockers and highlight approaching or overdue deadlines. Owner avatars, effort and high priority stay visible without a row of property icons. A Hero tile shows Sub Card progress as a quiet line, with each step sized by its effort; it is complete when all eligible Task Sub Cards are accepted (`wont-do` tasks are excluded). Doc Sub Cards appear in the Hero's family too, but only Task Sub Cards count towards its progress; the Sub Cards panel flags those without a deck. Drop a Task that has no Sub Cards into an Asset deck and Deckmate offers to make it a Hero. A native Hero without eligible Task Sub Cards can be marked done by hand from its Sub Cards bar. Doc Cards read as pages, with a copper band and the start of the text on the tile.
 
-![Moonwake Lantern with holographic foil and a done medallion after its Sub Cards are accepted](https://raw.githubusercontent.com/pierkulakov/deckmate/main/docs/screenshots/deck-accepted.png)
+![A completed Hero with all eligible Task Sub Cards accepted](https://raw.githubusercontent.com/pierkulakov/deckmate/main/docs/screenshots/deck-accepted.png)
 
 Press `?` in the app for all keyboard shortcuts: `N` creates a card, `/` searches, `Shift+1`–`Shift+4` switch between Hand, Decks, Timeline and Vision, and hovering a card with `O`, `E`, `P` or `,` changes its owner, effort, priority or Run.
 
-On an open card, use its properties for quick settings and click a tag to open project tags. A Hero shows its Journey as mini-cards; the Journey name opens a menu of steps and assignees. Open a step to see its Sub Card, then press `Esc` to return to the Hero. In the text editor, use the paperclip to insert an attachment, or copy its Markdown link from the attachments panel. Deleting an attachment used in the text offers to remove its links too. An image whose file is missing shows a “file not found” chip. Card covers are not used.
+An open card keeps reading and editing in the main sheet, with a compact bottom action row. Expand **Connections** for related cards, planning links and tags; use Properties for quick settings. A Hero shows its Journey as mini-cards; the Journey name opens a menu of steps and assignees. Open a step to see its Sub Card, then press `Esc` to return to the Hero. In the text editor, use the paperclip to insert an attachment, or copy its Markdown link from the attachments panel. Deleting an attachment used in the text offers to remove its links too. An image whose file is missing shows a “file not found” chip. Card covers are not used.
+
+In **Hand**, section tabs sit above the focus slots; the reserve keeps its own order. Expand the Done pile to open accepted cards and see weekly counts and effort. Hand membership is explicit and separate from Owner. The bell opens notifications for the acting member on demand: changes to owned or watched cards and due-date reminders.
 
 <table>
 <tr>
 <td width="50%" valign="top">
-<a href="https://raw.githubusercontent.com/pierkulakov/deckmate/main/docs/screenshots/card.png"><img src="https://raw.githubusercontent.com/pierkulakov/deckmate/main/docs/screenshots/card.png" alt="Moonwake Lantern Hero with properties, Journey steps and task Sub Cards" width="100%" /></a>
-<strong>Cards and Journeys</strong><br />Markdown with owners, effort, dependencies and a Journey's progress.
+<a href="https://raw.githubusercontent.com/pierkulakov/deckmate/main/docs/screenshots/card.png"><img src="https://raw.githubusercontent.com/pierkulakov/deckmate/main/docs/screenshots/card.png" alt="Build Moonwake Lantern Task with a checklist, expanded Connections and the Hero's five Sub Cards from the production Journey" width="100%" /></a>
+<strong>Cards and Journeys</strong><br />A reading sheet with a compact action row, expandable connections and Journey progress.
 </td>
 <td width="50%" valign="top">
 <a href="https://raw.githubusercontent.com/pierkulakov/deckmate/main/docs/screenshots/timeline.png"><img src="https://raw.githubusercontent.com/pierkulakov/deckmate/main/docs/screenshots/timeline.png" alt="Timeline with the First playable Run, its cards and the Harbor playtest Milestone" width="100%" /></a>
-<strong>Runs and Milestones</strong><br />Dates on a timeline; unfinished cards carry into the next Run.
+<strong>Runs and Milestones</strong><br />Dates, expandable statistics and configurable carry-over of unfinished Tasks.
 </td>
 </tr>
 <tr>
 <td width="50%" valign="top">
-<a href="https://raw.githubusercontent.com/pierkulakov/deckmate/main/docs/screenshots/hand.png"><img src="https://raw.githubusercontent.com/pierkulakov/deckmate/main/docs/screenshots/hand.png" alt="Maya Chen's Hand with focus cards, a done pile and the Your Runs tab" width="100%" /></a>
-<strong>A Hand for each teammate</strong><br />Focus slots, reserve and done pile, for people and agents alike.
+<a href="https://raw.githubusercontent.com/pierkulakov/deckmate/main/docs/screenshots/hand.png"><img src="https://raw.githubusercontent.com/pierkulakov/deckmate/main/docs/screenshots/hand.png" alt="A member's Hand with section tabs above seven focus cards, an expanded Done pile and upcoming due dates" width="100%" /></a>
+<strong>A Hand for each teammate</strong><br />Seven focus slots, an ordered reserve and an expandable Done pile.
 </td>
 <td width="50%" valign="top">
 <a href="https://raw.githubusercontent.com/pierkulakov/deckmate/main/docs/screenshots/vision.png"><img src="https://raw.githubusercontent.com/pierkulakov/deckmate/main/docs/screenshots/vision.png" alt="Moonwake Vision canvas with creative direction, linked Heroes and Production progress" width="100%" /></a>
-<strong>Vision</strong><br />Sketch on an Excalidraw canvas with live card and progress nodes.
+<strong>Vision</strong><br />Sketch with live card and progress nodes; use 100% or fit the selection to navigate.
 </td>
 </tr>
 </table>
@@ -184,6 +186,8 @@ When no deck is selected for a new card, it goes to Inbox only if Inbox accepts 
 
 Starter templates assign Inbox to their first Task deck if none is set; in the demo, Inbox is Production.
 
+The top-bar **+** opens **Quick capture to Inbox** for an idea, bug or finding. It creates a Task in the configured Inbox, whatever that deck is named. If Inbox is missing, choose an existing Task or Mixed deck in the form and set it as Inbox before saving.
+
 ### Only an Asset deck?
 
 If you have only an Asset deck, a new Sub Card is created without a deck. For a useful destination, create a Task deck, or designate an existing Task or Mixed deck as Inbox; then move the card into a suitable deck.
@@ -218,12 +222,14 @@ States are `not-started`, `discussing`, `in-iteration`, `started`, `review` and 
 Add people and agents in the logo menu → **Members…**; `<member>` below is a name or ID from there. The `project` command gives an agent compact JSON or Markdown without a running server, so it reads only what the task needs (add `--json` to `brief` for JSON):
 
 ```sh
-npx deckmate project next <member>        # the next card in a member's Hand
+npx deckmate project next <member>        # the next executable Task in a member's Hand
 npx deckmate project brief <card-ref>     # the card, its rules and what to read next
 npx deckmate project report <card-ref> --file report.md --member <member> --state review
 ```
 
-Assigning an owner never starts a model. The example submits work for review; a reviewer can then accept it. If a deck has Guardians, only a Guardian can accept its cards.
+`next` follows explicit Hand order and skips Hero and Doc cards, Tasks in review, accepted or cancelled Tasks, open dependencies and stale work. With no eligible Task it returns `card: null`. `ask` returns warnings with its result: saving a question does not automatically block the source Task or remove it from `next`.
+
+Assigning an owner never starts a model. The example submits work for review; a reviewer can then accept it. The server rejects self-acceptance by a known agent that owns the card or authored an earlier report; an independent agent can review another member's work. People are not subject to this self-acceptance restriction. If a deck has Guardians, the accepting member must also be a Guardian. See the [acceptance contract](docs/catalog.md#acceptance-and-agent-reports--2026-11-11) for actor identification and report-specific rules.
 
 Deckmate also ships an agent skill in the open Agent Skills format. Once the project has its first deck or member, `npx deckmate skills install` copies it into the project for Claude Code and other agents; then `/deckmate work <card>`, `/deckmate plan`, `/deckmate review <card>` and other scenarios guide the model through the board. See [docs/skills.md](docs/skills.md), the [data contract](docs/catalog.md) and the [local API](docs/api.md).
 

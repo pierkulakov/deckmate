@@ -10,59 +10,57 @@
   <style>
     @font-face { font-family: "Source Sans 3"; src: url('../assets/fonts/source-sans-3/SourceSans3-latin-wght.woff2'); font-weight: 200 900; }
     @font-face { font-family: "Geist Mono"; src: url('../assets/fonts/geist/GeistMono-Medium.ttf'); font-weight: 500; }
-    :root { color-scheme: dark; --night: #15131c; --ink: #f9f9fa; --muted: #cdc8dc; --plum: #9258e5;
-      --gold: #e8bd48; --champagne: #f7e18e; --hero-ink: #24180a; --mint: #a8eedf; }
+    /* 2026-11-11: use the board's dark surface, text and card-material palette. */
+    :root { color-scheme: dark; --night: #1c1a24; --ground: #27242f; --surface: #39354a; --ink: #edeef2; --muted: #cdc8dc; --plum: #906cbd;
+      --gold: #e8bd48; --champagne: #f7e18e; --hero-ink: #24180a; --mint: #a8eedf; --mark: #b08af3; --pip: #f5c24c; }
     * { box-sizing: border-box; }
     body { margin: 0; background: var(--night); color: var(--ink); font-family: "Source Sans 3", sans-serif; }
     .stage { position: relative; width: 1280px; height: 640px; overflow: hidden;
       background:
-        radial-gradient(500px 400px at 1000px 260px, #f5c24c80, #e5b65030 45%, transparent 72%),
-        radial-gradient(760px 620px at 80px -100px, #9258e5ee, transparent 74%),
-        radial-gradient(500px 400px at 1220px 620px, #74dcc85c, transparent 70%),
-        linear-gradient(160deg, #241f33, var(--night) 60%); }
+        radial-gradient(440px 360px at 1000px 240px, color-mix(in srgb, var(--gold) 28%, transparent), transparent 72%),
+        radial-gradient(760px 620px at 80px -100px, color-mix(in srgb, var(--plum) 65%, transparent), transparent 74%),
+        radial-gradient(500px 400px at 1220px 620px, color-mix(in srgb, var(--mint) 12%, transparent), transparent 70%),
+        linear-gradient(160deg, var(--surface), var(--night) 60%); }
     /* A faint pixel grid recalls the board and the pixel mark without competing with the cards. */
     .stage::after { content: ""; position: absolute; inset: 0; pointer-events: none; background: radial-gradient(130% 120% at 50% 45%, transparent 55%, #0000008c); }
     .stage::before { content: ""; position: absolute; inset: 0; opacity: .25;
       background-image: radial-gradient(#ffffff26 1.2px, transparent 1.6px); background-size: 32px 32px; }
     .copy { position: absolute; z-index: 2; left: 64px; top: 44px; width: 650px; }
     .brand { display: flex; align-items: center; gap: 18px; }
-    .logo { width: 88px; height: 88px; image-rendering: pixelated; filter: drop-shadow(0 6px 18px #9258e5aa); }
-    h1 { margin: 0; padding-bottom: 8px; font-size: 108px; font-weight: 800; line-height: 1; letter-spacing: -.035em;
-      background: linear-gradient(175deg, #ffffff 20%, #e9e0ff 55%, #b79cf2 100%); -webkit-background-clip: text; background-clip: text; color: transparent;
-      filter: drop-shadow(0 2px 0 #4b2f86) drop-shadow(0 10px 24px #0a0812cc); }
+    .logo { width: 88px; height: 88px; image-rendering: pixelated; filter: drop-shadow(0 6px 18px #906cbd66); }
+    h1 { margin: 0; padding-bottom: 8px; font-size: 96px; font-weight: 800; line-height: 1; letter-spacing: -.035em; color: var(--ink); }
     .slogan { margin: 24px 0 0; font-size: 72px; font-weight: 800; line-height: .98; letter-spacing: -.025em;
-      background: linear-gradient(180deg, #fff6d6 8%, #f7d775 38%, #e5a93a 62%, #f9dc86 82%, #c98d2a); -webkit-background-clip: text; background-clip: text; color: transparent;
-      filter: drop-shadow(0 3px 12px #e5b65055); }
+      color: var(--champagne); }
     .tagline { margin: 26px 0 0; color: var(--muted); font-size: 30px; font-weight: 500; line-height: 1.28; }
     .tagline b { color: var(--ink); font-weight: 700; }
     /* One entry rail gives the desktop a clear lead while the CLI shares the same foundation. */
     .entry { position: absolute; z-index: 3; left: 64px; right: 64px; bottom: 40px; height: 108px; display: grid; grid-template-columns: 1.65fr 1fr;
       overflow: hidden; border: 1px solid #f7e18e99; border-radius: 14px;
-      box-shadow: 0 12px 40px #07060c99, 0 0 36px #e8bd4826; }
+      box-shadow: 0 12px 40px #07060c66; }
     .desktop { display: flex; align-items: center; gap: 22px; padding: 18px 28px; color: var(--hero-ink);
-      background: linear-gradient(112deg, #cc9833, var(--gold) 22%, #f7e18e 48%, #e8bd48 76%); }
+       background: linear-gradient(112deg, color-mix(in srgb, var(--gold) 90%, var(--hero-ink)), var(--gold) 22%, var(--champagne) 48%, var(--gold) 76%); }
     .desktop svg { width: 36px; height: 36px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
     .desktop strong { display: block; font-size: 32px; font-weight: 800; line-height: 1.15; }
     .desktop small { display: block; margin-top: 5px; font-size: 23px; line-height: 1.2; }
     .terminal { display: flex; flex-direction: column; justify-content: center; gap: 6px; padding: 16px 30px;
-      background: linear-gradient(115deg, #252337, #132f2e); border-left: 1px solid #fff4c280; }
+      background: var(--ground); border-left: 1px solid #fff4c280; }
     .terminal span { color: var(--muted); font-size: 20px; font-weight: 600; }
     code { color: var(--mint); font: 500 28px/1.3 "Geist Mono", monospace; white-space: nowrap; }
-    .cards { position: absolute; left: 710px; top: 0; width: 540px; height: 480px; perspective: 1300px; }
-    .fan { position: absolute; inset: 0; transform-style: preserve-3d; transform: rotateX(16deg) rotateY(-22deg) rotateZ(4deg) scale(.98); }
+    .cards { position: absolute; left: 686px; top: 0; width: 540px; height: 480px; perspective: 1300px; }
+    .fan { position: absolute; inset: 0; transform-style: preserve-3d; transform: rotateX(12deg) rotateY(-16deg) rotateZ(2deg) scale(.82); }
     /* A soft floor shadow anchors the floating hand. */
     .floor { position: absolute; left: 60px; right: 0; bottom: 6px; height: 90px; border-radius: 50%; background: radial-gradient(closest-side, #000000b0, transparent); filter: blur(6px); }
     .card { position: absolute; left: 170px; top: 110px; width: 230px; height: 294px; overflow: hidden; border-radius: 12px;
-      transform-origin: 50% 165%; box-shadow: 0 30px 50px #07060cdd, 0 0 0 1px #ffffff26, -6px 0 22px #9258e566; }
+      transform-origin: 50% 165%; box-shadow: 0 24px 40px #07060cbb, 0 0 0 1px #ffffff26; }
     .card img { position: absolute; top: -16px; left: calc(-16px - 262px * var(--i)); width: 1310px; height: 326px; }
-    .card.hero { box-shadow: 0 30px 50px #07060cdd, 0 0 0 2px #f9dc86, 0 0 0 4px #b8822a, 0 0 90px #f5c24cee, 0 0 0 6px #f5c24c33; }
-    .c0 { transform: rotate(-32deg) translateY(14px) translateZ(-60px); }
+    .card.hero { box-shadow: 0 24px 40px #07060cbb, 0 0 0 1px var(--champagne), 0 8px 40px #e8bd4833; }
+    .c0 { transform: rotate(-26deg) translateY(14px) translateZ(-60px); }
     .c1 { transform: rotate(-15deg) translateY(-4px) translateZ(-10px); }
     .c2 { transform: translate(34px, -40px) translateZ(60px) rotateZ(-4deg) rotateY(14deg) rotateX(-8deg); }
     .c3 { transform: rotate(15deg) translateY(-4px) translateZ(10px); }
-    .c4 { transform: rotate(32deg) translateY(14px) translateZ(10px); }
+    .c4 { transform: rotate(26deg) translateY(14px) translateZ(10px); }
     /* Golden rays burst from behind the front Hero, like a winning card being shown. */
-    .rays { position: absolute; left: 1000px; top: 220px; width: 1400px; height: 1400px; margin: -700px 0 0 -700px; border-radius: 50%; opacity: .65;
+    .rays { position: absolute; left: 1000px; top: 220px; width: 1400px; height: 1400px; margin: -700px 0 0 -700px; border-radius: 50%; opacity: .2;
       background: repeating-conic-gradient(from 0deg, #f7e18e40 0deg 4deg, transparent 4deg 15deg);
       -webkit-mask: radial-gradient(closest-side, #000 8%, transparent 62%); mask: radial-gradient(closest-side, #000 8%, transparent 62%); }
     /* Pixel sparkles in the mark's pip shape. */

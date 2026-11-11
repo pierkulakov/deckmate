@@ -2,17 +2,19 @@
 import { execFile } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { cp, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
-import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
+import { loadEnvFile } from 'node:process';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { parseEnv, promisify } from 'node:util';
+import { promisify } from 'node:util';
 import { createApp } from '../server/app.ts';
 import { readProjectCatalog } from '../server/catalog.ts';
 import { loadConfig } from '../server/config.ts';
 import { initializeDemo } from '../server/demo.ts';
+import { environmentValue } from '../server/environment.ts';
 import { editNativeCardProperties } from '../server/native-cards.ts';
 import { packagePath } from '../server/package-path.ts';
+import { freePort } from './free-port.ts';
 import { captureLauncherReadme } from './launcher-capture.ts';
 
 const executeFile = promisify(execFile);
@@ -34,26 +36,13 @@ let app: Awaited<ReturnType<typeof createApp>> | undefined;
 let address: string | undefined;
 const captures: { file: string; width: number; height: number; bytes: number; sha256: string; consoleErrors: number }[] = [];
 
-async function freePort(preferred: number): Promise<number> {
-  const probe = createServer();
-  try {
-    await new Promise<void>((resolve, reject) => { probe.once('error', reject); probe.listen(preferred, '127.0.0.1', resolve); });
-    const address = probe.address();
-    if (!address || typeof address === 'string') throw new Error('Cannot allocate a screenshot port.');
-    return address.port;
-  } catch (error) {
-    if (preferred && (error as NodeJS.ErrnoException).code === 'EADDRINUSE') return freePort(0);
-    throw error;
-  } finally {
-    if (probe.listening) await new Promise<void>((resolve, reject) => probe.close(error => error ? reject(error) : resolve()));
-  }
-}
-
-async function preferredPort(): Promise<number> {
-  let local: NodeJS.Dict<string> = {};
-  try { local = parseEnv(await readFile(packagePath('.env.local'), 'utf8')); }
+// 2026-11-11: the port follows the server's environment contract — .env.local loads through the same loadEnvFile
+// path as the CLI (existing variables win) and PORT is read through environmentValue, which never mixes a
+// DECKMATE_* shell variable with an old FREETION_PORT from the file.
+function preferredPort(): number {
+  try { loadEnvFile(packagePath('.env.local')); }
   catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; }
-  const configured = process.env.DECKMATE_PORT ?? process.env.FREETION_PORT ?? local.DECKMATE_PORT ?? local.FREETION_PORT;
+  const configured = environmentValue('PORT');
   if (!configured) return 0;
   const port = Number(configured);
   if (!Number.isInteger(port) || port < 1024 || port > 65535) throw new Error('Screenshot port must be from 1024 to 65535.');
@@ -96,7 +85,7 @@ async function capture(name: string, url: string, selector: string, steps: strin
     '--width', String(viewportWidth), '--height', String(viewportHeight),
     '--dpr', String(pixelRatio), '--wait', '2000', ...(frame.clip ? ['--clip', frame.clip] : [])];
   const frameCheck = `eval:(() => {
-    for (const element of document.querySelectorAll(${JSON.stringify(selector + ', .catalog-source, .planning-cards')})) {
+    for (const element of document.querySelectorAll(${JSON.stringify(selector + ', .catalog-source, .planning-cards, .card-family-row')})) {
       const bounds = element.getBoundingClientRect();
       if (bounds.width && bounds.height && (bounds.left < 0 || bounds.top < 0 || bounds.right > innerWidth + 1 || bounds.bottom > innerHeight + 1)) {
         throw new Error('Screenshot cuts off ' + element.className + ': ' + JSON.stringify({ top: Math.round(bounds.top), bottom: Math.round(bounds.bottom), right: Math.round(bounds.right), innerHeight }));
@@ -133,7 +122,7 @@ async function captureDemo(): Promise<void> {
   const project = path.join(temporary, 'project');
   await initializeDemo(project);
   interruption.signal.throwIfAborted();
-  const port = await freePort(await preferredPort());
+  const port = await freePort(preferredPort());
   Object.assign(process.env, { DECKMATE_DATA: project, DECKMATE_WRITE: '', DECKMATE_READ_ONLY: '0', DECKMATE_PORT: String(port),
     DECKMATE_HOST: '127.0.0.1', DECKMATE_INDEX: path.join(temporary, 'index'), DECKMATE_PROJECT_NAME: 'Moonwake Studio' });
   // 2026-11-05: the demo follows the CLI's default direct-edit configuration without git.
@@ -148,6 +137,8 @@ async function captureDemo(): Promise<void> {
   const hero = catalog.cards.find(card => card.kind === 'hero' && card.title === 'Moonwake Lantern')
     ?? catalog.cards.find(card => card.kind === 'hero');
   if (!hero?.deckId) throw new Error('Demo Hero missing.');
+  const buildTask = catalog.cards.find(card => card.parentId === hero.id && card.journey?.stepId === 'build');
+  if (!buildTask?.deckId) throw new Error('Demo production Task missing.');
   const board = (await readdir(path.join(project, 'boards'))).find(filename => filename.endsWith('.excalidraw'));
   if (!board) throw new Error('Demo Vision board missing.');
   await mkdir(output, { recursive: true });
@@ -160,15 +151,22 @@ async function captureDemo(): Promise<void> {
   // 1280 CSS pixels at DPR 1.25 keep text legible when GitHub scales the 1600 px PNG down.
   await capture('decks', url({ view: 'deck' }), '.catalog-spaces',
     [ready('.project-pulse[aria-busy="false"] .project-pulse-run progress')], { width: 1280, height: 600, dpr: 1.25, after: [scrollToTop] });
-  await capture('deck', deckUrl, '.catalog-card-hero', [], { width: 1280, height: 912, dpr: 1.25, after: [scrollToTop] });
-  await capture('card', url({ view: 'deck', deck: hero.deckId, card: hero.id }), '.card-family-panel',
-    [ready('[aria-label="Properties"]'), 'click:Hero and Sub Cards'], { width: 1280, height: 1240, dpr: 1.25, after: [scrollToTop] });
-  await capture('timeline', url({ view: 'sprint' }), '.timeline-run',
-    [ready('.planning-cards'), 'click:Description and stats'], { width: 1280, height: 1220, dpr: 1.25 });
-  await capture('hand', url({ view: 'hand', handMember: 'maya' }), '[aria-labelledby="hand-tab-runs"]',
-    [ready('.hand-view .deck-card'), 'click:Your Runs'], { width: 1280, height: 940, dpr: 1.25 });
-  await capture('vision', url({ view: 'vision', board: board.replace('.excalidraw', '') }), '.excalidraw',
-    [ready('.excalidraw'), 'click:Zoom in', 'click:Zoom in'], { width: 1280, height: 900, dpr: 1.25 });
+  // 2026-11-11: viewport and DPR preserve the published PNG sizes while fitting the revised panels and card rows.
+  const deckFrame = { width: 960, height: 684, dpr: 5 / 3, after: [scrollToTop] };
+  await capture('deck', deckUrl, '.deck-card-space', [ready('.deck-overview'), 'click:Collapse summary'], deckFrame);
+  // 2026-11-11: the resizable reading column fills the space beside the complete five-step family.
+  await capture('card', url({ view: 'deck', deck: buildTask.deckId, card: buildTask.id }), '.card-family-panel, .card-preview-sheet',
+    [ready('.card-preview-relations summary'), 'eval:document.querySelector(".card-preview-relations summary").click()', 'click:Hero and Sub Cards',
+      'eval:document.querySelector(".catalog-resize-handle").dispatchEvent(new KeyboardEvent("keydown", { key: "End", bubbles: true }))'],
+    { width: 1440, height: 1395, dpr: 10 / 9, after: [scrollToTop] });
+  await capture('timeline', url({ view: 'timeline' }), '.planning-cards',
+    [ready('.timeline-run'), 'click:First playable'],
+    { width: 1344, height: 1281, dpr: 25 / 21, after: [scrollToTop] });
+  await capture('hand', url({ view: 'hand', handMember: 'maya' }), '[aria-labelledby="hand-tab-due"]',
+    [ready('.hand-view .deck-card'), 'click:Your due cards', 'click:Done Cards'],
+    { width: 1280, height: 940, dpr: 1.25, after: [scrollToTop] });
+  await capture('vision', url({ view: 'vision', board: board.replace('.excalidraw', '') }), '.excalidraw, .vision-stack, .deckmate-vision-card',
+    [ready('.deckmate-vision-card'), 'click:Overview'], { width: 1472, height: 1035, dpr: 25 / 23 });
   // 2026-11-07: a complete row keeps card footers visible in the link preview, with no clipped second row.
   const markCards = `eval:(() => {
     const tiles = [...document.querySelectorAll('.deck-card-space')].map(tile => tile.getBoundingClientRect()).filter(box => box.width).slice(0, 5);
@@ -183,16 +181,17 @@ async function captureDemo(): Promise<void> {
   await capture('social-cards', deckUrl, '.catalog-card-hero', [],
     { width: 1280, height: 912, dpr: 2, after: [scrollToTop, markCards], clip: '[data-shot="cards"]', file: packagePath('docs', 'social-cards.png') });
   await captureSocial();
-  // 2026-11-09: finish a real demo family after the overview captures to show the accepted Hero's foil.
+  // 2026-11-11: finish a real demo family after the overview captures to show the accepted count and continuous progress.
   const current = await readProjectCatalog(project);
   const children = current.cards.filter(card => card.parentId === hero.id && card.kind === 'task');
   if (!children.length) throw new Error('Demo Hero has no task Sub Cards to accept.');
   for (const child of children) {
     if (child.state !== 'done') await editNativeCardProperties(project, child.id, child.sourceHash, { state: 'done' }, undefined, current.formatLanguage);
   }
-  await capture('deck-accepted', deckUrl, '.catalog-card-hero.is-family-done',
-    [ready('.catalog-card-hero.is-family-done .deck-card-done-medallion')],
-    { width: 1280, height: 912, dpr: 1.25, after: [scrollToTop] });
+  await capture('deck-accepted', deckUrl, '.catalog-card-hero.is-family-done, .deck-card-space',
+    [ready('.catalog-card-hero.is-family-done .deck-card-family-count'), 'click:Collapse summary',
+      `eval:document.querySelector('.catalog-card-hero.is-family-done .deck-card-family-count').textContent.trim() === '${children.length} of ${children.length}' || (() => { throw new Error('Expected every Hero Task to be accepted'); })()`],
+    deckFrame);
   if (createHash('sha256').update(await readFile(clientEntry)).digest('hex') !== clientBuildHash) {
     throw new Error('The client build changed during capture; rerun screenshots after the build completes.');
   }

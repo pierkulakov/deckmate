@@ -19,13 +19,18 @@ interface Frame {
   scenario?: 'empty' | 'many' | 'missing' | 'opening' | 'error' | 'create';
   error?: string; zoom?: number; reducedMotion?: boolean;
   expand?: 'templates' | 'details';
+  covers?: 'visible' | 'hidden';
 }
 
 const frames: Frame[] = [
-  { name: 'dark-en-1280', theme: 'dark', lang: 'en', size: [1280, 820] },
-  { name: 'light-ru-1280', theme: 'light', lang: 'ru', size: [1280, 820] },
-  { name: 'dark-en-960', theme: 'dark', lang: 'en', size: [960, 600] },
-  { name: 'light-ru-960', theme: 'light', lang: 'ru', size: [960, 600] },
+  { name: 'dark-en-1280', theme: 'dark', lang: 'en', size: [1280, 820], covers: 'visible' },
+  { name: 'light-ru-1280', theme: 'light', lang: 'ru', size: [1280, 820], covers: 'visible' },
+  { name: 'dark-en-960-tall', theme: 'dark', lang: 'en', size: [960, 900], covers: 'visible' },
+  { name: 'light-ru-960-tall', theme: 'light', lang: 'ru', size: [960, 900], covers: 'visible' },
+  { name: 'dark-en-1440', theme: 'dark', lang: 'en', size: [1440, 900], covers: 'visible' },
+  { name: 'light-ru-1440', theme: 'light', lang: 'ru', size: [1440, 900], covers: 'visible' },
+  { name: 'dark-en-960', theme: 'dark', lang: 'en', size: [960, 600], covers: 'hidden' },
+  { name: 'light-ru-960', theme: 'light', lang: 'ru', size: [960, 600], covers: 'hidden' },
   { name: 'dark-en-empty', theme: 'dark', lang: 'en', size: [1280, 820], state: 'empty' },
   { name: 'light-ru-empty', theme: 'light', lang: 'ru', size: [1280, 820], state: 'empty' },
   { name: 'dark-en-error', theme: 'dark', lang: 'en', size: [1280, 820], state: 'error' },
@@ -179,6 +184,58 @@ async function verifyLauncherInteractions(page: HeadlessPage): Promise<void> {
 
 interface Shot { name: string; width: number; height: number; bytes: number; sha256: string; zoom?: number }
 
+async function verifyCovers(page: HeadlessPage, frame: Frame): Promise<void> {
+  const problem = await page.callFunction(`async expected => {
+    const isVisible = node => {
+      for (let element = node; element; element = element.parentElement) {
+        const style = getComputedStyle(element);
+        if (style.display === 'none' || style.visibility !== 'visible' || Number(style.opacity) === 0) return false;
+      }
+      return true;
+    };
+    const intro = document.querySelector('.intro').getBoundingClientRect();
+    const actionsElement = document.querySelector('.actions');
+    const actions = actionsElement.getBoundingClientRect();
+    const table = document.querySelector('.table');
+    if (!isVisible(actionsElement) || actions.left < intro.left || actions.right > intro.right ||
+        actions.top < intro.top || actions.bottom > intro.bottom) return 'project actions are clipped';
+    const visible = isVisible(table);
+    if (!visible) return expected === 'hidden' ? '' : 'cover table is hidden';
+    if (expected === 'hidden') return 'cover table should give the actions room';
+    const bounds = table.getBoundingClientRect();
+    const covers = [...table.querySelectorAll('.cover')];
+    if (covers.length !== 2) return 'expected two deck covers';
+    const overlaps = (a, b) => a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom;
+    for (const cover of covers) {
+      const box = cover.getBoundingClientRect();
+      if (!isVisible(cover) || !box.width || !box.height || box.left < bounds.left || box.right > bounds.right ||
+          box.top < bounds.top || box.bottom > bounds.bottom || box.top < intro.top || box.bottom > intro.bottom) {
+        return 'a cover is hidden or clipped';
+      }
+      if (overlaps(box, actions)) return 'a cover overlaps the project actions';
+      if ([...table.querySelectorAll('.fan-card')].some(card => overlaps(box, card.getBoundingClientRect()))) {
+        return 'the card fan obscures a cover';
+      }
+      const backdrop = cover.querySelector('.cover-backdrop');
+      const face = getComputedStyle(backdrop, '::after');
+      if (!isVisible(backdrop) || face.content === 'none' || face.backgroundColor === 'rgba(0, 0, 0, 0)') return 'a cover face is hidden';
+      for (const part of cover.querySelectorAll('.cover-art, .cover-title, .cover-count')) {
+        const partBox = part.getBoundingClientRect();
+        if (!isVisible(part) || !partBox.width || !partBox.height || partBox.left < box.left || partBox.right > box.right ||
+            partBox.top < box.top || partBox.bottom > box.bottom) return 'cover art, title or count is clipped';
+      }
+      const background = getComputedStyle(cover.querySelector('.cover-art')).backgroundImage;
+      if (!background.startsWith('url("') || !background.endsWith('")')) return 'cover art is missing';
+      const image = new Image();
+      image.src = background.slice(5, -2);
+      try { await image.decode(); } catch { return 'cover art did not load'; }
+      if (!image.naturalWidth || !image.naturalHeight) return 'cover art is empty';
+    }
+    return '';
+  }`, frame.covers);
+  if (problem) throw new Error(`${frame.name}: ${problem}`);
+}
+
 async function captureFrame(page: HeadlessPage, frame: Frame, destination: string): Promise<Shot> {
   const [width, height] = frame.size;
   const zoom = frame.zoom ?? 1;
@@ -193,6 +250,8 @@ async function captureFrame(page: HeadlessPage, frame: Frame, destination: strin
   await navigateAndWait(page, frame.name, url.href);
   await page.callFunction(INJECT_STYLE, NO_MOTION);
   await waitForPageReady(page, frame.name, frame.page === 'whats-new' ? 'whats-new' : 'launcher');
+  const themeMatches = await page.callFunction('theme => document.documentElement.classList.contains("dark") === (theme === "dark")', frame.theme);
+  if (!themeMatches) throw new Error(`${frame.name}: expected ${frame.theme} theme`);
 
   const state = frame.state ?? 'list';
   if (frame.page !== 'whats-new') await page.evaluate(scriptFor(STATE_SCRIPTS, state, 'state'));
@@ -215,6 +274,7 @@ async function captureFrame(page: HeadlessPage, frame: Frame, destination: strin
   if (frame.page !== 'whats-new') {
     const overflow = await page.evaluate(`document.documentElement.scrollWidth > innerWidth`);
     if (overflow) throw new Error(`${frame.name}: horizontal overflow`);
+    if (frame.covers) await verifyCovers(page, frame);
     if (frame.scenario === 'opening' && await page.evaluate(`document.getElementById('open-folder').disabled`)) {
       throw new Error(`${frame.name}: choosing another project is blocked`);
     }
@@ -232,8 +292,12 @@ async function captureFrame(page: HeadlessPage, frame: Frame, destination: strin
   return { name: frame.name, width: pngWidth, height: pngHeight, bytes: png.length, sha256: createHash('sha256').update(png).digest('hex'), zoom };
 }
 
+export function launcherReadmeFrame(theme: 'dark' | 'light' = 'dark'): Frame {
+  return { name: `readme-${theme}-en-1280`, theme, lang: 'en', size: [1280, 820], covers: 'visible' };
+}
+
 // 2026-11-09: README captures must follow release versions without changing the launcher's standalone browser mock.
-export async function captureLauncherReadme(destination: string): Promise<Shot> {
+export async function captureLauncherReadme(destination: string, theme: 'dark' | 'light' = 'dark'): Promise<Shot> {
   const root = path.join(here, '..');
   const [deckmate, desktop] = await Promise.all(['package.json', 'desktop/package.json'].map(async file =>
     JSON.parse(await readFile(path.join(root, file), 'utf8')) as { version: string }));
@@ -242,14 +306,12 @@ export async function captureLauncherReadme(destination: string): Promise<Shot> 
     const source = String.raw`(() => {
       const now = Date.now();
       const recent = [
-        { path: 'D:\\Projects\\Hollow Signal', name: 'Hollow Signal', lastOpened: new Date(now - 90e3).toISOString() },
-        { path: 'D:\\Projects\\demo', name: 'demo', lastOpened: new Date(now - 5 * 3600e3).toISOString() },
-        { path: 'C:\\Users\\Someone\\Documents\\Долгий путь к релизу', name: 'Долгий путь к релизу', lastOpened: new Date(now - 3 * 86400e3).toISOString() },
+        { path: 'D:\\Projects\\Moonwake Studio', name: 'Moonwake Studio', lastOpened: new Date(now - 90e3).toISOString() },
+        { path: 'D:\\Projects\\Hollow Signal', name: 'Hollow Signal', lastOpened: new Date(now - 5 * 3600e3).toISOString() },
+        { path: 'D:\\Projects\\Harbor Tools', name: 'Harbor Tools', lastOpened: new Date(now - 3 * 86400e3).toISOString() },
       ];
       const workspace = [
-        { path: recent[0].path, name: recent[0].name, missing: false },
         { path: recent[2].path, name: recent[2].name, missing: false },
-        { path: 'D:\\Projects\\Old project', name: 'Old project', missing: true },
       ];
       window.deckmateDesktop = {
         async getState() { return { recent, workspace, lastProject: recent[0].path, version: ${JSON.stringify(desktop.version)}, deckmateVersion: ${JSON.stringify(deckmate.version)}, locale: 'en-US' }; },
@@ -268,7 +330,16 @@ export async function captureLauncherReadme(destination: string): Promise<Shot> 
       throw new Error(`Cannot register launcher bridge: ${error instanceof Error ? error.message : String(error)}`);
     }
     await navigateAndWait(page, 'initial load');
-    const shot = await captureFrame(page, frames[0], destination);
+    // A full-size CSS viewport keeps the decorative covers above the compact-height breakpoint.
+    const shot = await captureFrame(page, launcherReadmeFrame(theme), destination);
+    const projectsFit = await page.evaluate(`(() => {
+      const sections = document.querySelector('.project-sections').getBoundingClientRect();
+      return [...document.querySelectorAll('.recent-open')].every(row => {
+        const bounds = row.getBoundingClientRect();
+        return bounds.top >= sections.top && bounds.bottom <= sections.bottom;
+      });
+    })()`);
+    if (!projectsFit) throw new Error('README launcher cuts off a project row.');
     const footer = await page.evaluate('document.getElementById("version").textContent');
     const expected = deckmate.version === desktop.version ? `Deckmate ${deckmate.version}` : `Deckmate ${deckmate.version} · Desktop ${desktop.version}`;
     if (footer !== expected) throw new Error(`Unexpected launcher version: ${footer}`);

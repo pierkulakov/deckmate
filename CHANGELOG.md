@@ -4,8 +4,41 @@ Notable changes are grouped by version using [Keep a Changelog](https://keepacha
 
 ## [Unreleased]
 
-### Changed
+## [0.7.0] - 2026-11-11
 
+### Interface
+
+- **Card tiles.** States, blockers and approaching or overdue deadlines are written out instead of a row of icons. Owners keep their avatars, and effort and high priority are easier to read. Heroes keep their Sub Card progress; the holographic finish and done medallion are gone. Doc tiles show their text without a word counter.
+- **Open cards.** A quieter bottom action row keeps editing close to the text; connections, planning links and tags expand in a separate section. On narrow screens, the card and editor take priority over the deck shelf.
+- **Light theme.** Softer tinted backgrounds, clearer text and more consistent panels and fields make the board easier to read.
+- **Hover feedback.** Moving quickly between buttons, tabs and action rails no longer leaves flashing or lingering highlights; controls keep their size.
+- **Notifications.** A bell opens notifications on demand, with a member selector and a scrollable list, instead of stacks permanently covering the board.
+- **Quick capture.** New Tasks go to the configured Inbox regardless of the deck's name. If none is assigned, choose an existing Task or Mixed deck in the capture form.
+- **Hand.** Section tabs sit above the cards. The Done pile expands into a list and shows the current week's count and effort; cards can be removed from focus slots or the reserve directly.
+- **Timeline.** A compact header and expandable details and statistics leave more room for cards; the calendar opens from the local toolbar.
+- **Vision.** Explicit 100% and fit-selection controls make navigation clearer, and the canvas follows the interface language when first opened and reopened.
+
+### People and agents
+
+- **Agent queue.** `project next` selects only executable Tasks from the member's Hand, skipping review, accepted, cancelled, blocked and stale work as well as Hero and Doc cards. It returns `card: null` when none qualify.
+- **Independent acceptance.** The server rejects a known agent accepting its own card or work it previously reported. An independent reviewer can accept another member's work; people can still accept their own cards, subject to the deck's Guardian rules.
+- **Questions.** `project ask` returns warnings even on an unchanged retry: a question does not automatically block the source Task. Without a rule Doc, a supported native card keeps the question in its own text, with an explicit warning that no Decision Task was created and that `--to`, if supplied, was not used.
+
+### Data reliability
+
+- **Text edits.** Editing legacy cards handles CR-only files and preserves BOM and untouched line endings, including unchanged prefixes and suffixes in mixed-line-ending bodies. Title-only edits in the card editor also keep leading body blank lines and original CRLF line endings.
+- **Recorded decisions.** Question links and answers preserve surrounding text in files with BOM, CR or mixed line endings; report headings remain boundaries of question sections.
+- **Run carry-over.** Cancelled Tasks (`wont-do`) stay out of the next Run when finishing manually or advancing a schedule; they are not marked accepted.
+
+### Windows desktop
+
+- **File drops.** Files dragged from Windows reach the board's file-drop controls again.
+- **Links.** HTTP(S) links that request a new window open in the browser, including local document and card-reference links.
+- **Window recovery.** Restoring the window checks that its title bar is on a connected monitor, so an off-screen title bar no longer leaves the window out of reach.
+
+### Cleanup
+
+- **Launch scripts.** Removed the old PowerShell/VBS launch and shortcut-installation scripts; Desktop and the `deckmate` CLI remain the entry points.
 - **Release checks.** Browser tests run on Windows with Edge, the engine of the desktop app, and a fixture gets a longer first load on slow runners; unit tests still run on Ubuntu and Windows.
 
 ## [0.6.0] - 2026-11-10
@@ -193,7 +226,8 @@ First public release.
 - Third-party notices: `dist/client/third-party-licenses.md` now carries full license texts for bundled packages that ship no license file and for code embedded in prebuilt packages (Chevrotain, Langium, the vscode-languageserver libraries and lodash-es inside `@mermaid-js/parser`, js-yaml inside `mermaid`); the build fails on an empty section or on undeclared embedded code.
 - Source-checkout instructions also open the demo, and the `/deckmate` analyze and audit workflows move new cards to `discussing` after creating them.
 
-[Unreleased]: https://github.com/pierkulakov/deckmate/compare/v0.6.0...HEAD
+[Unreleased]: https://github.com/pierkulakov/deckmate/compare/v0.7.0...HEAD
+[0.7.0]: https://github.com/pierkulakov/deckmate/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/pierkulakov/deckmate/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/pierkulakov/deckmate/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/pierkulakov/deckmate/compare/v0.3.0...v0.4.0

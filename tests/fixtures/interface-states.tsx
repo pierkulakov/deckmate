@@ -5,8 +5,10 @@ import { LoadingState } from '../../client/components/LoadingState.tsx';
 import { ErrorState } from '../../client/components/ErrorState.tsx';
 import { TimelineView } from '../../client/components/TimelineView.tsx';
 import { PlanningScope } from '../../client/components/PlanningScope.tsx';
+import { PlanningProbe } from './planning-probe.tsx';
 import { GlobalSearch } from '../../client/components/GlobalSearch.tsx';
 import { Notifications } from '../../client/components/Notifications.tsx';
+import { ServerStatus } from '../../client/components/ServerStatus.tsx';
 import { AttachmentsPanel } from '../../client/components/AttachmentsPanel.tsx';
 import { DeckTagsPanel, emptyTagPick } from '../../client/components/DeckTagsPanel.tsx';
 import { QuickSettingsList } from '../../client/components/QuickSettingsList.tsx';
@@ -36,7 +38,7 @@ const file = { file: 'tasks/deckmate-assets/cards/test/file.pdf', name: 'Recover
   bytes: 128, addedAt: '2026-11-10T00:00:00Z', addedBy: null };
 const state = { fail: [] as string[], hold: [] as string[], reads: {} as Record<string, number>, releases: {} as Record<string, () => void>,
   files: [file], retries: 0, resets: 0, created: 0, opened: 0, retryFail: false, releaseRetry: () => {}, fastRetry: false, active: true, notificationsEmpty: false, membersEmpty: false,
-  longMessage: null as string | null };
+  longMessage: null as string | null, notificationAccess: null as WorkspaceSnapshot | null };
 window.fetch = async input => {
   const path = new URL(String(input), location.origin).pathname;
   state.reads[path] = (state.reads[path] ?? 0) + 1;
@@ -45,9 +47,11 @@ window.fetch = async input => {
   if (path === '/api/attachments') return Response.json({ hash: 'attachments', files: state.files, warnings: [] });
   if (path === '/api/onboarding-facts') return Response.json({ agentSkill: false });
   if (path === '/api/activity') return Response.json({ events: [{ schema: 1, id: 'event', at: '2026-11-10T00:00:00Z', action: 'create-card', actor: 'Deckmate', summary: 'Created card', cards: [], deckIds: ['tasks'], details: [] }], nextCursor: 'next', warnings: [] });
-  if (path === '/api/notifications') return Response.json({ source: 'sandbox', writable: true, member: catalog.members![0],
+  if (path === '/api/notifications') return Response.json({ source: 'sandbox', writable: !state.notificationAccess, member: catalog.members![0],
     members: catalog.members, warnings: [], stacks: state.notificationsEmpty ? [] : [{ id: 'due', title: 'Due cards', total: 1, hidden: 0, dismissible: false,
-      cards: [{ cardId: card.id, title: card.title, state: card.state, changes: [], hiddenChanges: 0 }] }] });
+      cards: [{ cardId: card.id, title: card.title, state: card.state, changes: [], hiddenChanges: 0 }] },
+      ...(state.notificationAccess ? [{ id: 'owned', title: 'Owned cards', total: 1, hidden: 0, dismissible: true, latestAt: '2026-11-10T00:00:00Z',
+        cards: [{ cardId: card.id, title: card.title, state: card.state, changes: [], hiddenChanges: 0 }] }] : [])] });
   return Response.json(state.membersEmpty ? { ...catalog, members: [] } : catalog);
 };
 
@@ -92,6 +96,7 @@ function render(screen: string) {
   state.membersEmpty = screen === 'members-readonly-empty';
   let content;
   if (screen === 'timeline') content = <TimelineView snapshot={snapshot} refreshKey={0} onOpenCard={() => {}} />;
+  else if (screen === 'planning-probe') content = <PlanningProbe />;
   else if (screen === 'timeline-readonly') content = <TimelineView snapshot={{ ...snapshot, writable: false }} refreshKey={0} onOpenCard={() => {}} />;
   else if (screen === 'planning-scope') {
     const run = { id: 'run-1', number: 1, start: '2026-11-01', end: '2026-11-30', goal: 'Plan' };
@@ -100,8 +105,9 @@ function render(screen: string) {
     content = <PlanningScope title="Plan" subtitle="" target={{ kind: 'run', id: run.id }} cards={[otherCard]} catalog={planCatalog} snapshot={snapshot} pending={false}
       onEdit={async () => true} onOpenCard={() => {}} onLockChange={() => {}} onDirtyChange={() => {}} />;
   }
-  else if (screen === 'search') content = <GlobalSearch snapshot={snapshot} refreshKey={0} onOpenCard={() => {}} />;
-  else if (screen === 'notifications') content = <Notifications snapshot={snapshot} refreshKey={0} onOpenCard={() => {}} />;
+  else if (screen === 'search') content = <GlobalSearch snapshot={snapshot} refreshKey={0} onOpenCard={() => {}} onOpenDeck={() => {}} />;
+  else if (screen === 'notifications') content = <Notifications snapshot={state.notificationAccess ?? snapshot} refreshKey={0} onOpenCard={() => {}} />;
+  else if (screen === 'status-offline') content = <ServerStatus connection="offline" snapshot={snapshot} updatedAt={0} />;
   else if (screen === 'attachments') content = <AttachmentsPanel card={card} catalog={catalog} writable onEdit={async () => true} />;
   else if (screen === 'tags') content = <DeckTagsPanel cards={[card]} pick={emptyTagPick} active onPick={() => {}} />;
   else if (screen === 'tags-empty') content = <DeckTagsPanel cards={[]} pick={emptyTagPick} active onPick={() => {}} />;

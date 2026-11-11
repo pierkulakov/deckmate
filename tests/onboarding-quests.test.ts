@@ -8,7 +8,7 @@ vi.stubGlobal('document', { documentElement: { lang: '' }, cookie: '' });
 vi.stubGlobal('localStorage', { getItem: () => null, setItem: () => undefined, removeItem: () => undefined });
 
 const { chapters } = await import('../client/onboarding/quests.ts');
-const { chapterStatuses, levelOf, totalXp } = await import('../client/onboarding/model.ts');
+const { chapterStatuses, levelOf, questsCompletedBy, totalXp } = await import('../client/onboarding/model.ts');
 
 const team: CatalogMember[] = [
   { id: 'm-pavel', label: 'Павел', kind: 'human', aliases: [] },
@@ -160,6 +160,19 @@ describe('onboarding quests', () => {
     expect(chapterStatuses(chapters, new Set())).toEqual(['open', 'open', 'open', 'locked', 'locked']);
     const firstDone = new Set(chapters[0].quests.map(quest => quest.id));
     expect(chapterStatuses(chapters, firstDone)).toEqual(['done', 'open', 'open', 'open', 'locked']);
+  });
+
+  it('records real actions even when their chapter is still locked', () => {
+    const signal = actionEdit('apply-project-template', view([]), view([]));
+    expect(questsCompletedBy(signal, chapters, new Set()).map(quest => quest.id)).toContain('start-template');
+    expect(questsCompletedBy(signal, chapters, new Set(['start-template'])).map(quest => quest.id)).not.toContain('start-template');
+  });
+
+  it('does not award a locked fact-only quest just because an existing skill is present', () => {
+    const signal: OnboardingSignal = { type: 'facts', facts: { agentSkill: true } };
+    expect(questsCompletedBy(signal, chapters, new Set()).map(quest => quest.id)).not.toContain('install-skill');
+    const firstTwoDone = new Set(chapters.slice(0, 2).flatMap(chapter => chapter.quests.map(quest => quest.id)));
+    expect(questsCompletedBy(signal, chapters, firstTwoDone).map(quest => quest.id)).toContain('install-skill');
   });
 
   it('ends leveling at the full quest total', () => {

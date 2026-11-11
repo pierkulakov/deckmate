@@ -2,6 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { openHeadlessBrowser, type HeadlessPage } from '../tools/layout-capture.ts';
 import { browserFixtureUrl } from './browser-fixture.ts';
 import { requireBrowser } from './browser-environment.ts';
+import { shortReference } from '../src/references.ts';
 
 const browserPath = requireBrowser();
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
@@ -52,6 +53,33 @@ describe.skipIf(!browserPath)('open card first UX batch (real browser)', () => {
     await until('Boolean(window.firstBatch && document.querySelector(".card-preview"))');
   }, 90000);
   afterAll(async () => { await page?.close(); }, 20000);
+
+  it.each(['task', 'hero', 'doc'])('%s backlinks exclude inactive, self, code and YAML links and guard dirty navigation', async kind => {
+    await render({ kind, backlinks: 2, markdown: `[Self](/r/${shortReference('c', 'card:preview')})` });
+    expect(await page.evaluate(`Boolean(document.querySelector('.card-preview-backlinks'))`)).toBe(true);
+    await click('.card-preview-relations > summary');
+    expect(await page.evaluate(`[...document.querySelectorAll('.card-preview-backlinks button')].map(button => button.textContent)`)).toEqual(['incoming-0', 'incoming-1']);
+    await click('.card-preview-action-rail button');
+    await click('.card-properties-section[data-property="dueDate"] .card-properties-pick');
+    // 2026-11-11: a properties draft leaves backlinks visible beside the panel but must lock their navigation.
+    await page.evaluate(`(() => { const input = document.querySelector('.card-properties-date input');
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(input, '2026-12-12'); input.dispatchEvent(new Event('input', { bubbles: true })); input.dispatchEvent(new Event('change', { bubbles: true })); })()`);
+    await until(`document.querySelector('.card-preview-backlinks button').disabled`);
+    await click('.card-preview-backlinks button');
+    expect(await page.evaluate('window.firstBatch.selections')).toEqual([]);
+    await click('.card-properties-date button:last-child');
+    await key('Escape');
+    await until(`!document.querySelector('.card-preview-backlinks button').disabled`);
+    await click('.card-preview-backlinks button');
+    await until(`document.querySelector('.card-preview-title')?.textContent === 'incoming-0'`);
+    expect(await page.evaluate('window.firstBatch.selections')).toEqual(['card:incoming-0']);
+  });
+
+  it('caps backlinks at 50 and names the remaining sources', async () => {
+    await render({ backlinks: 52 });
+    expect(await page.evaluate(`document.querySelectorAll('.card-preview-backlinks button').length`)).toBe(50);
+    expect(await page.evaluate(`document.querySelector('.card-preview-backlinks > p').textContent`)).toBe('and 2 more');
+  });
 
   it.each(['light', 'dark'])('shows exactly four state icons, fills only matching states and keeps contrast in %s', async theme => {
     const states = [null, 'not-started', 'discussing', 'in-iteration', 'started', 'review', 'done', 'wont-do'];
@@ -321,12 +349,12 @@ describe.skipIf(!browserPath)('open card first UX batch (real browser)', () => {
       await render({ lang });
       const controls = await page.evaluate(`(() => {
         const row = document.querySelector('.card-preview-state-actions'), rect = row.getBoundingClientRect();
-        const buttons = [...row.querySelectorAll('button')];
+        const buttons = [...row.querySelectorAll('button')].filter(button => button.getClientRects().length);
         return { aligned: buttons.every(button => Math.abs(button.getBoundingClientRect().top - buttons[0].getBoundingClientRect().top) < 2),
           count: buttons.length, fit: rect.left >= 0 && rect.right <= innerWidth, overflow: document.documentElement.scrollWidth > innerWidth };
       })()`);
       expect(controls.aligned).toBe(true);
-      expect(controls.count).toBe(6);
+      expect(controls.count).toBe(5);
       expect(controls.fit).toBe(true);
       expect(controls.overflow).toBe(false);
       await openReview();
@@ -354,19 +382,19 @@ describe.skipIf(!browserPath)('open card first UX batch (real browser)', () => {
     }
   });
 
-  it('bounds 20 tags, opens the existing full section and restores keyboard focus', async () => {
+  it('keeps 20 tags in collapsed connections, opens their full section and restores keyboard focus', async () => {
     await render({ tags: 20 });
-    expect(await page.evaluate(`document.querySelectorAll('.card-preview-tags .tag-badge-link').length`)).toBe(2);
-    expect(await page.evaluate(`document.querySelector('.card-preview-tags > button').textContent`)).toBe('+18');
-    expect(await page.evaluate(`document.querySelector('.card-preview-tags').getBoundingClientRect().height`)).toBeLessThanOrEqual(40);
-    await click('.card-preview-tags > button');
+    expect(await page.evaluate(`document.querySelector('.card-preview-relations').open`)).toBe(false);
+    await click('.card-preview-relations > summary');
+    expect(await page.evaluate(`document.querySelectorAll('.card-preview-relations .tag-badge-link').length`)).toBe(20);
+    await click('.card-preview-relations .tag-badge-link');
     expect(await page.evaluate(`document.querySelectorAll('.card-properties-tag-chip').length`)).toBe(20);
     expect(await page.evaluate(`document.activeElement.classList.contains('card-properties-tag-chip')`)).toBe(true);
     await key('Escape');
-    expect(await page.evaluate(`document.activeElement === document.querySelector('.card-preview-tags > button')`)).toBe(true);
+    expect(await page.evaluate(`document.activeElement === document.querySelector('.card-preview-relations .tag-badge-link')`)).toBe(true);
     expect(await page.evaluate('window.firstBatch.outerEscapes()')).toBe(0);
     await render();
-    expect(await page.evaluate(`document.querySelector('.card-preview-tags')`)).toBe(null);
+    expect(await page.evaluate(`document.querySelector('.card-preview-relations')`)).toBe(null);
   });
 
   it.each(['conflict', 'network'])('keeps the return reason and lesson choice after %s and closes only on success', async failure => {
@@ -457,16 +485,17 @@ describe.skipIf(!browserPath)('open card first UX batch (real browser)', () => {
           close: close.getAttribute('aria-label'), title: title.getBoundingClientRect().width,
           reading: reading.clientWidth, editHeight: edit.getBoundingClientRect().height,
           editRadius: getComputedStyle(edit).borderRadius, overflow: document.documentElement.scrollWidth > innerWidth,
-          mono: getComputedStyle(document.querySelector('.card-preview-word-count .page-number')).fontFamily };
+          focusedShell: Boolean(reading.closest('.card-focus-mode')), contentTop: reading.getBoundingClientRect().top };
       })()`);
-      expect(layout.rail).toBe(32);
+      expect(layout.rail).toBe(36);
       expect(layout.railRadius).toBe('2px');
       expect(layout.close).toBe('Закрыть карточку');
       expect(layout.title).toBeGreaterThanOrEqual(layout.reading - 33);
       expect(layout.editHeight).toBe(30);
       expect(layout.editRadius).toBe('2px');
       expect(layout.overflow).toBe(false);
-      expect(layout.mono).toContain('Geist Mono');
+      expect(layout.focusedShell).toBe(true);
+      expect(layout.contentTop).toBeLessThanOrEqual(300);
     } finally {
       await page.send('Emulation.clearDeviceMetricsOverride');
     }
@@ -492,10 +521,7 @@ describe.skipIf(!browserPath)('open card first UX batch (real browser)', () => {
     expect(page.consoleErrors).toEqual([]);
   });
 
-  // 2026-11-10: actions must not scroll away with the file, and indicators must fit without consuming excessive space.
-  // The dock (indicators, tags, save state, ID, Edit; a Journey step when there is one) is pinned above the band and opaque,
-  // outside the scroller.
-  it('pins the dock with indicators, tags, ID and Edit above the band while long text scrolls', async () => {
+  it('pins Edit, save status and the blocker warning while connections scroll with the text', async () => {
     const markdown = Array.from({ length: 60 }, (_, index) => `Paragraph ${index + 1} keeps the card text going past the window.`).join(String.fromCharCode(10).repeat(2));
     await render({ markdown, tags: 1, dependencies: true });
     const measure = () => page.evaluate(`(() => {
@@ -504,19 +530,17 @@ describe.skipIf(!browserPath)('open card first UX batch (real browser)', () => {
       const scroller = document.querySelector('.card-preview-panels');
       return { scrollable: scroller.scrollHeight - scroller.clientHeight,
         dockTop: Math.round(box('.card-preview-dock').top), gapToBand: Math.round(box('.card-preview-material-band').top - box('.card-preview-dock').bottom),
-        shown: ['.card-preview-dock .card-gate-indicator', '.card-preview-dock .tag-badge-link',
-          '.card-preview-dock .card-id-chip', '.card-preview-dock .card-content-edit-action', '.card-preview-dock .card-content-save-status'].map(shown),
-        inScroller: ['.card-content-edit-action', '.card-id-chip', '.card-content-save-status'].map(selector => scroller.contains(document.querySelector(selector))),
-        row: Math.round(box('.card-preview-dock-row').height), indicators: Math.round(box('.card-preview-meta-row .card-indicators').height),
+        shown: ['.card-preview-dock .card-preview-blocker-note', '.card-preview-dock .card-content-edit-action', '.card-preview-dock .card-content-save-status'].map(shown),
+        inScroller: ['.card-content-edit-action', '.card-content-save-status', '.card-preview-relations'].map(selector => scroller.contains(document.querySelector(selector))),
+        row: Math.round(box('.card-preview-dock-row').height),
         dockOpaque: getComputedStyle(document.querySelector('.card-preview-dock')).backgroundColor !== 'rgba(0, 0, 0, 0)' };
     })()`);
     const top = await measure();
     expect(top.scrollable).toBeGreaterThan(400);
-    expect(top.shown).toEqual([true, true, true, true, true]);
-    expect(top.inScroller).toEqual([false, false, false]);
+    expect(top.shown).toEqual([true, true, true]);
+    expect(top.inScroller).toEqual([false, false, true]);
     expect(top.gapToBand).toBe(0);
     expect(top.row).toBeLessThanOrEqual(32);
-    expect(top.indicators).toBeLessThanOrEqual(24);
     expect(top.dockOpaque).toBe(true);
     for (const position of ['half', 'end']) {
       await page.evaluate(`(() => { const scroller = document.querySelector('.card-preview-panels');
@@ -545,9 +569,68 @@ describe.skipIf(!browserPath)('open card first UX batch (real browser)', () => {
     expect(await page.evaluate('window.firstBatch.requests[0].action')).toBe('update-card-content');
   });
 
+  it('shows rich questions once, retains nested Markdown and protects an unanswered draft', async () => {
+    const markdown = 'Context\n\n## Open questions\n\n- Which **light**?\n  - Warm\n  - Cold\n\n## Notes\n\nKeep this paragraph.\n';
+    await render({ kind: 'doc', markdown });
+    expect(await page.evaluate(`document.querySelector('.card-preview-document').textContent`)).not.toContain('Which light?');
+    expect(await page.evaluate(`document.querySelector('.open-question-text').textContent`)).toContain('Which light?');
+    expect(await page.evaluate(`document.querySelector('.open-question-text').textContent`)).toContain('Cold');
+    expect(await page.evaluate(`document.querySelector('.open-question-text strong').textContent`)).toBe('light');
+    await click('.open-question-actions button:last-child');
+    await page.send('Input.insertText', { text: 'Keep my answer' });
+    expect(await page.evaluate(`document.querySelector('.card-content-edit-action').disabled`)).toBe(true);
+    expect(await page.evaluate(`document.querySelector('.open-questions-heading').disabled`)).toBe(true);
+    await key('Escape');
+    await click('.card-content-edit-action');
+    expect(await page.evaluate(`document.querySelector('.open-questions')`)).toBe(null);
+    expect(await page.evaluate(`document.querySelector('.card-edit-text').value`)).toContain(markdown);
+    await click('.card-edit-link.is-cancel');
+    expect(await page.evaluate(`document.querySelectorAll('.open-questions').length`)).toBe(1);
+  });
+
+  it('saves title-only textarea edits without normalizing the body bytes', async () => {
+    const markdown = '\r\n\r\n  Body\r\n\r\n';
+    await render({ title: 'Before', markdown });
+    await click('.card-content-edit-action');
+    await page.evaluate(`document.querySelector('.card-edit-text').setSelectionRange(0, 6)`);
+    await page.send('Input.insertText', { text: 'After' });
+    expect(await page.evaluate(`document.querySelector('.card-preview-dock .card-edit-save') !== null`)).toBe(true);
+    await click('.card-edit-save');
+    await until(`window.firstBatch.requests.length === 1`);
+    expect(await page.evaluate('window.firstBatch.requests[0]')).toMatchObject({ title: 'After', markdown, sourceHash: 'content-' + markdown });
+  });
+
+  it.each(['hero', 'task', 'doc'])('keeps a %s editor and its only Save in the phone viewport', async kind => {
+    await page.send('Emulation.setDeviceMetricsOverride', { width: 375, height: 900, deviceScaleFactor: 1, mobile: false });
+    await page.send('Emulation.setTouchEmulationEnabled', { enabled: true });
+    try {
+      await render({ kind, lang: 'ru' });
+      expect(await page.evaluate(`document.querySelector('.card-preview-document').getBoundingClientRect().top`)).toBeLessThanOrEqual(300);
+      await click('.card-content-edit-action');
+      const geometry = await page.evaluate(`(() => {
+        const editor = document.querySelector('.card-edit-text').getBoundingClientRect();
+        const save = document.querySelector('.card-edit-save').getBoundingClientRect();
+        return { top: editor.top, height: editor.height, saveBottom: save.bottom, saves: document.querySelectorAll('.card-edit-save').length,
+          gapToDock: document.querySelector('.card-preview-dock').getBoundingClientRect().top - document.querySelector('.card-edit-box').getBoundingClientRect().bottom,
+          panelsScroll: document.querySelector('.card-preview-panels').scrollHeight - document.querySelector('.card-preview-panels').clientHeight };
+      })()`);
+      expect(geometry.top).toBeLessThanOrEqual(300);
+      expect(geometry.height).toBeGreaterThanOrEqual(360);
+      expect(geometry.saveBottom).toBeLessThanOrEqual(900);
+      expect(geometry.saves).toBe(1);
+      expect(geometry.gapToDock).toBeLessThanOrEqual(16);
+      expect(geometry.panelsScroll).toBeLessThanOrEqual(1);
+    } finally {
+      await page.send('Emulation.setTouchEmulationEnabled', { enabled: false });
+      await page.send('Emulation.clearDeviceMetricsOverride');
+    }
+  });
+
   it.each([{ markdown: '', lang: 'ru', expected: '0 слов' }, { markdown: 'one', lang: 'en', expected: '1 word' }, { markdown: 'один два', lang: 'ru', expected: '2 слова' }])('shows a localized word-count unit: %j', async ({ expected, ...options }) => {
     await render({ ...options, title: '', kind: 'doc' });
-    expect(await page.evaluate(`document.querySelector('.card-preview-word-count').textContent`)).toBe(expected);
+    await click('.card-preview-more');
+    expect(await page.evaluate(`document.querySelector('.card-more-menu .card-more-help').textContent`)).toBe(expected);
+    await key('Escape');
   });
 
   it('opens dependencies and history directly for a read-only card without a family', async () => {
@@ -577,7 +660,7 @@ describe.skipIf(!browserPath)('open card first UX batch (real browser)', () => {
     await until(`Boolean(document.querySelector('.card-related-slot .card-dependencies'))`);
     // The column appears without motion; this also waits out any running animation before measuring.
     await until(`document.querySelector('.card-related-slot').getAnimations().every(animation => animation.playState === 'finished')`);
-    expect(await column()).toEqual({ open: true, besideRail: true, fromTop: -8, cardInert: false, focusInside: true, frame: ['absolute', '0px', 'solid'], width: 379 });
+    expect(await column()).toEqual({ open: true, besideRail: true, fromTop: -8, cardInert: false, focusInside: true, frame: ['absolute', '4px', 'solid'], width: 379 });
     await key('Escape');
     await until(`!document.querySelector('.card-related-slot')`);
     expect(await column()).toEqual({ open: false, cardInert: false });

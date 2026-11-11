@@ -22,17 +22,13 @@ const catalog: CatalogView = { rootIdentity: 'audit', documents: [], cards, spac
   formatLanguage: 'en', manifestHash: 'manifest', configured: true, indexedAt: 'initial',
   members: [{ id: 'maya', label: 'Maya', kind: 'human', aliases: [] }] };
 const snapshot: WorkspaceSnapshot = { projectName: 'Audit', source: 'sandbox', writable: true, editMode: 'direct', iteration: { number: 1, goal: '', start: '' } };
-const state = { reads: {} as Record<string, number>, counts: [2, 1], fail: false, revision: 'initial', opened: 0,
-  showOpener: true, hold: false, release: () => {}, mode: 'tiles' };
+const state = { reads: {} as Record<string, number>, revision: 'initial', opened: 0, showOpener: true, mode: 'tiles' };
 window.fetch = async input => {
   const url = new URL(String(input), location.origin);
   if (url.pathname !== '/api/attachments') return Response.json(catalog);
   const id = url.searchParams.get('cardId')!;
   state.reads[id] = (state.reads[id] ?? 0) + 1;
-  if (state.fail) throw new TypeError('Network unavailable');
-  const response = Response.json({ hash: 'confirmed', files: Array.from({ length: state.counts[cards.findIndex(card => card.id === id)] ?? 0 }, () => ({})), warnings: [] });
-  if (state.hold) await new Promise<void>(resolve => { state.release = resolve; });
-  return response;
+  return Response.json({ hash: 'confirmed', files: [], warnings: [] });
 };
 const root = createRoot(document.getElementById('root')!);
 const lookups = buildCatalogLookups(cards);

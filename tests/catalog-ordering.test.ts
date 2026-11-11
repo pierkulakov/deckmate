@@ -101,6 +101,15 @@ describe('card ordering', () => {
     expect(groups([])).toEqual([]);
   });
 
+  it('uses the same tag lane for equal tag sets regardless of assignment order', () => {
+    const cards = [card('first', { tags: ['Audio', 'audio'] }), card('second', { tags: ['audio', 'Audio'] })];
+    const before = structuredClone(cards);
+    const lanes = groups(cards, { order: 'tags', direction: 'asc' });
+    expect(lanes).toHaveLength(1);
+    expect(lanes[0].cards.map(entry => entry.id)).toEqual(['first', 'second']);
+    expect(cards).toEqual(before);
+  });
+
   it('rejects invalid URL values and round-trips ordering while preserving unrelated query and original query object', () => {
     expect(readOrdering(new URLSearchParams('order=invalid&then=date.up&direction=sideways'))).toEqual(defaultCardOrdering);
     const query = new URLSearchParams('deck=audio&card=card%3Aexample&q=voice&order=state&direction=desc&then=effort.asc');

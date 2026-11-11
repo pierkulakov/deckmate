@@ -88,10 +88,15 @@ describe.skipIf(!browserPath)('Inbox flows (browser)', () => {
     await evaluate(`window.inboxTest.render('settings', { deckKind: 'task', inboxDeckId: 'deck:one' })`);
     await until(`document.querySelector('.deck-settings-inbox input')?.checked`);
     expect(await evaluate(`document.querySelector('.deck-settings-inbox input').disabled`)).toBe(false);
-    expect(await evaluate(`document.querySelector('.deck-settings-inbox span').textContent`)).toBe('Cards with no deck selected go here. This setting saves immediately.');
+    expect(await evaluate(`document.querySelector('.deck-settings-inbox span').textContent`)).toBe('Cards with no deck selected go here. Applied when you save.');
+    await click('.deck-settings-inbox input');
+    expect(await evaluate('window.inboxTest.actions')).toEqual([]);
+    await click('.deck-settings-form button[type="submit"]');
+    await until('window.inboxTest.actions.length === 2');
+    expect(await evaluate('window.inboxTest.actions[1]')).toMatchObject({ action: 'set-inbox-deck', deckId: null });
   });
 
-  it.each([[375, 812], [1440, 900]])('keeps deck settings inside %i × %i and the color row stable', async (width, height) => {
+  it.each([[375, 600], [1440, 900]])('keeps deck settings inside %i × %i and the color row stable', async (width, height) => {
     await send('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile: false });
     await evaluate(`window.inboxTest.render('settings', { deckKind: 'task', lang: 'ru' })`);
     await until(`Boolean(document.querySelector('.deck-settings-dialog'))`);
@@ -106,6 +111,7 @@ describe.skipIf(!browserPath)('Inbox flows (browser)', () => {
     expect(after.scrollWidth).toBe(after.clientWidth);
     expect(after.rowHeight).toBe(before.rowHeight);
     expect(after.rowHeight).toBe(28);
+    expect(await evaluate(`(() => { const footer = document.querySelector('.deck-settings-modal-actions'); const layout = document.querySelector('.deck-settings-layout'); layout.scrollTop = layout.scrollHeight; const box = footer.getBoundingClientRect(); return layout.nextElementSibling === footer && box.bottom <= innerHeight && box.top >= 0 && getComputedStyle(document.querySelector('.deck-settings-picker-content')).overflowY === 'visible'; })()`)).toBe(true);
   });
 
   it.each([[375, 812], [1280, 800]])('keeps gallery and space-form overflow inside the workspace at %i × %i (D01, D02)', async (width, height) => {
@@ -158,11 +164,11 @@ describe.skipIf(!browserPath)('Inbox flows (browser)', () => {
     await until(`!document.querySelector('.space-form-popover') && document.activeElement === document.querySelector('.deck-gallery-add')`);
   });
 
-  it('shows the first-project action before the pulse within the mobile viewport (D03)', async () => {
+  it('shows the first-project action before a compact empty pulse in the mobile viewport (D03)', async () => {
     await send('Emulation.setDeviceMetricsOverride', { width: 375, height: 812, deviceScaleFactor: 1, mobile: false });
     await evaluate(`window.inboxTest.render('gallery', { empty: true })`);
     await until(`Boolean(document.querySelector('.project-template-start')) && !document.querySelector('.project-pulse-loading')`);
-    expect(await evaluate(`(() => { const start = document.querySelector('.project-template-start').getBoundingClientRect(); return start.top >= 0 && start.bottom <= innerHeight && start.bottom <= document.querySelector('.project-pulse').getBoundingClientRect().top; })()`)).toBe(true);
+    expect(await evaluate(`(() => { const start = document.querySelector('.project-template-start').getBoundingClientRect(); const pulse = document.querySelector('.project-pulse-quiet').getBoundingClientRect(); return start.top >= 0 && start.bottom <= innerHeight && start.bottom <= pulse.top && pulse.height <= 48 && Boolean(document.querySelector('.project-template-start button')); })()`)).toBe(true);
   });
 
   it('shows a clipped cover name on keyboard focus and hover, but not a short name (D09)', async () => {
@@ -204,9 +210,18 @@ describe.skipIf(!browserPath)('Inbox flows (browser)', () => {
     const count = Array.isArray(options.spaces) ? options.spaces.length : spaces.length;
     await until(`document.querySelectorAll('.catalog-space').length === ${count} && !document.querySelector('.project-pulse-loading')`);
   }
+  async function openSpaceMenu(id: string) {
+    if (await evaluate(`Boolean(document.querySelector('.deck-space-menu'))`)) await key('Escape', 27);
+    await callFunction(`id => { const button = document.getElementById('space-' + id).closest('.catalog-space').querySelector('.catalog-space-actions button'); button.focus(); button.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerType: 'mouse', button: 0 })); }`, id);
+    await until(`Boolean(document.querySelector('.deck-space-menu'))`);
+  }
   async function moveSpace(id: string, direction: 'up' | 'down') {
-    await callFunction(`(id, direction) => document.getElementById('space-' + id).closest('.catalog-space')
-      .querySelector('[aria-label="Move space ' + direction + '"]').click()`, id, direction);
+    await openSpaceMenu(id);
+    await click(`[aria-label="Move space ${direction}"]`);
+  }
+  async function configureSpace(id: string, title: string) {
+    await openSpaceMenu(id);
+    await click(`[aria-label="Configure space ${title}"]`);
   }
 
   it('moves spaces with the header arrows, disables the ends, and preserves collapse state', async () => {
@@ -216,8 +231,12 @@ describe.skipIf(!browserPath)('Inbox flows (browser)', () => {
       const toggle = heading.querySelector('h2 button');
       return { empty: heading.classList.contains('is-empty'), disabled: toggle.disabled, expanded: toggle.getAttribute('aria-expanded'), icons: toggle.querySelectorAll('svg').length }; })()`))
       .toEqual({ empty: true, disabled: true, expanded: null, icons: 1 });
-    expect(await evaluate(`Array.from(document.querySelectorAll('[aria-label="Move space up"]'), node => node.disabled)`)).toEqual([true, false, false]);
-    expect(await evaluate(`Array.from(document.querySelectorAll('[aria-label="Move space down"]'), node => node.disabled)`)).toEqual([false, false, true]);
+    for (const [id, up, down] of [['space:one', true, false], ['qa', false, false], ['empty', false, true]]) {
+      await openSpaceMenu(String(id));
+      expect(await evaluate(`document.querySelector('[aria-label="Move space up"]').hasAttribute('data-disabled')`)).toBe(up);
+      expect(await evaluate(`document.querySelector('[aria-label="Move space down"]').hasAttribute('data-disabled')`)).toBe(down);
+    }
+    await key('Escape', 27);
     await callFunction(`() => document.getElementById('space-qa').closest('.catalog-space').querySelector('h2 button').click()`);
     await until(`document.getElementById('space-qa').hidden`);
     await moveSpace('qa', 'up');
@@ -231,13 +250,15 @@ describe.skipIf(!browserPath)('Inbox flows (browser)', () => {
     await moveSpace('qa', 'down');
     await until(`window.inboxTest.actions.length === 3 && document.querySelectorAll('.catalog-space-heading h2 span')[2]?.textContent === 'QA'`);
     expect(await evaluate('window.inboxTest.actions[2]')).toMatchObject({ action: 'move-space', spaceId: 'qa', beforeSpaceId: null });
-    expect(await evaluate(`document.querySelectorAll('[aria-label="Move space down"]')[2].disabled`)).toBe(true);
-    expect(await evaluate(`document.querySelectorAll('[aria-label="Move space up"]')[0].disabled`)).toBe(true);
+    await openSpaceMenu('qa');
+    expect(await evaluate(`document.querySelector('[aria-label="Move space down"]').hasAttribute('data-disabled')`)).toBe(true);
+    await openSpaceMenu('space:one');
+    expect(await evaluate(`document.querySelector('[aria-label="Move space up"]').hasAttribute('data-disabled')`)).toBe(true);
   });
 
   it('saves Space position only when changed, using the hash returned by the settings update', async () => {
     await renderSpaces();
-    await click('[aria-label="Configure space Work"]');
+    await configureSpace('space:one', 'Work');
     await until(`Boolean(document.querySelector('.space-preset-form'))`);
     const select = '.space-custom-fields label:last-child select';
     expect(await callFunction(`selector => ({ value: document.querySelector(selector).value,
@@ -245,7 +266,7 @@ describe.skipIf(!browserPath)('Inbox flows (browser)', () => {
     await click('.space-preset-form button[type="submit"]');
     await until(`!document.querySelector('.space-preset-form') && window.inboxTest.actions.length === 1`);
     expect(await evaluate('window.inboxTest.actions.map(action => action.action)')).toEqual(['update-space']);
-    await click('[aria-label="Configure space Work"]');
+    await configureSpace('space:one', 'Work');
     await until(`Boolean(document.querySelector('.space-preset-form'))`);
     await callFunction(`selector => { const select = document.querySelector(selector); select.value = ''; select.dispatchEvent(new Event('change', { bubbles: true })); }`, select);
     await click('.space-preset-form button[type="submit"]');
@@ -254,24 +275,28 @@ describe.skipIf(!browserPath)('Inbox flows (browser)', () => {
     expect(await evaluate(spaceOrder)).toEqual(['QA', 'Empty', 'Work']);
   });
 
-  it('localizes the space arrows and hides them with the pencil in read-only mode, keeping Delete disabled', async () => {
+  it('localizes the space menu and keeps it disabled in read-only mode', async () => {
     await renderSpaces({ lang: 'ru' });
-    expect(await evaluate(`document.querySelectorAll('[aria-label="Переместить space выше"]').length`)).toBe(3);
-    expect(await evaluate(`document.querySelectorAll('[aria-label="Переместить space ниже"]').length`)).toBe(3);
+    await openSpaceMenu('qa');
+    expect(await evaluate(`Boolean(document.querySelector('[aria-label="Переместить space выше"]') && document.querySelector('[aria-label="Переместить space ниже"]'))`)).toBe(true);
     await renderSpaces({ writable: false });
     expect(await evaluate(`document.querySelectorAll('.catalog-space-actions button').length`)).toBe(3);
-    expect(await evaluate(`Array.from(document.querySelectorAll('.catalog-space-actions button'), button => ({ label: button.getAttribute('aria-label'), disabled: button.disabled, description: button.getAttribute('aria-description') }))`))
-      .toEqual(Array(3).fill({ label: 'Delete space', disabled: true, description: 'This source is read-only' }));
+    expect(await evaluate(`Array.from(document.querySelectorAll('.catalog-space-actions button'), button => ({ disabled: button.disabled, description: button.getAttribute('aria-description') }))`))
+      .toEqual(Array(3).fill({ disabled: true, description: 'This source is read-only' }));
   });
 
   async function openSpaceDelete(id: string, label = 'Delete space') {
-    await callFunction(`(id, label) => { const button = document.getElementById('space-' + id).closest('.catalog-space').querySelector('[aria-label="' + label + '"]'); button.focus(); button.click(); }`, id, label);
+    await openSpaceMenu(id);
+    await click(`[aria-label="${label}"]`);
     await until(`Boolean(document.querySelector('.catalog-space .confirm-strip'))`);
   }
 
   it('shows Delete after the arrows and explains why a Space containing Decks cannot be deleted', async () => {
     await renderSpaces({ decks: [{ id: 'deck:work', title: 'Work deck', kind: 'task' }] });
-    expect(await evaluate(`Array.from(document.querySelectorAll('[aria-label="Delete space"]'), button => button.disabled)`)).toEqual([true, false, false]);
+    for (const [id, disabled] of [['empty', false], ['qa', false], ['space:one', true]]) {
+      await openSpaceMenu(String(id));
+      expect(await evaluate(`document.querySelector('[aria-label="Delete space"]').hasAttribute('data-disabled')`)).toBe(disabled);
+    }
     const reason = "Move or delete this space's decks first";
     expect(await evaluate(`({ title: document.querySelector('[aria-label="Delete space"]').title, description: document.querySelector('[aria-label="Delete space"]').getAttribute('aria-description') })`))
       .toEqual({ title: reason, description: reason });
@@ -288,7 +313,7 @@ describe.skipIf(!browserPath)('Inbox flows (browser)', () => {
     expect(await evaluate(`document.activeElement.matches('.confirm-strip-keep')`)).toBe(true);
     await click('.confirm-strip-keep');
     await until(`!document.querySelector('.confirm-strip')`);
-    expect(await evaluate(`document.activeElement === document.getElementById('space-qa').closest('.catalog-space').querySelector('[aria-label="Delete space"]')`)).toBe(true);
+    expect(await evaluate(`document.activeElement === document.getElementById('space-qa').closest('.catalog-space').querySelector('.catalog-space-actions button')`)).toBe(true);
     await openSpaceDelete('qa');
     await key('Escape', 27);
     await until(`!document.querySelector('.confirm-strip')`);
@@ -361,7 +386,7 @@ describe.skipIf(!browserPath)('Inbox flows (browser)', () => {
 
   it('ignores removed ordering targets and never recreates a Space deleted while its form is open', async () => {
     await renderSpaces({ decks: [] });
-    await click('[aria-label="Configure space Work"]');
+    await configureSpace('space:one', 'Work');
     await until(`document.querySelector('.space-custom-fields label:last-child select')?.value === 'qa'`);
     await evaluate(`window.inboxTest.gallery.catalog.spaces = window.inboxTest.gallery.catalog.spaces.filter(space => space.id !== 'qa'); window.inboxTest.refreshCatalog()`);
     await until(`document.querySelector('.space-custom-fields label:last-child select')?.value === ''`);
@@ -392,6 +417,7 @@ describe.skipIf(!browserPath)('Inbox flows (browser)', () => {
 
   it('localizes the non-empty Space explanation', async () => {
     await renderSpaces({ lang: 'ru' });
+    await openSpaceMenu('space:one');
     expect(await evaluate(`document.querySelector('[aria-label="Удалить пространство"]').getAttribute('aria-description')`)).toBe('Сначала перенесите или удалите колоды этого пространства');
     expect(await evaluate(`document.querySelector('[aria-label="Удалить пространство"]').title`)).toBe('Сначала перенесите или удалите колоды этого пространства');
   });
@@ -499,6 +525,19 @@ describe.skipIf(!browserPath)('Inbox flows (browser)', () => {
     expect(await evaluate(`window.inboxTest.created.length`)).toBe(1);
   });
 
+  it('captures into the configured Inbox ID, not another deck named Inbox, after a rename', async () => {
+    await openCapture({ inboxDeckId: 'production', decks: [
+      { id: 'deck:inbox', title: 'Inbox', kind: 'task' },
+      { id: 'production', title: 'Переименованная Production', kind: 'mixed' },
+    ] });
+    await submitCapture();
+    await until(`Boolean(document.querySelector('.quick-capture-saved'))`);
+    expect(await evaluate('window.inboxTest.actions[0]')).toMatchObject({
+      action: 'create-card', deckId: 'production', kind: 'task', title: 'Capture draft', markdown: 'Draft details\nSecond line',
+    });
+    expect(await evaluate('window.inboxTest.created[0].deckId')).toBe('production');
+  });
+
   it('keeps the ordinary existing-Inbox fast flow, minting a new ID only for Capture another', async () => {
     await openCapture();
     await submitCapture();
@@ -519,7 +558,7 @@ describe.skipIf(!browserPath)('Inbox flows (browser)', () => {
   it('explains zero spaces without promising or offering an impossible Inbox create', async () => {
     await openCapture({ spaces: [], decks: [], lang: 'ru' });
     await until(`Boolean(document.querySelector('.quick-capture-missing'))`);
-    expect(await evaluate(`document.querySelector('.quick-capture-missing').textContent`)).toBe('Сначала создайте пространство в Decks.');
+    expect(await evaluate(`document.querySelector('.quick-capture-missing').textContent`)).toBe('Сначала создайте пространство и колоду Task или Mixed в Decks.');
     expect(await evaluate(`Boolean(document.querySelector('.quick-capture-missing button'))`)).toBe(false);
     await type('.quick-capture-input', 'Keep first-run draft');
     await evaluate(`document.querySelector('.quick-capture-input').focus()`);
@@ -529,15 +568,50 @@ describe.skipIf(!browserPath)('Inbox flows (browser)', () => {
     expect(await evaluate(`document.querySelector('.quick-capture-footer button').disabled`)).toBe(true);
   });
 
-  it('creates only the requested Inbox in an existing space and keeps the draft', async () => {
-    await openCapture({ decks: [] });
+  it('assigns an existing compatible deck as Inbox explicitly and keeps title and body', async () => {
+    await openCapture({ inboxDeckId: null, decks: [
+      { id: 'assets', title: 'Inbox', kind: 'asset' },
+      { id: 'production', title: 'Production', kind: 'task' },
+    ] });
     await until(`Boolean(document.querySelector('.quick-capture-missing button'))`);
     expect(await evaluate('window.inboxTest.actions')).toEqual([]);
-    await type('.quick-capture-input', 'Kept while creating Inbox');
+    expect(await evaluate(`Array.from(document.querySelector('.quick-capture-missing select').options, option => option.value)`)).toEqual(['', 'production']);
+    await type('.quick-capture-input', 'Kept while assigning Inbox');
+    await type('.quick-capture-text', 'Details stay intact');
+    expect(await evaluate(`document.querySelector('.quick-capture-footer button').disabled`)).toBe(true);
+    await evaluate(`(() => { const select = document.querySelector('.quick-capture-missing select'); select.value = 'production'; select.dispatchEvent(new Event('change', { bubbles: true })); })()`);
     await click('.quick-capture-missing button');
     await until(`!document.querySelector('.quick-capture-missing')`);
-    expect(await evaluate('window.inboxTest.actions')).toEqual([expect.objectContaining({ action: 'create-deck', title: 'Inbox', spaceId: 'space:one' })]);
-    expect(await evaluate(`document.querySelector('.quick-capture-input').value`)).toBe('Kept while creating Inbox');
+    await until(`document.activeElement === document.querySelector('.quick-capture-input')`);
+    expect(await evaluate('window.inboxTest.actions')).toEqual([expect.objectContaining({ action: 'set-inbox-deck', deckId: 'production', manifestHash: 'manifest-hash' })]);
+    expect(await evaluate(`document.querySelector('.quick-capture-input').value`)).toBe('Kept while assigning Inbox');
+    expect(await evaluate(`document.querySelector('.quick-capture-text').value`)).toBe('Details stay intact');
+    expect(await evaluate(`document.querySelector('.quick-capture-footer button').disabled`)).toBe(false);
+    await click('.quick-capture-footer button');
+    await until(`Boolean(document.querySelector('.quick-capture-saved'))`);
+    expect(await evaluate('window.inboxTest.actions[1]')).toMatchObject({ action: 'create-card', deckId: 'production', title: 'Kept while assigning Inbox', markdown: 'Details stay intact' });
+  });
+
+  it.each(['rejected', 'conflict', 'conflict-assigned', 'saved-warning'])('does not unlock capture after an unconfirmed %s Inbox assignment', async response => {
+    await openCapture({ response, inboxDeckId: null, decks: [{ id: 'production', title: 'Production', kind: 'task' }] });
+    await type('.quick-capture-input', 'Retained title');
+    await type('.quick-capture-text', 'Retained body');
+    await evaluate(`(() => { const select = document.querySelector('.quick-capture-missing select'); select.value = 'production'; select.dispatchEvent(new Event('change', { bubbles: true })); })()`);
+    await click('.quick-capture-missing button');
+    await until(`Boolean(document.querySelector('.quick-capture-error')) && !document.querySelector('.quick-capture-input').disabled`);
+    expect(await evaluate(`document.querySelector('.quick-capture-footer button').disabled`)).toBe(true);
+    expect(await evaluate(`document.querySelector('.quick-capture-input').value`)).toBe('Retained title');
+    expect(await evaluate(`document.querySelector('.quick-capture-text').value`)).toBe('Retained body');
+    expect(await evaluate('window.inboxTest.actions.map(action => action.action)')).toEqual(['set-inbox-deck']);
+  });
+
+  it('rejects an incompatible configured Inbox and never creates a replacement deck', async () => {
+    await openCapture({ inboxDeckId: 'assets', decks: [{ id: 'assets', title: 'Inbox', kind: 'asset' }], lang: 'ru' });
+    await type('.quick-capture-input', 'Not an asset');
+    expect(await evaluate(`document.querySelector('.quick-capture-footer button').disabled`)).toBe(true);
+    expect(await evaluate(`document.querySelector('.quick-capture-missing').textContent`)).toContain('Task или Mixed');
+    expect(await evaluate(`Boolean(document.querySelector('.quick-capture-missing button'))`)).toBe(false);
+    expect(await evaluate('window.inboxTest.actions')).toEqual([]);
   });
 
   it('ends failed initial loading and retries reading once by keyboard without a second Loading state', async () => {

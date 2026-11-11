@@ -29,20 +29,40 @@ function pulse(count: number): ProjectPulse {
 }
 
 // Effects never run under renderToStaticMarkup, so this asserts exactly what the first paint shows: with a
-// cached pulse the strip paints numbers immediately instead of the loading skeleton (2026-11-10).
-function renderStrip(source: 'live' | 'sandbox') {
-  return renderToStaticMarkup(<ProjectPulseStrip source={source} refreshKey={0} members={[]} disabled={false}
+// cached pulse the strip paints numbers immediately instead of a loading state (2026-11-10).
+function renderStrip(source: 'live' | 'sandbox', rootIdentity = '') {
+  return renderToStaticMarkup(<ProjectPulseStrip source={source} rootIdentity={rootIdentity} refreshKey={0} members={[]} disabled={false}
     onInProgress={() => {}} onReview={() => {}} onWithoutDeck={() => {}} onRun={() => {}} />);
 }
 
 describe('ProjectPulseStrip stale-while-revalidate cache', () => {
-  it('shows the loading skeleton on the very first load of a source', () => {
+  it('starts collapsed with unknown counts and an accessible loading status', () => {
     const html = renderStrip('sandbox');
     expect(html).toContain('project-pulse-loading');
+    expect(html).toContain('data-expanded="false"');
+    expect(html).toContain('role="status">Loading project pulse');
+    expect(html).toContain('project-pulse-placeholder">—');
     expect(html).not.toContain('project-pulse-value');
   });
 
-  it('renders the cached numbers on the first render of a remount, without the skeleton', () => {
+  it('restores expansion for the same project before its first response', () => {
+    vi.stubGlobal('localStorage', { getItem: (key: string) => key === 'deckmate-project-pulse:sandbox:one' ? 'expanded' : null });
+    const html = renderStrip('sandbox', 'one');
+    expect(html).toContain('project-pulse-loading');
+    expect(html).toContain('data-expanded="true"');
+    expect(html).toContain('aria-expanded="true"');
+    expect(renderStrip('sandbox', 'two')).toContain('data-expanded="false"');
+    expect(renderStrip('live', 'one')).toContain('data-expanded="false"');
+  });
+
+  it('uses the compact default if preference storage is unavailable or invalid', () => {
+    vi.stubGlobal('localStorage', { getItem: () => 'unexpected' });
+    expect(renderStrip('sandbox')).toContain('data-expanded="false"');
+    vi.stubGlobal('localStorage', { getItem: () => { throw new Error('storage blocked'); } });
+    expect(renderStrip('sandbox')).toContain('data-expanded="false"');
+  });
+
+  it('renders the cached numbers on the first render of a remount, without the loading state', () => {
     rememberProjectPulse('sandbox', pulse(3));
     const html = renderStrip('sandbox');
     expect(html).not.toContain('project-pulse-loading');
@@ -54,6 +74,7 @@ describe('ProjectPulseStrip stale-while-revalidate cache', () => {
     rememberProjectPulse('sandbox', pulse(3));
     const uncached = renderStrip('live');
     expect(uncached).toContain('project-pulse-loading');
+    expect(uncached).toContain('project-pulse-placeholder">—');
     expect(uncached).not.toContain('project-pulse-value');
     rememberProjectPulse('live', pulse(7));
     const cached = renderStrip('live');
@@ -61,5 +82,20 @@ describe('ProjectPulseStrip stale-while-revalidate cache', () => {
     expect(cached).toContain('>7<');
     // The sandbox cache must not leak into the live render.
     expect(cached).not.toContain('>3<');
+  });
+
+  it('keeps the same disclosure for empty activity, nonzero counts and a current Run', () => {
+    rememberProjectPulse('sandbox', pulse(0));
+    expect(renderStrip('sandbox')).toContain('data-expanded="false"');
+    expect(renderStrip('sandbox')).toContain('project-pulse-value">0');
+    const withoutDeck = { ...pulse(0), withoutDeck: 1 };
+    rememberProjectPulse('sandbox', withoutDeck);
+    expect(renderStrip('sandbox')).toContain('data-pulse="unassigned"');
+    const withRun = { ...pulse(0), run: { id: 'run', title: 'Run', end: '2026-11-20', done: 0, total: 0 } };
+    rememberProjectPulse('sandbox', withRun);
+    expect(renderStrip('sandbox')).toContain('project-pulse-run');
+    const accepted = { ...pulse(0), accepted: { days: [...Array(13).fill(0), 1], total: 1 } };
+    rememberProjectPulse('sandbox', accepted);
+    expect(renderStrip('sandbox')).toContain('project-pulse-accepted');
   });
 });

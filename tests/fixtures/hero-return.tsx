@@ -43,6 +43,7 @@ window.fetch = async (input, init) => {
     return Response.json({ cardId: card.id, title: card.title, markdown: card.markdown, sourceHash: card.sourceHash });
   }
   if (url.pathname === '/api/notifications') return Response.json({ watching: [], watchHash: 'watch-hash' });
+  if (url.pathname === '/api/attachments') return Response.json({ hash: '', files: [], warnings: [] });
   return Response.json({ files: [], warnings: [], events: [], nextCursor: null, created: null });
 };
 

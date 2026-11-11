@@ -364,15 +364,18 @@ it('keeps report writes behind read-only, live and sandbox guards', async () => 
   expect((await readWholeActivity(root)).events).toHaveLength(1);
 });
 
-it('refuses to normalize existing mixed line endings when appending a report', async () => {
+it('preserves existing mixed line endings when appending a legacy report', async () => {
   const { root, config } = await fixture();
   const filename = path.join(root, 'features/example.md');
   await writeFile(filename, (await readFile(filename, 'utf8')).replace('Original body.\r\n', 'Original body.\n'));
   const before = await readFile(filename);
   offline();
-  await expect(writeCatalog(config, 'sandbox', await reportEdit(root), 'codex')).rejects.toMatchObject({ status: 422 });
-  expect(await readFile(filename)).toEqual(before);
-  expect((await readWholeActivity(root)).events).toHaveLength(0);
+  await writeCatalog(config, 'sandbox', await reportEdit(root), 'codex');
+  const after = await readFile(filename);
+  const split = before.indexOf(Buffer.from('### 1.2'));
+  expect(after.subarray(0, split)).toEqual(before.subarray(0, split));
+  expect(after.subarray(after.indexOf(Buffer.from('### 1.2')))).toEqual(before.subarray(split));
+  expect((await readWholeActivity(root)).events).toHaveLength(1);
 });
 
 it('uses the native YAML opening newline for the report hash despite mixed header line endings', async () => {

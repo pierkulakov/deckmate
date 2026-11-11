@@ -19,7 +19,7 @@ describe.skipIf(!browserPath)('CardPreview Quick Settings (browser)', () => {
     await delay(60);
   }
   async function key(key: string, code = key) {
-    for (const type of ['keyDown', 'keyUp']) await send('Input.dispatchKeyEvent', { type, key, code, windowsVirtualKeyCode: key === 'Escape' ? 27 : undefined });
+    for (const type of ['keyDown', 'keyUp']) await send('Input.dispatchKeyEvent', { type, key, code, windowsVirtualKeyCode: ({ Escape: 27, ArrowLeft: 37, ArrowRight: 39 } as Record<string, number>)[key] });
     await delay(80);
   }
   async function render(kind = 'task', options: object = {}) {
@@ -67,6 +67,86 @@ describe.skipIf(!browserPath)('CardPreview Quick Settings (browser)', () => {
     await session.close();
   }, 20000);
 
+  async function openActions() {
+    await evaluate(`document.querySelector('.card-preview-more').focus()`);
+    await key('Enter');
+    await until(`Boolean(document.querySelector('.card-more-menu'))`);
+  }
+  const handAction = '.card-more-menu [role="menuitem"]:has(.lucide-hand)';
+
+  it('adds and removes only the acting member’s Hand with guarded hashes, preserving Owner and other Hands', async () => {
+    await render('task', { card: { owner: 'Sam', handMemberIds: ['sam'], handOrder: { sam: 3 } }, holdSave: true });
+    await openActions();
+    expect(await call(`function(selector) { return document.querySelector(selector)?.textContent; }`, handAction)).toBe('Add to my Hand');
+    await click(handAction);
+    expect(await evaluate('window.previewTest.actions')).toEqual([{ action: 'bulk-edit-cards', manifestHash: 'manifest-hash', optionsHash: 'options-hash',
+      cards: [{ cardId: 'card:preview', sourceHash: 'card-hash' }], change: { kind: 'hand', memberId: 'alex', mode: 'add' } }]);
+    expect(await evaluate(`document.querySelector('.card-preview-more').disabled`)).toBe(true);
+    await evaluate('window.previewTest.finishSave()');
+    await until(`!document.querySelector('.card-preview-more').disabled`);
+    expect(await evaluate('window.previewTest.card()')).toMatchObject({ owner: 'Sam', handMemberIds: ['sam', 'alex'], handOrder: { sam: 3 } });
+    await openActions();
+    expect(await call(`function(selector) { return document.querySelector(selector).textContent; }`, handAction)).toBe('Remove from my Hand');
+    await click(handAction);
+    await evaluate('window.previewTest.finishSave()');
+    await until(`!document.querySelector('.card-preview-more').disabled`);
+    expect(await evaluate('window.previewTest.card()')).toMatchObject({ owner: 'Sam', handMemberIds: ['sam'], handOrder: { sam: 3 } });
+    expect(await evaluate('window.previewTest.actions[1]')).toMatchObject({ cards: [{ cardId: 'card:preview', sourceHash: 'card-hash-saved' }], change: { kind: 'hand', memberId: 'alex', mode: 'remove' } });
+  });
+
+  it.each(['conflict', 'network', 'saved-warning'])('Hand label follows the confirmed catalog after %s, not the save boolean', async saveFailure => {
+    await render('task', { saveFailure, card: { owner: 'Sam', handMemberIds: ['sam'] } });
+    await openActions();
+    await until(`Boolean(document.querySelector('${handAction}'))`);
+    await click(handAction);
+    await until(`!document.querySelector('.card-preview-more').disabled`);
+    expect(await evaluate('window.previewTest.card().handMemberIds')).toEqual(['sam']);
+    expect(await evaluate('window.previewTest.card().owner')).toBe('Sam');
+    if (saveFailure !== 'saved-warning') expect(await evaluate(`document.querySelector('.card-preview-state-notice')?.textContent`)).toMatch(/not confirmed|Could not save/);
+    else expect(await evaluate(`document.querySelector('.card-preview-state-notice')?.textContent ?? ''`)).toBe('');
+    await openActions();
+    expect(await call(`function(selector) { return document.querySelector(selector).textContent; }`, handAction)).toBe('Add to my Hand');
+    await key('Escape');
+  });
+
+  it.each(['readonly', 'pending', 'stale', 'member-change', 'no-member'])('disables the Hand action for %s', async reason => {
+    await render('task', { writable: reason !== 'readonly', noMembers: reason === 'no-member' });
+    await openActions();
+    if (reason === 'pending') await evaluate('window.previewTest.setPending(true)');
+    if (reason === 'stale') await evaluate('window.previewTest.refresh()');
+    if (reason === 'member-change') await evaluate(`window.previewTest.rememberMember('sam')`);
+    await until(`Boolean(document.querySelector('${handAction}[data-disabled]'))`);
+    await click(handAction);
+    expect(await evaluate('window.previewTest.actions')).toEqual([]);
+    await key('Escape');
+  });
+
+  it('shows every Hand participant, a one-based slot or missing-slot label, and the card version in readable properties', async () => {
+    await render('task', { writable: false, card: { version: 'v2.3', handMemberIds: ['alex', 'sam', 'missing-member'], handOrder: { alex: 0, sam: 7 } } });
+    await click('.card-preview-action-rail button');
+    expect(await evaluate(`[...document.querySelectorAll('.card-properties-hand li')].map(item => item.innerText)`)).toEqual(['Alex\nSlot 1', 'Sam\nSlot 8', 'missing-member\nNo slot']);
+    expect(await evaluate(`document.querySelector('[data-property="version"]').innerText`)).toContain('v2.3');
+  });
+
+  it.each([12, 248])('keeps the family popover inside a touch viewport at x=%s and restores keyboard focus', async left => {
+    await send('Emulation.setDeviceMetricsOverride', { width: 375, height: 600, deviceScaleFactor: 1, mobile: false });
+    await send('Emulation.setTouchEmulationEnabled', { enabled: true });
+    try {
+      await evaluate(`window.previewTest.render('task', { child: true, familyOnly: true })`);
+      await until(`Boolean(document.querySelector('.card-family-trigger'))`);
+      await call(`function(left) { document.querySelector('.deck-card-space').parentElement.style.left = left + 'px'; document.querySelector('.card-family-trigger').focus(); }`, left);
+      await key('Enter');
+      await until(`Boolean(document.querySelector('.card-family-popover'))`);
+      await until(`document.querySelector('.card-family-popover').getAnimations().every(animation => animation.playState === 'finished')`);
+      expect(await evaluate(`(() => { const box = document.querySelector('.card-family-popover').getBoundingClientRect(); return box.left >= 8 && box.right <= innerWidth - 8 && box.top >= 8 && box.bottom <= innerHeight - 8; })()`)).toBe(true);
+      await key('Escape');
+      await until(`document.activeElement === document.querySelector('.card-family-trigger')`);
+    } finally {
+      await send('Emulation.setTouchEmulationEnabled', { enabled: false });
+      await send('Emulation.clearDeviceMetricsOverride');
+    }
+  });
+
   it.each(['hero', 'task'])('%s: Effort keeps the text panel, tabs work, Escape restores the clicked anchor', async kind => {
     await render(kind);
     await click(button('effort'));
@@ -89,6 +169,24 @@ describe.skipIf(!browserPath)('CardPreview Quick Settings (browser)', () => {
     await expectPopup(tab, button(tab));
     await key('Escape');
     await expectClosed(button(tab));
+  });
+
+  it('keeps horizontal arrows in search and navigates tabs with focus on the tablist', async () => {
+    await render();
+    await click(button('owner'));
+    await expectPopup('owner', button('owner'));
+    await until(`document.activeElement === document.querySelector('.deck-choice-search')`);
+    await send('Input.insertText', { text: 'Alex' });
+    await key('ArrowLeft');
+    expect(await evaluate(`({ tab:document.querySelector('.card-quick-settings').dataset.tab, value:document.activeElement.value, caret:document.activeElement.selectionStart })`))
+      .toEqual({ tab: 'owner', value: 'Alex', caret: 3 });
+    await evaluate(`document.querySelector('.card-quick-tabs [aria-selected="true"]').focus()`);
+    await key('ArrowRight');
+    await until(`document.querySelector('.card-quick-settings').dataset.tab === 'run'`);
+    expect(await evaluate(`document.activeElement.getAttribute('role')`)).toBe('tab');
+    expect(await evaluate(`document.activeElement.getAttribute('aria-selected')`)).toBe('true');
+    await key('Escape');
+    await expectClosed(button('owner'));
   });
 
   it.each([['e', 'KeyE', 'effort'], ['p', 'KeyP', 'priority'], ['o', 'KeyO', 'owner'], [',', 'Comma', 'run'], ['m', 'KeyM', 'milestone']])('%s shortcut uses the matching preview button', async (character, code, tab) => {
@@ -142,7 +240,7 @@ describe.skipIf(!browserPath)('CardPreview Quick Settings (browser)', () => {
         const rect = element.getBoundingClientRect();
         return { element, tab: element.dataset.quickSettingsTab, rect: [rect.x, rect.y, rect.width, rect.height] };
       });
-      const option = [...document.querySelectorAll('[role="option"]')].find(item => item.textContent.trim() === choice);
+      const option = [...document.querySelectorAll('[role="option"]')].find(item => item.querySelector('.deck-choice-name')?.textContent === choice);
       if (!option) throw new Error('Missing Quick Settings choice: ' + choice);
       const frames = [];
       const started = performance.now();

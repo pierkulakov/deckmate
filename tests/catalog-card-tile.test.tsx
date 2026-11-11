@@ -24,34 +24,38 @@ beforeEach(() => {
 });
 afterEach(() => vi.unstubAllGlobals());
 
-function renderTile(overrides: Partial<CatalogCard> = {}): string {
+function renderTile(overrides: Partial<CatalogCard> = {}, groupedBy?: 'state' | 'priority', calendarDay?: string, sharedTags?: readonly string[]): string {
   const card: CatalogCard = { id: 'card:tile', kind: 'task', title: 'Project title', path: 'cards/tile.md', version: null, state: 'not-started', owner: 'Alex',
     markdown: 'Project text.', sourceHash: 'hash', range: null, deckId: 'deck', trackIds: [], parentId: null, ...overrides };
   const noop = () => {};
   return renderToStaticMarkup(<CatalogCardTile card={card} lookups={buildCatalogLookups([card])} members={[]}
-    selected={false} checked={false} selectionActive={false} disabled={false} onOpen={noop} onToggle={noop} onFamilyOpen={noop} />);
+    groupedBy={groupedBy} sharedTags={sharedTags} calendarDay={calendarDay} selected={false} checked={false} selectionActive={false} disabled={false} onOpen={noop} onToggle={noop} onFamilyOpen={noop} />);
 }
 
-it('marks Trash with a localized icon and tooltip, ahead of Archive', () => {
+it('names Trash in the single state position ahead of Archive, hiding ordinary metadata', () => {
   for (const kind of ['task', 'hero', 'doc'] as const) {
-    const html = renderTile({ kind, archived: true, deleted: true });
-    expect(html).toContain('card-trash-indicator');
-    expect(html).toContain('lucide-trash-2');
-    expect(html).toContain('title="In Trash" aria-label="In Trash"');
+    const html = renderTile({ kind, archived: true, deleted: true, effort: 3, tags: ['world'], dueDate: '2026-01-01' });
+    expect(html).toContain('>In Trash</span>');
+    expect(html).toContain('aria-label="Open: Project title,');
+    expect(html).not.toContain('card-tag-summary');
+    expect(html).not.toContain('deck-card-effort');
+    expect(html).not.toContain('deck-card-owner');
+    expect(html).not.toContain('card-face-due');
     expect(html).not.toContain('lucide-archive');
     expect(html).not.toContain('title="Archived"');
   }
   setLang('ru');
-  expect(renderTile({ deleted: true })).toContain('title="В корзине" aria-label="В корзине"');
+  expect(renderTile({ deleted: true })).toContain('>В корзине</span>');
 });
 
-it('keeps the existing Archive mark for archived cards and no lifecycle mark on active cards', () => {
-  expect(renderTile({ archived: true })).toContain('lucide-archive');
+it('names Archive in text and keeps the active task workflow in the same place', () => {
+  expect(renderTile({ archived: true })).toContain('>Archived</span>');
   expect(renderTile({ archived: true })).not.toContain('card-trash-indicator');
   expect(renderTile()).not.toContain('card-trash-indicator');
+  expect(renderTile()).toContain('>Not started</span>');
 });
 
-it('sizes each Hero progress step by its Sub Card weight, the same weight as the effort total', () => {
+it('sizes Hero progress by Sub Card effort and labels the separate accepted-card count', () => {
   const base = { path: 'cards/tile.md', version: null, owner: null, markdown: '', sourceHash: 'hash', range: null, deckId: 'deck', trackIds: [] };
   const hero: CatalogCard = { ...base, id: 'card:hero', kind: 'hero', title: 'Lantern', state: 'not-started', parentId: null };
   const child = (id: string, effort: number | null, state: CatalogCard['state']): CatalogCard =>
@@ -62,30 +66,31 @@ it('sizes each Hero progress step by its Sub Card weight, the same weight as the
     selected={false} checked={false} selectionActive={false} disabled={false} onOpen={noop} onToggle={noop} onFamilyOpen={noop} />);
   const weights = [...html.matchAll(/class="sub-card-progress-segment" data-state="(\w+)" style="--sub-card-weight:([\d.]+)"/g)].map(match => `${match[1]}:${match[2]}`);
   expect(weights).toEqual(['accepted:5', 'working:1', 'planned:0']);
-  expect(html).toContain('title="Effort: own and Sub Cards — 6">6</strong>');
+  expect(html).toContain('>1 of 3</span>');
+  expect(html).toContain('1 of 3 accepted; segment length is Sub Card effort');
+  expect(html).not.toContain('catalog-card-effort');
 });
 
-// 2026-11-09: a Doc tile has one band row (type icon, questions, word count) and opens on the document's text.
-it('shows the Doc type, questions and word count in one band row and opens the face on the document text', () => {
+it('names Doc and open questions without passive glyphs and keeps the document excerpt', () => {
   // Its own hash: tiles remember text-derived values per card revision, and other tests render card:tile with other text.
   const doc: Partial<CatalogCard> = { kind: 'doc', state: null, sourceHash: 'doc-page', markdown: 'Watch a new player arrive.\n\n## Working notes\nCan they find the lantern?', openQuestions: [{ text: 'Question?', taskRef: null }] };
   const html = renderTile(doc);
-  const identity = html.slice(html.indexOf('<div class="deck-card-identity">'));
-  expect(identity).toContain('class="deck-card-doc-kind" role="img" title="Doc Card" aria-label="Doc Card"');
-  expect(identity).toContain('aria-label="Open questions: 1"');
-  expect(identity).toContain('class="deck-card-doc-words" title="Word count: 13" aria-label="Word count: 13">13w</strong>');
+  expect(html).toContain('class="deck-card-kind-name">Doc</span>');
+  expect(html).toContain('>Questions: 1</span>');
+  expect(html).not.toContain('deck-card-doc-words');
+  expect(html).not.toContain('lucide-notebook');
   expect(html).not.toContain('Markdown');
   expect(html).toContain('<span class="deck-card-doc-excerpt" aria-hidden="true"><span>Watch a new player arrive.</span><b>Working notes</b><span>Can they find the lantern?</span></span>');
-  expect(html).toContain('class="deck-card-owner-medallion" title="Owner: Alex"');
+  expect(html).toContain('class="deck-card-owner" title="Owner: Alex"');
+  expect(html).toContain('card-owner-avatar');
   expect(renderTile({ kind: 'task' })).not.toContain('deck-card-doc-excerpt');
   setLang('ru');
   const russian = renderTile(doc);
-  expect(russian).toContain('aria-label="Открытых вопросов: 1"');
-  expect(russian).toContain('aria-label="Число слов: 13">13 сл.</strong>');
+  expect(russian).toContain('>Вопросов: 1</span>');
+  expect(russian).toContain('class="deck-card-kind-name">Doc</span>');
 });
 
-// 2026-11-09: a finished Hero shows a localized done medallion in the owner's place; an unfinished one keeps its owner.
-it('marks a Hero whose Sub Cards are all accepted with a done medallion instead of the owner', () => {
+it('names a finished Hero count and preserves its owner in both completion states', () => {
   const hero: CatalogCard = { id: 'card:hero', kind: 'hero', title: 'Hero title', path: 'cards/hero.md', version: null, state: null, owner: 'Alex',
     markdown: 'Hero text.', sourceHash: 'hash', range: null, deckId: 'deck', trackIds: [], parentId: null };
   const child = (state: CatalogCard['state']): CatalogCard => ({ ...hero, id: 'card:child', kind: 'task', title: 'Child', path: 'cards/child.md', state, parentId: hero.id });
@@ -94,13 +99,15 @@ it('marks a Hero whose Sub Cards are all accepted with a done medallion instead 
     selected={false} checked={false} selectionActive={false} disabled={false} onOpen={noop} onToggle={noop} onFamilyOpen={noop} />);
   const done = render([child('done')]);
   expect(done).toContain('is-family-done');
-  expect(done).toContain('class="deck-card-owner-medallion deck-card-done-medallion" role="img" title="Hero done: all Sub Cards accepted"');
-  expect(done).not.toContain('title="Owner: Alex"');
+  expect(done).toContain('>1 of 1</span>');
+  expect(done).toContain('1 of 1 accepted');
+  expect(done).toContain('title="Owner: Alex"');
+  expect(done).not.toContain('deck-card-done-medallion');
   const started = render([child('started')]);
   expect(started).not.toContain('deck-card-done-medallion');
   expect(started).toContain('title="Owner: Alex"');
   setLang('ru');
-  expect(render([child('done')])).toContain('title="Hero выполнена: все Sub Cards приняты"');
+  expect(render([child('done')])).toContain('1 из 1 принято');
 });
 
 // 2026-11-09: a Hero without Task Sub Cards marked done by hand wears the same done look as a finished family.
@@ -113,7 +120,9 @@ it('marks a Hero without Task Sub Cards done by its own mark', () => {
   const done = render(hero);
   expect(done).toContain('is-family-done');
   expect(done).not.toContain('deck-state-accepted');
-  expect(done).toContain('class="deck-card-owner-medallion deck-card-done-medallion" role="img" title="Hero done"');
+  expect(done).toContain('Hero done');
+  expect(done).toContain('>Done</span>');
+  expect(done).toContain('deck-card-owner');
   expect(render({ ...hero, state: null })).not.toContain('is-family-done');
 });
 
@@ -127,7 +136,56 @@ it('does not call a Hero with only live Doc Sub Cards empty or count Docs as Tas
   const withDoc = render([doc('card:doc')]);
   expect(withDoc).not.toContain('No Sub Cards');
   expect(withDoc).not.toContain('sub-card-progress');
-  expect(render([doc('card:archived', { archived: true }), doc('card:deleted', { deleted: true })])).toContain('No Sub Cards');
+  const empty = render([doc('card:archived', { archived: true }), doc('card:deleted', { deleted: true })]);
+  expect(empty).not.toContain('sub-card-progress');
+  expect(empty).not.toContain('No Sub Cards');
+  expect(empty).toContain('deck-card-family-count');
+});
+
+it('uses readable localized workflow labels and keeps the state and due date in the opener name', () => {
+  setLang('ru');
+  for (const [state, label] of [['not-started', 'Не начата'], ['started', 'В работе'], ['review', 'Приёмка'], ['done', 'Принято']] as const) {
+    const html = renderTile({ state });
+    expect(html).toContain('>' + label + '</span>');
+    expect(html).toContain('aria-label="Открыть: Project title, Task, ' + label);
+    expect(html).not.toMatch(/lucide-(hourglass|eye|play|check)/);
+  }
+  expect(renderTile({ state: 'discussing' })).toContain('>Обсуждаем</span>');
+  expect(renderTile({ dueDate: '2020-01-01' })).toContain('>Просрочено</span>');
+  expect(renderTile({ dueDate: '2020-01-01' })).toContain('Срок: 01.01.2020');
+});
+
+it('suppresses only known group context, retaining deadlines, lifecycle and the accessible workflow', () => {
+  const grouped = renderTile({ state: 'review', dueDate: '2020-01-01' }, 'state');
+  expect(grouped).not.toContain('>Review</span>');
+  expect(grouped).toContain('Task, Review');
+  expect(grouped).toContain('>Overdue</span>');
+  expect(renderTile({ deleted: true }, 'state')).toContain('>In Trash</span>');
+  expect(renderTile({ priority: 'high' })).toContain('>High</span>');
+  expect(renderTile({ priority: 'high' }, 'priority')).not.toContain('>High</span>');
+  expect(renderTile({ priority: 'low' })).not.toContain('deck-card-priority');
+  expect(renderTile({ priority: 'medium' })).not.toContain('deck-card-priority');
+  const shared = renderTile({ tags: ['world', 'light'] }, undefined, undefined, ['world']);
+  expect(shared).toContain('tags: world, light');
+  expect(shared).toContain('>#light</span>');
+  expect(shared).not.toContain('>#world</span>');
+  expect(renderTile({ tags: ['world'] }, undefined, undefined, ['world'])).not.toContain('card-tag-summary');
+});
+
+it('preserves an estimate of zero and leaves a missing estimate empty', () => {
+  expect(renderTile({ effort: 0 })).toContain('Est. <b>0</b>');
+  expect(renderTile({ effort: null })).not.toContain('deck-card-effort');
+  expect(renderTile()).not.toContain('deck-card-effort');
+});
+
+it('treats the deck calendar day as an invalidation token rather than an ISO date', () => {
+  vi.useFakeTimers();
+  vi.setSystemTime(new Date(2026, 10, 11, 12));
+  try {
+    const html = renderTile({ dueDate: '2026-11-12' }, undefined, new Date().toDateString());
+    expect(html).toContain('>Due 11/12</span>');
+    expect(html).not.toContain('>Overdue</span>');
+  } finally { vi.useRealTimers(); }
 });
 
 // 2026-11-09: Sub Cards without a deck are an indication only; the panel counts them in its heading and marks each row.

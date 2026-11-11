@@ -66,8 +66,9 @@ it.each(['deckmate', 'freetion'])('observes %s registry create/change/atomic rep
   onChange.mockClear();
   await writeFile(filename + '.tmp', '# Temporary\n');
   await writeFile(path.join(path.dirname(filename), 'binary.png'), Buffer.from([1, 2, 3]));
-  await new Promise(resolve => setTimeout(resolve, 250));
-  expect(onChange).not.toHaveBeenCalled();
+  await writeFile(filename, '# Registry after ignored files\n');
+  await vi.waitFor(() => expect(onChange).toHaveBeenCalledWith(relative), { timeout: 3000, interval: 10 });
+  expect(onChange).toHaveBeenCalledTimes(1);
 }, 15_000);
 
 it('delivers upload, removal and legacy external changes over WebSocket in the existing client format', async () => {

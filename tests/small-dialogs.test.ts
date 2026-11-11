@@ -184,4 +184,44 @@ describe.skipIf(!browserPath)('small dialogs share the Decks-home dialog grammar
     for (const type of ['keyDown', 'keyUp']) await page.send('Input.dispatchKeyEvent', { type, key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 });
     await until(`!document.querySelector('.shortcuts-panel')`);
   });
+
+  it('keeps the full shortcuts header and footer inside a short phone while only the body scrolls', async () => {
+    for (const theme of ['light', 'dark']) for (const lang of ['en', 'ru']) {
+      await open('shortcuts', { theme, lang }, 375);
+      await page.send('Emulation.setDeviceMetricsOverride', { width: 375, height: 600, deviceScaleFactor: 1, mobile: false });
+      await page.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 1 });
+      try {
+        const measure = () => page.evaluate(`(() => {
+          const box = selector => { const e = document.querySelector(selector), r = e.getBoundingClientRect();
+            return { top:r.top, bottom:r.bottom, left:r.left, right:r.right, height:r.height, width:r.width, scrollHeight:e.scrollHeight, clientHeight:e.clientHeight }; };
+          return { panel:box('.shortcuts-panel'), head:box('.dialog-head'), title:box('.dialog-title'), close:box('.shortcuts-panel-close'),
+            body:box('.dialog-body'), foot:box('.shortcuts-panel-foot') };
+        })()`);
+        const before = await measure();
+        expect(before.panel.top).toBeGreaterThanOrEqual(12);
+        expect(before.panel.bottom).toBeLessThanOrEqual(588);
+        expect(before.panel.left).toBeGreaterThanOrEqual(8);
+        expect(before.panel.right).toBeLessThanOrEqual(367);
+        for (const part of [before.head, before.title, before.close, before.foot]) {
+          expect(part.top).toBeGreaterThanOrEqual(before.panel.top);
+          expect(part.bottom).toBeLessThanOrEqual(before.panel.bottom);
+        }
+        expect(before.close.width).toBeGreaterThanOrEqual(44);
+        expect(before.close.height).toBeGreaterThanOrEqual(44);
+        expect(before.body.top).toBeGreaterThanOrEqual(before.head.bottom);
+        expect(before.body.bottom).toBeLessThanOrEqual(before.foot.top);
+        expect(before.body.scrollHeight).toBeGreaterThan(before.body.clientHeight);
+        await page.evaluate(`document.querySelector('.dialog-body').scrollTop = 100000`);
+        const after = await measure();
+        expect(after.head).toEqual(before.head);
+        expect(after.foot).toEqual(before.foot);
+        expect(await page.evaluate(`document.querySelector('.dialog-body').scrollTop`)).toBeGreaterThan(0);
+        for (const type of ['keyDown', 'keyUp']) await page.send('Input.dispatchKeyEvent', { type, key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 });
+        await until(`!document.querySelector('.shortcuts-panel')`);
+        await until(`document.activeElement.matches('.shortcuts-help-trigger')`);
+      } finally {
+        await page.send('Emulation.setTouchEmulationEnabled', { enabled: false });
+      }
+    }
+  });
 });

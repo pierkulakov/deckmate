@@ -5,10 +5,12 @@ import { setLang } from '../../client/i18n.ts';
 import type { CatalogCard, CatalogView } from '../../src/catalog-contracts.ts';
 import type { WorkspaceSnapshot } from '../../src/workspace-contracts.ts';
 import '../../client/styles.css';
+import '../../client/surface.css';
 import '../../client/card-material.css';
 import '../../client/motion.css';
 
 const queued = new URLSearchParams(location.search).has('queue');
+const readOnly = new URLSearchParams(location.search).has('readonly');
 document.documentElement.classList.add('dark');
 const cards: CatalogCard[] = Array.from({ length: queued ? 9 : 7 }, (_, index) => ({
   id: `card:hand-${index}`, kind: 'task', title: `Hand task ${index}`, path: `cards/${index}.md`, version: null,
@@ -17,21 +19,31 @@ const cards: CatalogCard[] = Array.from({ length: queued ? 9 : 7 }, (_, index) =
   run: 'run', milestone: 'milestone', dueDate: '2026-11-13',
 }));
 cards[0].title = 'Design the map room';
+cards[0].bookmarked = true;
+cards[0].tags = ['sound'];
 cards[1].title = 'Paint the harbor color script';
+cards[1].owner = 'Maya';
 Object.assign(cards[2], { title: 'Moonwake Lantern', kind: 'hero', state: null, effort: 13 });
 cards.push({ ...cards[0], id: 'card:done', title: 'Done card', state: 'done', handOrder: { leo: 100 } });
+cards.push({ ...cards[0], id: 'card:done-maya', title: 'Maya done', owner: 'Maya', state: 'done', handMemberIds: [] });
 const catalog: CatalogView = {
   rootIdentity: 'hand-drag-performance', documents: [], cards, spaces: [], decks: [], tracks: [], warnings: [],
   formatLanguage: 'en', manifestHash: 'manifest', optionsHash: 'options', configured: true, indexedAt: '',
-  members: [{ id: 'leo', label: 'Leo', kind: 'human', aliases: [] }],
+  members: [{ id: 'leo', label: 'Leo', kind: 'human', aliases: [] }, { id: 'maya', label: 'Maya', kind: 'human', aliases: [] }],
+  projectTags: [{ name: 'sound', color: '#abcdef', emoji: '🔈' }],
   runs: [{ id: 'run', number: 1, goal: 'Drag', start: '2026-11-01', end: '2026-11-15' }],
   milestones: [{ id: 'milestone', title: 'Release', date: '2026-11-15', color: '#9258e5' }],
 };
-const snapshot: WorkspaceSnapshot & { token: string } = { projectName: 'Hand drag', source: 'sandbox', writable: true, editMode: 'direct', token: 'test-token',
+const snapshot: WorkspaceSnapshot & { token: string } = { projectName: 'Hand drag', source: 'sandbox', writable: !readOnly, editMode: 'direct', token: 'test-token',
   iteration: { number: 1, goal: '', start: '' } };
 let dateFormats = 0;
 let reorder: string[] = [];
 let writes = 0;
+let bulkWrites = 0;
+let propertyAction: Record<string, unknown> | null = null;
+let failWrites = 0;
+let pauseWrites = false;
+let releaseWrite: (() => void) | undefined;
 const opened: string[] = [];
 Intl.DateTimeFormat = new Proxy(Intl.DateTimeFormat, {
   construct(target, args) { dateFormats++; return Reflect.construct(target, args); },
@@ -115,17 +127,32 @@ function recordDrag(pointerX: number) {
     return result;
   } };
 }
-Object.assign(window, { handDragTest: { reset: () => { dateFormats = 0; }, result: () => ({ dateFormats, reorder, writes, opened }), record: recordDrag } });
+Object.assign(window, { handDragTest: { reset: () => { dateFormats = 0; }, clearOpened: () => { opened.length = 0; }, failWrites: (status: number) => { failWrites = status; }, pauseWrites: () => { pauseWrites = true; }, resumeWrites: () => { pauseWrites = false; releaseWrite?.(); }, result: () => ({ dateFormats, reorder, writes, bulkWrites, opened, propertyAction, cards }), record: recordDrag } });
 window.fetch = async (input, init) => {
   const url = new URL(String(input), location.origin);
   if (url.pathname === '/api/catalog') {
     if (init?.method === 'POST') {
       const action = JSON.parse(String(init.body));
+      if (failWrites) return Response.json({ error: 'Test save failed' }, { status: failWrites });
+      if (pauseWrites) await new Promise<void>(resolve => { releaseWrite = resolve; });
       if (action.action === 'reorder-hand') {
         writes++;
         reorder = action.cards.map((entry: { cardId: string }) => entry.cardId);
         reorder.forEach((id, index) => { cards.find(card => card.id === id)!.handOrder = { leo: index }; });
         catalog.manifestHash = 'after-drop';
+      }
+      if (action.action === 'bulk-edit-cards' && action.change.kind === 'hand') {
+        bulkWrites++;
+        for (const entry of action.cards) {
+          const card = cards.find(item => item.id === entry.cardId)!;
+          const ids = card.handMemberIds ?? [];
+          card.handMemberIds = action.change.mode === 'remove' ? ids.filter(id => id !== action.change.memberId) : [...ids, action.change.memberId];
+        }
+      }
+      if (action.action === 'set-card-properties') {
+        propertyAction = action;
+        const card = cards.find(item => item.id === action.cardId)!;
+        Object.assign(card, { owner: action.owner, priority: action.priority, effort: action.effort });
       }
     }
     return Response.json(catalog);

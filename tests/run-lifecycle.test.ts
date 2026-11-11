@@ -56,31 +56,37 @@ it('finishes with selected categories, preserves the frozen statistics, and neve
   const blocked = await card(root, 'в работе', 'team-1', { dependsOn: [prerequisite] });
   const planned = await card(root, 'план', 'team-1');
   const accepted = await card(root, 'принято', 'team-1', {}, { doneAt: '2026-11-04' });
+  const cancelled = await card(root, 'не делаем', 'team-1');
   const archived = await card(root, 'в работе', 'team-1', {}, { archived: true });
   const separate = await card(root, 'приёмка', 'other-1');
   const originalCard = await readFile(path.join(root, 'cards', review.slice(5) + '.md'));
+  const originalCancelled = await readFile(path.join(root, 'cards', cancelled.slice(5) + '.md'));
   const before = await readRuns(root);
   await applyPlanningEdit(root, { action: 'finish-run', runId: 'team-1', runsHash: before.hash, optionsHash: (await readCardOptions(root)).hash,
     carryOver: { review: true, blocked: false, other: true } });
   const options = (await readCardOptions(root)).options;
   expect(options[review].run).toBe('team-2');
   expect(options[planned].run).toBe('team-2');
-  for (const id of [blocked, accepted, archived]) expect(options[id].run).toBe('team-1');
+  for (const id of [blocked, accepted, cancelled, archived]) expect(options[id].run).toBe('team-1');
   expect(options[separate].run).toBe('other-1');
   const finished = (await readRuns(root)).runs.find(run => run.id === 'team-1')!;
-  expect(finished.statistics).toMatchObject({ tasks: 4, done: 1, effort: 12, doneEffort: 3 });
+  expect(finished.statistics).toMatchObject({ tasks: 5, done: 1, effort: 15, doneEffort: 3 });
   expect(finished.statistics?.completedEffort).toContainEqual({ cardId: accepted, date: '2026-11-04', effort: 3 });
   expect(finished.history).toBeUndefined();
   expect((await readRuns(root)).runs.filter(run => run.configurationId === 'team' && !run.finishedAt)).toHaveLength(2);
   await carryOverExpiredRuns(root);
   expect((await readRuns(root)).runs.find(run => run.id === 'team-1')?.statistics).toEqual(finished.statistics);
   expect(await readFile(path.join(root, 'cards', review.slice(5) + '.md'))).toEqual(originalCard);
+  expect(await readFile(path.join(root, 'cards', cancelled.slice(5) + '.md'))).toEqual(originalCancelled);
 });
 
 it('respects the configured zone/time and carries only when the following period is current', async () => {
   const root = await fixture();
   await save(root, configuration('zone', { finishTime: '00:00', timeZone: 'Pacific/Honolulu' }));
   const moving = await card(root, 'план', 'zone-1');
+  const prerequisite = await card(root, 'в работе', 'zone-1');
+  const cancelled = await card(root, 'не делаем', 'zone-1', { dependsOn: [prerequisite] });
+  const originalCancelled = await readFile(path.join(root, 'cards', cancelled.slice(5) + '.md'));
   vi.setSystemTime(new Date('2026-11-08T09:59:00Z'));
   await maintainRecurringRuns(root);
   expect((await readRuns(root)).runs.find(run => run.id === 'zone-1')?.finishedAt).toBeUndefined();
@@ -94,7 +100,11 @@ it('respects the configured zone/time and carries only when the following period
   const after = await readRuns(root);
   expect(after.runs.map(run => run.id)).toEqual(['zone-1', 'zone-2', 'zone-3']);
   expect(after.runs[0].finishedAt).toBe('2026-11-09T10:00:00.000Z');
-  expect((await readCardOptions(root)).options[moving].run).toBe('zone-2');
+  const options = (await readCardOptions(root)).options;
+  expect(options[moving].run).toBe('zone-2');
+  expect(options[prerequisite].run).toBe('zone-2');
+  expect(options[cancelled].run).toBe('zone-1');
+  expect(await readFile(path.join(root, 'cards', cancelled.slice(5) + '.md'))).toEqual(originalCancelled);
   await maintainRecurringRuns(root);
   expect((await readRuns(root)).runs).toEqual(after.runs);
 });

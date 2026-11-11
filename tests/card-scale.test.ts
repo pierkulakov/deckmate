@@ -40,10 +40,10 @@ describe.skipIf(!browserPath)('card proportions in the real workbench', () => {
         gap: getComputedStyle(first.querySelector('.deck-grid')).columnGap,
         title: font(tile + ' .deck-card-title'), titleBox: box(tile + ' .deck-card-title'),
         strip: box(tile + ' .card-family-trigger'), stripFont: font(tile + ' .card-family-trigger'),
-        band: box(tile + ' .deck-card-band'), bandFont: font(tile + ' .deck-card-task-metrics'),
+        band: box(tile + ' .deck-card-band'), bandFont: font(tile + ' .card-face-status'), status: box(tile + ' .card-face-status'),
         heroBand: box('[data-deck-card="card:scale-0"] .deck-card-band'),
         emptyHeroBand: box('[data-deck-card="card:scale-4"] .deck-card-band'),
-        indicator: box(tile + ' .card-indicator > svg'), effort: box(tile + ' .deck-card-task-metrics svg'), owner: box(tile + ' .deck-card-owner-medallion'),
+        indicator: box(tile + ' .card-indicator > svg'), effort: box(tile + ' .deck-card-effort'), owner: box(tile + ' .deck-card-owner'), ownerFont: font(tile + ' .deck-card-owner .card-owner-avatar'),
         lane: font('.catalog-group-filter'), laneToTile: Math.min(...cards.map(r => r.y)) - label.bottom,
         nextLane: next.querySelector('.catalog-group-filter').getBoundingClientRect().y - Math.max(...cards.map(r => r.bottom)), rule: box('.catalog-group-rule'),
         laneTextToTile: Math.min(...cards.map(r => r.y)) - labelText.bottom,
@@ -65,12 +65,18 @@ describe.skipIf(!browserPath)('card proportions in the real workbench', () => {
         checklist: font('.card-preview-document .check-item'), checklistPitch: checks[1].y - checks[0].y,
         context: box('.card-preview-context .deck-picker-pill'), contextFont: font('.card-preview-context .deck-picker-pill'),
         stateRow: box('.card-preview-state-actions'), stateIcon: box('.card-preview-state-actions svg'),
-        edit: box('.card-content-edit-action'), editFont: font('.card-content-edit-action'), idFont: font('.card-id-chip'), tagFont: font('.card-preview-tags .tag-badge-name'),
-        previewBand: box('.card-preview-material-band'), previewLabel: font('.card-preview-property-shortcut > span'), previewValue: font('.card-preview-property-shortcut > strong'),
+        edit: box('.card-content-edit-action'), editFont: font('.card-content-edit-action'), idVisible: Boolean(document.querySelector('.card-id-chip')), tagFont: font('.card-preview-relations .tag-badge-name'),
+        previewBand: box('.card-preview-material-band'), previewLabel: font('.card-preview-property-shortcut > span'),
+        previewPropertyIcon: box('.card-preview-property-shortcut > svg'), previewPropertyName: document.querySelector('.card-preview-property-shortcut')?.getAttribute('aria-label'),
+        previewValue: font('.card-preview-property-shortcut > strong'),
         previewOwner: box('.card-preview-owner-shortcut'), railIcon: box('.card-preview-action-rail svg'), railPitch: rail[1].y - rail[0].y,
         titlesFit: [...document.querySelectorAll('.catalog-card-task .deck-card-title')].every(title => {
-          const r = title.getBoundingClientRect(), indicator = title.closest('.deck-card').querySelector('.card-indicators').getBoundingClientRect();
-          return title.scrollWidth <= title.clientWidth && r.height <= 51 && r.height % 17 === 0 && r.bottom <= indicator.top;
+          const r = title.getBoundingClientRect(), context = title.closest('.deck-card').querySelector('.deck-card-context').getBoundingClientRect();
+          return title.scrollWidth <= title.clientWidth && r.height <= 51 && r.height % 17 === 0 && r.bottom <= context.top;
+        }),
+        statusFits: [...document.querySelectorAll('.deck-card :is(.card-face-state, .card-face-due, .deck-card-effort)')].every(element => {
+          const r = element.getBoundingClientRect(), band = element.closest('.deck-card-band').getBoundingClientRect();
+          return element.scrollWidth <= element.clientWidth && r.x >= band.x && r.right <= band.right && r.bottom <= band.bottom;
         }),
         footerTextFits: [...document.querySelectorAll('.card-preview-property-shortcut > :is(span, svg, strong)')].every(part => {
           const r = part.getBoundingClientRect(), band = box('.card-preview-material-band'), owner = box('.card-preview-owner-shortcut');
@@ -87,28 +93,30 @@ describe.skipIf(!browserPath)('card proportions in the real workbench', () => {
     expect(measurements.checklist).toEqual(measurements.body);
     expect(measurements.checklistPitch).toBe(34);
     expect(measurements.readingInset).toBe('16px');
-    expect(measurements.previewBand.height).toBe(58);
-    expect(measurements.previewOwner).toMatchObject({ width: 56, height: 56 });
-    expect(measurements.previewOwner.y + 28).toBe(measurements.previewBand.y);
+    expect(measurements.previewBand.height).toBe(44);
+    expect(measurements.previewOwner).toMatchObject({ width: 36, height: 36 });
+    expect(measurements.previewOwner.y + 18).toBe(measurements.previewBand.y);
     expect(measurements.footerTextFits).toBe(true);
     expect(measurements.railIcon).toMatchObject({ width: 20, height: 20 });
-    expect(measurements.railPitch).toBe(36);
-    expect(measurements.rail.x - measurements.preview.x - measurements.preview.width).toBe(12);
-    expect(measurements.railButton.y).toBe(measurements.preview.y);
     expect(measurements.dock.bottom).toBe(measurements.previewBand.y);
     expect(measurements.previewBand.bottom).toBe(measurements.preview.bottom);
     expect(measurements.panels.bottom).toBe(measurements.dock.y);
     expect(measurements.dockControlsOutside).toEqual([]);
     expect(measurements.overflow).toBe(false);
     if (desktop) {
+      expect(measurements.railPitch).toBe(36);
+      expect(measurements.rail.x - measurements.preview.x - measurements.preview.width).toBe(12);
+      expect(measurements.railButton.y).toBe(measurements.preview.y);
       expect(measurements.preview.bottom).toBe(measurements.workspace.bottom - 12);
       expect(measurements.preview.height).toBe(measurements.workspace.bottom - 12 - measurements.preview.y);
       expect(measurements.divider.y).toBe(measurements.shell.y);
       expect(measurements.divider.bottom).toBeGreaterThanOrEqual(measurements.preview.bottom);
       expect(measurements.panelsOverflow).toBe('auto');
     } else {
-      expect(measurements.panelsOverflow).toBe('visible');
-      expect(measurements.scrollable).toBe(0);
+      expect(measurements.panelsOverflow).toBe('auto');
+      expect(measurements.preview.y).toBeLessThanOrEqual(300);
+      expect(measurements.preview.bottom).toBeLessThanOrEqual(measurements.viewport[1]);
+      expect(measurements.railButton.y).toBeLessThan(measurements.preview.y);
     }
   }
   for (const width of [2560, 2000, 1440, 760, 375]) for (const theme of ['dark', 'light']) {
@@ -144,27 +152,30 @@ describe.skipIf(!browserPath)('card proportions in the real workbench', () => {
       expect(measurements.stateIcon).toMatchObject({ width: 16, height: 16 });
       expect(measurements.edit.height).toBe(30);
       expect(measurements.editFont).toEqual(['14px', '600', '16px']);
-      expect(measurements.idFont[0]).toBe('12px');
+      expect(measurements.idVisible).toBe(false);
       expect(measurements.tagFont[0]).toBe('12px');
-      expect(measurements.previewLabel).toEqual(['10px', '700', '10px']);
+      expect(measurements.previewLabel).toBeNull();
+      expect(measurements.previewPropertyIcon).toMatchObject({ width: width === 375 ? 16 : 19, height: width === 375 ? 16 : 19 });
+      expect(measurements.previewPropertyName).toMatch(/^Оценка:/u);
       expect(measurements.previewValue).toEqual(['15px', '600', '20px']);
       // 2026-11-10: tile dimensions remain shared across views.
       expect(measurements.tile).toMatchObject({ width: 115, height: 147 });
       expect(measurements.gap).toBe('16px');
       expect(measurements.title).toEqual(['14px', '500', '17px']);
-      expect(measurements.titleBox.height).toBe(51);
+      expect(measurements.titleBox.height).toBe(34);
       expect(measurements.strip.height).toBe(18);
       expect(measurements.stripFont).toEqual(['9.5px', '600', '14px']);
       expect(measurements.titleBox.y - measurements.strip.bottom).toBe(7);
       expect(measurements.titleBox.x - measurements.tile.x).toBe(8);
-      expect(measurements.band.height).toBe(28);
-      expect(measurements.bandFont).toEqual(['14px', '600', '21px']);
-      expect(measurements.heroBand.height).toBe(39);
-      expect(measurements.emptyHeroBand.height).toBe(39);
-      expect(measurements.indicator).toMatchObject({ width: 13, height: 13 });
-      expect(measurements.effort).toMatchObject({ width: 16, height: 16 });
-      expect(measurements.owner.width).toBe(27);
-      expect(measurements.owner.height).toBeCloseTo(28.8, 0);
+      expect(measurements.band.height).toBe(Math.max(27, measurements.status.height + 9));
+      expect(measurements.bandFont).toEqual(['12px', '500', '16px']);
+      expect(measurements.heroBand.height).toBe(35);
+      expect(measurements.emptyHeroBand.height).toBe(27);
+      expect(measurements.indicator).toBeUndefined();
+      expect(measurements.effort.height).toBe(16);
+      expect(measurements.owner).toMatchObject({ width: 24, height: 24 });
+      expect(measurements.ownerFont).toEqual(['12px', '600', '12px']);
+      expect(measurements.statusFits).toBe(true);
       expect(measurements.lane).toEqual(['13px', '500', '14px']); // 2026-11-10: 13px lane labels and a 500 control label follow the Foil Rule.
       if (width >= 1440) {
         expect(measurements.laneTextToTile).toBe(24);
@@ -274,7 +285,7 @@ describe.skipIf(!browserPath)('card proportions in the real workbench', () => {
     expect(page.errors).toEqual([]);
   }, 20000);
 
-  it.each([760, 375])('keeps short and long sheets in the page flow at %spx', async width => {
+  it.each([760, 375])('pins short and long sheets in the phone focus shell at %spx', async width => {
     await page.send('Emulation.setDeviceMetricsOverride', { width, height: 900, deviceScaleFactor: 1, mobile: false });
     await open();
     await selectCard();
@@ -284,8 +295,11 @@ describe.skipIf(!browserPath)('card proportions in the real workbench', () => {
     await selectCard();
     const long = await measure();
     expectColumn(long, false);
-    expect(long.preview.height).toBeGreaterThan(short.preview.height + 1000);
-    expect(long.preview.bottom).toBeGreaterThan(900);
+    expect(long.preview).toEqual(short.preview);
+    expect(long.scrollable).toBeGreaterThan(1000);
+    await page.evaluate(`document.querySelector('.card-preview-panels').scrollTop = 10000`);
+    expect(await page.evaluate(`document.querySelector('.card-preview-panels').scrollTop`)).toBeGreaterThan(1000);
+    expect((await measure()).dock).toEqual(long.dock);
     expect(page.errors).toEqual([]);
   }, 20000);
 
@@ -321,7 +335,7 @@ describe.skipIf(!browserPath)('card proportions in the real workbench', () => {
         const title = getComputedStyle(root.querySelector('.card-preview-title'));
         const body = getComputedStyle(root.querySelector('.markdown'));
         return [band.height, owner.width, owner.height, title.fontSize, title.fontWeight, body.fontSize, body.lineHeight];
-      })()`)).toEqual([58, 56, 56, '22px', '600', '16px', '22px']);
+      })()`)).toEqual([44, 36, 36, '22px', '600', '16px', '22px']);
       if (process.env.DECKMATE_SCALE_CAPTURE) {
         const destination = path.resolve('.deckmate/inbox/ux/card-scale', 'column-' + process.env.DECKMATE_SCALE_CAPTURE + '-hero-' + width + '-' + theme + '.png');
         await mkdir(path.dirname(destination), { recursive: true });
@@ -339,6 +353,9 @@ describe.skipIf(!browserPath)('card proportions in the real workbench', () => {
       await page.evaluate(`document.querySelector('.workspace-main').scrollTop = 0`);
       await waitForLayout(page.evaluate, '[data-virtual-card-grid]');
       const grid = `[...document.querySelectorAll('[data-virtual-card-grid]')].sort((a, b) => b.clientHeight - a.clientHeight)[0]`;
+      await page.evaluate(`(${grid}).scrollIntoView({ block: 'start', behavior: 'instant' })`);
+      await page.until(`Boolean((${grid}).querySelector('[data-virtual-card-cell]'))`);
+      await waitForLayout(page.evaluate, '[data-virtual-card-grid], [data-virtual-card-cell]');
       for (const end of [false, true]) {
         if (end) {
           await page.evaluate(`(() => { const grid = ${grid}; const scroller = document.querySelector('.workspace-main'); scroller.scrollTop += grid.getBoundingClientRect().bottom - innerHeight; })()`);
@@ -361,6 +378,39 @@ describe.skipIf(!browserPath)('card proportions in the real workbench', () => {
         expect(result.rowsFit).toBe(true);
       }
     }
+    expect(page.errors).toEqual([]);
+  }, 20000);
+
+  it('opens tile settings with the keyboard, returns focus with Escape, and provides a separate 44px touch target', async () => {
+    await page.send('Emulation.setDeviceMetricsOverride', { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false });
+    await open();
+    const tile = '[data-deck-card="card:scale-1"]';
+    await page.callFunction(`selector => document.querySelector(selector + ' .deck-card-open').focus()`, tile);
+    async function key(key: string, code: number) {
+      for (const type of ['keyDown', 'keyUp']) await page.send('Input.dispatchKeyEvent', { type, key, code: key, windowsVirtualKeyCode: code,
+        text: type === 'keyDown' && key === 'Enter' ? '\r' : undefined });
+    }
+    await key('Tab', 9);
+    expect(await page.evaluate(`document.activeElement.className`)).toBe('deck-card-settings');
+    await page.until(`getComputedStyle(document.activeElement).opacity === '1'`);
+    expect(await page.evaluate(`getComputedStyle(document.activeElement).opacity`)).toBe('1');
+    await key('Enter', 13);
+    await page.until(`Boolean(document.querySelector('.card-quick-settings'))`);
+    expect(await page.evaluate(`document.querySelectorAll('.card-quick-tabs [role="tab"]').length`)).toBe(6);
+    await key('Escape', 27);
+    await page.until(`!document.querySelector('.card-quick-settings')`);
+    await page.until(`document.activeElement.className === 'deck-card-settings'`);
+    expect(await page.evaluate(`document.activeElement.className`)).toBe('deck-card-settings');
+    await page.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 1 });
+    await page.send('Emulation.setDeviceMetricsOverride', { width: 375, height: 900, deviceScaleFactor: 1, mobile: false });
+    await open();
+    const target = await page.callFunction(`selector => {
+      const button = document.querySelector(selector + ' .deck-card-settings'), r = button.getBoundingClientRect();
+      const card = button.closest('.deck-card').getBoundingClientRect();
+      return { width:r.width, height:r.height, opacity:getComputedStyle(button).opacity, inside:r.x >= card.x && r.right <= card.right && r.y >= card.y && r.bottom <= card.bottom };
+    }`, tile);
+    expect(target).toEqual({ width: 44, height: 44, opacity: '1', inside: true });
+    await page.send('Emulation.setTouchEmulationEnabled', { enabled: false });
     expect(page.errors).toEqual([]);
   }, 20000);
 });

@@ -56,7 +56,8 @@ function render(scene: 'family' | 'cover' | 'settings' | 'gallery' | 'capture', 
   if (scene === 'capture') {
     document.documentElement.classList.toggle('dark', options.theme !== 'light');
     Object.assign(capture, { response: options.response ?? 'success', failReads: Boolean(options.failReads), holdReads: false, reads: 0 });
-    const catalog = catalogOf((options.decks as DeckSpec[]) ?? [{ id: 'deck:inbox', title: 'Inbox', kind: 'task' }], 'deck:inbox');
+    const inboxDeckId = 'inboxDeckId' in options ? options.inboxDeckId as string | null : 'deck:inbox';
+    const catalog = catalogOf((options.decks as DeckSpec[]) ?? [{ id: 'deck:inbox', title: 'Inbox', kind: 'task' }], inboxDeckId);
     if (options.spaces) catalog.spaces = options.spaces as CatalogView['spaces'];
     window.fetch = async (input, init) => {
       const url = new URL(String(input), location.origin);
@@ -70,15 +71,18 @@ function render(scene: 'family' | 'cover' | 'settings' | 'gallery' | 'capture', 
       const action = JSON.parse(String(init.body)) as CatalogAction;
       actions.push(action);
       if (capture.response === 'rejected') return Response.json({ message: 'Capture rejected by server' }, { status: 400 });
+      if (capture.response === 'conflict' || capture.response === 'conflict-assigned') {
+        if (capture.response === 'conflict-assigned' && action.action === 'set-inbox-deck') catalog.inboxDeckId = action.deckId;
+        return Response.json({ message: 'Catalog changed externally' }, { status: 409 });
+      }
       if (capture.response === 'lost-unsaved') throw new TypeError('Failed to fetch');
+      if (action.action === 'set-inbox-deck') catalog.inboxDeckId = action.deckId;
       if (action.action === 'create-card' && !catalog.cards.some(card => card.id === action.cardId)) {
         catalog.cards.push({ id: action.cardId, kind: 'task', title: action.title, markdown: action.markdown,
           path: `cards/${action.cardId}.md`, state: null, owner: null, version: null, range: null, sourceHash: 'saved-hash',
           deckId: action.deckId, trackIds: [], parentId: null });
         created.push({ cardId: action.cardId, deckId: action.deckId ?? '' });
       }
-      if (action.action === 'create-deck') catalog.decks.push({ id: 'deck:inbox', title: action.title, kind: action.kind,
-        spaceId: action.spaceId, description: '', color: '#5258b9', icon: 'tasks' });
       catalog.manifestHash += '-saved';
       if (capture.response === 'lost') throw new TypeError('Failed to fetch');
       const warning = 'Часть изменений записана, но индекс не обновлён. Перечитайте проект перед продолжением.';

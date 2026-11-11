@@ -4,7 +4,6 @@ import { createHash } from 'node:crypto';
 import { cp, mkdir, mkdtemp, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { createServer } from 'node:net';
 import { parseEnv } from 'node:util';
 import type { FastifyInstance } from 'fastify';
 import { createApp } from '../server/app.ts';

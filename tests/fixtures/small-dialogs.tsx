@@ -17,7 +17,7 @@ const opened: string[] = [];
 
 const catalog: CatalogView = {
   rootIdentity: 'small-dialogs', documents: [], cards: [], tracks: [], warnings: [], formatLanguage: 'en',
-  manifestHash: 'manifest-hash', configured: true, indexedAt: '', runs: [], milestones: [],
+  manifestHash: 'manifest-hash', configured: true, indexedAt: '', runs: [], milestones: [], inboxDeckId: 'deck:inbox',
   spaces: [{ id: 'space:tasks', title: 'Tasks', kind: 'tasks' }],
   decks: [{ id: 'deck:inbox', title: 'Inbox', kind: 'task', spaceId: 'space:tasks', description: '', icon: 'box', color: '#5258b9' }],
   members: [

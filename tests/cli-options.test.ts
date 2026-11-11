@@ -75,7 +75,7 @@ it('still accepts the options a command declares, wherever they stand', async ()
 it('passes option validation before command work, so a valid option reaches the command itself', async () => {
   const directory = await mkdtemp(path.join(tmpdir(), 'deckmate-cli-options-'));
   directories.push(directory);
-  const failure = await runProject(['next', '--member', 'glm', '--data', directory]).then(result => {
+  const failure = await runProject(['next', '--member', 'glm', '--data', directory]).then(() => {
     throw new Error('expected a rejection');
   }, error => error);
   expect(failure.code).toBe(1);

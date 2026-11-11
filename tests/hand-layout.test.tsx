@@ -51,8 +51,10 @@ it.each(['en', 'ru'] as const)('%s: the picker keeps the full selected name in i
   }
 });
 
-it('does not add a member picker to All Hands', () => {
+it('keeps the planning member explicit in All Hands', () => {
   const html = renderHand('?hands=all');
-  expect(html).not.toContain('hand-member-picker');
+  expect(html).toContain('hand-member-picker');
+  expect(html).toContain('aria-label="Whose Hand"');
+  expect(html).toContain('To change a Hand, turn off All Hands.');
   expect(html).toContain(longName);
 });

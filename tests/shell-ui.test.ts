@@ -36,13 +36,14 @@ describe.skipIf(!browserPath)('application shell (browser)', () => {
     await delay(80);
   }
   async function key(key: string) {
-    for (const type of ['keyDown', 'keyUp']) await send('Input.dispatchKeyEvent', { type, key, code: key, windowsVirtualKeyCode: key === 'Escape' ? 27 : 13, text: type === 'keyDown' && key === 'Enter' ? '\r' : undefined });
+    const keyCodes: Record<string, number> = { Escape: 27, Enter: 13, ArrowUp: 38, ArrowDown: 40, ' ': 32 };
+    for (const type of ['keyDown', 'keyUp']) await send('Input.dispatchKeyEvent', { type, key, code: key === ' ' ? 'Space' : key, windowsVirtualKeyCode: keyCodes[key], text: type === 'keyDown' && key === 'Enter' ? '\r' : undefined });
     await delay(100);
   }
   async function render(scene = 'app', options: object = {}, width = 375) {
     await send('Emulation.setDeviceMetricsOverride', { width, height: width === 375 ? 812 : 800, deviceScaleFactor: 1, mobile: false });
     await evaluate(`window.shellTest.render(${JSON.stringify(scene)}, ${JSON.stringify(options)})`);
-    await until(scene === 'bulk' ? `Boolean(document.querySelector('.bulk-actions'))` : `Boolean(document.querySelector('.global-search-field input') && document.querySelector('.catalog-view, .planning-view'))`);
+    await until(scene === 'bulk' ? `Boolean(document.querySelector('.bulk-actions'))` : `Boolean(document.querySelector('.global-search-field input') && document.querySelector('.catalog-view, .planning-view, .hand-view'))`);
     await evaluate('document.fonts.ready');
   }
   async function workspace(options: object = {}, width = 1280) {
@@ -50,6 +51,11 @@ describe.skipIf(!browserPath)('application shell (browser)', () => {
     await click('.mission-control-trigger');
     await until(`Boolean(document.querySelector('.mission-control-workspace-add:not(:disabled)'))`);
     await evaluate(`Promise.all(document.querySelector('.mission-control').getAnimations().map(animation => animation.finished))`);
+  }
+  async function search(query: string) {
+    await evaluate(`(()=>{const trigger=document.querySelector('.global-search-trigger');if(trigger?.getBoundingClientRect().width && trigger.getAttribute('aria-expanded')==='false')trigger.click()})()`);
+    await evaluate(`(()=>{const input=document.querySelector('.global-search input');input.focus();Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(input,${JSON.stringify(query)});input.dispatchEvent(new Event('input',{bubbles:true}))})()`);
+    await until(`Boolean(document.querySelector('.global-search-pop'))`);
   }
   async function workspaceLayoutFailures() {
     return evaluate(`(() => {
@@ -101,12 +107,180 @@ describe.skipIf(!browserPath)('application shell (browser)', () => {
     await session.close();
   }, 20000);
 
+  it('C02 keeps notifications out of the workspace until requested and restores the entry focus', async () => {
+    await render('app', { notifications: true }, 375);
+    await until('window.shellTest.notificationCalls > 0');
+    expect(await evaluate(`document.querySelector('.notifications-corner') === null`)).toBe(true);
+    expect(await evaluate(`document.querySelector('.notifications-trigger')?.textContent.includes('9')`)).toBe(true);
+    await click('.notifications-trigger');
+    await until(`Boolean(document.querySelector('.notifications-panel'))`);
+    await key('Escape');
+    expect(await evaluate(`!document.querySelector('.notifications-panel') && document.activeElement.matches('.notifications-trigger')`)).toBe(true);
+    await render('app', {}, 375);
+    await until('window.shellTest.notificationCalls > 0');
+    expect(await evaluate(`!document.querySelector('.notifications-panel,.notifications-corner,.notifications-trigger .page-number')`)).toBe(true);
+  });
+
+  it.each(['members', 'csv', 'notifications'])('F03 closes the %s picker before its dialog and restores focus only after the second Escape', async panel => {
+    await render('app', { notifications: true, searchMetadata: true }, 375);
+    const selector = { members: '.members-editor', csv: '.csv-import', notifications: '.notifications-panel' }[panel];
+    const trigger = panel === 'notifications' ? '.notifications-trigger' : '.mission-control-trigger';
+    async function openDialog() {
+      await click(trigger);
+      if (panel !== 'notifications') await click(`.mission-control-menu > button:nth-child(${panel === 'members' ? 2 : 3})`);
+      await until(`Boolean(document.querySelector('${selector}'))`);
+    }
+    await openDialog();
+    if (panel === 'csv') {
+      await until(`Boolean(document.querySelector('.csv-import input[type="file"]:not(:disabled)'))`);
+      await evaluate(`(() => {
+        const input = document.querySelector('.csv-import input[type="file"]');
+        const transfer = new DataTransfer();
+        transfer.items.add(new File(['Title;Type\\nRetained import;Task'], 'escape.csv', { type: 'text/csv' }));
+        input.files = transfer.files; input.dispatchEvent(new Event('change', { bubbles: true }));
+      })()`);
+    }
+    await until(`Boolean(document.querySelector('${selector} select:not(:disabled)'))`);
+    await evaluate(`document.querySelector('${selector} select').focus()`);
+    await key('Enter');
+    await until(`Boolean(document.querySelector('${selector} select:open'))`);
+    await key('Escape');
+    expect(await evaluate(`Boolean(document.querySelector('${selector}'))`)).toBe(true);
+    expect(await evaluate(`!document.querySelector('select:open') && document.activeElement.matches('${selector} select')`)).toBe(true);
+    await key('Escape');
+    await until(`!document.querySelector('${selector}')`);
+    expect(await evaluate(`document.activeElement.matches('${trigger}')`)).toBe(true);
+    if (panel === 'csv') {
+      await openDialog();
+      expect(await evaluate(`document.querySelector('.csv-import-preview').textContent.includes('Retained import')`)).toBe(true);
+      await key('Escape');
+    }
+  });
+
+  it.each([375, 1440])('F04 switches global panels exclusively at %s px without returning focus to the previous entry', async width => {
+    for (const theme of ['dark', 'light']) {
+      await render('app', { notifications: true, theme }, width);
+      await click('.level-badge');
+      await until(`document.activeElement.matches('.level-panel h2')`);
+      await click('.notifications-trigger');
+      await until(`Boolean(document.querySelector('.notifications-panel'))`);
+      expect(await evaluate(`!document.querySelector('.level-panel') && !document.documentElement.hasAttribute('data-level-panel')`)).toBe(true);
+      expect(await evaluate(`Boolean(document.activeElement.closest('.notifications-panel'))`)).toBe(true);
+      expect(await evaluate(`getComputedStyle(document.querySelector('.workspace-main')).marginRight`)).toBe('0px');
+      await click('.level-badge');
+      await until(`Boolean(document.querySelector('.level-panel'))`);
+      await waitForLayout(evaluate, '.level-panel');
+      expect(await evaluate(`!document.querySelector('.notifications-panel') && document.activeElement.matches('.level-panel h2')`)).toBe(true);
+      for (const method of ['Escape', 'close']) {
+        if (method === 'close') await click('.level-panel-head button');
+        else await key('Escape');
+        expect(await evaluate(`!document.querySelector('.level-panel') && document.activeElement.matches('.level-badge')`)).toBe(true);
+        await click('.notifications-trigger');
+        await until(`Boolean(document.querySelector('.notifications-panel'))`);
+        if (method === 'close') await click('.notifications-close');
+        else await key('Escape');
+        await until(`!document.querySelector('.notifications-panel')`);
+        expect(await evaluate(`document.activeElement.matches('.notifications-trigger')`)).toBe(true);
+        if (method === 'Escape') { await click('.level-badge'); await until(`Boolean(document.querySelector('.level-panel'))`); }
+      }
+    }
+  });
+
+  it('A08 cancels hold-to-dismiss when keyboard focus leaves the button', async () => {
+    await evaluate(`['owned', 'watching', 'due'].forEach(id => localStorage.removeItem('deckmate-notifications-' + id + '-collapsed:maya'))`);
+    await render('app', { notifications: true }, 1280);
+    await evaluate(`document.querySelector('.notifications-trigger')?.click()`);
+    await until(`Boolean(document.querySelector('.notification-hold'))`);
+    await evaluate(`window.dismissCalls=0;window.originalFetch=fetch;window.fetch=(input,init)=>{if(String(input).includes('/api/notifications/dismiss'))window.dismissCalls++;return window.originalFetch(input,init)};document.querySelector('.notification-hold').focus()`);
+    try {
+      await send('Input.dispatchKeyEvent', { type: 'keyDown', key: ' ', code: 'Space', windowsVirtualKeyCode: 32 });
+      await send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Tab', code: 'Tab', windowsVirtualKeyCode: 9 });
+      await send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Tab', code: 'Tab', windowsVirtualKeyCode: 9 });
+      await send('Input.dispatchKeyEvent', { type: 'keyUp', key: ' ', code: 'Space', windowsVirtualKeyCode: 32 });
+      await delay(900);
+      expect(await evaluate('window.dismissCalls')).toBe(0);
+      await evaluate(`document.querySelector('.notification-hold').focus()`);
+      await send('Input.dispatchKeyEvent', { type: 'keyDown', key: ' ', code: 'Space', windowsVirtualKeyCode: 32 });
+      await evaluate(`window.dispatchEvent(new Event('blur'))`);
+      await delay(900);
+      expect(await evaluate('window.dismissCalls')).toBe(0);
+      await send('Input.dispatchKeyEvent', { type: 'keyUp', key: ' ', code: 'Space', windowsVirtualKeyCode: 32 });
+      await evaluate(`document.querySelector('.notification-hold').focus()`);
+      await send('Input.dispatchKeyEvent', { type: 'keyDown', key: ' ', code: 'Space', windowsVirtualKeyCode: 32 });
+      await delay(900);
+      await send('Input.dispatchKeyEvent', { type: 'keyUp', key: ' ', code: 'Space', windowsVirtualKeyCode: 32 });
+      expect(await evaluate('window.dismissCalls')).toBe(1);
+    } finally { await evaluate('window.fetch=window.originalFetch'); }
+  });
+
+  it.each(['members', 'csv'])('A09 returns %s to the main menu trigger after Escape and close', async panel => {
+    await render('app', {}, 1280);
+    for (const method of ['Escape', 'close']) {
+      await click('.mission-control-trigger');
+      const index = panel === 'members' ? 1 : 2;
+      await evaluate(`(()=>{const button=document.querySelectorAll('.mission-control-menu > button')[${index}];button.focus();button.click()})()`);
+      const selector = panel === 'members' ? '.members-editor' : '.csv-import';
+      await until(`Boolean(document.querySelector('${selector}'))`);
+      if (method === 'Escape') await key('Escape');
+      else await click(selector + ' .dialog-head button');
+      await until(`!document.querySelector('${selector}')`);
+      expect(await evaluate(`document.activeElement.matches('.mission-control-trigger')`)).toBe(true);
+    }
+  });
+
+  it.each(['en', 'ru'])('search uses the card status, owner name and one tag location in %s', async lang => {
+    await render('app', { searchMetadata: true, lang }, 1280);
+    await search('Task 0');
+    await until(`Boolean(document.querySelector('.global-search-row'))`);
+    const row = await evaluate(`(()=>{const row=[...document.querySelectorAll('.global-search-row')].find(e=>e.title.endsWith(': Task 0'));return {text:row.textContent,states:[...row.querySelectorAll('.card-face-state')].map(e=>e.textContent),due:row.querySelector('.card-face-due')?.textContent,tags:row.querySelectorAll('.card-tags').length,prefix:row.querySelectorAll('.tag-title-prefix').length}})()`);
+    expect(row.states).toContain(lang === 'ru' ? 'Ждёт 1' : 'Waiting: 1');
+    expect(row.due).toBe(lang === 'ru' ? 'Просрочено' : 'Overdue');
+    expect(row.text).toContain('Maya Chen');
+    expect(row.tags).toBe(1);
+    expect(row.prefix).toBe(0);
+    await key('Enter');
+    await until(`new URLSearchParams(location.search).get('card') === 'card:shell-0'`);
+  });
+
+  it('Hand card navigation preserves the viewed member and a browser return step', async () => {
+    await render('app', { view: 'hand', searchMetadata: true }, 1280);
+    await evaluate(`history.replaceState(history.state,'',location.href+'&handMember=maya&hands=all');window.actingMemberBefore=localStorage.getItem('deckmate-current-member')`);
+    await search('Task 0');
+    await key('Enter');
+    await until(`new URLSearchParams(location.search).get('card') === 'card:shell-0'`);
+    expect(await evaluate(`new URLSearchParams(location.search).get('handMember')`)).toBe('maya');
+    await evaluate('history.back()');
+    await until(`document.querySelector('.hand-view') && new URLSearchParams(location.search).get('view') === 'hand'`);
+    expect(await evaluate(`new URLSearchParams(location.search).get('hands')`)).toBe('all');
+    expect(await evaluate(`localStorage.getItem('deckmate-current-member')===window.actingMemberBefore`)).toBe(true);
+  });
+
+  it.each([600, 900])('C06 keeps the shortcuts heading, scrollable body and close control inside a %s px phone window', async height => {
+    await render('app', { deck: true, lang: 'ru' }, 375);
+    await send('Emulation.setDeviceMetricsOverride', { width: 375, height, deviceScaleFactor: 1, mobile: false });
+    await click('.shortcuts-help-trigger');
+    await until(`Boolean(document.querySelector('.shortcuts-panel'))`);
+    await waitForLayout(evaluate, '.shortcuts-panel');
+    expect(await evaluate(`(()=>{const panel=document.querySelector('.shortcuts-panel').getBoundingClientRect(),title=document.querySelector('.shortcuts-panel .dialog-title').getBoundingClientRect(),close=document.querySelector('.shortcuts-panel-close').getBoundingClientRect(),body=document.querySelector('.shortcuts-panel-body');return panel.top>=8 && panel.bottom<=innerHeight-8 && title.top>=panel.top && title.bottom<=panel.bottom && close.top>=panel.top && close.bottom<=panel.bottom && body.clientHeight>200 && body.scrollHeight>body.clientHeight})()`)).toBe(true);
+    await key('Escape');
+    expect(await evaluate(`document.activeElement.matches('.shortcuts-help-trigger')`)).toBe(true);
+  });
+
+  it.each([false, true])('C01 keeps the phone header within two rows with deck=%s', async deck => {
+    await inTouchMode(async () => {
+      await render('app', { deck, lang: 'ru', notifications: true, editMode: 'sandbox' }, 375);
+      expect(await evaluate(`document.querySelector('.global-topbar').getBoundingClientRect().height`)).toBeLessThanOrEqual(96);
+      expect(await evaluate(`(()=>{const items=[...document.querySelectorAll('.global-topbar button')].filter(e=>e.getBoundingClientRect().width);return items.every(e=>{const r=e.getBoundingClientRect();return r.width>=44 && r.height>=44 && r.right<=innerWidth && r.left>=0})})()`)).toBe(true);
+      expect(await evaluate(`Boolean(document.querySelector('.notifications-panel'))`)).toBe(false);
+    });
+  });
+
   it('global search shares the recessed field and dialog frame at desktop and phone widths', async () => {
     for (const width of [375, 1440]) {
       await render('app', {}, width);
       for (const dark of [false, true]) {
         await evaluate(`document.documentElement.classList.toggle('dark', ${dark})`);
-        await evaluate(`(() => { const input = document.querySelector('.global-search-field input'); input.focus(); Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(input, 'card'); input.dispatchEvent(new Event('input', { bubbles: true })); })()`);
+        await search('card');
         await until(`Boolean(document.querySelector('.global-search-pop'))`);
         const state = await evaluate(`(() => {
           const field = document.querySelector('.global-search-field');
@@ -127,6 +301,76 @@ describe.skipIf(!browserPath)('application shell (browser)', () => {
           panelRadius: state.glassRadius, controlRadius: state.controlRadius, glassRadius: state.glassRadius, fits: true, noOverflow: true });
         await key('Escape');
       }
+    }
+  });
+
+  it.each([375, 1440])('A06 keeps the active result visible across both wraps at %s px', async width => {
+    await render('app', {}, width);
+    await search('kind:task');
+    await until(`document.querySelectorAll('.global-search-row').length === 40`);
+    const before = await evaluate(`document.querySelector('.workspace-main').scrollTop`);
+    for (const direction of ['ArrowUp', 'ArrowDown']) {
+      await key(direction);
+      expect(await evaluate(`(()=>{const row=document.querySelector('.global-search-results [aria-selected="true"]').getBoundingClientRect();const box=document.querySelector('.global-search-sections').getBoundingClientRect();return row.top>=box.top-1 && row.bottom<=box.bottom+1})()`)).toBe(true);
+      expect(await evaluate(`document.querySelector('.workspace-main').scrollTop`)).toBe(before);
+    }
+  });
+
+  it.each(['deck', 'hand'])('R24 opens a deck from %s without reloading and supports Back/Forward', async view => {
+    await render('app', { view, deck: view === 'deck' }, 1280);
+    await evaluate(`window.searchNavigationMarker='same-document'`);
+    await search('gd:neighbors');
+    await until(`Boolean(document.querySelector('.global-search-nav'))`);
+    await key('Enter');
+    await until(`new URLSearchParams(location.search).get('deck') === 'neighbors' && Boolean(document.querySelector('.is-deck-open'))`);
+    expect(await evaluate('window.searchNavigationMarker')).toBe('same-document');
+    expect(await evaluate(`document.activeElement !== document.body`)).toBe(true);
+    expect(await evaluate(`new URLSearchParams(location.search).get('catalogSource')`)).toBe('sandbox');
+    await evaluate('history.back()');
+    await until(view === 'deck' ? `new URLSearchParams(location.search).get('deck') === 'tasks'` : `new URLSearchParams(location.search).get('view') === 'hand'`);
+    await evaluate('history.forward()');
+    await until(`new URLSearchParams(location.search).get('deck') === 'neighbors' && Boolean(document.querySelector('.is-deck-open'))`);
+  });
+
+  it('R24 protects an active card draft from search navigation', async () => {
+    await render('app', { deck: true }, 1280);
+    await click('.catalog-table-title');
+    await until(`Boolean(document.querySelector('.card-title-edit:not(:disabled)'))`);
+    await click('.card-title-edit');
+    await until(`Boolean(document.querySelector('.card-edit-text'))`);
+    await evaluate(`(()=>{const field=document.querySelector('.card-edit-text');Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value').set.call(field,'Unsaved card text');field.dispatchEvent(new Event('input',{bubbles:true}))})()`);
+    await until(`document.querySelector('.global-search input').disabled`);
+    const before = await evaluate('location.href');
+    await evaluate(`document.body.dispatchEvent(new KeyboardEvent('keydown',{key:'/',code:'Slash',bubbles:true,cancelable:true}))`);
+    expect(await evaluate('location.href')).toBe(before);
+    expect(await evaluate(`document.querySelector('.card-edit-text').value`)).toBe('Unsaved card text');
+    expect(await evaluate(`Boolean(document.querySelector('.global-search-pop'))`)).toBe(false);
+  });
+
+  it('A11 shows one actionable startup error and enables project actions after recovery', async () => {
+    await evaluate(`window.shellTest.render('app',{failSnapshot:true})`);
+    await until(`Boolean(document.querySelector('.workspace-main .ui-error[role="alert"]'))`);
+    expect(await evaluate(`document.querySelectorAll('.ui-error[role="alert"]').length`)).toBe(1);
+    expect(await evaluate(`Boolean(document.querySelector('.workspace-main .loading-state'))`)).toBe(false);
+    await click('.mission-control-trigger');
+    expect(await evaluate(`[...document.querySelectorAll('.mission-control-menu button')].slice(0,3).every(button=>button.disabled)`)).toBe(true);
+    await key('Escape');
+    await evaluate(`window.shellTest.setSnapshotFails(false);document.querySelector('.workspace-main .ui-error button').click()`);
+    await until(`Boolean(document.querySelector('.catalog-view'))`);
+    expect(await evaluate(`Boolean(document.querySelector('.ui-error[role="alert"]'))`)).toBe(false);
+  });
+
+  it('A10 opens connection details with tap, Enter and Space, preserving a separate live status', async () => {
+    await render('app', {}, 1280);
+    for (const action of ['tap', 'Enter', ' ']) {
+      expect(await evaluate(`document.querySelector('.server-status').tagName`)).toBe('BUTTON');
+      if (action === 'tap') await click('.server-status');
+      else { await evaluate(`document.querySelector('.server-status').focus()`); await key(action); }
+      await until(`Boolean(document.querySelector('.server-status-card'))`);
+      expect(await evaluate(`document.querySelector('.server-status').getAttribute('aria-expanded')`)).toBe('true');
+      expect(await evaluate(`Boolean(document.querySelector('.server-status-slot [role="status"]'))`)).toBe(true);
+      await key('Escape');
+      expect(await evaluate(`document.activeElement.matches('.server-status')`)).toBe(true);
     }
   });
 
@@ -251,6 +495,8 @@ describe.skipIf(!browserPath)('application shell (browser)', () => {
   it.each(['en', 'ru'])('%s: phone tabs and Timeline search keep their complete labels', async lang => {
     await render('app', { lang, view: 'timeline' });
     await until(`document.querySelectorAll('.timeline-actions button').length === 3`);
+    expect(await evaluate(`document.querySelector('.global-topbar').getBoundingClientRect().height`)).toBeLessThanOrEqual(96);
+    await search('card');
     expect(await evaluate(`(() => {
       const canvas=document.createElement('canvas').getContext('2d');
       return [...document.querySelectorAll('.global-tabs button'), document.querySelector('.global-search-field input')].every(e => {
@@ -259,6 +505,15 @@ describe.skipIf(!browserPath)('application shell (browser)', () => {
       });
     })()`)).toBe(true);
     expect(await evaluate(`document.querySelector('.global-tabs').scrollWidth <= document.querySelector('.global-tabs').clientWidth`)).toBe(true);
+    await key('Escape');
+    await click('.timeline-tool');
+    await until(`Boolean(document.querySelector('.planning-calendar-panel'))`);
+    await evaluate(`window.timelineAction=document.querySelector('.timeline-actions button');window.timelineCalendar=document.querySelector('.planning-calendar-panel');void 0`);
+    for (const width of [1440, 375]) {
+      await send('Emulation.setDeviceMetricsOverride', { width, height: 812, deviceScaleFactor: 1, mobile: false });
+      await until(`document.querySelector('.timeline-actions button') === window.timelineAction && window.timelineAction.isConnected`);
+      expect(await evaluate(`document.querySelector('.planning-calendar-panel') === window.timelineCalendar && window.timelineCalendar.isConnected`)).toBe(true);
+    }
   });
 
   it.each([375, 1280])('D11/D12: menu and recent paths fit %s px in both themes and languages', async width => {
@@ -301,7 +556,7 @@ describe.skipIf(!browserPath)('application shell (browser)', () => {
       expect(await evaluate(`(() => {
         const panel = document.querySelector('.mission-control');
         const current = document.querySelector('.mission-control-project > .mission-control-project-row');
-        const tile = current.querySelector('.mission-control-recent-tile').getBoundingClientRect();
+        const tile = document.querySelector('.mission-control-workspace-row .mission-control-recent-tile').getBoundingClientRect();
         return panel.scrollWidth <= panel.clientWidth && [...document.querySelectorAll('.mission-control-workspace-row')].every(row => {
           const r = row.getBoundingClientRect(), t = row.querySelector('.mission-control-recent-tile').getBoundingClientRect();
           return Math.abs(r.width - current.getBoundingClientRect().width) < 1 && t.left === tile.left && row.scrollWidth <= row.clientWidth;
@@ -331,12 +586,12 @@ describe.skipIf(!browserPath)('application shell (browser)', () => {
     // The chip is the shortcuts window's keycap, and the tile windows spell the projects' initials in white.
     expect(await evaluate(`(() => {
       const chip = getComputedStyle(document.querySelector('.shortcuts-panel-key'));
-      const currentTile = document.querySelector('.mission-control-project .mission-control-recent-tile');
+       const currentTile = document.querySelector('.mission-control-project > .mission-control-project-row .mission-control-recent-tile');
       const rowTile = document.querySelector('.mission-control-workspace-row .mission-control-recent-tile');
       const window = getComputedStyle(rowTile, '::before');
-      return [chip.textTransform, chip.borderTopStyle, currentTile.getAttribute('data-initials'),
+       return [chip.textTransform, chip.borderTopStyle, currentTile,
         rowTile.getAttribute('data-initials'), window.color, window.fontSize];
-    })()`)).toEqual(['uppercase', 'solid', 'ST', 'ДР', 'rgb(255, 255, 255)', '10px']);
+     })()`)).toEqual(['uppercase', 'solid', null, 'ДР', 'rgb(255, 255, 255)', '10px']);
     // Phone width: the chip clears the remove button, the current mark and the two-line clamped name.
     expect(await workspaceLayoutFailures()).toEqual([]);
     await click('.mission-control-workspace-row:nth-child(3) .mission-control-workspace-open');
@@ -577,7 +832,7 @@ describe.skipIf(!browserPath)('application shell (browser)', () => {
   });
 
   it.each(['Escape', 'close', 'cancel'])('returns focus from Run to More after %s, not to the last direct bulk action', async close => {
-    await render('bulk');
+    await render('bulk', {}, 1280);
     await click('.bulk-action-button[aria-label="Owner"]');
     await until(`Boolean(document.querySelector('.bulk-actions-dialog'))`);
     await key('Escape');
@@ -594,6 +849,196 @@ describe.skipIf(!browserPath)('application shell (browser)', () => {
     await until(`!document.querySelector('.bulk-more-menu')`);
     expect(await evaluate(`document.querySelector('.bulk-more-menu') === null`)).toBe(true);
   }, 15000);
+
+  it('keeps four frequent selection actions and groups the rest without duplicate commands', async () => {
+    await render('bulk', { selectionCount: 21 }, 1440);
+    expect(await evaluate(`[...document.querySelectorAll('.card-selection-buttons button')].filter(button => button.getClientRects().length > 0).map(button => button.getAttribute('aria-label'))`))
+      .toEqual(['Move to Deck', 'Owner', 'Tags', 'More actions', 'Copy refs']);
+    await evaluate(`document.querySelector('.bulk-actions [aria-label="More actions"]').dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))`);
+    await until(`Boolean(document.querySelector('.bulk-more-menu'))`);
+    expect(await evaluate(`[...document.querySelectorAll('.bulk-more-heading')].map(node => node.textContent)`)).toEqual(['Organization', 'Properties', 'Export', 'Lifecycle']);
+    const labels = await evaluate(`[...document.querySelectorAll('.bulk-more-item')].map(node => node.textContent)`);
+    expect(new Set(labels).size).toBe(labels.length);
+    expect(labels).not.toContain('Owner');
+    expect(labels).not.toContain('Tags');
+    expect(labels).toContain('Add to Track');
+  });
+
+  it.each([1, 21, 1000])('prioritizes the full count %i at 375px and keeps overflow commands reachable', async count => {
+    await render('bulk', { selectionCount: count, lang: 'ru' }, 375);
+    await until(`document.querySelectorAll('.bulk-action-button').length === 0`);
+    const fit = await evaluate(`(() => { const count = document.querySelector('.card-selection-count');
+      const r = count.getBoundingClientRect(); const bar = document.querySelector('.card-selection-bar');
+      return { text: count.textContent, clipped: count.scrollWidth > count.clientWidth, right: r.right, overflow: bar.scrollWidth - bar.clientWidth,
+        allVisible: document.querySelector('.card-selection-all').getClientRects().length > 0 }; })()`);
+    expect(fit.text).toBe('Выбрано ' + new Intl.NumberFormat('ru-RU').format(count));
+    expect(fit.clipped).toBe(false);
+    expect(fit.right).toBeLessThan(375);
+    expect(fit.overflow).toBe(0);
+    expect(fit.allVisible).toBe(false);
+    await evaluate(`document.querySelector('.bulk-actions [aria-label="Ещё действия"]').dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))`);
+    await until(`Boolean(document.querySelector('.bulk-more-menu'))`);
+    const labels = await evaluate(`[...document.querySelectorAll('.bulk-more-item')].map(node => node.textContent)`);
+    expect(labels).toContain('Выбрать все');
+    expect(labels).toContain('Скопировать ссылки');
+    expect(labels).toContain('Исполнитель');
+  });
+
+  it.each([true, false])('adds a Track through the shared bulk dialog and retains failed forms (%s)', async success => {
+    await render('bulk', { selectionCount: 2, bulkResult: success }, 1280);
+    await evaluate(`document.querySelector('.bulk-actions [aria-label="More actions"]').dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))`);
+    await until(`Boolean(document.querySelector('.bulk-more-menu'))`);
+    await evaluate(`[...document.querySelectorAll('.bulk-more-item')].find(node => node.textContent === 'Add to Track').click()`);
+    await until(`Boolean(document.querySelector('.bulk-actions-dialog .bulk-pick-option'))`);
+    await click('.bulk-pick-option');
+    await click('.bulk-dialog-footer button[type="submit"]');
+    await until('window.shellTest.bulkChanges.length === 1');
+    expect(await evaluate('window.shellTest.bulkChanges')).toEqual([{ kind: 'track', trackId: 'release', mode: 'add' }]);
+    expect(await evaluate(`Boolean(document.querySelector('.bulk-actions-dialog'))`)).toBe(!success);
+    if (!success) expect(await evaluate(`document.querySelector('.bulk-pick-option').getAttribute('aria-pressed')`)).toBe('true');
+  });
+
+  it.each([540, 560, 580])('keeps overflow commands available at the container breakpoint (%i px)', async width => {
+    await render('bulk', { selectionCount: 2 }, width);
+    const visible = await evaluate(`({ all: document.querySelector('.card-selection-all').getClientRects().length > 0,
+      copy: document.querySelector('.card-selection-copy').getClientRects().length > 0,
+      owner: Boolean(document.querySelector('.bulk-action-button[aria-label="Owner"]')) })`);
+    await evaluate(`document.querySelector('.bulk-actions [aria-label="More actions"]').dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))`);
+    await until(`Boolean(document.querySelector('.bulk-more-menu'))`);
+    const labels = await evaluate(`[...document.querySelectorAll('.bulk-more-item')].map(node => node.textContent)`);
+    expect(labels.includes('Select all')).toBe(!visible.all);
+    expect(labels.includes('Copy refs')).toBe(!visible.copy);
+    expect(labels.includes('Owner')).toBe(!visible.owner);
+  });
+
+  it('returns focus to More if a direct dialog opener disappears after resizing', async () => {
+    await render('bulk', { selectionCount: 2 }, 1280);
+    await click('.bulk-action-button[aria-label="Owner"]');
+    await until(`Boolean(document.querySelector('.bulk-actions-dialog'))`);
+    await send('Emulation.setDeviceMetricsOverride', { width: 375, height: 812, deviceScaleFactor: 1, mobile: false });
+    await until(`!document.querySelector('.bulk-action-button')`);
+    await key('Escape');
+    await until(`!document.querySelector('.bulk-actions-dialog') && document.activeElement.matches('.bulk-actions [aria-label="More actions"]')`);
+  });
+
+  it.each([375, 1440])('fills the reserved selection slot without moving results at %i px', async width => {
+    for (const theme of ['light', 'dark']) {
+      await render('app', { deck: true, lang: 'ru', theme }, width);
+      await until(`Boolean(document.querySelector('.deck-table-select input'))`);
+      await waitForLayout(evaluate, '.deck-open-toolbar, .catalog-results');
+      const before = await evaluate(`document.querySelector('.catalog-results').getBoundingClientRect().top`);
+      await click('.deck-table-select input');
+      await until(`Boolean(document.querySelector('.deck-selection-slot .card-selection-bar'))`);
+      await waitForLayout(evaluate, '.deck-open-toolbar, .card-selection-bar, .catalog-results');
+      const selected = await evaluate(`(() => { const toolbar = document.querySelector('.deck-open-toolbar').getBoundingClientRect();
+        const bar = document.querySelector('.card-selection-bar').getBoundingClientRect();
+        return { top: bar.top - toolbar.top, bottom: toolbar.bottom - bar.bottom,
+          results: document.querySelector('.catalog-results').getBoundingClientRect().top,
+          overflow: document.querySelector('.card-selection-bar').scrollWidth - document.querySelector('.card-selection-bar').clientWidth }; })()`);
+      expect(selected.top).toBe(0);
+      expect(selected.bottom).toBe(0);
+      expect(selected.overflow).toBe(0);
+      expect(selected.results).toBe(before);
+      await key('Escape');
+      await until(`!document.querySelector('.card-selection-bar')`);
+      expect(await evaluate(`document.querySelector('.catalog-results').getBoundingClientRect().top`)).toBe(before);
+    }
+  });
+
+  it.each(['en', 'ru'])('shows the HTTP 422 reason and requested card names without losing selection (%s)', async lang => {
+    await render('app', { deck: true, lang, bulkStateRefusal: true }, 375);
+    await until(`document.querySelectorAll('.deck-table-select input').length >= 2`);
+    await evaluate(`[...document.querySelectorAll('.deck-table-select input')].slice(0, 2).forEach(input => input.click())`);
+    await until(`document.querySelector('.card-selection-count')?.textContent.includes('2')`);
+    await evaluate(`document.querySelector('.bulk-actions [aria-label="${lang === 'ru' ? 'Ещё действия' : 'More actions'}"]').dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))`);
+    await until(`Boolean(document.querySelector('.bulk-more-menu'))`);
+    await evaluate(`[...document.querySelectorAll('.bulk-more-item')].find(node => node.textContent === '${lang === 'ru' ? 'Принять' : 'Done'}').click()`);
+    await until(`Boolean(document.querySelector('.bulk-actions-dialog'))`);
+    await click('.bulk-dialog-footer button[type="submit"]');
+    await until(`window.shellTest.bulkChanges.length === 1 && Boolean(document.querySelector('.bulk-actions-dialog [role="alert"]'))`);
+    const result = await evaluate(`({ message: document.querySelector('.bulk-actions-dialog [role="alert"]').textContent,
+      checked: document.querySelectorAll('.deck-table-select input:checked').length,
+      count: document.querySelector('.card-selection-count').textContent })`);
+    expect(result.message).toContain(lang === 'ru' ? 'Агент не может принять собственную работу' : 'An agent cannot accept its own work');
+    expect(result.message).toContain('Task 0');
+    expect(result.message).toContain('Task 1');
+    expect(result.checked).toBe(2);
+    expect(result.count).toContain('2');
+    expect(await evaluate('window.shellTest.bulkChanges')).toEqual([{ kind: 'state', state: 'done' }]);
+    await key('Escape');
+    expect(await evaluate(`document.querySelectorAll('.deck-table-select input:checked').length`)).toBe(2);
+    expect(await evaluate(`document.activeElement.matches('.bulk-actions button')`)).toBe(true);
+  });
+
+  it.each(['light', 'dark'])('keeps the bulk header and actions inside a short touch viewport (%s)', async theme => {
+    // 2026-11-11: a separate page keeps touch emulation and popup focus independent of preceding desktop dialogs.
+    const touch = createBrowserSession();
+    try {
+      await touch.open(browserPath!, { viewport: { width: 375, height: 600, scale: 1 } });
+      await touch.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 1 });
+      await touch.navigate('shell-ui', `Boolean(window.shellTest)`);
+      await touch.evaluate(`window.shellTest.render('bulk', { selectionCount: 2, lang: 'ru', theme: '${theme}' })`);
+      await touch.until(`Boolean(document.querySelector('.card-selection-bar'))`);
+      await waitForLayout(touch.evaluate, '.card-selection-bar, .bulk-actions');
+      await touch.evaluate(`document.querySelector('.bulk-actions [aria-label="Ещё действия"]').dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))`);
+      await touch.until(`Boolean(document.querySelector('.bulk-more-menu'))`);
+      await touch.evaluate(`(() => { const item = [...document.querySelectorAll('.bulk-more-item')].find(node => node.textContent === 'Экспорт CSV');
+        item.scrollIntoView({ block: 'nearest' }); item.focus(); })()`);
+      for (const type of ['keyDown', 'keyUp']) await touch.send('Input.dispatchKeyEvent', { type, key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13, text: type === 'keyDown' ? '\r' : undefined });
+      await touch.until(`Boolean(document.querySelector('.bulk-actions-dialog'))`);
+      await waitForLayout(touch.evaluate, '.bulk-actions-dialog');
+      const fit = await touch.evaluate(`(() => { const panel = document.querySelector('.bulk-actions-dialog').getBoundingClientRect();
+        const head = document.querySelector('.bulk-dialog-header').getBoundingClientRect();
+        const foot = document.querySelector('.bulk-dialog-footer').getBoundingClientRect();
+        const clear = document.querySelector('.card-selection-clear').getBoundingClientRect();
+        return { panel: [panel.top, panel.bottom], head: [head.top, head.bottom], foot: [foot.top, foot.bottom], clear: [clear.width, clear.height],
+          scrolls: document.querySelector('.bulk-dialog-body').scrollHeight > document.querySelector('.bulk-dialog-body').clientHeight }; })()`);
+      expect(fit.panel[0]).toBeGreaterThanOrEqual(12);
+      expect(fit.panel[1]).toBeLessThanOrEqual(588);
+      expect(fit.head[0]).toBeGreaterThanOrEqual(fit.panel[0]);
+      expect(fit.foot[1]).toBeLessThanOrEqual(fit.panel[1]);
+      expect(fit.clear).toEqual([44, 44]);
+      expect(fit.scrolls).toBe(true);
+      for (const type of ['keyDown', 'keyUp']) await touch.send('Input.dispatchKeyEvent', { type, key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 });
+      await touch.until(`!document.querySelector('.bulk-actions-dialog') && document.activeElement.matches('.bulk-actions [aria-label="Ещё действия"]')`);
+      expect(touch.errors).toEqual([]);
+    } finally { await touch.close(); }
+  });
+
+  it('reserves a 44px repeat-creation target between Save and the band on touch', async () => {
+    const touch = createBrowserSession();
+    try {
+      await touch.open(browserPath!, { viewport: { width: 375, height: 900, scale: 1 } });
+      await touch.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 1 });
+      await touch.navigate('shell-ui', `Boolean(window.shellTest)`);
+      await touch.evaluate(`window.shellTest.render('app', { deck: true, lang: 'ru' })`);
+      await touch.until(`Boolean(document.querySelector('.deck-action-rail [aria-label="Новая карточка"]'))`);
+      await touch.evaluate(`document.querySelector('.deck-action-rail [aria-label="Новая карточка"]').click()`);
+      await touch.until(`Boolean(document.querySelector('.card-composer-again label'))`);
+      await waitForLayout(touch.evaluate, '.card-composer, .card-composer-again, .card-edit-save');
+      const target = await touch.evaluate(`(() => { const label = document.querySelector('.card-composer-again label').getBoundingClientRect();
+        const save = document.querySelector('.card-edit-save').getBoundingClientRect();
+        const band = document.querySelector('.card-composer-band').getBoundingClientRect();
+        const toggle = document.querySelector('.card-composer-again [role="switch"]'), track = toggle.getBoundingClientRect();
+        const face = getComputedStyle(toggle, '::before');
+        return { height: label.height, saveBottom: save.bottom, top: label.top, bottom: label.bottom, bandTop: band.top,
+          track: [track.width, track.height], face: [face.width, face.height], editor: document.querySelector('.card-edit-text').getBoundingClientRect().height,
+          fits: document.querySelector('.card-composer-again .deck-panel-switch-row').scrollWidth <= document.querySelector('.card-composer-again .deck-panel-switch-row').clientWidth }; })()`);
+      expect(target.height).toBeGreaterThanOrEqual(44);
+      expect(target.top).toBeGreaterThanOrEqual(target.saveBottom);
+      expect(target.bottom).toBeLessThanOrEqual(target.bandTop);
+      expect(target.track).toEqual([44, 44]);
+      expect(target.face).toEqual(['28px', '12px']);
+      expect(target.editor).toBeGreaterThanOrEqual(360);
+      expect(target.fits).toBe(true);
+      await touch.evaluate(`document.querySelector('.card-composer-again label').click()`);
+      expect(await touch.evaluate(`document.querySelector('.card-composer-again [role="switch"]').getAttribute('aria-checked')`)).toBe('true');
+      await touch.evaluate(`document.querySelector('.card-composer .card-preview-action-rail button').click()`);
+      await touch.until(`Boolean(document.querySelector('.card-composer-settings:not([hidden])'))`);
+      expect(await touch.evaluate(`[...document.querySelectorAll('.card-composer-settings .catalog-field :is(select, input)')].every(field => field.getBoundingClientRect().height >= 44)`)).toBe(true);
+      expect(touch.errors).toEqual([]);
+    } finally { await touch.close(); }
+  });
 
   it('NW-01/DW-02/DW-07: shelf buttons stay inside the rail and Table keeps one thin workspace scrollport', async () => {
     await render('app', { deck: true });
@@ -614,6 +1059,9 @@ describe.skipIf(!browserPath)('application shell (browser)', () => {
     for (const theme of ['light', 'dark']) for (const lang of ['ru', 'en']) {
       await render('app', { deck: true, theme, lang }, width);
       await until(`Boolean(document.querySelector('.deck-toolbar-search input') && document.querySelector('.deck-action-rail'))`);
+      if (width <= 760) await click('.deck-tools-toggle');
+      await until(`document.querySelector('.deck-toolbar-search input').clientWidth > 0`);
+      await waitForLayout(evaluate, '.deck-toolbar-search');
       expect(await evaluate(`(() => {
         const input = document.querySelector('.deck-toolbar-search input');
         const style = getComputedStyle(input), canvas = document.createElement('canvas').getContext('2d');
@@ -655,28 +1103,29 @@ describe.skipIf(!browserPath)('application shell (browser)', () => {
   it.each(['ru', 'en'])('L-06: %s phone stacks start compact and stay usable when expanded', async lang => {
     await evaluate(`['owned', 'watching', 'due'].forEach(id => localStorage.removeItem('deckmate-notifications-' + id + '-collapsed:maya'))`);
     await render('app', { deck: true, lang, notifications: true });
+    await click('.notifications-trigger');
     await until(`document.querySelectorAll('.notification-pill').length === 3`);
-    expect(await evaluate(`(() => { const corner = document.querySelector('.notifications-corner'); return corner.getBoundingClientRect().height < innerHeight * .25 && [...corner.querySelectorAll('.notification-pill')].every(e => e.getAttribute('aria-expanded') === 'false'); })()`)).toBe(true);
+    expect(await evaluate(`[...document.querySelectorAll('.notification-pill')].every(e => e.getAttribute('aria-expanded') === 'false')`)).toBe(true);
     expect(await evaluate(`(() => {
-      const corner = document.querySelector('.notifications-corner'), bounds = corner.getBoundingClientRect();
-      const pill = corner.querySelector('.notification-pill').getBoundingClientRect();
-      const under = document.elementFromPoint(bounds.left + 30, pill.top + pill.height / 2);
-      return Boolean(under && !corner.contains(under));
+      const panel = document.querySelector('.notifications-panel').getBoundingClientRect();
+      return panel.top >= document.querySelector('.global-topbar').getBoundingClientRect().bottom && panel.left >= 0 && panel.right <= innerWidth;
     })()`)).toBe(true);
     for (const title of ['Cards you own', 'Cards you watch', 'Due Cards']) {
       await click(`.notification-pill[title*="${title}"]`);
       await until(`document.activeElement?.classList.contains('notification-collapse')`);
-      await until(`(() => { const corner = document.querySelector('.notifications-corner'); return corner.scrollWidth <= corner.clientWidth; })()`);
+      await until(`(() => { const body = document.querySelector('.notifications-body'); return body.scrollWidth <= body.clientWidth; })()`);
     }
     await until(`document.querySelectorAll('.notification-stack').length === 3`);
-    expect(await evaluate(`(() => {
-      const corner = document.querySelector('.notifications-corner'), box = corner.getBoundingClientRect();
-      return box.height <= innerHeight * .45 + 1 && box.top > innerHeight / 2
-        && corner.scrollHeight > corner.clientHeight && getComputedStyle(corner).overflowY === 'auto';
-    })()`)).toBe(true);
+    const expanded = await evaluate(`(() => {
+      const body = document.querySelector('.notifications-body'), box = document.querySelector('.notifications-panel').getBoundingClientRect();
+      return { bottom: box.bottom, viewport: innerHeight, maxHeight: getComputedStyle(document.querySelector('.notifications-panel')).maxHeight,
+        insideViewport: box.bottom <= innerHeight, belowHeader: box.top >= document.querySelector('.global-topbar').getBoundingClientRect().bottom,
+        scrolls: body.scrollHeight > body.clientHeight, overflowY: getComputedStyle(body).overflowY };
+    })()`);
+    expect(expanded).toMatchObject({ insideViewport: true, belowHeader: true, scrolls: true, overflowY: 'auto' });
     for (const stack of ['owned', 'watching', 'due']) {
       expect(await evaluate(`(() => {
-        const corner = document.querySelector('.notifications-corner');
+        const corner = document.querySelector('.notifications-body');
         const header = document.querySelector('.notification-stack-${stack} .notification-stack-header');
         header.scrollIntoView({ block: 'nearest' });
         const c = corner.getBoundingClientRect(), h = header.getBoundingClientRect();
@@ -693,6 +1142,7 @@ describe.skipIf(!browserPath)('application shell (browser)', () => {
   it('L-06: resizing changes defaults, and the old Due Cards preference remains intact', async () => {
     await evaluate(`['owned', 'watching', 'due'].forEach(id => localStorage.removeItem('deckmate-notifications-' + id + '-collapsed:maya'))`);
     await render('app', { deck: true, notifications: true }, 1280);
+    await click('.notifications-trigger');
     await until(`document.querySelectorAll('.notification-stack').length === 3`);
     await send('Emulation.setDeviceMetricsOverride', { width: 375, height: 812, deviceScaleFactor: 1, mobile: false });
     await until(`document.querySelectorAll('.notification-pill').length === 3`);
@@ -700,10 +1150,12 @@ describe.skipIf(!browserPath)('application shell (browser)', () => {
     await until(`document.querySelectorAll('.notification-stack').length === 3`);
     await evaluate(`localStorage.setItem('deckmate-notifications-due-collapsed:maya', '1')`);
     await render('app', { deck: true, notifications: true }, 1280);
+    await click('.notifications-trigger');
     await until(`document.querySelectorAll('.notification-stack').length === 2 && Boolean(document.querySelector('.notification-pill[title*="Due Cards"]'))`);
     await click('.notification-pill[title*="Due Cards"]');
     expect(await evaluate(`localStorage.getItem('deckmate-notifications-due-collapsed:maya')`)).toBe('0');
     await render('app', { deck: true, notifications: true });
+    await click('.notifications-trigger');
     await until(`document.querySelector('.notification-stack-due') && document.querySelectorAll('.notification-pill').length === 2`);
   });
 
@@ -765,6 +1217,8 @@ describe.skipIf(!browserPath)('application shell (browser)', () => {
   it('removes fading card copies when filtering reverses or the workspace scrolls', async () => {
     await render('app', { deck: true, layout: 'cards' }, 375);
     await until(`document.querySelectorAll('[data-card-motion-root] [data-card-id]').length === 40`);
+    await evaluate(`document.querySelector('[data-card-motion-root] [data-card-id]').scrollIntoView({ block: 'start', behavior: 'instant' })`);
+    await waitForLayout(evaluate, '.workspace-main, [data-card-motion-root]');
     await send('Animation.enable');
     await send('Animation.setPlaybackRate', { playbackRate: .1 });
     const filter = async (query: string) => {
@@ -781,11 +1235,13 @@ describe.skipIf(!browserPath)('application shell (browser)', () => {
       await filter('');
       await until(`document.querySelectorAll('[data-card-motion-root] [data-card-id]').length === 40`);
       expect(await evaluate(copies)).toBe(0);
-      await delay(100);
+      await waitForLayout(evaluate, '[data-card-motion-root]');
+      expect(await evaluate(copies)).toBe(0);
       await filter('Task 1');
       await until(`${copies} > 0`);
       await evaluate(`document.querySelector('.workspace-main').scrollTop += 80`);
-      await delay(100);
+      await until(`${copies} === 0`);
+      await expectPageStateDuring(evaluate, `${copies} === 0`, 100);
       expect(await evaluate(copies)).toBe(0);
     } finally {
       await send('Animation.setPlaybackRate', { playbackRate: 1 });

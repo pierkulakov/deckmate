@@ -90,7 +90,7 @@ describe.skipIf(!browserPath)('card scope views', () => {
     await until(`Boolean(document.querySelector('.card-scope-empty'))`);
     expect(await text('.card-scope-empty h2')).toBe('Every card is in a deck');
     expect(await page.evaluate(`Boolean(document.querySelector('.card-scope-empty .empty-art svg path'))`)).toBe(true);
-    expect(await text('.card-scope-header .page-title')).toBe('Unassigned');
+    expect(await text('.card-scope-header .page-title')).toBe('No deck');
     expect(await text('.card-scope-header .page-number')).toBe('0');
     // Search, scope pills and the track select share the header row; no stacked labels or separate search row remain.
     expect(await page.evaluate(`Boolean(document.querySelector('.card-scope-header .deck-gallery-search input') && document.querySelector('.card-scope-header .catalog-browser-navigation'))`)).toBe(true);
@@ -142,7 +142,7 @@ describe.skipIf(!browserPath)('card scope views', () => {
         const rect = element.getBoundingClientRect();
         return { element, rect: [rect.x, rect.y, rect.width, rect.height] };
       });
-      const option = [...document.querySelectorAll('[role="option"]')].find(item => item.textContent.trim() === 'Medium');
+      const option = [...document.querySelectorAll('[role="option"]')].find(item => item.querySelector('.deck-choice-name')?.textContent === 'Medium');
       const frames = [];
       option.click();
       const timer = setTimeout(() => reject(new Error('All cards Priority save did not finish')), 3000);
@@ -177,14 +177,15 @@ describe.skipIf(!browserPath)('card scope views', () => {
       return [Math.round(head.top - rail.top), Math.round(head.height - rail.height)];
     })()`)).toEqual([0, 0]);
     // Table, as in a deck, lives in Ordering; its lane heading and rows start at the results' edge, like the card grid.
-    const tableSwitch = `[...document.querySelectorAll('.deck-narrow-panel [role="switch"]')].find(item => item.closest('.deck-panel-switch-row')?.textContent.includes('Table'))`;
-    await page.evaluate(`${tableSwitch}.click()`);
+    const viewButton = (label: string) => `[...document.querySelectorAll('.card-ordering .control-segmented button')].find(item => item.textContent === '${label}')`;
+    expect(await page.evaluate(`document.querySelector('.card-ordering-body').children[1].matches('.control-segmented')`)).toBe(true);
+    await page.evaluate(`${viewButton('Table')}.click()`);
     await until(`document.querySelectorAll('.deck-table-row').length === 3`);
     expect(await page.evaluate(`(() => {
       const edge = document.querySelector('.catalog-results').getBoundingClientRect().left;
       return ['.deck-table', '.deck-table-row'].map(selector => Math.round(document.querySelector(selector).getBoundingClientRect().left - edge));
     })()`)).toEqual([0, 0]);
-    await page.evaluate(`${tableSwitch}.click()`);
+    await page.evaluate(`${viewButton('Cards')}.click()`);
     await until(`document.querySelectorAll('.catalog-results .deck-card').length === 3`);
     await click('.deck-action-rail button[aria-label="Ordering"]');
     await until(`!document.querySelector('.deck-narrow-panel')`);
@@ -264,7 +265,7 @@ describe.skipIf(!browserPath)('card scope views', () => {
     expect(await page.evaluate(`document.activeElement?.getAttribute('data-pulse')`)).toBe('review');
     await pointer('[data-pulse="unassigned"]');
     await cards(1);
-    expect(await text('.card-scope-header .page-title')).toBe('Unassigned');
+    expect(await text('.card-scope-header .page-title')).toBe('No deck');
     expect(await page.evaluate(`Boolean(document.querySelector('.card-filter-bar'))`)).toBe(false);
   });
 
@@ -348,14 +349,13 @@ describe.skipIf(!browserPath)('card scope views', () => {
     expect(page.consoleErrors).toEqual([]);
   });
 
-  // 2026-11-10: the owner checklist has no ring, which read as a heavy outline. The
-  // checklist stays in the medallion's name and tooltip on tiles, the open card and Table, and a save updates it in place.
+  // The checklist stays in the owner's name and tooltip on tiles, the open card and Table; a save updates it in place.
   for (const theme of ['dark', 'light']) it(`names the owner checklist on tiles, preview and table without a ring (${theme})`, async () => {
     const lang = theme === 'dark' ? 'en' : 'ru';
     const label = (done: number) => lang === 'en' ? `Owner: Maya Chen · checklist ${done} of 3` : `Исполнитель: Maya Chen · чек-лист ${done} из 3`;
     const id = (number: number) => `card:5c0e0000-0000-4000-8000-00000000000${number}`;
     const tile = (number: number) => `[data-deck-card="${id(number)}"]`;
-    const medallion = `${tile(1)} .deck-card-owner-medallion`;
+    const medallion = `${tile(1)} .deck-card-owner`;
     const rings = () => page.evaluate(`document.querySelectorAll('.owner-progress-ring').length`);
     const title = (selector: string) => page.evaluate(`document.querySelector(${JSON.stringify(selector)}).title`);
     await open(browserFixtureUrl('card-scope') + `?checklist=1&scope=all&theme=${theme}&lang=${lang}`);
@@ -403,7 +403,7 @@ describe.skipIf(!browserPath)('card scope views', () => {
     await until(`!document.querySelector('.card-preview')`);
     await click('.deck-action-rail button:first-child');
     await until(`Boolean(document.querySelector('.deck-narrow-panel [role="switch"]'))`);
-    await page.evaluate(`[...document.querySelectorAll('.deck-narrow-panel [role="switch"]')].find(item => item.closest('.deck-panel-switch-row')?.textContent.includes(${JSON.stringify(lang === 'en' ? 'Table' : 'Таблица')})).click()`);
+    await page.evaluate(`[...document.querySelectorAll('.card-ordering .control-segmented button')].find(item => item.textContent === ${JSON.stringify(lang === 'en' ? 'Table' : 'Таблица')}).click()`);
     await until(`document.querySelectorAll('.deck-table-row').length === 4`);
     const tableOwner = `.deck-table-row[data-card-id="${id(1)}"] .deck-table-owner .card-owner-avatar`;
     expect(await page.evaluate(`document.querySelector(${JSON.stringify(tableOwner)}).getAttribute('aria-label')`)).toBe(label(3));

@@ -121,6 +121,19 @@ it('keeps a legacy sandbox pair when the launcher writes DECKMATE_DATA, but neve
   expect(await loadConfig()).toMatchObject({ editMode: 'direct', writeRoot: outside });
 });
 
+// 2026-11-11: tools/readme-shots.ts reads its preferred port through environmentValue after loading .env.local with
+// loadEnvFile; a shell DECKMATE_DATA must never combine with an old FREETION_PORT from the file.
+it('ignores a legacy FREETION_PORT next to a DECKMATE variable and keeps a new DECKMATE_PORT', async () => {
+  stubLegacyEnvironment({ PORT: '4373' });
+  vi.resetModules();
+  vi.spyOn(console, 'warn').mockImplementation(() => {});
+  const { environmentValue } = await import('../server/environment.ts');
+  vi.stubEnv('DECKMATE_DATA', 'C:\\projects\\demo');
+  expect(environmentValue('PORT')).toBeUndefined();
+  vi.stubEnv('DECKMATE_PORT', '4374');
+  expect(environmentValue('PORT')).toBe('4374');
+});
+
 it('accepts both sandbox branch names and rejects unrelated branches', async () => {
   const { root } = await fixture();
   await execute('git', ['init', '-b', 'freetion/sandbox', root], { windowsHide: true });

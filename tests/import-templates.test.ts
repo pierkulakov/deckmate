@@ -90,6 +90,44 @@ describe.skipIf(!browserPath)('Import and templates dialogs (browser)', () => {
     await viewport(1280);
   });
 
+  it.each([900, 600])('keeps the complete stacked template list and plan separate at 375×%i', async height => {
+    await viewport(375, height);
+    await page.evaluate(`window.importTemplatesTest.render('templates', { lang: 'ru' })`);
+    await until(`Boolean(document.querySelector('.project-template-plan-group'))`);
+    await page.evaluate(`(() => {
+      const grid = document.querySelector('.project-template-grid');
+      for (let i = 0; i < 8; i++) grid.append(grid.firstElementChild.cloneNode(true));
+    })()`);
+    const geometry = await page.evaluate(`(() => {
+      const body = document.querySelector('.project-template-body');
+      const panes = [...document.querySelectorAll('.project-template-pane')];
+      const list = document.querySelector('.project-template-grid').getBoundingClientRect();
+      const plan = panes[1].getBoundingClientRect();
+      const button = document.querySelector('.project-template-actions button:last-child').getBoundingClientRect();
+      return { separate: list.bottom <= plan.top + 1, scrollable: body.scrollHeight > body.clientHeight,
+        applyVisible: button.top >= 0 && button.bottom <= innerHeight,
+        paneScrolls: panes.some(pane => getComputedStyle(pane).overflowY === 'auto') };
+    })()`);
+    expect(geometry).toEqual({ separate: true, scrollable: true, applyVisible: true, paneScrolls: false });
+    await page.evaluate(`document.querySelector('.project-template-body').scrollTop = 1e6`);
+    expect(await page.evaluate(`(() => { const body = document.querySelector('.project-template-body').getBoundingClientRect();
+      const plan = document.querySelector('.project-template-plan').getBoundingClientRect(); return plan.bottom <= body.bottom + 1; })()`)).toBe(true);
+    await viewport(1280);
+  });
+
+  it('reveals the selected plan on a phone and returns to the chosen template', async () => {
+    await viewport(375, 600);
+    await page.evaluate(`window.importTemplatesTest.render('templates')`);
+    await until(`document.querySelectorAll('.project-template-option').length === 2`);
+    await page.evaluate(`document.querySelector('.project-template-option:last-child').click()`);
+    await until(`document.querySelector('.project-template-plan h3')?.textContent === 'Platformer' && document.activeElement === document.querySelector('.project-template-plan h3')`);
+    expect(await page.evaluate(`(() => { const body=document.querySelector('.project-template-body').getBoundingClientRect(); const plan=document.querySelector('.project-template-plan h3').getBoundingClientRect(); return plan.top >= body.top && plan.bottom <= body.bottom; })()`)).toBe(true);
+    await page.evaluate(`document.querySelector('.project-template-change').click()`);
+    await until(`document.activeElement === document.querySelector('.project-template-option[aria-pressed="true"]')`);
+    expect(await page.evaluate(`document.activeElement.textContent`)).toContain('Platformer');
+    await viewport(1280);
+  });
+
   it('switches shelves with the keyboard and shows the empty shelf state', async () => {
     await page.evaluate(`window.importTemplatesTest.render('templates')`);
     await until(`Boolean(document.querySelector('.project-template-option'))`);
@@ -102,6 +140,29 @@ describe.skipIf(!browserPath)('Import and templates dialogs (browser)', () => {
     expect(await page.evaluate(`document.querySelector('.ui-empty').textContent`)).toBe('No starters on this shelf yet.');
   });
 
+  it('returns focus to the stable menu trigger when the opening menu item disappears', async () => {
+    await page.evaluate(`window.importTemplatesTest.render('templates', { focusTest: true })`);
+    await until(`Boolean(document.querySelector('.template-menu-item'))`);
+    await page.evaluate(`document.querySelector('.template-menu-item').focus(); document.querySelector('.template-menu-item').click()`);
+    await until(`Boolean(document.querySelector('.project-template-picker'))`);
+    await page.send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 });
+    await page.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 });
+    await until(`!document.querySelector('.project-template-picker')`);
+    await until(`document.activeElement === document.querySelector('.mission-control-trigger')`);
+    expect(await page.evaluate(`document.activeElement === document.querySelector('.mission-control-trigger')`)).toBe(true);
+  });
+
+  it('returns focus to a template opener that is still present', async () => {
+    await page.evaluate(`window.importTemplatesTest.render('templates', { focusTest: true, keepOpener: true })`);
+    await until(`Boolean(document.querySelector('.template-menu-item'))`);
+    await page.evaluate(`document.querySelector('.template-menu-item').focus(); document.querySelector('.template-menu-item').click()`);
+    await until(`Boolean(document.querySelector('.project-template-picker'))`);
+    await page.send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 });
+    await page.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 });
+    await until(`!document.querySelector('.project-template-picker') && document.activeElement === document.querySelector('.template-menu-item')`);
+    expect(await page.evaluate(`document.activeElement === document.querySelector('.template-menu-item')`)).toBe(true);
+  });
+
   it('reports list failure through the shared error state', async () => {
     await page.evaluate(`window.importTemplatesTest.render('templates', { failures: { list: true } })`);
     await until(`Boolean(document.querySelector('.ui-error'))`);
@@ -111,6 +172,50 @@ describe.skipIf(!browserPath)('Import and templates dialogs (browser)', () => {
     await page.evaluate(`localStorage.removeItem('deckmate:template-shelf')`);
     await page.evaluate(`window.importTemplatesTest.render('templates')`);
     await until(`Boolean(document.querySelector('.project-template-option'))`);
+  });
+
+  it('keeps the no-changes and read-only explanations beside the disabled action', async () => {
+    await viewport(375, 600);
+    await page.evaluate(`window.importTemplatesTest.render('templates', { existingPlan: true })`);
+    await until(`Boolean(document.querySelector('.project-template-plan-group.is-reuse'))`);
+    expect(await page.evaluate(`document.querySelector('.project-template-footer [role="status"]')?.textContent`)).toContain('already in your project');
+    expect(await page.evaluate(`document.querySelector('.project-template-actions button:last-child').disabled`)).toBe(true);
+    await page.evaluate(`window.importTemplatesTest.render('templates', { readOnly: true })`);
+    await until(`Boolean(document.querySelector('.project-template-option'))`);
+    expect(await page.evaluate(`document.querySelector('.project-template-footer').textContent`)).toContain('read only');
+    expect(await page.evaluate(`document.querySelector('.project-template-actions button:last-child').disabled`)).toBe(true);
+    expect(await page.evaluate(`document.querySelector('.project-template-footer').getBoundingClientRect().bottom <= innerHeight`)).toBe(true);
+    await viewport(1280);
+  });
+
+  it('keeps a plan failure reachable from the phone footer', async () => {
+    await viewport(375, 600);
+    await page.evaluate(`window.importTemplatesTest.render('templates', { failures: { plan: true } })`);
+    await until(`Boolean(document.querySelector('.project-template-plan .ui-error[role="alert"]'))`);
+    expect(await page.evaluate(`Boolean(document.querySelector('.project-template-message'))`)).toBe(true);
+    await page.evaluate(`document.querySelector('.project-template-message').click()`);
+    await until(`document.activeElement === document.querySelector('.project-template-plan .ui-error button')`);
+    expect(await page.evaluate(`(() => { const body=document.querySelector('.project-template-body').getBoundingClientRect(); const button=document.activeElement.getBoundingClientRect(); return button.top>=body.top && button.bottom<=body.bottom; })()`)).toBe(true);
+    await viewport(1280);
+  });
+
+  it('provides touch-sized shelf and mapping disclosure targets', async () => {
+    await page.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 1 });
+    await page.send('Emulation.setDeviceMetricsOverride', { width: 375, height: 900, deviceScaleFactor: 1, mobile: true });
+    try {
+      await page.evaluate(`window.importTemplatesTest.render('templates')`);
+      await until(`Boolean(document.querySelector('.project-template-option'))`);
+      expect(await page.evaluate(`matchMedia('(pointer: coarse)').matches`)).toBe(true);
+      expect(await page.evaluate(`document.querySelector('.project-template-shelf').getBoundingClientRect().height`)).toBeGreaterThanOrEqual(44);
+      await page.evaluate(`window.importTemplatesTest.render('csv')`);
+      await until(`Boolean(document.querySelector('.csv-import-file-label input')) && !document.querySelector('.csv-import-file-label input').disabled`);
+      await page.callFunction(`(name, content) => window.importTemplatesTest.chooseCsv(name, content)`, 'cards.csv', csvContent);
+      await until(`Boolean(document.querySelector('.csv-import-mapping summary'))`);
+      expect(await page.evaluate(`document.querySelector('.csv-import-mapping summary').getBoundingClientRect().height`)).toBeGreaterThanOrEqual(44);
+    } finally {
+      await page.send('Emulation.setTouchEmulationEnabled', { enabled: false });
+      await viewport(1280);
+    }
   });
 
   it('maps a chosen CSV into glass sections with mono counters and no page overflow at 375px', async () => {
@@ -126,17 +231,21 @@ describe.skipIf(!browserPath)('Import and templates dialogs (browser)', () => {
     expect(await page.evaluate(`document.querySelectorAll('.csv-import .glass-panel').length`)).toBe(2);
     expect(await page.evaluate(`document.querySelector('.csv-import-preview .panel-count').textContent`)).toBe('first 4 of 4');
     const countsLine = await page.evaluate(`document.querySelector('.csv-import-counts').textContent`);
-    expect(countsLine).toContain('New 2');
+    expect(countsLine).toContain('Ready 2');
     expect(countsLine).toContain('skipped 1');
     expect(countsLine).toContain('errors 1');
     expect(await page.evaluate(`document.querySelectorAll('.csv-import-counts .page-number').length`)).toBe(4);
-    expect(await page.evaluate(`document.querySelector('.csv-import-foot .action-mint').textContent.trim()`)).toBe('Import');
+    expect(await page.evaluate(`document.querySelector('.csv-import-foot .action-mint').textContent.trim()`)).toBe('Import 2 rows');
+    expect(await page.evaluate(`Boolean(document.querySelector('.csv-import-counts').compareDocumentPosition(document.querySelector('.csv-import-field')) & Node.DOCUMENT_POSITION_FOLLOWING)`)).toBe(true);
+    expect(await page.evaluate(`document.querySelector('.csv-import-issues').textContent`)).toContain('row 4');
+    expect(await page.evaluate(`document.querySelector('.csv-import-issues').textContent`)).toContain('only Task Cards have a state');
     await viewport(375);
     expect(await page.evaluate(`document.documentElement.scrollWidth <= 375`)).toBe(true);
     expect(await page.evaluate(`document.querySelector('.csv-import').getBoundingClientRect().width <= 375`)).toBe(true);
     // The wide table scrolls inside its own pane, never the page.
     expect(await page.evaluate(`document.querySelector('.csv-import-table-scroll').scrollWidth > document.querySelector('.csv-import-table-scroll').clientWidth`)).toBe(true);
     expect(await page.evaluate(`document.querySelector('.csv-import-table-scroll').clientWidth <= 375 - 2 * 16 - 2 * 16`)).toBe(true);
+    expect(await page.evaluate(`getComputedStyle(document.querySelector('.csv-import-scroll-hint')).display !== 'none'`)).toBe(true);
     await page.evaluate(`document.documentElement.classList.add('dark')`);
     await delay(60);
     expect(await fits('.csv-import-heading h2')).toBe(true);

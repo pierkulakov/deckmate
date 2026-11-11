@@ -146,7 +146,7 @@ it('rejects foreign Host and Origin headers on every method', async () => {
 });
 
 it('accepts the IPv6 loopback Host and Origin', async () => {
-  const { app, headers } = await project({ readOnly: true, port: 44350 });
+  const { app } = await project({ readOnly: true, port: 44350 });
   const loopback = { host: '[::1]:44350', origin: 'http://[::1]:44350' };
   expect((await app.inject({ url: '/api/health', headers: loopback })).statusCode).toBe(200);
   // A foreign Host stays refused even when the Origin looks local.

@@ -2,6 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { openHeadlessBrowser, type HeadlessPage } from '../tools/layout-capture.ts';
 import { browserFixtureUrl } from './browser-fixture.ts';
 import { requireBrowser } from './browser-environment.ts';
+import { waitForLayout } from './browser-layout.ts';
 
 const browserPath = requireBrowser();
 describe.skipIf(!browserPath)('card preview loading (real browser)', () => {
@@ -119,7 +120,7 @@ describe.skipIf(!browserPath)('card preview loading (real browser)', () => {
     await click('.card-edit-save');
     await until('window.loadingTest.saves.length === 1');
     expect(await page.evaluate('window.loadingTest.saves[0]')).toMatchObject({ action: 'update-card-content', cardId: 'card:loading-1',
-      title: 'Edited File Second', markdown: 'File body Second\n', sourceHash: 'index-1-0', manifestHash: 'manifest' });
+      title: 'Edited File Second', markdown: 'File body Second\r\n', sourceHash: 'index-1-0', manifestHash: 'manifest' });
   });
 
   it('cancels queued Edit on navigation and ignores the abandoned response', async () => {
@@ -129,7 +130,8 @@ describe.skipIf(!browserPath)('card preview loading (real browser)', () => {
     await click('.card-content-edit-action');
     await page.evaluate('window.loadingTest.delay = 50; window.loadingTest.select(0)');
     await until(`document.querySelector('.card-preview-title')?.textContent === 'File First'`);
-    await new Promise(resolve => setTimeout(resolve, 800));
+    await until('window.loadingTest.requests.length === 3 && window.loadingTest.completed === 3');
+    await waitForLayout(page.evaluate, '.card-preview-title, .card-content-reading-footer');
     expect(await page.evaluate(`document.querySelector('.card-edit-text')`)).toBe(null);
     expect(await page.evaluate(`document.querySelector('.card-preview-title').textContent`)).toBe('File First');
   });

@@ -39,7 +39,7 @@ describe.skipIf(!browserPath)('one-step Hero return (browser)', () => {
   async function openHero(familyVisible = false) {
     await click(tile('hero'));
     await until(`${selected('hero')} && document.querySelector('.card-title-edit:not(:disabled)')`);
-    if (familyVisible) await click('.card-preview-subcards-toggle');
+    if (familyVisible) await click('.card-preview-action-rail [data-card-family]');
     await evaluate(`document.querySelector('.card-preview-panels').scrollTop = 10000`);
     await delay(100);
     const scroll = await evaluate(`document.querySelector('.card-preview-panels').scrollTop`);
@@ -191,7 +191,10 @@ describe.skipIf(!browserPath)('one-step Hero return (browser)', () => {
       await click(tile('review'));
     }
     if (origin === 'link') await click('.card-preview-document a');
-    if (origin === 'tag') await click('.card-preview-meta-row .tag-badge-link');
+    if (origin === 'tag') {
+      await click('.card-preview-relations > summary');
+      await click('.card-preview-meta-row .tag-badge-link');
+    }
     if (origin === 'family') await click(row('review'));
     await until(selected('review'));
     expect(await evaluate(`Boolean(document.querySelector('.card-preview-parent kbd'))`)).toBe(false);
@@ -250,6 +253,7 @@ describe.skipIf(!browserPath)('one-step Hero return (browser)', () => {
     const card = kind === 'subcard' ? 'build' : 'hero';
     await render({ card: 'card:' + card, kind: kind === 'subcard' ? 'hero' : kind, tags: ['unlinked', 'personal'], lang });
     await until(`Boolean(document.querySelector('.card-title-edit:not(:disabled)'))`);
+    await click('.card-preview-relations > summary');
     for (const name of ['unlinked', 'personal', 'unlinked']) {
       const tag = `.card-preview-meta-row .tag-badge-link[aria-label="${name}"]`;
       // 2026-11-08: returning from the stacked properties panel must reveal the tag below the sticky toolbar before clicking.
@@ -262,7 +266,7 @@ describe.skipIf(!browserPath)('one-step Hero return (browser)', () => {
         const heading = target.querySelector('h3');
         const box = heading.getBoundingClientRect();
         return { visible: !target.closest('.card-properties-slot').hidden,
-          top: box.top, bottom: box.bottom, toolbarBottom: document.querySelector('.deck-open-toolbar').getBoundingClientRect().bottom,
+          top: box.top, bottom: box.bottom, toolbarBottom: innerWidth <= 760 ? document.querySelector('.card-preview-action-rail').getBoundingClientRect().bottom : document.querySelector('.deck-open-toolbar').getBoundingClientRect().bottom,
           hit: heading.contains(document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2)) };
       })()`);
       expect(section.visible).toBe(true);
@@ -276,23 +280,20 @@ describe.skipIf(!browserPath)('one-step Hero return (browser)', () => {
     }
   });
 
-  // 2026-11-09: the ID sits at the left of the reading footer, level with Journey and Edit.
-  it.each(['hero', 'task', 'doc', 'subcard'])('%s keeps its copyable ID at the left of the reading footer', async kind => {
+  it.each(['hero', 'task', 'doc', 'subcard'])('%s copies ID and URL independently from its menu', async kind => {
     const card = kind === 'subcard' ? 'build' : 'hero';
     await render({ card: 'card:' + card, kind: kind === 'subcard' ? 'hero' : kind, tags: [] });
     await until(`Boolean(document.querySelector('.card-title-edit:not(:disabled)'))`);
-    expect(await evaluate(`document.querySelectorAll('.card-content-reading-footer .card-id-chip').length`)).toBe(1);
-    expect(await evaluate(`Boolean(document.querySelector('.card-preview-meta-row .card-id-chip'))`)).toBe(false);
-    expect(await evaluate(`Boolean(document.querySelector('.card-preview-material-band .card-id-chip'))`)).toBe(false);
-    expect(await evaluate(`(() => {
-      const chip = document.querySelector('.card-content-reading-footer .card-id-chip').getBoundingClientRect();
-      const edit = document.querySelector('.card-content-edit-action')?.getBoundingClientRect();
-      return !edit || (chip.right < edit.left && Math.abs((chip.top + chip.bottom) / 2 - (edit.top + edit.bottom) / 2) <= 2);
-    })()`)).toBe(true);
+    expect(await evaluate(`document.querySelector('.card-id-chip')`)).toBe(null);
     await evaluate(`Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: async text => { window.copiedCardId = text; } } })`);
-    await click('.card-content-reading-footer .card-id-chip');
-    await until(`document.querySelector('.card-id-chip').dataset.copied === 'true'`);
-    expect(await evaluate(`window.copiedCardId`)).toBe(await evaluate(`document.querySelector('.card-id-chip').textContent`));
+    await click('.card-preview-more');
+    const id = await evaluate(`document.querySelector('.card-more-menu [role="menuitem"]:nth-child(2)').textContent.replace('Copy ID ', '')`);
+    await click('.card-more-menu [role="menuitem"]:nth-child(2)');
+    await until(`document.querySelector('.card-preview-state-notice')?.textContent === 'Copied'`);
+    expect(await evaluate(`window.copiedCardId`)).toBe(id);
+    await click('.card-preview-more');
+    await click('.card-more-menu [role="menuitem"]:nth-child(3)');
+    expect(await evaluate(`window.copiedCardId`)).toBe(await evaluate(`location.origin + '/r/${id}?source=sandbox'`));
   });
 
   // 2026-11-10: every section of the open card (Properties … History, and Sub Cards) opens as one
@@ -357,20 +358,26 @@ describe.skipIf(!browserPath)('one-step Hero return (browser)', () => {
     await key('Escape');
   });
 
-  it('keeps the reading Journey action for a Hero without a run', async () => {
+  it('keeps Journey creation in the menu for a Hero without a run', async () => {
     await render({ card: 'card:hero', withoutJourney: true });
     await until(`Boolean(document.querySelector('.card-title-edit:not(:disabled)'))`);
     expect(await evaluate(`Boolean(document.querySelector('.card-preview-journey-progress'))`)).toBe(false);
-    await click('.card-content-reading-footer .card-preview-journey-action');
+    await click('.card-preview-more');
+    await click('.card-more-menu [role="menuitem"]:has(.lucide-route)');
     await until(`Boolean(document.querySelector('.card-journey-dialog'))`);
+    await key('Escape');
+    await until(`!document.querySelector('.card-journey-dialog') && document.body.style.pointerEvents !== 'none'`);
+    expect(await evaluate(`document.activeElement === document.querySelector('.card-preview-more')`)).toBe(true);
+    await click('.card-preview-action-rail button');
+    await until(`document.querySelector('.card-properties-slot')?.hidden === false`);
     await key('Escape');
   });
 
-  it.each(['properties', 'attachments'])('reveals the stacked %s heading below the sticky toolbar', async panel => {
+  it.each(['properties', 'attachments'])('reveals the %s heading inside the phone focus shell', async panel => {
     await send('Emulation.setDeviceMetricsOverride', { width: 375, height: 812, deviceScaleFactor: 1, mobile: false });
     await render({ card: 'card:build', longContent: true, lang: 'ru' });
     await until(`Boolean(document.querySelector('.card-title-edit:not(:disabled)'))`);
-    const selector = panel === 'properties' ? '.card-preview-action-rail button:first-child' : '.card-preview-action-rail button:last-child';
+    const selector = `.card-preview-action-rail button[aria-controls$="-${panel}"]`;
     await click(selector);
     await until(`Boolean(document.querySelector('.card-properties-slot:not([hidden])'))`);
     await until(`document.activeElement === document.querySelector('.card-properties-slot:not([hidden])')`);
@@ -379,7 +386,7 @@ describe.skipIf(!browserPath)('one-step Hero return (browser)', () => {
       const slot = document.querySelector('.card-properties-slot:not([hidden])');
       const heading = slot.querySelector('h2, h3');
       const box = heading.getBoundingClientRect();
-      const toolbar = document.querySelector('.deck-open-toolbar').getBoundingClientRect();
+      const toolbar = document.querySelector('.card-preview-action-rail').getBoundingClientRect();
       return { top: box.top, bottom: box.bottom, toolbarBottom: toolbar.bottom, height: innerHeight,
         focused: document.activeElement === slot, hit: heading.contains(document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2)) };
     })()`);
@@ -387,6 +394,35 @@ describe.skipIf(!browserPath)('one-step Hero return (browser)', () => {
     expect(geometry.bottom).toBeLessThan(geometry.height);
     expect(geometry.focused).toBe(true);
     expect(geometry.hit).toBe(true);
+    expect(await evaluate(`document.querySelector('.card-preview-sheet').inert`)).toBe(true);
+  });
+
+  it('keeps a new phone card draft through Properties with Save in the viewport', async () => {
+    await send('Emulation.setDeviceMetricsOverride', { width: 375, height: 900, deviceScaleFactor: 1, mobile: false });
+    await render({ lang: 'ru' });
+    await click('.deck-action-rail button:has(.lucide-plus)');
+    await until(`Boolean(document.querySelector('.card-composer .card-edit-text'))`);
+    await send('Input.insertText', { text: 'Новая карточка\n\n' + 'Описание следующего шага.\n'.repeat(50) });
+    await waitForLayout(evaluate, '.card-edit-text');
+    const draft = await evaluate(`document.querySelector('.card-edit-text').value`);
+    const geometry = await evaluate(`(() => {
+      const editor = document.querySelector('.card-edit-text').getBoundingClientRect();
+      const save = document.querySelector('.card-edit-save'), box = save.getBoundingClientRect();
+      return { top: editor.top, height: editor.height, width: editor.width, saveBottom: box.bottom, saveRight: box.right,
+        hit: save.contains(document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2)), overflow: document.documentElement.scrollWidth > innerWidth };
+    })()`);
+    expect(geometry.top).toBeLessThanOrEqual(300);
+    expect(geometry.height).toBeGreaterThanOrEqual(360);
+    expect(geometry.width).toBeGreaterThanOrEqual(300);
+    expect(geometry.saveBottom).toBeLessThanOrEqual(900);
+    expect(geometry.saveRight).toBeLessThanOrEqual(375);
+    expect(geometry.hit).toBe(true);
+    expect(geometry.overflow).toBe(false);
+    await click('.card-composer .card-preview-action-rail button');
+    await until(`document.querySelector('.card-composer-settings')?.hidden === false`);
+    await click('.card-composer .card-preview-action-rail button');
+    await until(`document.querySelector('.card-composer-content')?.hidden === false`);
+    expect(await evaluate(`document.querySelector('.card-edit-text').value`)).toBe(draft);
   });
 
   // 2026-11-10: the pinned state icons and saved/draft row need room above the editor's minimum in this resize exercise.
@@ -405,7 +441,7 @@ describe.skipIf(!browserPath)('one-step Hero return (browser)', () => {
     await until(`document.querySelector('.card-edit-text').clientHeight < ${original - 40}`);
     const geometry = await evaluate(`(() => {
       const panels = document.querySelector('.card-preview-panels');
-      const bounds = panels.getBoundingClientRect();
+      const bounds = document.querySelector('.card-preview-dock').getBoundingClientRect();
       return { excess: panels.scrollHeight - panels.clientHeight, buttons: [...document.querySelectorAll('.card-edit-footer button')].map(button => {
         const box = button.getBoundingClientRect();
         return { inside: box.top >= bounds.top && box.bottom <= bounds.bottom + 1,
@@ -426,11 +462,11 @@ describe.skipIf(!browserPath)('one-step Hero return (browser)', () => {
     await click('.card-title-edit');
     await until(`Boolean(document.querySelector('.card-edit-text'))`);
     await waitForLayout(evaluate, '.card-edit-text, .card-preview-panels');
-    // 2026-11-10: 80px, not 60: the dock gives the editor more room than the old meta row, so 60px left it above the minimum.
-    await evaluate(`(() => { const panels = document.querySelector('.card-preview-panels'); panels.style.flex = 'none'; panels.style.height = (panels.clientHeight - 80) + 'px'; })()`);
+    // 2026-11-11: constrain the scrollport directly; the actions belong to the pinned dock outside it.
+    await evaluate(`(() => { const panels = document.querySelector('.card-preview-panels'); panels.style.flex = 'none'; panels.style.height = '210px'; })()`);
     await waitForLayout(evaluate, '.card-edit-text, .card-preview-panels');
     const geometry = await evaluate(`(() => {
-      const panels = document.querySelector('.card-preview-panels'), bounds = panels.getBoundingClientRect();
+      const panels = document.querySelector('.card-preview-panels'), bounds = document.querySelector('.card-preview-dock').getBoundingClientRect();
       return { excess: panels.scrollHeight - panels.clientHeight, text: document.querySelector('.card-edit-text').clientHeight,
         buttons: [...document.querySelectorAll('.card-edit-footer button')].map(button => {
           const box = button.getBoundingClientRect();

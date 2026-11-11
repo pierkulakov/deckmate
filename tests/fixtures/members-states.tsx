@@ -6,6 +6,7 @@ import { useWorkspace } from '../../client/useWorkspace.ts';
 import { setLang } from '../../client/i18n.ts';
 import type { DataSource } from '../../src/workspace-contracts.ts';
 import '../../client/styles.css';
+import '../../client/select.css';
 
 // 2026-11-10: use the real workspace socket and catalog store so file-watcher races reach the open form.
 const params = new URLSearchParams(location.search);
@@ -18,6 +19,7 @@ function Fixture() {
   const [open, setOpen] = useState(true);
   source = workspace.source;
   return <div data-connection={workspace.connection}>
+    <button type="button" onClick={() => setOpen(true)}>Open members</button>
     {workspace.snapshot && <MembersEditor snapshot={workspace.snapshot} refreshKey={workspace.updatedAt}
       open={open} onOpenChange={setOpen} />}
   </div>;

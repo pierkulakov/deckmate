@@ -1,12 +1,12 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { isValidElement, type ReactElement, type ReactNode } from 'react';
-import { Excalidraw, serializeAsJSON } from '@excalidraw/excalidraw';
+import { renderToStaticMarkup } from 'react-dom/server';
+import { Excalidraw } from '@excalidraw/excalidraw';
 import type { ExcalidrawProps } from '@excalidraw/excalidraw/types';
 import type { WorkspaceSnapshot } from '../src/workspace-contracts.ts';
-import Vision from '../client/components/Vision.tsx';
+import Vision, { warmVisionCanvas } from '../client/components/Vision.tsx';
 import { EmptyState } from '../client/components/EmptyState.tsx';
 import { setLang } from '../client/i18n.ts';
-import { emitSignal } from '../client/onboarding/signals.ts';
 
 // The chrome grammar test rides the same hook harness as the other Vision suites: Vision renders to a tree of
 // elements without a DOM, so class names and structure are asserted directly where the browser suite measures
@@ -25,7 +25,7 @@ vi.mock('react', async importOriginal => ({
   ...(await harnessPromise).react,
 }));
 vi.mock('@excalidraw/excalidraw', () => ({
-  Excalidraw: () => null,
+  Excalidraw: vi.fn(() => null),
   CaptureUpdateAction: { IMMEDIATELY: 'immediately' },
   restore: (scene: unknown) => scene,
   serializeAsJSON: vi.fn(() => '{"elements":[],"appState":{},"files":{}}'),
@@ -34,6 +34,7 @@ vi.mock('@excalidraw/excalidraw', () => ({
 vi.mock('../client/useCatalog.ts', () => ({ useCatalog: () => ({ catalog: null, error: null }) }));
 vi.mock('../client/components/JourneyPanel.tsx', () => ({ CatalogReferenceLink: () => null }));
 vi.mock('../client/onboarding/signals.ts', () => ({ emitSignal: vi.fn() }));
+vi.mock('../client/warmup-mount.tsx', () => ({ warmMount: vi.fn(async (content: ReactElement) => { renderToStaticMarkup(content); }) }));
 
 const hooks = await harnessPromise;
 
@@ -121,4 +122,19 @@ it('still mounts the canvas and keeps the loading plate inside it', () => {
   const canvas = findAll(element => element.type === Excalidraw)[0] as ExcalidrawProps extends never ? never : Element;
   expect(canvas).toBeDefined();
   expect(canvas.props.onChange).toBeTypeOf('function');
+});
+
+it.each(['en', 'ru'] as const)('keeps %s on cold entry and after a warmup with a vendor-mutated document locale', async lang => {
+  setLang(lang);
+  render();
+  const code = lang === 'ru' ? 'ru-RU' : 'en-US';
+  expect(findAll(element => element.type === Excalidraw)[0].props.langCode).toBe(code);
+  document.documentElement.lang = code;
+  Object.assign(document, { fonts: { load: vi.fn(async () => []) } });
+  Object.assign(document.documentElement, { classList: { contains: () => false } });
+  vi.mocked(Excalidraw).mockClear();
+  await warmVisionCanvas(new AbortController().signal);
+  expect(vi.mocked(Excalidraw).mock.calls.at(-1)?.[0]).toMatchObject({ langCode: code });
+  render();
+  expect(findAll(element => element.type === Excalidraw)[0].props.langCode).toBe(code);
 });

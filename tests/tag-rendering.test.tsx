@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 import type { ProjectTag } from '../src/project-tags.ts';
 import { markdownParser } from '../src/markdown-model.ts';
-import { CardTags, TagBadge, TagColorIndicator, TagTitlePrefix } from '../client/components/CardTags.tsx';
+import { CardTags, TagBadge, CardTagSummary, TagTitlePrefix } from '../client/components/CardTags.tsx';
 import { Markdown } from '../client/components/Markdown.tsx';
 import { splitMarkdownTags } from '../client/markdown-tags.ts';
 import { setLang } from '../client/i18n.ts';
@@ -79,32 +79,39 @@ describe('shared tag presentation', () => {
     expect(html.match(/disabled=""/gu)).toHaveLength(3);
   });
 
-  // 2026-11-05: colored tags get a dot; emoji tags show their glyph, and the default color adds no decoration.
-  it('renders no dot for personal-only tags, one exact color for one project tag, and a project-only pie', () => {
-    expect(renderToStaticMarkup(<TagColorIndicator tags={['personal']} definitions={projectTags} />)).toBe('');
-    const single = renderToStaticMarkup(<TagColorIndicator tags={['engine', 'personal']} definitions={projectTags} />);
-    expect(single).toContain('background:#123456');
-    expect(single).not.toContain('conic-gradient');
-    expect(single).not.toContain('personal');
-    const multiple = renderToStaticMarkup(<TagColorIndicator tags={['engine', 'звук', 'ui', 'engine', 'plain', 'personal']} definitions={projectTags} />);
-    expect(multiple).toContain('conic-gradient(#123456 0% 50%, #3c8caa 50% 100%)');
-    expect(multiple).not.toContain('personal');
-    expect(renderToStaticMarkup(<TagColorIndicator tags={['звук', 'plain']} definitions={projectTags} />)).toBe('');
+  it('summarizes all kinds of tags in one text line, deduplicating names and retaining hidden tags', () => {
+    expect(renderToStaticMarkup(<CardTagSummary />)).toBe('');
+    expect(renderToStaticMarkup(<CardTagSummary tags={['personal']} definitions={projectTags} />)).toContain('>#personal</span>');
+    const single = renderToStaticMarkup(<CardTagSummary tags={['engine']} definitions={projectTags} />);
+    expect(single).toContain('>engine</span>');
+    expect(single).not.toContain('tag-overflow');
+    const multiple = renderToStaticMarkup(<CardTagSummary tags={['engine', 'звук', 'ui', 'engine', 'plain', 'personal']} definitions={projectTags} />);
+    expect(multiple).toContain('>+4</span>');
+    expect(multiple).toContain('title="Tags: engine, звук, ui, plain, personal"');
+    expect(multiple).not.toMatch(/conic-gradient|card-tag-(emoji|icon|pie)/);
   });
 
   it('does not add nested buttons or focus stops inside a card button', () => {
     const html = renderToStaticMarkup(<button type="button">
       <TagTitlePrefix tags={['engine', 'звук']} definitions={projectTags} />
       <CardTags tags={['engine', 'звук']} definitions={projectTags} compact />
-      <TagColorIndicator tags={['engine', 'звук']} definitions={projectTags} />
+      <CardTagSummary tags={['engine', 'звук']} definitions={projectTags} />
     </button>);
     expect(html.match(/<button\b/gu)).toHaveLength(1);
     expect(html).not.toContain('tabindex');
   });
 
+  it('omits only tags known to be shared by the visible group before counting overflow', () => {
+    const html = renderToStaticMarkup(<CardTagSummary tags={['engine', 'звук', 'ui', 'ui']} definitions={projectTags} sharedTags={['engine']} />);
+    expect(html).toContain('>звук</span>');
+    expect(html).toContain('>+1</span>');
+    expect(html).not.toContain('engine');
+    expect(renderToStaticMarkup(<CardTagSummary tags={['engine']} sharedTags={['engine']} />)).toBe('');
+  });
+
   it('translates the indicator accessible name without changing tag names', () => {
     setLang('ru');
-    const html = renderToStaticMarkup(<TagColorIndicator tags={['engine', 'ui']} definitions={projectTags} />);
+    const html = renderToStaticMarkup(<CardTagSummary tags={['engine', 'ui']} definitions={projectTags} />);
     expect(html).toContain('aria-label="Теги: engine, ui"');
   });
 });

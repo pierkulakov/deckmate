@@ -22,7 +22,7 @@ const catalog: CatalogView = { rootIdentity: 'loading-test', cards, documents: [
   members: [{ id: 'maya', label: 'Maya', kind: 'human', aliases: [] }], runs: [], milestones: [] };
 const snapshot = { projectName: 'Loading', source: 'sandbox', writable: true, editMode: 'direct', token: 'test', iteration: { number: 1, goal: '', start: '' } } as const;
 const api = {
-  delay: 180, fail: false, revision: 0, startedAt: 0, finishedAt: 0, requests: [] as string[], saves: [] as unknown[],
+  delay: 180, fail: false, revision: 0, startedAt: 0, finishedAt: 0, completed: 0, requests: [] as string[], saves: [] as unknown[],
   select: (_index: number) => {}, refresh: () => {}, focus: () => {},
 };
 window.fetch = async input => {
@@ -35,6 +35,7 @@ window.fetch = async input => {
     const result = { cardId: card.id, title: `File ${card.title}`, markdown: `File body ${card.title}\r\n`, sourceHash: `${card.sourceHash}-${api.revision}` };
     await new Promise(resolve => setTimeout(resolve, api.delay));
     // 2026-11-10: let abandoned responses settle too, so navigation tests exercise the component's stale-result guard.
+    api.completed++;
     if (api.fail) return Response.json({ message: 'Test load failure' }, { status: 503 });
     api.finishedAt = performance.now();
     return Response.json(result);

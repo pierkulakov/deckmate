@@ -92,6 +92,22 @@ it('selects the first explicit hand slot without active unfinished prerequisites
   expect(JSON.stringify(cards)).toBe(before);
 });
 
+it('selects only executable Tasks and returns null when the Hand has none', async () => {
+  const hand = { handMemberIds: ['fable'] };
+  const prerequisite = card('prerequisite', { state: 'started' });
+  const cards = [card('hero', { ...hand, kind: 'hero', state: null, handOrder: { fable: 0 } }),
+    card('doc', { ...hand, kind: 'doc', state: null, handOrder: { fable: 1 } }),
+    card('cancelled', { ...hand, state: 'wont-do', handOrder: { fable: 2 } }),
+    card('blocked', { ...hand, dependsOn: [prerequisite.id], handOrder: { fable: 3 } }),
+    card('review', { ...hand, state: 'review', handOrder: { fable: 4 } }),
+    card('done', { ...hand, state: 'done', handOrder: { fable: 5 } }),
+    prerequisite, card('ready', { ...hand, handOrder: { fable: 6 } })];
+  const context = await fixture(cards);
+  expect((await nextAgentCard(context.catalog, context.root, 'fable')).card?.id).toBe('card:ready');
+  cards.pop();
+  expect(await nextAgentCard(context.catalog, context.root, 'fable')).toMatchObject({ member: { id: 'fable' }, card: null });
+});
+
 it('resolves member aliases, returns an empty hand, and rejects missing or ambiguous members', async () => {
   const context = await fixture([card('owned-but-not-in-hand', { owner: 'Claude' })]);
   const next = await nextAgentCard(context.catalog, context.root, '  fAbLe  ');

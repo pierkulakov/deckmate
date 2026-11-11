@@ -1,12 +1,261 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
+import { createServer, type ViteDevServer } from 'vite';
+import type { FastifyInstance } from 'fastify';
+import { createApp } from '../server/app.ts';
+import { initializeDemo } from '../server/demo.ts';
 import { openHeadlessBrowser, type HeadlessPage } from '../tools/layout-capture.ts';
 import { browserFixtureUrl } from './browser-fixture.ts';
 import { requireBrowser } from './browser-environment.ts';
 import { waitForLayout } from './browser-layout.ts';
+import { freePort } from './free-port.ts';
 import { readDurationMs } from '../client/motion.ts';
 
 const browserPath = requireBrowser();
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
+describe.skipIf(!browserPath)('Hand navigation history (browser)', () => {
+  let temporary: string;
+  let app: FastifyInstance | undefined;
+  let vite: ViteDevServer | undefined;
+  let page: HeadlessPage | undefined;
+  let origin: string;
+  const previousIndex = process.env.DECKMATE_INDEX;
+
+  async function until(expression: string) {
+    const deadline = Date.now() + 10000;
+    while (Date.now() < deadline) {
+      if (await page!.evaluate(expression)) return;
+      await delay(25);
+    }
+    throw new Error('Timed out: ' + expression + '\n' + page!.consoleErrors.join('\n'));
+  }
+
+  async function open(width: number, query = '') {
+    await page!.send('Emulation.setDeviceMetricsOverride', { width, height: width === 375 ? 812 : 600, deviceScaleFactor: 1, mobile: false });
+    await page!.send('Page.navigate', { url: `${origin}/?view=hand&catalogSource=sandbox&handMember=maya${query}` });
+    await until(`Boolean(document.querySelector('#hand-tab-runs'))`);
+    await page!.evaluate('document.fonts.ready');
+    await waitForLayout(page!.evaluate, '.hand-view');
+    await page!.evaluate(`history.scrollRestoration = 'manual'`);
+  }
+
+  beforeAll(async () => {
+    temporary = await mkdtemp(path.join(tmpdir(), 'deckmate-hand-navigation-'));
+    process.env.DECKMATE_INDEX = path.join(temporary, 'index');
+    const root = path.join(temporary, 'project');
+    await initializeDemo(root);
+    const port = await freePort();
+    app = await createApp({ editMode: 'direct', dataRoot: root, writeRoot: root, projectName: 'Moonwake Studio', port, python: 'python' });
+    await app.listen({ host: '127.0.0.1', port });
+    const target = `http://127.0.0.1:${port}`;
+    vite = await createServer({ configFile: 'app.vite.config.ts', cacheDir: path.join(temporary, 'vite'), logLevel: 'error',
+      server: { port: 0, proxy: {
+        '^/api/': { target, changeOrigin: true, ws: true, configure(proxy) {
+          proxy.on('proxyReq', request => request.setHeader('origin', target));
+          proxy.on('proxyReqWs', request => request.setHeader('origin', target));
+        } },
+        '^/r/': { target, changeOrigin: true },
+      } } });
+    await vite.listen();
+    origin = vite.resolvedUrls!.local[0].replace(/\/$/u, '');
+    page = await openHeadlessBrowser({ width: 375, height: 812, scale: 1 });
+  }, 120000);
+
+  afterAll(async () => {
+    await page?.close();
+    await vite?.close();
+    await app?.close();
+    if (previousIndex === undefined) delete process.env.DECKMATE_INDEX; else process.env.DECKMATE_INDEX = previousIndex;
+    if (temporary) await rm(temporary, { recursive: true, force: true });
+  }, 30000);
+
+  it.each(['due', 'runs', 'milestone', 'bookmarks', 'team'])('opens linked %s without scrolling', async tab => {
+    await open(375, `&handTab=${tab}`);
+    expect(await page!.callFunction(`function(tab) { return document.querySelector('#hand-tab-' + tab).getAttribute('aria-selected'); }`, tab)).toBe('true');
+    expect(await page!.evaluate(`document.querySelector('.workspace-main').scrollTop`)).toBe(0);
+  });
+
+  it.each(['invalid', '', 'RUNS'])('falls back to Bookmarks for invalid linked tab %j', async tab => {
+    await open(375, `&handTab=${tab}`);
+    expect(await page!.evaluate(`document.querySelector('#hand-tab-bookmarks').getAttribute('aria-selected')`)).toBe('true');
+    const result = await page!.evaluate(`({ top: document.querySelector('.workspace-main').scrollTop, state: history.state })`);
+    expect(result.top, JSON.stringify(result)).toBe(0);
+  });
+
+  it.each([375, 1440])('returns to the selected Run tab and scroll position at %i px', async width => {
+    await open(width);
+    await page!.evaluate(`history.replaceState({ preserved: 'yes' }, '', location.href); document.querySelector('#hand-tab-runs').click()`);
+    await until(`document.querySelector('#hand-tab-runs').getAttribute('aria-selected') === 'true'`);
+    await delay(300);
+    if (width === 375) expect(await page!.evaluate(`document.querySelector('.workspace-main').scrollTop`)).toBeGreaterThan(0);
+    expect(await page!.evaluate(`new URL(location.href).searchParams.get('handTab')`)).toBe('runs');
+    expect(await page!.evaluate(`history.state.preserved`)).toBe('yes');
+    const before = await page!.evaluate(`(() => {
+      const scrollport = document.querySelector('.workspace-main');
+      scrollport.scrollTo({ top: scrollport.scrollHeight - scrollport.clientHeight - 20, behavior: 'instant' });
+      return scrollport.scrollTop;
+    })()`);
+    expect(before).toBeGreaterThan(100);
+    await page!.evaluate(`document.querySelector('[aria-labelledby="hand-tab-runs"] .hand-section-row').click()`);
+    await until(`Boolean(document.querySelector('.card-preview'))`);
+    expect(await page!.evaluate(`new URL(location.href).searchParams.get('handTab')`)).toBe('runs');
+    await page!.evaluate('history.back()');
+    await until(`Boolean(document.querySelector('.hand-view [role="tabpanel"]'))`);
+    await waitForLayout(page!.evaluate, '.hand-view');
+    await delay(200);
+    expect(await page!.evaluate(`document.querySelector('#hand-tab-runs').getAttribute('aria-selected')`)).toBe('true');
+    expect(await page!.evaluate(`document.querySelector('.hand-member-picker select').value`)).toBe('maya');
+    expect(await page!.evaluate(`history.state.preserved`)).toBe('yes');
+    expect(Math.abs(await page!.evaluate(`document.querySelector('.workspace-main').scrollTop`) - before)).toBeLessThanOrEqual(1);
+    expect(page!.consoleErrors).toEqual([]);
+  }, 30000);
+
+  it('waits for a delayed catalog before restoring the saved position', async () => {
+    await open(375, '&handTab=runs');
+    const before = await page!.evaluate(`(() => {
+      const scrollport = document.querySelector('.workspace-main');
+      scrollport.scrollTo({ top: 900, behavior: 'instant' });
+      return scrollport.scrollTop;
+    })()`);
+    expect(before).toBe(900);
+    await page!.evaluate(`document.querySelector('[aria-labelledby="hand-tab-runs"] .hand-section-row').click()`);
+    await until(`Boolean(document.querySelector('.card-preview'))`);
+    await page!.evaluate('history.back()');
+    await until(`Boolean(document.querySelector('#hand-tab-runs[aria-selected="true"]'))`);
+    await page!.evaluate(`document.querySelector('.workspace-main').scrollTo({ top: 0, behavior: 'instant' })`);
+    const script = await page!.send('Page.addScriptToEvaluateOnNewDocument', { source: `(() => {
+      const originalFetch = window.fetch;
+      let release;
+      const waiting = new Promise(resolve => { release = resolve; });
+      window.releaseHandCatalog = release;
+      window.fetch = async (input, init) => {
+        const url = new URL(typeof input === 'string' ? input : input.url, location.href);
+        if (url.pathname === '/api/catalog' && (!init?.method || init.method === 'GET')) await waiting;
+        return originalFetch(input, init);
+      };
+    })()` });
+    try {
+      await page!.send('Page.reload');
+      await until(`Boolean(window.releaseHandCatalog && document.querySelector('.hand-view') && !document.querySelector('#hand-tab-runs'))`);
+      await page!.evaluate('window.releaseHandCatalog()');
+      await until(`Boolean(document.querySelector('#hand-tab-runs[aria-selected="true"]'))`);
+      await until(`Math.abs(document.querySelector('.workspace-main').scrollTop - ${before}) <= 1`);
+      await waitForLayout(page!.evaluate, '.hand-view');
+      expect(await page!.evaluate(`document.querySelector('.workspace-main').scrollTop`)).toBe(before);
+    } finally {
+      await page!.send('Page.removeScriptToEvaluateOnNewDocument', { identifier: script.result.identifier });
+    }
+  }, 30000);
+
+  it('restores the earlier Hand entry when Back stays on the Hand view', async () => {
+    await open(375, '&handTab=runs');
+    await page!.evaluate(`(() => {
+      document.querySelector('.workspace-main').scrollTo({ top: 900, behavior: 'instant' });
+      document.querySelector('[aria-labelledby="hand-tab-runs"] .hand-section-row').click();
+    })()`);
+    await until(`Boolean(document.querySelector('.card-preview'))`);
+    await page!.evaluate('history.back()');
+    await until(`Boolean(document.querySelector('#hand-tab-runs[aria-selected="true"]'))`);
+    await until(`document.querySelector('.workspace-main').scrollTop === 900`);
+    await page!.evaluate(`document.querySelector('[aria-labelledby="hand-tab-runs"] .hand-section-row').click()`);
+    await until(`Boolean(document.querySelector('.card-preview'))`);
+    await page!.evaluate(`document.querySelector('.global-tabs button:first-child').click()`);
+    await until(`Boolean(document.querySelector('#hand-tab-runs[aria-selected="true"]'))`);
+    await page!.evaluate(`(() => {
+      const picker = document.querySelector('.hand-member-picker select');
+      picker.value = 'leo'; picker.dispatchEvent(new Event('change', { bubbles: true }));
+      document.querySelector('#hand-tab-team').click();
+    })()`);
+    await until(`document.querySelector('#hand-tab-team').getAttribute('aria-selected') === 'true'`);
+    await delay(300);
+    await page!.evaluate('history.back()');
+    await until(`new URLSearchParams(location.search).get('handMember') === 'maya'`);
+    await delay(200);
+    expect(await page!.evaluate(`document.querySelector('.hand-member-picker select').value`)).toBe('maya');
+    expect(await page!.evaluate(`document.querySelector('#hand-tab-runs').getAttribute('aria-selected')`)).toBe('true');
+    expect(await page!.evaluate(`document.querySelector('.workspace-main').scrollTop`)).toBe(900);
+  }, 30000);
+
+  it('cancels a pending restoration when the viewed member changes', async () => {
+    await open(375, '&handTab=runs');
+    await page!.callFunction(`async function() {
+      const catalog = await (await fetch('/api/catalog?source=sandbox')).json();
+      history.replaceState({ deckmateHandScroll: { project: catalog.rootIdentity, source: 'sandbox', member: 'maya', tab: 'runs', all: false, top: 900 } }, '', location.href);
+      document.querySelector('.workspace-main').scrollTo({ top: 0, behavior: 'instant' });
+    }`);
+    const script = await page!.send('Page.addScriptToEvaluateOnNewDocument', { source: `(() => {
+      const ready = document.fonts.ready;
+      const waiting = new Promise(resolve => { window.releaseHandFonts = () => ready.then(resolve); });
+      Object.defineProperty(document.fonts, 'ready', { configurable: true, value: waiting });
+    })()` });
+    try {
+      await page!.send('Page.reload');
+      await until(`Boolean(window.releaseHandFonts && document.querySelector('#hand-tab-runs[aria-selected="true"]'))`);
+      await page!.evaluate(`(() => {
+        const picker = document.querySelector('.hand-member-picker select');
+        picker.value = 'leo'; picker.dispatchEvent(new Event('change', { bubbles: true }));
+        document.querySelector('.workspace-main').scrollTo({ top: 0, behavior: 'instant' });
+        window.releaseHandFonts();
+      })()`);
+      await until(`document.querySelector('.hand-member-picker select').value === 'leo'`);
+      await delay(200);
+      expect(await page!.evaluate(`document.querySelector('.workspace-main').scrollTop`)).toBe(0);
+      expect(await page!.evaluate(`history.state.deckmateHandScroll`)).toBeUndefined();
+    } finally {
+      await page!.send('Page.removeScriptToEvaluateOnNewDocument', { identifier: script.result.identifier });
+    }
+  }, 30000);
+
+  it.each(['project', 'source', 'member', 'tab', 'all'])('does not restore scroll from another %s context', async key => {
+    await open(375, '&handTab=runs');
+    await page!.callFunction(`async function(key) {
+      const catalog = await (await fetch('/api/catalog?source=sandbox')).json();
+      const wrong = { project: 'other-project', source: 'live', member: 'leo', tab: 'team', all: true };
+      const saved = { project: catalog.rootIdentity, source: 'sandbox', member: 'maya', tab: 'runs', all: false, top: 900 };
+      history.replaceState({ deckmateHandScroll: { ...saved, [key]: wrong[key] } }, '', location.href);
+      document.querySelector('.workspace-main').scrollTo({ top: 0, behavior: 'instant' });
+    }`, key);
+    const script = await page!.send('Page.addScriptToEvaluateOnNewDocument', { source: `(() => {
+      const scrollTo = Element.prototype.scrollTo;
+      window.handScrollCalls = [];
+      Element.prototype.scrollTo = function(...args) {
+        if (this.matches('.workspace-main')) window.handScrollCalls.push(args);
+        return scrollTo.apply(this, args);
+      };
+    })()` });
+    try {
+      await page!.send('Page.reload');
+      await until(`Boolean(document.querySelector('#hand-tab-runs[aria-selected="true"]'))`);
+      await waitForLayout(page!.evaluate, '.hand-view');
+      await delay(200);
+      expect(await page!.evaluate('window.handScrollCalls')).toEqual([]);
+    } finally {
+      await page!.send('Page.removeScriptToEvaluateOnNewDocument', { identifier: script.result.identifier });
+    }
+  }, 30000);
+
+  it('preserves unrelated history state while changing Hand parameters', async () => {
+    await open(375);
+    await page!.evaluate(`(() => {
+      history.replaceState({ preserved: 'yes' }, '', location.href);
+      const picker = document.querySelector('.hand-member-picker select');
+      picker.value = 'leo'; picker.dispatchEvent(new Event('change', { bubbles: true }));
+      document.querySelector('#hand-tab-team').click();
+      document.querySelector('.hand-all-toggle input').click();
+    })()`);
+    await until(`document.querySelector('.hand-member-picker select').value === 'leo'`);
+    const state = await page!.evaluate(`({ url: location.href, preserved: history.state.preserved })`);
+    const query = new URL(state.url).searchParams;
+    expect(query.get('handMember')).toBe('leo');
+    expect(query.get('handTab')).toBe('team');
+    expect(query.get('hands')).toBe('all');
+    expect(state.preserved).toBe('yes');
+    await page!.evaluate(`localStorage.removeItem('deckmate-hand-all')`);
+  });
+});
 
 interface SourceDropFrame {
   x: number;
@@ -49,10 +298,13 @@ describe.skipIf(!browserPath)('Hand pointer drag work (browser)', () => {
     finally { await page?.close(); }
   });
 
-  async function openHand({ reducedMotion = false, queue = false, width = 1440 } = {}) {
+  async function openHand({ reducedMotion = false, queue = false, readOnly = false, width = 1440 } = {}) {
     page = await openHeadlessBrowser({ width, height: 900, scale: 1 });
     await page.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: reducedMotion ? 'reduce' : 'no-preference' }] });
-    await page.send('Page.navigate', { url: browserFixtureUrl('hand-drag-performance') + (queue ? '?queue' : '') });
+    const query = new URLSearchParams();
+    if (queue) query.set('queue', '');
+    if (readOnly) query.set('readonly', '');
+    await page.send('Page.navigate', { url: browserFixtureUrl('hand-drag-performance') + (query.size ? '?' + query : '') });
     for (let attempt = 0; attempt < 300; attempt++) {
       if (await page.evaluate(`document.querySelectorAll('.hand-slots .hand-slot.is-filled').length === 7`)) break;
       await delay(50);
@@ -68,6 +320,16 @@ describe.skipIf(!browserPath)('Hand pointer drag work (browser)', () => {
       const rect = document.querySelector(selector).getBoundingClientRect();
       return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
     }`, selector);
+  }
+
+  async function waitFor(expression: string) {
+    await page!.evaluate(`(async () => {
+      const deadline = performance.now() + 5000;
+      while (!(${expression})) {
+        if (performance.now() > deadline) throw new Error('Timed out waiting for Hand state');
+        await new Promise(requestAnimationFrame);
+      }
+    })()`);
   }
 
   async function recordSourceDrop() {
@@ -368,6 +630,53 @@ describe.skipIf(!browserPath)('Hand pointer drag work (browser)', () => {
     expect((await page.evaluate('window.handDragTest.result()')).writes).toBe(3);
   }, 20000);
 
+  it('reorders an occupied slot by its visible touch handle and cancels a touch drag', async () => {
+    page = await openHand({ queue: true });
+    await page.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 1 });
+    const handle = '.hand-slots [data-card-id="card:hand-2"]';
+    await delay(350);
+    const geometry = await page.evaluate(`(() => {
+      const handle = document.querySelector('${handle}').closest('.hand-slot').querySelector('.hand-slot-handle');
+      const rect = handle.getBoundingClientRect();
+      return { width: rect.width, height: rect.height, opacity: getComputedStyle(handle).opacity };
+    })()`);
+    expect(geometry.width).toBeGreaterThanOrEqual(44);
+    expect(geometry.height).toBeGreaterThanOrEqual(44);
+    expect(geometry.opacity).toBe('1');
+    const handleButton = '.hand-slot[data-hand-card="card:hand-2"] .hand-slot-handle';
+    await dragBetween(await pointOf(handleButton), await pointOf('.hand-slots [data-card-id="card:hand-1"]'), true);
+    expect((await page.evaluate('window.handDragTest.result()')).reorder).toEqual([0, 2, 1, 3, 4, 5, 6, 7, 8].map(index => `card:hand-${index}`));
+    const start = await pointOf(handleButton);
+    await page.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ ...start, id: 1 }] });
+    await page.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: start.x + 20, y: start.y, id: 1 }] });
+    await page.send('Input.dispatchTouchEvent', { type: 'touchCancel', touchPoints: [] });
+    await delay(250);
+    expect((await page.evaluate('window.handDragTest.result()')).writes).toBe(1);
+    expect(await page.evaluate(`Boolean(document.querySelector('.is-drag-source'))`)).toBe(false);
+    await dragBetween(await pointOf(handleButton), await pointOf('.hand-queue li:last-child .hand-queue-handle'), true);
+    expect((await page.evaluate('window.handDragTest.result()')).reorder).toEqual([0, 1, 3, 4, 5, 6, 7, 8, 2].map(index => `card:hand-${index}`));
+    await dragBetween(await pointOf('[data-hand-card="card:hand-2"] .hand-queue-handle'), await pointOf('.hand-slots [data-card-id="card:hand-0"]'), true);
+    expect((await page.evaluate('window.handDragTest.result()')).reorder).toEqual([2, 0, 1, 3, 4, 5, 6, 7, 8].map(index => `card:hand-${index}`));
+    expect((await page.evaluate('window.handDragTest.result()')).writes).toBe(3);
+  }, 15000);
+
+  it.each([false, true])('keeps slot controls outside the card face without overlapping settings (touch: %s)', async touch => {
+    page = await openHand({ width: 375 });
+    if (touch) await page.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 1 });
+    const geometry = await page.evaluate(`(() => {
+      const slot = document.querySelector('.hand-slot.is-filled');
+      const rect = element => { const r = element.getBoundingClientRect(); return { left:r.left, right:r.right, top:r.top, bottom:r.bottom, width:r.width, height:r.height }; };
+      return { face:rect(slot.querySelector('.deck-card')), settings:rect(slot.querySelector('.deck-card-settings')), handle:rect(slot.querySelector('.hand-slot-handle')), remove:rect(slot.querySelector('.hand-slot-remove')) };
+    })()`);
+    for (const control of [geometry.handle, geometry.remove]) {
+      expect(control.top).toBeGreaterThanOrEqual(geometry.face.bottom);
+      expect(control.width).toBeGreaterThanOrEqual(touch ? 44 : 24);
+      expect(control.height).toBeGreaterThanOrEqual(touch ? 44 : 24);
+      expect(control.top).toBeGreaterThanOrEqual(geometry.settings.bottom);
+    }
+    expect(geometry.remove.right).toBeLessThanOrEqual(geometry.handle.left);
+  });
+
   it('keeps Done Cards outside ordering and reorders across wrapped tile rows', async () => {
     page = await openHand({ width: 600 });
     const start = await pointOf('.hand-slots [data-card-id="card:hand-2"] .deck-card-open');
@@ -378,6 +687,156 @@ describe.skipIf(!browserPath)('Hand pointer drag work (browser)', () => {
     expect((await page.evaluate('window.handDragTest.result()')).reorder).toEqual([0, 1, 3, 4, 5, 2, 6].map(index => `card:hand-${index}`));
     expect(await page.evaluate(`document.querySelectorAll('.hand-slots .hand-slot.is-filled').length`)).toBe(7);
   }, 15000);
+
+  it('opens the Done pile with the keyboard and closes it when the viewed member changes', async () => {
+    page = await openHand();
+    await page.evaluate(`document.querySelector('.hand-slot-done').focus()`);
+    await page.send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13, text: '\r' });
+    await page.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13 });
+    await delay(100);
+    expect(await page.evaluate(`document.querySelector('.hand-slot-done').getAttribute('aria-expanded')`)).toBe('true');
+    expect(await page.evaluate(`document.querySelector('.hand-done-list:not([hidden])').innerText`)).toContain('Done card');
+    await page.evaluate(`document.querySelector('.hand-done-list button').click()`);
+    expect((await page.evaluate('window.handDragTest.result()')).opened).toEqual(['card:done']);
+    await page.evaluate(`window.handDragTest.clearOpened(); const select = document.querySelector('.hand-member-picker select'); select.value = 'maya'; select.dispatchEvent(new Event('change', { bubbles: true }))`);
+    await delay(100);
+    expect(await page.evaluate(`document.querySelector('.hand-slot-done').getAttribute('aria-expanded')`)).toBe('false');
+    expect(await page.evaluate(`document.querySelector('.hand-member-picker select').value`)).toBe('maya');
+  });
+
+  it('opens tile settings by keyboard, restores focus, and saves an owner independently of Hand membership', async () => {
+    page = await openHand();
+    const selector = '[data-hand-card="card:hand-1"] .deck-card-settings';
+    await page.evaluate(`document.querySelector('${selector}').focus()`);
+    await page.send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13, text: '\r' });
+    await page.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13 });
+    await waitFor(`document.querySelector('.card-quick-settings[data-tab="owner"]')`);
+    expect(await page.evaluate(`document.querySelector('${selector}').getAttribute('aria-expanded')`)).toBe('true');
+    await page.send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 });
+    await page.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 });
+    await waitFor(`!document.querySelector('.card-quick-settings') && document.activeElement.matches('${selector}')`);
+    await page.evaluate(`document.querySelector('${selector}').click()`);
+    await waitFor(`document.querySelector('.card-quick-settings [role="option"]')`);
+    await page.evaluate(`Array.from(document.querySelectorAll('.card-quick-settings [role="option"]')).find(option => option.innerText.includes('Leo')).click()`);
+    await waitFor(`!document.querySelector('.card-quick-settings') && document.querySelector('[data-hand-card="card:hand-1"] .deck-card-owner')?.getAttribute('aria-label') === 'Owner: Leo'`);
+    const result = await page.evaluate('window.handDragTest.result()');
+    expect(result.propertyAction).toMatchObject({ action: 'set-card-properties', cardId: 'card:hand-1', sourceHash: 'hash-1', manifestHash: 'manifest', owner: 'Leo' });
+    expect(result.cards.find((card: { id: string }) => card.id === 'card:hand-1').handMemberIds).toEqual(['leo']);
+    expect(result.writes).toBe(0);
+  });
+
+  it('offers the same settings on bookmarks and All Hands, and no settings in read-only mode', async () => {
+    page = await openHand();
+    expect(await page.evaluate(`Boolean(document.querySelector('.hand-bookmarks .deck-card-settings'))`)).toBe(true);
+    await page.evaluate(`document.querySelector('.hand-bookmarks .deck-card-settings').click()`);
+    await waitFor(`document.querySelector('.card-quick-settings')`);
+    await page.send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 });
+    await page.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 });
+    await waitFor(`!document.querySelector('.card-quick-settings')`);
+    await page.evaluate(`document.querySelector('.hand-all-toggle input').click()`);
+    await waitFor(`document.querySelector('.hand-all-member .deck-card-settings')`);
+    await page.evaluate(`document.querySelector('.hand-all-member .deck-card-settings').click()`);
+    await waitFor(`document.querySelector('.card-quick-settings')`);
+    await page.close();
+    page = await openHand({ readOnly: true });
+    expect(await page.evaluate(`document.querySelectorAll('.deck-card-settings').length`)).toBe(0);
+  });
+
+  it('keeps a failed settings save open with its error and the original owner', async () => {
+    page = await openHand();
+    await page.evaluate(`window.handDragTest.failWrites(409); document.querySelector('[data-hand-card="card:hand-1"] .deck-card-settings').click()`);
+    await waitFor(`document.querySelector('.card-quick-settings [role="option"]')`);
+    await page.evaluate(`Array.from(document.querySelectorAll('.card-quick-settings [role="option"]')).find(option => option.innerText.includes('Leo')).click()`);
+    await waitFor(`document.querySelector('.card-quick-settings [role="alert"]')`);
+    expect(await page.evaluate(`document.querySelector('.card-quick-settings [role="alert"]').textContent`)).toContain('Change not saved');
+    expect(await page.evaluate(`document.querySelector('[data-hand-card="card:hand-1"] .deck-card-owner').getAttribute('aria-label')`)).toBe('Owner: Maya');
+    expect((await page.evaluate('window.handDragTest.result()')).propertyAction).toBeNull();
+  });
+
+  it('reserves slot action space while a touch settings save is pending', async () => {
+    page = await openHand({ width: 375 });
+    await page.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 1 });
+    await page.evaluate(`window.handDragTest.pauseWrites(); document.querySelector('[data-hand-card="card:hand-1"] .deck-card-settings').click()`);
+    await waitFor(`document.querySelector('.card-quick-settings [role="option"]')`);
+    const before = await page.evaluate(`document.querySelector('.hand-slots').getBoundingClientRect().height`);
+    await page.evaluate(`Array.from(document.querySelectorAll('.card-quick-settings [role="option"]')).find(option => option.innerText.includes('Leo')).click()`);
+    await waitFor(`document.querySelector('[data-hand-card="card:hand-1"] .deck-card-settings:disabled')`);
+    expect(await page.evaluate(`document.querySelector('.hand-slots').getBoundingClientRect().height`)).toBe(before);
+    await page.evaluate(`window.handDragTest.resumeWrites()`);
+    await waitFor(`!document.querySelector('.card-quick-settings')`);
+  });
+
+  it('shows each decorated tag once in the Team Hand card', async () => {
+    page = await openHand();
+    await page.evaluate(`document.querySelector('#hand-tab-team').click()`);
+    await waitFor(`document.querySelector('.hand-card .tag-badge')`);
+    expect(await page.evaluate(`document.querySelectorAll('.hand-card .card-title-tags').length`)).toBe(0);
+    expect(await page.evaluate(`document.querySelector('.hand-card .tag-badge').textContent`)).toContain('sound');
+  });
+
+  it('removes queue cards and cards owned by someone else, restoring focus after the save', async () => {
+    page = await openHand({ queue: true });
+    await page.evaluate(`document.querySelector('[data-hand-card="card:hand-8"] .hand-queue-remove').click()`);
+    await delay(300);
+    expect((await page.evaluate('window.handDragTest.result()')).bulkWrites).toBe(1);
+    expect(await page.evaluate(`Boolean(document.querySelector('[data-hand-card="card:hand-8"]'))`)).toBe(false);
+    await page.evaluate(`document.querySelector('[data-hand-card="card:hand-1"] .hand-slot-remove').click()`);
+    await delay(300);
+    expect((await page.evaluate('window.handDragTest.result()')).bulkWrites).toBe(2);
+    expect(await page.evaluate(`Boolean(document.querySelector('[data-hand-card="card:hand-1"]'))`)).toBe(false);
+    expect(await page.evaluate(`document.activeElement.closest('[data-hand-card]')?.dataset.handCard`)).toBe('card:hand-2');
+  });
+
+  it.each([500, 409])('keeps a failed removal visible with an explicitly named data refresh action (status %i)', async status => {
+    page = await openHand({ queue: true, width: 375 });
+    await page.evaluate(`window.handDragTest.failWrites(${status}); document.querySelector('[data-hand-card="card:hand-8"] .hand-queue-remove').scrollIntoView(); document.querySelector('[data-hand-card="card:hand-8"] .hand-queue-remove').click()`);
+    await delay(300);
+    expect(await page.evaluate(`Boolean(document.querySelector('[data-hand-card="card:hand-8"]'))`)).toBe(true);
+    expect(await page.evaluate(`document.querySelector('.hand-error button')?.textContent`)).toBe('Refresh data');
+    expect(await page.evaluate(`(() => { const rect = document.querySelector('.hand-error').getBoundingClientRect(); return rect.bottom > 0 && rect.top < innerHeight })()`)).toBe(true);
+  });
+
+  it('keeps the mobile planning tabs reachable and counts the displayed due cards', async () => {
+    page = await openHand({ width: 375 });
+    const tabs = await page.evaluate(`Array.from(document.querySelectorAll('[role="tab"]')).map(tab => ({ id: tab.id, bottom: tab.getBoundingClientRect().bottom }))`);
+    for (const id of ['hand-tab-due', 'hand-tab-runs', 'hand-tab-team']) expect(tabs.find((tab: { id: string }) => tab.id === id)?.bottom).toBeLessThanOrEqual(900);
+    await page.evaluate(`document.querySelector('#hand-tab-due').click()`);
+    await delay(150);
+    expect(await page.evaluate(`document.querySelector('#hand-tab-due .hand-tab-count').textContent`)).toBe('6');
+    expect(await page.evaluate(`document.querySelectorAll('.hand-section .hand-section-row').length`)).toBe(6);
+    await page.evaluate(`document.querySelector('.hand-show-all').click()`);
+    await delay(100);
+    expect(await page.evaluate(`document.querySelector('#hand-tab-due .hand-tab-count').textContent`)).toBe('7');
+    expect(await page.evaluate(`document.querySelectorAll('.hand-section .hand-section-row').length`)).toBe(7);
+    expect(await page.evaluate(`document.querySelector('#hand-tab-due').getAttribute('aria-label')`)).toContain('7 cards');
+    await page.evaluate(`document.querySelector('#hand-tab-team').click()`);
+    await delay(150);
+    expect(await page.evaluate(`document.querySelector('#hand-tab-panel').getBoundingClientRect().top < innerHeight`)).toBe(true);
+  });
+
+  it('shows a Done pile in All Hands even when the member has no open cards', async () => {
+    page = await openHand();
+    await page.evaluate(`document.querySelector('.hand-all-toggle input').click()`);
+    await delay(100);
+    expect(await page.evaluate(`document.querySelector('[aria-label="Hand: Maya"] .hand-slot-done-count')?.textContent`)).toBe('1');
+  });
+
+  it('scrolls the mobile page from a card face without starting a touch reorder', async () => {
+    page = await openHand({ width: 375 });
+    await page.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 1 });
+    await delay(350);
+    const point = await pointOf('.hand-slots [data-card-id="card:hand-1"] .deck-card-open');
+    const before = await page.evaluate('document.scrollingElement.scrollTop');
+    await page.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ ...point, id: 1 }] });
+    for (let step = 1; step <= 8; step++) {
+      await page.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: point.x, y: point.y - step * 20, id: 1 }] });
+      await delay(20);
+    }
+    await page.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+    await delay(150);
+    expect(await page.evaluate('document.scrollingElement.scrollTop')).toBeGreaterThan(before);
+    expect((await page.evaluate('window.handDragTest.result()')).writes).toBe(0);
+  });
 
   it.each(['face', 'handle'])('keeps disabled deck-transfer faces out of per-move renders when dragging by %s', async activator => {
     page = await openHand();

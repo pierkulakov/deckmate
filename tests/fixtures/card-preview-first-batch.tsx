@@ -6,11 +6,13 @@ import { CardPreview } from '../../client/components/CardPreview.tsx';
 import { CardFamilyPanel } from '../../client/components/CardFamily.tsx';
 import { setLang } from '../../client/i18n.ts';
 import { shortcutTargetBlocked } from '../../client/keyboard-shortcuts.ts';
+import { shortReference } from '../../src/references.ts';
 import '../../client/styles.css';
 import '../../client/card-material.css';
 
 const root = createRoot(document.getElementById('root')!);
 const requests: unknown[] = [];
+const selections: string[] = [];
 const historyCursors: (string | null)[] = [];
 let current: CatalogCard;
 let historyFails = false;
@@ -21,7 +23,7 @@ let editFailure: 'conflict' | 'network' | null = null;
 let holdEdit = false;
 let finishEdit: (() => void) | undefined;
 let refreshCard: (() => void) | undefined;
-interface Options { journey?: boolean; tags?: number; title?: string; owner?: string; markdown?: string; dependencies?: boolean; archived?: boolean; deleted?: boolean; writable?: boolean; pending?: boolean; lang?: 'en' | 'ru'; theme?: 'light' | 'dark'; family?: boolean; kind?: CatalogCard['kind']; state?: CatalogCard['state'] }
+interface Options { backlinks?: number; journey?: boolean; tags?: number; title?: string; owner?: string; markdown?: string; dependencies?: boolean; archived?: boolean; deleted?: boolean; writable?: boolean; pending?: boolean; lang?: 'en' | 'ru'; theme?: 'light' | 'dark'; family?: boolean; kind?: CatalogCard['kind']; state?: CatalogCard['state'] }
 const noop = () => {};
 let outerEscapes = 0;
 window.addEventListener('keydown', event => { if (event.key === 'Escape' && !shortcutTargetBlocked(event)) outerEscapes++; }, true);
@@ -39,7 +41,7 @@ window.fetch = async (input, init) => {
     const cursor = new URL(url, location.origin).searchParams.get('cursor');
     return Response.json({ events: [{ id: cursor ?? 'first', at: '2026-11-10T00:00:00Z', summary: cursor ? 'Older event' : 'Saved event', details: [] }], warnings: [], created: null, nextCursor: cursor ? null : 'older' });
   }
-  if (url.includes('attachments')) return Response.json({ files: [] });
+  if (url.includes('attachments')) return Response.json({ hash: '', files: [], warnings: [] });
   return Response.json({ cardId: current.id, title: current.title, markdown: current.markdown, sourceHash: current.sourceHash });
 };
 
@@ -54,6 +56,16 @@ function Fixture({ options }: { options: Options }) {
   const catalog: CatalogView = { rootIdentity: 'first-batch', documents: [], cards: options.family ? [card, child] : [card], spaces: [], decks: [], tracks: [], warnings: [], formatLanguage: 'en', manifestHash: 'manifest-hash', optionsHash: 'options-hash', configured: true, indexedAt: '',
     members: [{ id: 'maya', label: 'Maya Chen', kind: 'human', aliases: [] }], runs: [], milestones: [] };
   if (options.dependencies) catalog.cards.push({ ...card, id: 'card:dependency', title: 'Завершить подготовку', state: 'not-started', dependsOn: [] });
+  if (options.backlinks) {
+    const reference = '/r/' + shortReference('c', 'card:preview');
+    const link = `[Target](${reference}?source=sandbox)`;
+    const source = (id: string, markdown: string, extra: Partial<CatalogCard> = {}) => ({ ...card, id: 'card:' + id, title: id, markdown, ...extra });
+    catalog.cards.push(...Array.from({ length: options.backlinks }, (_, index) => source('incoming-' + index,
+      index % 2 ? `[Target][ref]\n\n[ref]: ${reference}` : link)));
+    catalog.cards.push(source('archived-source', link, { archived: true }), source('deleted-source', link, { deleted: true }),
+      source('code-source', '```md\n' + link + '\n```'), source('yaml-source', '---\nlink: ' + reference + '\n---\nText'),
+      source('wrong-source', `[Target](${reference}?source=live)`));
+  }
   if (options.journey) catalog.journeys = [{ id: 'pipeline', title: 'Pipeline', version: 1, deckId: 'assets', path: 'tasks/journeys/pipeline/index.md', fileHash: 'journey-hash',
     steps: [{ id: 'step', title: 'Step', markdown: '', deckId: 'work', owner: null, dependsOn: [] }] }];
   refreshCard = () => setCard(previous => ({ ...previous, sourceHash: previous.sourceHash + '-refreshed' }));
@@ -78,15 +90,15 @@ function Fixture({ options }: { options: Options }) {
     token: 'fixture-token', iteration: { number: 1, goal: '', start: '' } };
   return <div style={{ width: 'min(496px, 100%)', margin: '24px auto' }}>
     <CardPreview card={card} catalog={catalog} snapshot={snapshot}
-      writable={options.writable ?? true} pending={options.pending ?? false} onClose={noop} onSelect={noop} onDirtyChange={noop} onEdit={edit} />
+      writable={options.writable ?? true} pending={options.pending ?? false} onClose={noop} onSelect={next => { selections.push(next.id); setCard(next); }} onDirtyChange={noop} onEdit={edit} />
     {options.family && <CardFamilyPanel hero={card} card={card} children={[child]} openedId={card.id} catalog={catalog} disabled={false} writable={false} onOpen={noop} onCreate={noop} onAttach={noop} />}
   </div>;
 }
 function render(options: Options = {}) {
-  requests.length = 0; historyCursors.length = 0; historyFails = false; holdHistory = false; holdEdit = false; outerEscapes = 0; editFailure = null;
+  requests.length = 0; selections.length = 0; historyCursors.length = 0; historyFails = false; holdHistory = false; holdEdit = false; outerEscapes = 0; editFailure = null;
   setLang(options.lang ?? 'en');
   document.documentElement.classList.toggle('dark', options.theme === 'dark');
   root.render(<Fixture key={++instance} options={options} />);
 }
-Object.assign(window, { firstBatch: { render, requests, historyCursors, failEdit: (failure: typeof editFailure) => { editFailure = failure; }, holdEdit: () => { holdEdit = true; }, finishEdit: () => { holdEdit = false; finishEdit?.(); }, outerEscapes: () => outerEscapes, failHistory: (fail: boolean) => { historyFails = fail; }, holdHistory: () => { holdHistory = true; }, finishHistory: () => { holdHistory = false; finishHistory?.(); } } });
+Object.assign(window, { firstBatch: { render, requests, selections, historyCursors, failEdit: (failure: typeof editFailure) => { editFailure = failure; }, holdEdit: () => { holdEdit = true; }, finishEdit: () => { holdEdit = false; finishEdit?.(); }, outerEscapes: () => outerEscapes, failHistory: (fail: boolean) => { historyFails = fail; }, holdHistory: () => { holdHistory = true; }, finishHistory: () => { holdHistory = false; finishHistory?.(); } } });
 render();

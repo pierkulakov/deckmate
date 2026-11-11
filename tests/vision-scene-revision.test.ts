@@ -48,7 +48,7 @@ function render() {
 }
 
 function find(predicate: (element: Element) => boolean, node = tree): Element | undefined {
-  if (Array.isArray(node)) return node.map(child => find(predicate, child)).find(Boolean);
+  if (Array.isArray(node)) return node.map(child => find(predicate, child ?? null)).find(Boolean);
   if (!isValidElement<Record<string, any>>(node)) return;
   if (predicate(node)) return node;
   return find(predicate, node.props.children ?? null);
@@ -68,7 +68,7 @@ beforeEach(() => {
 
 it('adds, replaces and removes text references after the scene is already dirty', () => {
   const token = (id: string) => '$' + shortReference('c', id);
-  const refs = () => find(element => element.props.className === 'vision-text-refs');
+  const refs = () => find(element => element.props.className?.split(' ').includes('vision-text-refs'))!;
   const hasToken = (value: string) => Boolean(find(element => element.type === 'small' && element.props.children === value, refs()));
   change([{ id: 'text', type: 'text', text: token('first') }]);
   expect(hasToken(token('first'))).toBe(true);

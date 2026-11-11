@@ -98,15 +98,15 @@ button { font: inherit; color: inherit; }
   box-shadow: inset 0 0 0 1px rgb(48 36 56 / .1), 0 3px 0 var(--count-foot), 0 5px 5px -2px rgb(0 0 0 / .32);
 }
 .fan { position: absolute; right: 4px; bottom: 6px; width: 230px; height: 190px; transform: scale(.4); transform-origin: 100% 100%; z-index: 1; }
-/* The hand holds real cards: crops of the same rendered sheet the social preview fans out (docs/social-cards.png,
-   five cards at a 131px pitch when shown at half size), so the launcher shows the board's own material. */
+/* 2026-11-11: theme-specific board crops keep the fan's materials and owner medallions consistent with the board. */
 .fan-card {
   position: absolute; left: calc(50% - 58px); bottom: 36px; width: 115px; height: 147px; border-radius: 6px;
-  background: #1c1a24; box-shadow: var(--card-hover-shadow), 0 0 0 1px #ffffff26;
+  background: var(--sidebar) url('art/cards-light.png') calc(-8px - 131px * var(--i)) -8px / 655px 163px no-repeat;
+  box-shadow: var(--card-hover-shadow), 0 0 0 1px #ffffff26;
   transform-origin: 50% 120%; overflow: hidden;
 }
-.fan-card img { position: absolute; top: -8px; left: calc(-8px - 131px * var(--i)); width: 655px; height: 163px; max-width: none; display: block; }
-.fan-card-doc { transform: rotate(-10deg) translateX(-16px); }
+:root.dark .fan-card { background-image: url('art/cards.png'); }
+.fan-card-review { transform: rotate(-10deg) translateX(-16px); }
 .fan-card-task { transform: translateY(-8px); z-index: 1; }
 .fan-card-hero { transform: rotate(10deg) translateX(22px); z-index: 2; }
 

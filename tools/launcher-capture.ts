@@ -15,7 +15,7 @@ const output = process.env.DECKMATE_LAUNCHER_CAPTURE_OUTPUT || path.join(here, '
 
 interface Frame {
   name: string; theme: 'dark' | 'light'; lang: 'en' | 'ru'; size: [number, number]; page?: 'whats-new';
-  state?: 'empty' | 'error' | 'hover-row' | 'focus-open' | 'focus-row' | 'focus-workspace';
+  state?: 'empty' | 'one' | 'error' | 'hover-row' | 'focus-open' | 'focus-row' | 'focus-workspace';
   scenario?: 'empty' | 'many' | 'missing' | 'opening' | 'error' | 'create';
   error?: string; zoom?: number; reducedMotion?: boolean;
   expand?: 'templates' | 'details';
@@ -50,6 +50,10 @@ const errorCodes = ['invalid-path', 'missing', 'not-empty', 'create-failed', 'st
 for (const theme of ['dark', 'light'] as const) {
   for (const lang of ['en', 'ru'] as const) {
     for (const size of [[960, 600], [1280, 820]] as [number, number][]) {
+      if ((theme === 'dark' && lang === 'ru') || (theme === 'light' && lang === 'en')) {
+        frames.push({ name: `${theme}-${lang}-${size[0]}`, theme, lang, size, covers: size[1] > 680 ? 'visible' : 'hidden' });
+      }
+      frames.push({ name: `${theme}-${lang}-one-${size[0]}`, theme, lang, size, state: 'one' });
       for (const scenario of ['empty', 'many', 'missing', 'opening', 'create'] as const) {
         frames.push({ name: `${theme}-${lang}-${scenario}-${size[0]}`, theme, lang, size, scenario });
       }
@@ -82,6 +86,7 @@ const STATE_SCRIPTS: Record<string, string> = {
   empty: `document.getAnimations().forEach(a => a.finish());
     state.recent = []; state.workspace = []; renderWorkspace(); renderRecent();
     document.getElementById('open-folder').focus();`,
+  one: `state.recent = [state.recent[0]]; state.workspace = []; renderWorkspace(); renderRecent();`,
   error: `document.getAnimations().forEach(a => a.finish()); document.getElementById('open-folder').click();`,
   'hover-row': `document.getAnimations().forEach(a => a.finish()); document.querySelectorAll('.recent-item')[1].classList.add('is-hover-demo');`,
   'focus-open': `document.getAnimations().forEach(a => a.finish())`,
@@ -89,9 +94,9 @@ const STATE_SCRIPTS: Record<string, string> = {
   'focus-workspace': `document.getAnimations().forEach(a => a.finish())`,
 };
 const FOCUS_CHECKS: Record<string, string> = {
-  'focus-open': `document.activeElement === document.getElementById('open-folder')`,
-  'focus-row': `document.activeElement === document.querySelector('#recent-list .recent-open')`,
-  'focus-workspace': `document.activeElement === document.querySelector('#workspace-list .recent-open')`,
+  'focus-open': `document.getElementById('open-folder').matches(':focus-visible')`,
+  'focus-row': `document.querySelector('#recent-list .recent-open').matches(':focus-visible')`,
+  'focus-workspace': `document.querySelector('#workspace-list .recent-open').matches(':focus-visible')`,
 };
 const MAX_TAB_PRESSES = 48;
 
@@ -182,6 +187,41 @@ async function verifyLauncherInteractions(page: HeadlessPage): Promise<void> {
   console.log('keyboard: Enter, arrows, superseding launch, translated recovery, Escape and Delete passed');
 }
 
+async function verifyControlStates(page: HeadlessPage): Promise<void> {
+  await navigateAndWait(page, 'pointer checks');
+  await waitForPageReady(page, 'pointer checks');
+  const point = async (selector: string) => page.callFunction(`selector => {
+    const box = document.querySelector(selector).getBoundingClientRect();
+    return { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+  }`, selector);
+  const move = async (coordinates: { x: number; y: number }, buttons = 0) => page.send('Input.dispatchMouseEvent', { type: 'mouseMoved', ...coordinates, buttons });
+  const appearance = `(() => { const style = getComputedStyle(document.getElementById('open-folder')); return [style.backgroundColor, style.color, style.opacity].join('|'); })()`;
+  await move({ x: 0, y: 0 });
+  const idle = await page.evaluate(appearance);
+  const open = await point('#open-folder');
+  await move(open);
+  await sleep(150);
+  if (await page.evaluate(appearance) === idle) throw new Error('Pointer: the primary button has no hover feedback');
+  await page.send('Input.dispatchMouseEvent', { type: 'mousePressed', ...open, button: 'left', buttons: 1, clickCount: 1 });
+  await sleep(150);
+  const press = await page.evaluate(`new DOMMatrixReadOnly(getComputedStyle(document.getElementById('open-folder')).transform).m42`);
+  if (Math.abs(press - 1) > .05) throw new Error(`Pointer: expected a 1px press, got ${press}`);
+  await move({ x: 0, y: 0 }, 1);
+  await page.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: 0, y: 0, button: 'left', buttons: 0, clickCount: 1 });
+  await sleep(50);
+  if (await page.evaluate(appearance) !== idle) throw new Error('Pointer: the button hover did not clear immediately');
+  const row = `getComputedStyle(document.querySelector('#last-list .recent-open')).backgroundColor`;
+  const rowIdle = await page.evaluate(row);
+  await move(await point('#last-list .recent-open'));
+  await sleep(150);
+  if (await page.evaluate(row) === rowIdle) throw new Error('Pointer: the project row has no hover feedback');
+  await move(await point('#recent-list .recent-open'));
+  await sleep(50);
+  if (await page.evaluate(row) !== rowIdle) throw new Error('Pointer: the project row hover did not clear immediately');
+  await move({ x: 0, y: 0 });
+  console.log('pointer: hover, immediate exit and press passed');
+}
+
 interface Shot { name: string; width: number; height: number; bytes: number; sha256: string; zoom?: number }
 
 async function verifyCovers(page: HeadlessPage, frame: Frame): Promise<void> {
@@ -230,6 +270,18 @@ async function verifyCovers(page: HeadlessPage, frame: Frame): Promise<void> {
       image.src = background.slice(5, -2);
       try { await image.decode(); } catch { return 'cover art did not load'; }
       if (!image.naturalWidth || !image.naturalHeight) return 'cover art is empty';
+    }
+    const fan = [...table.querySelectorAll('.fan-card')];
+    if (fan.length !== 3) return 'expected three cards in the fan';
+    for (const card of fan) {
+      const background = getComputedStyle(card).backgroundImage;
+      if (!background.startsWith('url("') || !background.endsWith('")')) return 'card art is missing';
+      const source = background.slice(5, -2);
+      const expectedFile = document.documentElement.classList.contains('dark') ? 'cards.png' : 'cards-light.png';
+      if (!new URL(source).pathname.endsWith('/' + expectedFile)) return 'card art does not match the theme';
+      const image = new Image(); image.src = source;
+      try { await image.decode(); } catch { return 'card art did not load'; }
+      if (image.naturalWidth !== 1310 || image.naturalHeight !== 326) return 'card art has unexpected dimensions';
     }
     return '';
   }`, frame.covers);
@@ -360,6 +412,7 @@ async function main(): Promise<void> {
     await mkdir(output, { recursive: true });
     await navigateAndWait(page, 'initial load');
     await verifyLauncherInteractions(page);
+    await verifyControlStates(page);
     const shots: Shot[] = [];
     for (const frame of frames) shots.push(await captureFrame(page, frame, path.join(output, `${frame.name}.png`)));
     await sleep(300);

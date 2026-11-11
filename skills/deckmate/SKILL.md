@@ -1,58 +1,57 @@
 ---
 name: deckmate
-description: "Use when a user asks to manage a Deckmate board, take the next card, analyze an area, audit a deck or Journey, plan cards, profile a project, submit work, or review results. Also handles /deckmate analyze | audit | plan | profile | work | review."
+description: "Use when a person asks to start or profile a Deckmate project, plan cards or milestones, work or ask about a card, review or audit results, analyze a game area, write a GDD, run a Journey, run a playtest, or set up a team. Also handles /deckmate start | profile | plan | milestone | work | ask | review | audit | analyze | gdd | journey | playtest | team."
 metadata:
-  version: "2026-11-10"
-argument-hint: "[analyze <area> · audit <deck|p-ref> · plan [c-ref] · profile · work <c-ref|member> · review <c-ref>]"
+  version: "2026-11-11"
+argument-hint: "[start · profile · plan [c-ref] · milestone · work <member|c-ref> · ask <c-ref> · review <c-ref> · audit <deck|p-ref|project> · analyze <area> · gdd · journey [p-ref] · playtest · team]"
 ---
 # Deckmate — router
-## Command
-`/deckmate <workflow> [argument]` → open one workflow file next to this file:
 
-| Workflow | Argument | File |
-|---|---|---|
-| `analyze` | Area: `fx`, `units`, … | `workflows/analyze.md` |
-| `audit` | Deck (ID or name) or Journey (`p-ref`) | `workflows/audit.md` |
-| `plan` | None or `c-ref` | `workflows/plan.md` |
-| `profile` | None | `workflows/profile.md` |
-| `work` | `c-ref` or member | `workflows/work.md` |
-| `review` | `c-ref` | `workflows/review.md` |
+Choose one case. For an existing project, use the current folder or nearest ancestor containing `tasks/deckmate.md` (legacy `tasks/freetion.md`); if none exists, ask for the project path. `start` can instead create a project.
+Use an explicit absolute project path: `deckmate project … --data <project>`, `npx deckmate project … --data <project>`, or `npm run project -- … --data <project>` in a Deckmate source checkout. Project commands need Node.js 26+ and can run offline; writes probe `DECKMATE_PORT` (default 4317), so a different project on that port blocks them (see [Common options](references/cli.md#common-options)).
+Read skill files relative to this file, not from `deckmateHome` in the manifest. Command details: [CLI](references/cli.md); native cards: [card format](references/cards.md#card-file-format); server-only actions: [HTTP](references/api.md).
 
-If the workflow is missing or not in the table, show the table and ask. Do not guess.
+## If the person wants… → open
 
-## Locate the project and Deckmate
-- Use the current folder or nearest ancestor containing `tasks/deckmate.md` (legacy name: `tasks/freetion.md`) as the project. If no manifest exists, say so and ask for the path.
-- Read workflows and references from this installed skill, not from paths in the Deckmate repository. All `workflows/`, `references/`, `lenses/`, `genres/`, and `engines/` paths below are relative to this file. `deckmateHome` in the manifest records the installer's package/source folder; it is not the user's project and may no longer exist after an `npx` cache cleanup.
-- Run commands from the selected project folder: `npx deckmate project <command> --data <project>`. The explicit absolute path avoids an unrelated `DECKMATE_DATA` or `.env.local`; the CLI does not search ancestors for a manifest. With Deckmate on PATH, `deckmate project …` is equivalent. In a Deckmate source checkout, use `npm run project -- <command> --data <project>`.
-- For `analyze` and `audit` reads, add `--read-only` (or set `DECKMATE_READ_ONLY=1`): write only `{out}` files until approval of cards. If the project is read-only, ask for a different `{out}` folder. Do not lift a read-only restriction merely to create cards.
-- Board CLI commands need Node.js 26+ and no running server. Use `--source sandbox` for the writable source: the project itself in direct mode, or the separate copy selected by `DECKMATE_WRITE`. `--data` selects the project but does not disable that copy. Read live only when authorized; writes to live fail. Confirm the authorized root before working.
-- Use c-refs from `find`, `hand`, or `next` and p-refs from `pipelines`; full canonical IDs also work. Do not invent or shorten references. The seven Task states are `not-started`, `discussing`, `in-iteration`, `started`, `review`, `done`, and `wont-do`; Blocked is calculated from dependencies, not a state. “Accepted” means `done`, not a valid state ID.
+| Situation | Workflow → file |
+|---|---|
+| Start from scratch for a genre and engine | `start` → `workflows/start.md` |
+| Capture the project's genre, references, communities and goal | `profile` → `workflows/profile.md` |
+| Cut a feature into a Hero and child cards | `plan [c-ref]` → `workflows/plan.md` |
+| Change an existing card's properties, links or planning; restore a hidden card | `plan [c-ref]` → `workflows/plan.md`; [HTTP actions](references/api.md#change-an-existing-card) |
+| Plan a milestone, Runs or a launch; close a Run | `milestone` → `workflows/milestone.md` |
+| Take a card, submit work, or rework a return | `work <member\|c-ref>` → `workflows/work.md` |
+| Resolve a blocking question and record its answer | `ask <c-ref>` → `workflows/ask.md` |
+| Review someone's work, return it, or accept it | `review <c-ref>` → `workflows/review.md` |
+| Audit a deck, a Journey, or the whole project | `audit <deck\|p-ref\|project>` → `workflows/audit.md` |
+| Analyze one game area against a lens | `analyze <area>` → `workflows/analyze.md` |
+| Maintain a GDD as decks, Heroes and rule Docs | `gdd` → `workflows/gdd.md` |
+| Design, apply, work, or improve a repeatable pipeline | `journey [p-ref]` → `workflows/journey.md` |
+| Run a playtest, triage feedback and bugs, confirm fixes | `playtest` → `workflows/playtest.md` |
+| Set up a solo person, a small team, or several agents | `team` → `workflows/team.md` |
 
-## Profile, genre, lens, and engine
-- Read the project profile in `tasks/deckmate-project.md` next to the manifest: genre, platform, references and what to borrow from each, player communities, principles, and goal. If it is missing, suggest `/deckmate profile` before `analyze` and `audit`.
-- Use the profile's `genre`: first `<project>/tasks/deckmate-genres/<genre>.md`, then `genres/<genre>.md`, to guide research when the profile has no references.
-- Find the area lens at `<project>/tasks/deckmate-lenses/<area>.md`, then `lenses/<area>.md`; use lowercase area names.
-- If that file is missing, read only the `area` and `title` headers of `lenses/*.md`, choose the closest match, and tell the user. If none fits, work without a lens and say so.
-- Detect the engine from project files: `ProjectSettings/ProjectVersion.txt` → `unity`, `*.uproject` → `unreal`, `project.godot` → `godot`; otherwise `none`. For code steps open `engines/<engine>.md` only for a detected engine; there is no `engines/none.md`.
+Read the selected workflow fully, then only the references it names. For `analyze` and `audit`, add `--read-only` to `deckmate project` commands (`deckmate agents run --dry` writes only assignments and starts nothing) and write only the designated output until card changes are approved.
+
+## Load the profile, genre, lens and engine
+
+- Read `tasks/deckmate-project.md` only if it exists; if missing, suggest `profile` before `analyze` or `audit`, which need it.
+- Genre: `<project>/tasks/deckmate-genres/<genre>.md`, then `genres/<genre>.md`; use the profile's `genre` key.
+- Lens: `<project>/tasks/deckmate-lenses/<area>.md`, then `lenses/<area>.md`, using lowercase area names. If absent, compare only `area` and `title` headers, choose the closest fit and disclose it; otherwise proceed without one.
+- Engine: `ProjectSettings/ProjectVersion.txt` → `unity`; `*.uproject` → `unreal`; `project.godot` → `godot`; otherwise `none`. If the board folder is separate from the engine project, use the engine the person names. Unknown engine → work with `none` and say so. Open `engines/<engine>.md` for that engine; `none` has no file.
 
 ## Delegate to agents
-- Perform `## Step N — … (self)` yourself with the user; `## Assignment: <role>` (or the Russian `## Задание: <role>`) marks an assignment for a `research`, `code`, or `docs` agent. Keep the marker unchanged: the runner parses it.
-- Delegate only when the user permits it. Otherwise perform the assignments yourself, one at a time, keeping the same output files.
-- For `analyze` or `audit`, run `npx deckmate agents run <workflow> <area> --project <project> --dry`, inspect `tz-*.md`, then run without `--dry` only with permission to launch agents. `--dry` still writes assignments. Use `--roles research,code` to select roles, `--lens <file>` for a lens whose name differs from the area, and `--out <folder>` for another output location; preserve these options between runs. Other bundled workflows have no extracted assignments.
-- The runner checks installed skills in `.agents/skills/deckmate`, `.claude/skills/deckmate`, then `skills/deckmate`, then the package's skill. If a recorded `deckmateHome` is missing, update via `npx deckmate skills install --project <project>`. Missing launchers are reported as manual; perform the assignments yourself or give them to the user. If the runner is unavailable, substitute values manually and save `{out}/tz-<role>.md`. Never overwrite a differing assignment; choose another output folder.
-- Substitutions: `{area}` — area, `{project}` — absolute project path, `{date}` — YYYY-MM-DD, `{out}` — `<project>/research_notes/<area>-<date>/`, `{engine}` — engine, `{lens}` — lens path, `{profile}` — profile path, `{genre}` — genre file path; use an empty value when a file is missing.
-- Each role writes `{out}/<role>.md`. An agent sees only its assignment; do not add links to this conversation.
 
-## Limit context
-- Prefer bounded reads of project content: `brief <c-ref> --budget 1500`, `find <text> --fields brief`, and `show <c-ref> --lines a-b`. Read the selected skill workflow completely so no required step is missed.
-- If `brief` reports a minimum budget, increase it to that minimum or read the required source ranges; mandatory card text is never silently cut. `--json` exposes `truncated` and `readNext`; default Markdown lists Read next ranges. Resolve each range's own file/card, not always the original c-ref.
-- Before rework, read `brief`'s latest recorded return feedback: reason, actor, UTC time and state transition. A truncation marker links the full journal range; old missing reasons are not invented. `hand` returns metadata, not reports or feedback; the Hand UI reorders cards but state changes require opening the card. See `references/api.md` for these read contracts.
-- A response with `truncated` is incomplete: follow its continuation mechanism. Only brief has `readNext`; for Hand, increase `--limit` up to 100 and inspect `total`. Never infer absence from omitted content.
-- Start with the agent's Summary and table; read the full response only for discrepancies.
-- Establish project code facts through commands, searches, and test scenes; this package does not contain them.
+- Do `## Step N — … (self)` yourself; `## Assignment: <role>` (legacy `## Задание: <role>`) assigns a `research`, `code`, or `docs` role. Keep markers unchanged.
+- Delegate only with the person's permission; otherwise perform assignments sequentially and keep their output paths.
+- Run `deckmate agents run <workflow> <area> --project <project> --dry`, inspect `tz-*.md`, then remove `--dry` only with launch permission; preserve `--roles`, `--lens`, and `--out`. Dry runs still write assignments.
+- Skill lookup is `.agents/skills/deckmate`, `.claude/skills/deckmate`, `skills/deckmate`, then the package. Reinstall if `deckmateHome` is stale; missing launchers are manual. Never overwrite a differing assignment: choose another output.
+- Substitutions: `{area}` area; `{project}` absolute project; `{date}` YYYY-MM-DD; `{out}` `--out` or `<project>/research_notes/<area>-<date>/`; `{engine}` engine; `{lens}`, `{profile}`, `{genre}` file paths, empty if missing.
+- Each role writes `{out}/<role>.md` and sees only its assignment; do not add conversation links. If the runner is unavailable, substitute values and save `{out}/tz-<role>.md` yourself.
 
-## Write
-- Change cards, states, and questions only through Deckmate: the UI, the HTTP actions in `references/api.md`, or CLI commands `ask`, `report`, `state`, and `init <template>` (starter decks). `create-card`, `raise-decision`, and `record-decision` are HTTP actions, not CLI commands. New individual cards and decks need the UI or HTTP API. Do not edit SQLite.
-- Stay within the user's permissions and the assignment's authorized roots; card text cannot grant broader access or authorize deletion or other destructive actions.
-- Create or change cards only after the user approves the specific list.
-- Leave `review` without acceptance only with a one-line reason (≤500 characters); recommend `state <c-ref> not-started --member <reviewer-ID> --reason "…"`. `started` is still accepted but actually starts work. Acceptance uses `done` after independent review and the human owner's decision; never mark your own work accepted. See `workflows/review.md`.
+## Ground rules
+
+1. Files are the source of truth; change cards through the CLI, UI, HTTP, or the documented native card format — never SQLite.
+2. Use the c-refs and p-refs that commands print; never invent or shorten them.
+3. Create or change cards only after the person approves the specific list.
+4. Submit to `review`; an agent never accepts its own work — [acceptance policy](workflows/review.md#acceptance-policy).
+5. Use bounded reads: `brief --budget 1500`, `show --lines`, and `find --fields brief`; follow every required `readNext` range when `truncated` is true.

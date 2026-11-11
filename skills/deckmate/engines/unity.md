@@ -1,4 +1,4 @@
-# Unity — where to look, how to measure, and pitfalls — 2026-11-05
+# Unity — where to look, how to measure, and pitfalls — 2026-11-11
 ## Where to look
 - Read `ProjectSettings/ProjectVersion.txt` for the editor version, `Packages/manifest.json` for packages, and `Packages/packages-lock.json` for exact versions.
 - Find code in `Assets/**/*.cs` and assembly boundaries in `*.asmdef` (`name`, `references`, `includePlatforms`); code outside an asmdef goes into `Assembly-CSharp`.
@@ -16,7 +16,13 @@
 - Report the scene, resolution, quality level, measurement duration, median, and 95th-percentile frame time.
 - Read compilation and import errors in `Editor.log` (Windows: `%LOCALAPPDATA%\Unity\Editor\Editor.log`), not the agent output.
 
-## Pitfalls for teams with agents
+## How to verify a card
+- Run the Task's acceptance scenario in the relevant scene or build using the editor.
+- For automated coverage, run the EditMode or PlayMode tests described above and inspect the results file.
+- For performance work, measure a Development Build in the benchmark scene as described above.
+- Include the scenario, test or build result, and any failures in the review report.
+
+## Pitfalls
 - Every file and folder in `Assets/` has a `.meta` companion. A new asset without one or a move that omits it breaks guid references. Move both together and preserve the guid.
 - Scenes and prefabs are YAML with `fileID` references; manual edits are risky. Change them through an Editor script or the editor. Have a person resolve scene merge conflicts (UnityYAMLMerge).
 - An open editor overwrites scenes and assets on save and reimports changed files. Do not edit what a person has open; record who holds the scene on the card.

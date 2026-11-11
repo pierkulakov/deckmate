@@ -1,6 +1,6 @@
 # Deckmate agent configuration
 Project file: `tasks/deckmate-agents.md`. Put YAML frontmatter between `---` markers and human-readable notes below the closing marker.
-See [`assets/templates/deckmate-agents.md`](../assets/templates/deckmate-agents.md) for an example with Claude Code and Codex CLI launchers.
+See [`assets/templates/deckmate-agents.md`](../assets/templates/deckmate-agents.md) for example launchers.
 ## Keys
 | Key | Type and requirement | Meaning |
 |---|---|---|
@@ -9,13 +9,13 @@ See [`assets/templates/deckmate-agents.md`](../assets/templates/deckmate-agents.
 | `launchers` | Object, required | Named launchers available for routing. |
 | `launchers.<name>.run` | Non-empty list of strings; executable must be non-empty | Executable followed by arguments, which may be empty; use either `run` or trusted `command`, never both. |
 | `launchers.<name>.command` | Non-empty string, only with `shell: true` | Explicitly trusted shell command, instead of `run`. |
-| `launchers.<name>.shell` | Boolean, optional | `true` opts into trusted shell execution and requires `command`; not allowed with `run`. |
+| `launchers.<name>.shell` | Boolean, optional | `true` opts into trusted shell execution and requires `command`; `run` permits only `false` or omission. |
 | `launchers.<name>.tools` | String, optional | Tool list for `{tools}`; the launcher defines its meaning. |
-| `launchers.<name>.capUsd` | Number > 0, optional; required by `{cap}` | Cost cap passed to the launcher through `{cap}`. |
+| `launchers.<name>.capUsd` | Finite number > 0, optional; required by `{cap}` | Cost cap passed to the launcher through `{cap}`. |
 | `routing` | Object, required | Maps each role to a launcher name or `self`. |
 | `limits` | Object, required | Orchestrator limits, not model limits. |
-| `limits.parallel` | Integer ≥ 1, required | Maximum number of concurrent agents in one `run`. |
-| `limits.startGapSeconds` | Number ≥ 0, required | Minimum interval between process starts, in seconds. |
+| `limits.parallel` | Safe integer ≥ 1, required | Maximum number of concurrent agents in one `run`. |
+| `limits.startGapSeconds` | Finite number ≥ 0, required | Minimum interval between process starts, in seconds. |
 Launcher names are local to the file and are not reserved identifiers.
 If `run` or `command` contains `{tools}`, give the launcher a `tools` field: without it `{tools}` becomes an empty string.
 Markdown after the YAML is not part of the configuration; it must not contain secrets either.
@@ -31,7 +31,7 @@ Each `routing` value must name an existing launcher or be `self`, which is reser
 Use `synthesis: self` to run synthesis in the local calling session.
 ### Role without a launcher: manual mode
 Remove the role from `routing`; its assignment is still written, but no process starts.
-The summary lists it separately. A person opens the generated `tz-<role>.md` and saves the result as `<role>.md` in the output folder.
+The summary marks it `manual: no launcher`. A person opens the generated `tz-<role>.md` and saves the result as `<role>.md` in the output folder. A `self` route also starts no process and is displayed with the same status; the calling model handles that work.
 Do not create an empty launcher or use `self` to request manual execution: an absent route makes that intent explicit.
 ## Substitutions in `run`
 | Marker | Source | Rule |
@@ -67,7 +67,7 @@ Substitutions `{area}`, `{project}`, `{date}`, `{out}`, `{engine}`, `{lens}`, `{
 ## Project profile and paths
 The profile at `tasks/deckmate-project.md` defines the genre, game concept, platform, references, player sources, and paths to principles and goals.
 `{profile}` receives the profile path if the file exists. `{genre}` receives the path selected by the `genre` key, preferring the project version.
-Workflows pass the profile to `research` assignments and synthesis; without it, they ask for the genre, references, and player sources.
+Research assignments receive the profile and genre paths, and the calling model uses the same profile for synthesis. The calling session suggests writing a missing profile (the router does so before `analyze` and `audit`); the runner does not create it and passes empty values. Empty `{profile}` or `{genre}` values mean that the corresponding file is absent and must not be invented.
 `run --lens <path>` selects a lens independently of the domain or deck name. `--out <folder>` sets the output folder and allows the project to remain read-only.
 Both flags can be combined with `--dry`.
 ## Secrets and limits

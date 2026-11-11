@@ -24,6 +24,13 @@ Notable changes are grouped by version using [Keep a Changelog](https://keepacha
 - **Independent acceptance.** The server rejects a known agent accepting its own card or work it previously reported. An independent reviewer can accept another member's work; people can still accept their own cards, subject to the deck's Guardian rules.
 - **Questions.** `project ask` returns warnings even on an unchanged retry: a question does not automatically block the source Task. Without a rule Doc, a supported native card keeps the question in its own text, with an explicit warning that no Decision Task was created and that `--to`, if supplied, was not used.
 
+### Agent skill
+
+- **Cases first.** The skill routes from a situation to one short scenario: starting a project for a genre and engine, cutting a feature into cards, planning a milestone and Run, taking a card through work and review, asking a blocking question, keeping a design document in cards, running a Journey, and handling playtest feedback and bugs.
+- **One reference per fact.** `references/cli.md` lists every `deckmate project` command with its output fields and errors, `references/cards.md` describes Task, Hero and Doc files, and `references/api.md` keeps only what the CLI cannot do.
+- **Genres and engines.** Each genre names a first playable and the cheapest test for it; each engine explains how to verify a card before review.
+- **Checked structure.** A test keeps links, anchors and command names in the skill in step with the CLI.
+
 ### Data reliability
 
 - **Text edits.** Editing legacy cards handles CR-only files and preserves BOM and untouched line endings, including unchanged prefixes and suffixes in mixed-line-ending bodies. Title-only edits in the card editor also keep leading body blank lines and original CRLF line endings.

@@ -1,36 +1,49 @@
-# Audit a deck or Journey — 2026-11-05
-Input: deck (ID or name) or Journey (`p-ref`); choose the profile, genre, and lens for the deck's area using `SKILL.md`. Deliver proposals with effort estimates and, with the user's approval, cards created and then moved to `discussing` (discussion).
+# Audit a deck, a Journey, or the whole project
 
-## Step 1 — inventory (self)
-- Prefix board commands as in `workflows/work.md`, with explicit `--data <project>` and `--read-only` during research. HTTP reads need a running server on the same project; see `references/api.md`. If unavailable, mark event/metrics checks as not checked rather than inventing history.
-- For a deck, get its ID from `map` and cards from `find --deck <id> --fields brief --limit 100`. Search excludes Archive/Trash; raise the limit up to 1000 or narrow filters if it is full. Get events from `GET /api/activity?source=sandbox&deckId=<id>` and follow `nextCursor`, even after an empty page.
-- For a Journey, get its p-ref from `pipelines`, use `pipeline <p-ref>` for the overview and canonical UUID, and `step <p-ref> <step-id>` for steps in question. Use `GET /api/journey-metrics?source=sandbox&journeyId=<UUID>` for returns, not the p-ref.
-- Find stale cards with `summary --stale-hours 72`.
-- Save the inventory to `{out}/cards.md` for the roles to read: c-ref, title, kind, state, owner, effort, Run, and file path.
+**When:** the board grew messy, a Run ends, or the person asks what to clean up and whether cards still match the rules — for one deck (ID or name), one Journey (`p-ref`), or `project` for all of it. **Not this:** analyzing one game area against a lens → `workflows/analyze.md`; doing or reviewing a card → `workflows/work.md` / `workflows/review.md`.
+**Person:** picks the scope, answers questions found without a recipient, approves the proposals list before anything changes.
+**Agent:** reads the board with bounded commands, checks cards against `workflows/plan.md` and the area lens, writes `{out}/cards.md` and the proposals table — no card changes before approval.
 
-## Step 2 — check cards (self)
-Record each finding as “c-ref — violation — rule from `workflows/plan.md`”:
-- Task missing Done criteria with a number or check command, an owner, or effort; Task naming two assignees in its text;
-- Hero with zero or one child card; Doc containing work that needs acceptance;
-- Asset deck describing production steps instead of game objects or systems; Hero without a result that can be inspected in the game;
-- “waiting,” “after,” or “when available” without a dependency; dependency on an archived card;
-- Blocked card without a question and recipient; `Open questions` (Open) item without a recipient;
-- `started` (in progress) with no activity for over 72 hours; `review` (review) lasting longer than a Run; carryover across two or more Runs without a reason.
+Run every command as `deckmate project <command> … --data <project>` (checkout and npx variants in the router `SKILL.md`), adding `--read-only` until the person approves changes. Profile, genre, lens, and engine are chosen as in the router; command syntax and output fields live in `references/cli.md`.
 
-## Step 3 — check the Journey and lens (self)
-- Find steps missing instructions, an owner, or a target deck; find dependencies between steps that do not wait on each other.
-- Treat two or more returns at a step for similar reasons as evidence of a missing step or instructions to revise. A step closed without work may be redundant.
-- Find required work repeatedly added outside the Journey and steps routinely skipped; propose template instructions, dependencies, effort, or optional zones that match completed instances.
-- Find lessons in the step file's `## Lessons` (legacy `## Грабли`) section that have not been incorporated into its instructions.
-- Match every item in the lens's Requirements section to a card or step; record gaps. Check card text against Warning signs.
+## Steps
+1. Board shape — `map` (`references/cli.md#map`)
+   → deck IDs and `decks[].cards` counts: hundreds of cards suggest a split, a handful suggest checking whether two related decks should merge; track and pipeline IDs for the steps below.
+2. Pulse — `summary --stale-hours 72` (`references/cli.md#summary`)
+   → `counts.owners` (a `"owner": null` row appears only when unowned cards exist), `groups.blocked` (active prerequisites not `done`), `groups.review`, `groups.stale` (`started` idle past the window; default 24 hours).
+3. Inventory — `find --deck <id> --fields brief --limit 100` with `--kind` / `--state` (`references/cli.md#find`); `track <track> --fields brief` for a theme across decks (`references/cli.md#track`); `pipelines` → `pipeline <p-ref>` → `step <p-ref> <step-id>` for a Journey (`references/cli.md#pipeline`)
+   → save `{out}/cards.md`: c-ref, title, kind, state, owner, effort, Run, file path. Search excludes Archive/Trash; a full page is not the whole deck.
+4. Hygiene pass — record each hit as “c-ref — signal”:
+   - `owner: null` — no owner; `effort: null` on a Task — no estimate (empty effort counts as 1 and hides scope);
+   - `groups.blocked` — Blocked by unaccepted dependencies; the card's `dependencies` name them. Archived, deleted, or missing prerequisites do not block — check whether the link is still needed;
+   - `groups.stale` — stale `started`: ask whether the work is still active; `groups.review` — review older than one Run is stuck: read transitions with `changes <c-ref> --since <ISO>` (`references/cli.md#changes`);
+   - deck sizes from step 1 — split or merge candidates to discuss, not to apply;
+   - `find --kind hero` then `show <c-ref>` → `context.children` (`references/cli.md#show`) — a Hero with zero or one child Task (a signal to check, not a defect: a native Hero without Tasks can be marked done by hand);
+   - rule Docs from `show <c-ref>` → `## Open questions` — an item without a Decision-task link has no recipient;
+   - `run` / `milestone` absent on an active Task while `tasks/deckmate-runs.md` / `tasks/deckmate-milestones.md` list entries — unplanned work.
+5. Card rules — each finding as “c-ref — violation — rule from `workflows/plan.md`”: Task without an observable Done criterion (numeric where the result is measurable), an owner, or effort; Task naming two assignees; Hero without a result inspectable in the game; Doc containing work that needs acceptance; Asset deck describing production steps instead of game objects; “waiting”, “after”, “when available” without a dependency.
+6. Journey — steps missing instructions, an owner, a target deck, or effort; dependencies that do not wait on each other; required work repeatedly added outside the Journey; `## Lessons` (legacy `## Грабли`) not incorporated into instructions. Returns per step come from `GET /api/journey-metrics` (`references/api.md#audit-reads-without-cli-equivalents`): two or more returns at one step for similar reasons mean a missing step or instructions to revise; a step closed without work may be redundant.
+7. Lens — match every Requirements item to a card or step and record gaps; check card text against Warning signs.
+8. Evidence — resolve the scope first (`map` for a deck ID, `pipeline <p-ref>` for a Journey; step 3 saves the inventory), then run the `research`, `code`, and `docs` assignments below for one subject area, not a board scope: `deckmate agents run audit <area> --project <project> --dry --out <out>` with a meaningful area slug of letters, digits, `_`, `-` (for example `sound`, `production`) — a deck title with other characters is rejected, and a p-ref, though accepted, points the assignments at the wrong object.
+   → Inspect `tz-*.md`; without `--dry` only with permission, otherwise perform them yourself in sequence (router: Delegate to agents). For scope `project`, finish the hygiene pass first and run assignments only for the areas that need evidence. Without a running server skip only the HTTP metrics ([audit reads](../references/api.md#audit-reads-without-cli-equivalents)); card history works offline through `changes <c-ref> --since <ISO>` ([changes](../references/cli.md#changes)) — never invent history.
+9. Proposals — a table of ≤ 15 rows: proposal | basis (c-ref, rule, anchor) | effort | risk; low cost, high impact on the profile's `goal` first; drop what conflicts with the profile's `principles` and name the principle. The person approves the list; only then create cards (`references/cards.md#card-file-format`, or UI / HTTP `create-card` in `references/api.md`) and move each Task to `discussing`: `state <c-ref> discussing --member <you>` without `--read-only` (`references/cli.md#state`; Hero/Doc have no discussion state). Keep `{out}/summary.md` ≤ 30 lines; show the person the first 10 lines and the path.
 
-## Step 4 — delegate assignments (self)
-- After saving `{out}/cards.md`, assign `research`, `code`, and `docs` roles as described in Delegate to agents in `SKILL.md` only with permission; otherwise perform the assignments yourself in sequence.
+## Done when
+- `{out}/cards.md` holds the inventory and `{out}/summary.md` the proposals the person has seen; after the approved changes land, a fresh `summary --stale-hours 72` shows the signals drop.
 
-## Step 5 — proposals (self)
-- Write a table of ≤ 15 rows: proposal | basis (c-ref, rule, anchor) | effort | risk. Put low-cost proposals with a large impact on the profile's `goal` first.
-- Reject proposals that conflict with the profile's `principles` and name the violated principle.
-- Create cards and move each to `discussing` as in step 4 of `workflows/analyze.md`; keep `{out}/summary.md` ≤ 30 lines and show the user the first 10 lines and the path.
+## Rules
+- Proposals before changes — the person approves the specific list; a silent edit breaks trust in the files.
+- One finding, one anchor — a signal without a c-ref and a rule is an impression, not a finding.
+- Estimate effort by comparison with an accepted card of the same type — done work is the only honest baseline.
+- Carryover across two or more Runs means excess scope or poor splitting — fix scope, not the assignee.
+- Blocked is calculated from dependencies, not a stored state — treat it as a question about the prerequisite.
+- Hygiene is a pass, not a rewrite — propose the smallest change that removes the signal.
+
+## Pitfalls
+- `summary --stale-hours` reads the journal and fails on journal warnings — fix the journal first; do not route around it.
+- No profile and the person declines to write one → audit structure and hygiene only, and list goal-based ranking and lens fit under Not checked.
+- Web search is unavailable → mark the `research` assignment blocked with the queries you would run; never fill it from memory.
+- A write fails with "different project open" → rerun it with `DECKMATE_PORT` (`references/cli.md#common-options`); never change `state` by editing the card file — the transition event would be lost.
 
 ## Assignment: research
 **Area pipeline: {area} — {date}.** Project `{project}` is read-only. Profile: `{profile}`. Genre: `{genre}`. Lens: `{lens}`. Engine: `{engine}`. An empty path means the file is missing.

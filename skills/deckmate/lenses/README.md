@@ -1,5 +1,7 @@
 # Area lenses
 A lens defines requirements, questions, references, and checks for an area. Get project facts through `brief`, `find`, and `show`.
+Use a lens when analyzing an area or auditing work in that area, so findings have relevant checks.
+Use it when planning cards for that area to turn its requirements into verifiable results.
 ## Add a lens
 - Create `<area>.md` with YAML frontmatter containing `area: <area>` and `title: <title>` between `---` markers.
 - Include all five sections in order: "Requirements", "Area questions", "References", "Warning signs", and "How to verify".
@@ -12,6 +14,6 @@ A lens defines requirements, questions, references, and checks for an area. Get 
 - Describe observable defects in "Warning signs" and tie "How to verify" to measurements and a demonstration to a person.
 - Do not copy project-specific facts, limits, or paths into a lens: they become stale and replace research.
 ## Project lenses
-- Store custom lenses in `<project>/tasks/deckmate-lenses/<area>.md`; they take priority over built-in lenses when they disagree.
-- Use the same format for a project lens. Read it and the built-in lens before analysis; project rules take priority.
+- Store custom lenses in `<project>/tasks/deckmate-lenses/<area>.md`; a project lens replaces the same-area built-in lens during analysis and runner substitution.
+- Use the same format for a project lens.
 - Separate general practice from project-specific rules: the former may belong in a built-in lens, the latter only in the project lens.

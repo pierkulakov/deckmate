@@ -65,6 +65,21 @@ npx deckmate --data deckmate-demo
 
 To run from source instead, follow [CONTRIBUTING.md](https://github.com/pierkulakov/deckmate/blob/main/CONTRIBUTING.md): `npm ci && npm run build`, then `node bin/deckmate.mjs init deckmate-demo` creates the demo and `node bin/deckmate.mjs --data deckmate-demo` opens it.
 
+### Ask your agent
+
+Paste this into a coding agent opened in your project folder; it sets Deckmate up for you:
+
+```text
+Set up Deckmate (https://github.com/pierkulakov/deckmate) in this folder.
+1. Check that `node --version` is 26 or newer; if not, stop and tell me.
+2. Start the board with `npx deckmate --no-open` in the background and give me its local URL.
+   Keep my existing Markdown files as they are.
+3. If the project has no decks yet, ask me what I am making before you create anything.
+4. Once there is a deck or a member, run `npx deckmate skills install`.
+5. Show me `npx deckmate project --help` and say in two lines how you will pick up cards.
+Do not commit, delete or move any file without asking me.
+```
+
 The board opens at `http://127.0.0.1:4317/`. The sample is a small fictional game studio: five decks, two Heroes with Sub Cards, people and agents, a Journey, a Run and a Vision board. The browser interface defaults to English; switch to Russian in the app menu. Stop the server with `Ctrl+C`.
 
 ## Start screen
@@ -116,30 +131,30 @@ These CLI settings can also live in `.env.local` in the folder you start from �
 | **Track** | A thread that links cards across decks, such as a release or a feature area. |
 | **Vision** | An Excalidraw canvas with live links to cards. |
 
-Start on **Decks**: document and card counts sit under the project name; source warnings open from the same line. Jump from the project pulse to work in progress, reviews, the current Run or cards that need a deck. Compact covers show card counts and task progress. Arrange decks with the mouse or keyboard. Reorder spaces from their header menus or the Position field in space settings. Search deck names to find a deck even inside a collapsed space.
+Start on **Decks**: document and card counts sit under the project name; source warnings open from the same line. Jump from the project pulse to work in progress, reviews, the current Run or cards that need a deck. Compact covers count open cards, Tasks in review and accepted Tasks. Arrange decks with the mouse or keyboard. Reorder spaces from their header menus or the Position field in space settings. Search deck names to find a deck even inside a collapsed space.
 
 Open a deck to work with its cards, description, progress and activity:
 
-![An open deck with text task states, owner avatars, effort and Hero Sub Card progress](https://raw.githubusercontent.com/pierkulakov/deckmate/main/docs/screenshots/deck.png)
+![An open deck with gold Hero bands, blue started and green accepted Task bands, owner medallions, effort, priority and tag dots](https://raw.githubusercontent.com/pierkulakov/deckmate/main/docs/screenshots/deck.png)
 
-Task tiles spell out their state or blockers and highlight approaching or overdue deadlines. Owner avatars, effort and high priority stay visible without a row of property icons. A Hero tile shows Sub Card progress as a quiet line, with each step sized by its effort; it is complete when all eligible Task Sub Cards are accepted (`wont-do` tasks are excluded). Doc Sub Cards appear in the Hero's family too, but only Task Sub Cards count towards its progress; the Sub Cards panel flags those without a deck. Drop a Task that has no Sub Cards into an Asset deck and Deckmate offers to make it a Hero. A native Hero without eligible Task Sub Cards can be marked done by hand from its Sub Cards bar. Doc Cards read as pages, with a copper band and the start of the text on the tile.
+Task tiles keep a matte face: a started Task turns its band to blue steel, a Task in review to amethyst and an accepted Task to green, while only blockers and a Doc's open questions keep a quiet line on the face. The bottom band holds effort beside a weight icon, priority chevrons and the owner's medallion at the seam; people have initials and agents have an agent mark. A colored dot indicates tags, and a fan marks Hand membership. A Hero's gold band shows Sub Card progress as a quiet line, with each step sized by its effort; it is complete when all eligible Task Sub Cards are accepted (`wont-do` tasks are excluded). A completed Sub Card family gives its Hero a check medallion and a continuous progress line. Doc Sub Cards appear in the Hero's family too, but only Task Sub Cards count towards its progress; the Sub Cards panel flags those without a deck. Drop a Task that has no Sub Cards into an Asset deck and Deckmate offers to make it a Hero. A native Hero without eligible Task Sub Cards can be marked done by hand from its Sub Cards bar. Doc Cards read as pages, with a copper band and the start of the text on the tile.
 
-![A completed Hero with all eligible Task Sub Cards accepted](https://raw.githubusercontent.com/pierkulakov/deckmate/main/docs/screenshots/deck-accepted.png)
+![A completed Hero with a check medallion and continuous progress line for its accepted Task Sub Cards](https://raw.githubusercontent.com/pierkulakov/deckmate/main/docs/screenshots/deck-accepted.png)
 
-Press `?` in the app for all keyboard shortcuts: `N` creates a card, `/` searches, `Shift+1`–`Shift+4` switch between Hand, Decks, Timeline and Vision, and hovering a card with `O`, `E`, `P` or `,` changes its owner, effort, priority or Run.
+Press `?` in the app for keyboard shortcuts: `/` searches, `Shift+1`–`Shift+4` switch between Hand, Decks, Timeline and Vision, and `N` creates a card in a card list. Hover a card and press `O`, `E`, `P` or `,` to open quick settings for its owner, effort, priority or Run.
 
-An open card keeps reading and editing in the main sheet, with a compact bottom action row. Expand **Connections** for related cards, planning links and tags; use Properties for quick settings. A Hero shows its Journey as mini-cards; the Journey name opens a menu of steps and assignees. Open a step to see its Sub Card, then press `Esc` to return to the Hero. In the text editor, use the paperclip to insert an attachment, or copy its Markdown link from the attachments panel. Deleting an attachment used in the text offers to remove its links too. An image whose file is missing shows a “file not found” chip. Card covers are not used.
+An open card keeps reading and editing in the main sheet, with tags above the card ID and bottom action row. Use **Properties** to edit tags and other settings, and the side rail to open Sub Cards, attachments, dependencies or history. A Hero shows its Journey as mini-cards; the Journey name opens a menu of steps and assignees. Open a step to see its Sub Card, then press `Esc` to return to the Hero. In the text editor, use the paperclip to insert an attachment, or copy its Markdown link from the attachments panel. Deleting an attachment used in the text offers to remove its links too. An image whose file is missing shows a “file not found” chip. Card covers are not used.
 
 In **Hand**, section tabs sit above the focus slots; the reserve keeps its own order. Expand the Done pile to open accepted cards and see weekly counts and effort. Hand membership is explicit and separate from Owner. The bell opens notifications for the acting member on demand: changes to owned or watched cards and due-date reminders.
 
 <table>
 <tr>
 <td width="50%" valign="top">
-<a href="https://raw.githubusercontent.com/pierkulakov/deckmate/main/docs/screenshots/card.png"><img src="https://raw.githubusercontent.com/pierkulakov/deckmate/main/docs/screenshots/card.png" alt="Build Moonwake Lantern Task with a checklist, expanded Connections and the Hero's five Sub Cards from the production Journey" width="100%" /></a>
-<strong>Cards and Journeys</strong><br />A reading sheet with a compact action row, expandable connections and Journey progress.
+<a href="https://raw.githubusercontent.com/pierkulakov/deckmate/main/docs/screenshots/card.png"><img src="https://raw.githubusercontent.com/pierkulakov/deckmate/main/docs/screenshots/card.png" alt="Build Moonwake Lantern Task with a checklist, production tag, blue band and the Hero's five Sub Cards" width="100%" /></a>
+<strong>Cards and Journeys</strong><br />A reading sheet with tags, a Journey step and the Hero's Sub Cards.
 </td>
 <td width="50%" valign="top">
-<a href="https://raw.githubusercontent.com/pierkulakov/deckmate/main/docs/screenshots/timeline.png"><img src="https://raw.githubusercontent.com/pierkulakov/deckmate/main/docs/screenshots/timeline.png" alt="Timeline with the First playable Run, its cards and the Harbor playtest Milestone" width="100%" /></a>
+<a href="https://raw.githubusercontent.com/pierkulakov/deckmate/main/docs/screenshots/timeline.png"><img src="https://raw.githubusercontent.com/pierkulakov/deckmate/main/docs/screenshots/timeline.png" alt="Timeline with the selected First playable Run, its cards and a Milestone marker" width="100%" /></a>
 <strong>Runs and Milestones</strong><br />Dates, expandable statistics and configurable carry-over of unfinished Tasks.
 </td>
 </tr>

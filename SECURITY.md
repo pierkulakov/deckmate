@@ -20,7 +20,7 @@ Deckmate Desktop (the Tauri 2 shell in `desktop/`) wraps the same local server a
 
 ## Supported versions
 
-The 0.6.x release line is supported (the CLI, the npm package and the desktop shell share one version). Security fixes land on the `main` branch and are published as new patch versions; please run the latest patch.
+The 0.7.x release line is supported (the CLI, the npm package and the desktop shell share one version). Security fixes land on the `main` branch and are published as new patch versions; please run the latest patch.
 
 ## Reporting a vulnerability
 

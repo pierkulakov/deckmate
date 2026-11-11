@@ -91,8 +91,8 @@ Keep `package.json`, `package-lock.json`, `desktop/package.json`, `desktop/src-t
 With the current token-based workflow, confirm that `NPM_TOKEN` is present, unexpired and permitted to publish, and that both updater-signing secrets and their offline recovery copy are available. After owner approval and successful CI/CodeQL, create and push the version tag from the verified commit:
 
 ```sh
-git tag -a v0.6.0 -m "Deckmate 0.6.0"
-git push origin v0.6.0
+git tag -a v0.7.0 -m "Deckmate 0.7.0"
+git push origin v0.7.0
 ```
 
 [release.yml](../.github/workflows/release.yml) runs `preflight → desktop → release`:
@@ -108,7 +108,7 @@ If publication stops while the release is still a **draft**, fix the reported ac
 
 If PATCH succeeded but its response was lost, or a post-publication check failed, rerun the **same tag's failed release job** with the retained artifacts. Prepare accepts an already published release only when its status, exact asset set, SHA-256/bytes and installer/manifest URLs match those verified inputs. It then skips upload, npm, container build/push and PATCH and runs only `verify-public`; it never changes the public release. A mismatch stops with a published-release error and requires a corrective version, not live asset replacement. If retained artifacts expired, a rebuilt artifact is accepted only if its bytes are identical; signing/build differences cannot repair a public release. Releases are published through a tag push, not the UI. Keep published tags fixed: npm versions are immutable, so code changes or different package bytes require a new version. Do not use unpublishing or a moved tag as rollback.
 
-After success, verify the npm version/provenance, installation from npm, the GitHub tarball, and anonymous access to the GHCR image. The first release push creates the GHCR package as private (GitHub's default; linking it to the repository does not copy the repository's visibility), so before announcing the release open the package settings → **Change visibility** → **Public** and verify an anonymous `docker pull` of `ghcr.io/pierkulakov/deckmate:0.6.0` and `ghcr.io/pierkulakov/deckmate:latest`. Set the repository website to the npm package page and replace/revoke the broad bootstrap token.
+After success, verify the npm version/provenance, installation from npm, the GitHub tarball, and anonymous access to the GHCR image. The first release push creates the GHCR package as private (GitHub's default; linking it to the repository does not copy the repository's visibility), so before announcing the release open the package settings → **Change visibility** → **Public** and verify an anonymous `docker pull` of `ghcr.io/pierkulakov/deckmate:0.7.0` and `ghcr.io/pierkulakov/deckmate:latest`. Set the repository website to the npm package page and replace/revoke the broad bootstrap token.
 
 ### Signed dry run before a real tag
 
@@ -127,7 +127,7 @@ Use the workflow's retry path above for asset recovery and publication; it share
 For read-only inspection with an authenticated maintainer `gh` session:
 
 ```pwsh
-$tag = 'v0.6.0'
+$tag = 'v0.7.0'
 $raw = gh release view $tag --json databaseId,isDraft
 if ($LASTEXITCODE -ne 0) { throw 'Release lookup failed; do not create another draft.' }
 $release = $raw | ConvertFrom-Json

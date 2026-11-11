@@ -1,9 +1,11 @@
 import { readFileSync } from 'node:fs';
 import { createContext, runInContext } from 'node:vm';
 import { describe, expect, it, vi } from 'vitest';
+import { launcherReadmeFrame } from '../tools/launcher-capture.ts';
 
 const source = readFileSync(new URL('../desktop/launcher/launcher.js', import.meta.url), 'utf8');
 const html = readFileSync(new URL('../desktop/launcher/index.html', import.meta.url), 'utf8');
+const launcherCss = readFileSync(new URL('../desktop/launcher/launcher.css', import.meta.url), 'utf8');
 const launcherTokens = readFileSync(new URL('../desktop/launcher/tokens.css', import.meta.url), 'utf8');
 const boardTokens = readFileSync(new URL('../client/styles.css', import.meta.url), 'utf8');
 
@@ -126,25 +128,70 @@ describe('desktop launcher', () => {
       for (const foreground of ['ink', 'muted']) {
         for (const background of ['canvas', 'ground', 'surface']) expect(contrast(color(foreground), color(background))).toBeGreaterThanOrEqual(4.5);
       }
-      expect(contrast(color('button-ink'), color('accent-button'))).toBeGreaterThanOrEqual(4.5);
+      expect(contrast(color('violet-fill-ink'), color('violet-fill'))).toBeGreaterThanOrEqual(4.5);
       const error = color('danger').map((value, index) => value * .9 + color('ink')[index] * .1);
       expect(contrast(error, color('ground'))).toBeGreaterThanOrEqual(4.5);
       expect(contrast(color('focus'), color('canvas'))).toBeGreaterThanOrEqual(3);
     }
-    expect(readFileSync(new URL('../desktop/launcher/launcher.css', import.meta.url), 'utf8')).toContain('color-mix(in srgb, var(--danger) 90%, var(--ink))');
+    expect(launcherCss).toContain('color-mix(in srgb, var(--danger) 90%, var(--ink))');
   });
 
-  it('keeps shared materials in sync with the board in both themes without changing its CSP', () => {
-    const roles = ['font-sans', 'canvas', 'surface', 'ground', 'ink', 'muted', 'line', 'hover', 'accent', 'accent-soft', 'focus', 'danger', 'card-face', 'card-edge', 'card-metal', 'card-metal-ink', 'doc-metal', 'hero-metal', 'card-shadow', 'card-hover-shadow'];
+  it('keeps unchanged material tokens in sync with the board and uses the approved B palette', () => {
+    const roles = ['font-sans', 'ink', 'card-metal', 'card-metal-ink', 'doc-metal', 'hero-metal', 'card-shadow', 'card-hover-shadow'];
+    const palette = [
+      { canvas: '#f0ecf4', surface: '#f3f0f6', ground: '#ebe5f0', sidebar: '#e1d9e8', muted: '#51445f', line: '#afa1bd', hover: '#dcd2e6', accent: '#68428b', 'accent-soft': '#e4d8ef', focus: '#6e4697', danger: '#983c56', plum: '#8a6aa6', 'card-face': '#f8f6fa', 'card-edge': '#b5a9c4', 'button-line': '#816594', 'violet-fill': '#68428b', 'violet-fill-ink': '#fdfaff', mark: 'var(--accent)' },
+      { canvas: '#322f40', surface: '#39354a', ground: '#27242f', sidebar: '#1c1a24', muted: '#cdc8dc', line: '#4a4560', hover: '#443f59', accent: '#c3a3e5', 'accent-soft': '#453351', focus: '#cfb4ec', danger: '#edaaa9', plum: '#906cbd', 'card-face': '#322f40', 'card-edge': '#4a4560', 'button-line': '#a58cbf', 'violet-fill': '#68478c', 'violet-fill-ink': '#f5effc', mark: '#dfcaf2' },
+    ];
     for (const dark of [false, true]) {
       const launcher = themeTokens(launcherTokens, dark);
       const board = themeTokens(boardTokens, dark);
       for (const role of roles) {
         expect(launcher.get(`--${role}`), `${role}, dark=${dark}`).toBe(board.get(`--${role}`));
       }
+      for (const [role, value] of Object.entries(palette[Number(dark)])) {
+        expect(launcher.get(`--${role}`), `${role}, dark=${dark}`).toBe(value);
+      }
     }
     expect(html).toContain(`default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'`);
     expect(html).not.toMatch(/<script(?![^>]*src=)[^>]*>/u);
+  });
+
+  it('uses the board cover geometry and readable theme-fitted faces for the fixed illustrations', () => {
+    const covers = [...html.matchAll(/--cover-c-dark: (#[\da-f]+); --cover-c-light: (#[\da-f]+)/gu)];
+    expect(covers).toHaveLength(2);
+    for (const [, dark, light] of covers) {
+      expect(contrast(rgb('#edeef2'), rgb(dark))).toBeGreaterThanOrEqual(4.5);
+      expect(contrast(rgb('#2f2440'), rgb(light))).toBeGreaterThanOrEqual(4.5);
+    }
+    expect(html).not.toContain('--deck-band');
+    expect(launcherCss).toContain('padding: 6px 6px 8px; border-radius: 8px');
+    expect(launcherCss).toContain('flex: 0 0 80px');
+    expect(launcherCss).toContain('height: 22px; padding: 0 5px');
+    expect(launcherCss).toContain('color: var(--ink);');
+  });
+
+  it('captures the README in dark by default, with enough CSS height for the covers in either theme', () => {
+    for (const theme of ['dark', 'light'] as const) {
+      const frame = launcherReadmeFrame(theme);
+      expect(frame).toMatchObject({ theme, lang: 'en', size: [1280, 820], covers: 'visible' });
+      expect(frame.size[1] / (frame.zoom ?? 1)).toBeGreaterThan(680);
+    }
+    expect(launcherReadmeFrame().theme).toBe('dark');
+  });
+
+  it('uses separated keyboard focus and the board hover timing', () => {
+    expect(launcherCss).toContain('outline: 2px solid var(--focus); outline-offset: 2px');
+    expect(launcherCss).not.toContain('outline-offset: -2px');
+    expect(launcherCss).not.toContain('.create-panel h2:focus { outline: none; }');
+    expect(launcherCss).toContain('--control-hover-duration: 0ms');
+    expect(launcherCss).toContain('--control-hover-duration: var(--motion-control)');
+    expect(launcherTokens).toContain('--motion-control: 100ms');
+    expect(launcherCss).toContain('transition-duration: 0ms !important');
+  });
+
+  it('reserves the status bar height and scrolls long diagnostics instead of resizing the project list', () => {
+    expect(launcherCss).toMatch(/\.bar\s*\{[^}]*height:\s*96px/u);
+    expect(launcherCss).toMatch(/\.status-copy\s*\{[^}]*max-height:\s*87px;\s*overflow:\s*auto/u);
   });
 
   it('keeps both languages under the same keys and gives each required error a distinct recovery', async () => {
@@ -171,14 +218,21 @@ describe('desktop launcher', () => {
     expect(app.get('welcome').hidden).toBe(false);
     expect(app.get('recent').hidden).toBe(true);
     expect(app.get('actions').firstElementChild?.children[0]).toBe(app.get('create-project'));
+    expect(app.document.activeElement).toBe(app.get('create-project'));
     expect(app.evaluate('texts.ru.ownership')).toContain('Markdown');
     expect(app.evaluate('texts.ru.templateHelp')).toContain('всегда создаётся демо');
+  });
+
+  it('starts keyboard focus at the first action when projects exist', async () => {
+    const app = await launcher();
+    expect(app.document.activeElement).toBe(app.get('open-folder'));
   });
 
   it('confirms the folder before writing, sends only the existing bridge option and allows going back', async () => {
     const app = await launcher();
     await app.get('create-project').click();
     expect(app.get('create-panel').hidden).toBe(false);
+    expect(app.document.activeElement).toBe(app.get('create-heading'));
     expect(app.bridge.createProject).not.toHaveBeenCalled();
     await app.get('create-back').click();
     expect(app.get('create-panel').hidden).toBe(true);
@@ -186,6 +240,14 @@ describe('desktop launcher', () => {
     await app.get('create-confirm').click();
     expect(app.bridge.createProject).toHaveBeenCalledWith({ folder: 'D:\\Projects\\New project' });
     expect(app.get('status-text').textContent).toContain('not empty');
+  });
+
+  it('closes project creation with Escape and returns focus to its opener', async () => {
+    const app = await launcher();
+    await app.get('create-project').click();
+    app.get('create-panel').listeners.keydown({ key: 'Escape' });
+    expect(app.get('create-panel').hidden).toBe(true);
+    expect(app.document.activeElement).toBe(app.get('create-project'));
   });
 
   it('does not turn a cancelled picker or rejected dialog into a write or unhandled rejection', async () => {
@@ -275,14 +337,15 @@ describe('desktop launcher', () => {
     expect(app.get('open-folder')).toBe(app.document.activeElement);
   });
 
-  it('shortens paths in the middle without losing Unicode or the original accessible path', async () => {
+  it('shows long paths and names in full without losing Unicode or the accessible path', async () => {
     const app = await launcher();
     const path = `D:\\${'Длинная папка\\'.repeat(10)}🎲 Мой проект`;
-    app.evaluate(`state.recent = [{path: ${JSON.stringify(path)}, name: '🎲 Мой проект'}]; state.lastProject = null; renderRecent()`);
+    const name = `🎲 ${'очень длинное название '.repeat(10)}`;
+    app.evaluate(`state.recent = [{path: ${JSON.stringify(path)}, name: ${JSON.stringify(name)}}]; state.lastProject = null; renderRecent()`);
     const row = app.get('recent-list');
-    const short = row.querySelectorAll('.recent-path')[0].children[0].textContent;
-    expect(short).toContain('…');
-    expect(short.endsWith('🎲 Мой проект')).toBe(true);
+    expect(row.querySelectorAll('.recent-path')[0].children[0].textContent).toBe(path);
+    expect(row.querySelectorAll('.recent-name')[0].textContent).toBe(name);
     expect(row.querySelectorAll('.recent-open')[0].attributes['aria-label']).toContain(path);
+    expect(launcherCss).toMatch(/\.recent-name\s*\{[^}]*overflow-wrap:\s*anywhere/u);
   });
 });

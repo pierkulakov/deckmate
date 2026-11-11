@@ -77,7 +77,10 @@ it('counts only active children of active Heroes in Asset decks, even when child
 it('excludes shelved documents from the Knowledge count and handles an empty active deck', () => {
   const active = card('doc', { kind: 'doc', state: null });
   const hidden = [card('hidden-archive', { kind: 'doc', archived: true }), card('hidden-trash', { kind: 'doc', deleted: true })];
-  expect(renderSummary('knowledge', [active, ...hidden])).toContain('<strong>1 document</strong>');
+  const knowledge = renderSummary('knowledge', [active, ...hidden]);
+  expect(knowledge).toContain('<strong>1 document</strong>');
+  expect(knowledge).not.toContain('<progress');
+  expect(knowledge).not.toContain('deck-overview-states');
   const html = renderSummary('knowledge', hidden);
   expect(html).toContain('Statistics appear after the first card.');
   expect(html).not.toContain('deck-overview-stats');

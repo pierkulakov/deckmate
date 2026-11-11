@@ -14,7 +14,7 @@
 /* The delete confirmation strip stands in the heading row, in place of the delete button itself (2026-11-05);
    it must not inherit the 24 px icon shape or the muted ink from the tools around it. */
 .catalog-zone-tools .confirm-strip { min-height: 0; padding: 2px 6px; }
-.catalog-zone-tools .confirm-strip .ui-button { width: auto; height: 24px; padding: 0 9px; font-size: 11px; }
+.catalog-zone-tools .confirm-strip .ui-button { width: auto; height: 24px; padding: 0 9px; font-size: var(--text-help-size); }
 .catalog-zone-tools .confirm-strip .ui-button.confirm-strip-keep { border-color: transparent; background: var(--violet-fill, var(--accent)); color: var(--violet-fill-ink, var(--surface)); }
 @media (hover: hover) { .catalog-zone-tools .confirm-strip .ui-button.confirm-strip-keep:hover:not(:disabled) { border-color: transparent; background: var(--violet-fill, var(--accent)); opacity: .9; } }
 .catalog-zone-tools .confirm-strip .ui-button.confirm-strip-confirm.is-danger { border-color: var(--danger); color: var(--danger); }
@@ -40,4 +40,7 @@
 @media (hover: hover) { :is(.catalog-zone-title-input, .catalog-add-zone-form input):hover:not(:disabled, :focus) { border-color: var(--button-line); } }
 :is(.catalog-zone-title-input, .catalog-add-zone-form input):focus { border-color: var(--focus); box-shadow: inset 0 0 0 1px var(--focus); }
 
-/* Inbox assignment in deck settings. */
+@media (pointer: coarse) {
+  .catalog-zone-tools .ui-button, .catalog-zone-tools .confirm-strip .ui-button, .catalog-zone-title-input, .catalog-add-zone-form input, .catalog-add-zone { min-height: var(--control-target-touch); height: auto; }
+  .catalog-zone-tools .ui-button { min-width: var(--control-target-touch); }
+}

@@ -33,14 +33,24 @@ class FixtureSocket {
 }
 window.WebSocket = FixtureSocket as unknown as typeof WebSocket;
 const realFetch = window.fetch.bind(window);
+const pulseTest = new URLSearchParams(location.search).has('pulseTest');
+let releasePulse: (() => void) | undefined;
+const pulseReady = new Promise<void>(resolve => { releasePulse = resolve; });
+const pulseRequests = { count: 0, release: () => releasePulse?.() };
+Object.assign(window, { pulseRequests });
 window.fetch = async (input, init) => {
   const url = new URL(String(input), location.href);
   if (!url.pathname.startsWith('/api/')) return realFetch(input, init);
   if (url.pathname === '/api/snapshot') return Response.json({ projectName: 'Transition test', source: 'sandbox',
     editMode: 'direct', writable: true, token: 'test', iteration: { number: 1, goal: '', start: '' } });
   if (url.pathname === '/api/catalog') return Response.json(catalog);
-  if (url.pathname === '/api/project-pulse') return Response.json({ inProgress: { count: 0, ownerIds: [] },
-    review: { count: 0, oldestSince: null, deckId: null }, accepted: { days: Array(14).fill(0), total: 0 }, run: null, withoutDeck: 0 });
+  if (url.pathname === '/api/project-pulse') {
+    pulseRequests.count += 1;
+    if (pulseTest) await pulseReady;
+    return Response.json({ inProgress: { count: pulseTest ? 3 : 0, ownerIds: [] },
+      review: { count: pulseTest ? 1 : 0, oldestSince: null, deckId: pulseTest ? 'top' : null },
+      accepted: { days: Array(14).fill(0), total: 0 }, run: null, withoutDeck: 0 });
+  }
   if (url.pathname === '/api/notifications') return Response.json({ source: 'sandbox', member: null, members: [], stacks: [],
     total: 0, watching: [], warnings: [] });
   if (url.pathname === '/api/onboarding-facts') return Response.json({ agentSkill: false });

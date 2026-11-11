@@ -33,7 +33,7 @@ const decidedSectionTitles = markerWords('decided');
 // 2026-11-06: `report` appends "#### Report YYYY-MM-DD · member" after the body. When the body ends with this section
 // (a question asked on the card itself), the report's own lists must not become questions, and a later question must
 // not be appended inside the report.
-const reportHeading = /^Report \d{4}-\d{2}-\d{2} · /u;
+const reportHeading = /^Report \d{4}-\d{2}-\d{2} · (.+)$/u;
 
 export interface OpenQuestion {
   /** First paragraph of the item, plain text, without the decision-task link. */
@@ -58,6 +58,15 @@ function plain(node: object): string {
   return 'children' in node && Array.isArray(node.children) ? node.children.map(child => plain(child as object)).join('') : '';
 }
 
+/** Generated report headings share one grammar with question boundaries and acceptance checks. */
+export function cardReportAuthor(node: RootContent): string | null {
+  return node.type === 'heading' && node.depth === 4 ? reportHeading.exec(plain(node))?.[1] ?? null : null;
+}
+
+export function isCardSectionBoundary(node: RootContent): node is Heading {
+  return node.type === 'heading' && (node.depth <= 2 || cardReportAuthor(node) !== null);
+}
+
 function isSection(node: RootContent, titles: string | readonly string[]): node is Heading {
   const title = plain(node).trim().toLowerCase();
   return node.type === 'heading' && node.depth === 2
@@ -69,7 +78,7 @@ function sectionBody(root: Root, titles: string | readonly string[]): { heading:
   if (index < 0) return null;
   const nodes: RootContent[] = [];
   for (const node of root.children.slice(index + 1)) {
-    if (node.type === 'heading' && (node.depth <= 2 || (node.depth === 4 && reportHeading.test(plain(node))))) break;
+    if (isCardSectionBoundary(node)) break;
     nodes.push(node);
   }
   return { heading: root.children[index] as Heading, nodes };
@@ -121,12 +130,14 @@ function mayHaveOpenSection(markdown: string): boolean {
 
 export function parseOpenQuestions(markdown: string, lang: Lang = defaultLang): OpenQuestions {
   if (!mayHaveOpenSection(markdown)) return { questions: null, warnings: [] };
-  return openQuestionsOf(markdownParser.parse(markdown) as Root, lang);
+  const result = openQuestionsOf(markdownParser.parse(markdown) as Root, lang);
+  if (!markdown.startsWith('\uFEFF')) return result;
+  return { ...result, questions: result.questions?.map(question => ({ ...question, start: question.start + 1, end: question.end + 1 })) ?? null };
 }
 
 /**
  * 2026-11-06: the same grammar over a tree the caller already parsed with markdownParser, so a mechanic file is
- * parsed once at catalog load instead of twice. Positions are unaffected by a leading BOM: micromark skips it.
+ * parsed once at catalog load instead of twice. Tree offsets exclude a leading BOM; string-based edits account for it.
  */
 export function openQuestionsOf(root: Root, lang: Lang = defaultLang): OpenQuestions {
   const sections = root.children.filter(node => isSection(node, openSectionTitles)).length;
@@ -147,12 +158,15 @@ export function openQuestionsOf(root: Root, lang: Lang = defaultLang): OpenQuest
 }
 
 function lineStart(markdown: string, offset: number): number {
-  return markdown.lastIndexOf('\n', offset - 1) + 1;
+  return Math.max(markdown.lastIndexOf('\n', offset - 1), markdown.lastIndexOf('\r', offset - 1)) + 1;
 }
 
 function lineEnd(markdown: string, offset: number): number {
-  const next = markdown.indexOf('\n', offset);
-  return next < 0 ? markdown.length : next + 1;
+  let end = offset;
+  while (end < markdown.length && markdown[end] !== '\r' && markdown[end] !== '\n') end += 1;
+  if (markdown[end] === '\r') end += 1;
+  if (markdown[end] === '\n') end += 1;
+  return end;
 }
 
 /**
@@ -162,18 +176,18 @@ function lineEnd(markdown: string, offset: number): number {
 export function appendSectionLine(markdown: string, root: Root, title: string | readonly string[], line: string): string | null {
   const section = sectionBody(root, title);
   if (!section) return null;
-  const eol = line.endsWith('\r\n') ? '\r\n' : '\n';
+  const eol = line.match(/(?:\r\n|\r|\n)$/u)?.[0] ?? '\n';
   const lastList = [...section.nodes].reverse().find((node): node is List => node.type === 'list');
   const anchor = lastList ?? section.heading;
-  const at = lineEnd(markdown, Math.max(anchor.position!.start.offset!, anchor.position!.end.offset! - 1));
+  const at = lineEnd(markdown, Math.max(anchor.position!.start.offset!, anchor.position!.end.offset! - 1) + Number(markdown.startsWith('\uFEFF')));
   // The section's last line may end the file without a line break; the new item must not glue onto it.
-  const lineBreak = at === markdown.length && !markdown.endsWith('\n') ? eol : '';
+  const lineBreak = at === markdown.length && !/[\r\n]$/u.test(markdown) ? eol : '';
   const gap = lastList ? '' : eol;
   return markdown.slice(0, at) + lineBreak + gap + line + markdown.slice(at);
 }
 
 /** The question at `index`, checked against the text the user saw; a mismatch means the Doc changed. */
-export function findOpenQuestion(markdown: string, index: number, expectedText: string, lang: Lang = defaultLang): OpenQuestion {
+function findOpenQuestion(markdown: string, index: number, expectedText: string, lang: Lang = defaultLang): OpenQuestion {
   const question = parseOpenQuestions(markdown, lang).questions?.[index];
   if (!question || question.text !== expectedText.trim()) throw new Error(messages[lang].changed);
   return question;
@@ -187,7 +201,7 @@ export function linkDecisionTask(markdown: string, index: number, expectedText: 
   if (question.taskRef === ref) return markdown;
   if (question.taskRef) throw new Error(messages[lang].alreadyLinked);
   const firstLineEnd = lineEnd(markdown, question.start);
-  const eol = markdown.slice(firstLineEnd - 2, firstLineEnd) === '\r\n' ? 2 : markdown[firstLineEnd - 1] === '\n' ? 1 : 0;
+  const eol = markdown.slice(0, firstLineEnd).match(/(?:\r\n|\r|\n)$/u)?.[0].length ?? 0;
   const at = firstLineEnd - eol;
   const decisionLabel = writeMarker('decision', formatLanguage).replace(/:$/u, '');
   return markdown.slice(0, at) + ` — [${decisionLabel}](/r/${ref})` + markdown.slice(at);
@@ -203,13 +217,14 @@ export function recordDecision(markdown: string, index: number, expectedText: st
   if (!rule) throw new Error(messages[lang].emptyAnswer);
   if (!/^\d{4}-\d{2}-\d{2}$/u.test(date)) throw new Error(messages[lang].invalidDate);
   const question = findOpenQuestion(markdown, index, expectedText, lang);
-  const eol = markdown.includes('\r\n') ? '\r\n' : '\n';
+  const eol = markdown.match(/\r\n|\r|\n/u)?.[0] ?? '\n';
   const line = `- ${rule} — ${author}, ${date}${eol}`;
   const removed = markdown.slice(0, lineStart(markdown, question.start)) + markdown.slice(lineEnd(markdown, Math.max(question.start, question.end - 1)));
   const root = markdownParser.parse(removed) as Root;
   const appended = appendSectionLine(removed, root, decidedSectionTitles, line);
   if (appended !== null) return appended;
   const open = sectionBody(root, openSectionTitles)!.heading;
-  const at = lineStart(removed, open.position!.start.offset!);
+  const bom = Number(removed.startsWith('\uFEFF'));
+  const at = Math.max(bom, lineStart(removed, open.position!.start.offset! + bom));
   return removed.slice(0, at) + `## ${writeMarker('decided', formatLanguage)}${eol}${eol}${line}${eol}` + removed.slice(at);
 }

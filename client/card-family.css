@@ -1,26 +1,22 @@
-/* Family panel: 379 px column on --canvas, padding 12/12/32; Hero Card heading 16/600, 12 px gap, 53 px box; 32 px to Sub Cards; 24 px header; 53 px rows 4 px apart.
-   2026-11-10, the Foil Rule: rows use a 2px corner and one line, without panel lift. A 2px mint ring still highlights the current card. */
+/* One compact card face; state stays on the strip and selection uses the deck tile's mint ring. */
 .catalog-results:has(> .card-family-panel) { align-self: stretch; }
-.card-family-panel { flex: 0 1 379px; width: 379px; min-width: 280px; min-height: 100%; padding: 12px 12px 32px; background: var(--canvas); }
-.card-family-parent-heading h2, .card-family-heading h2 { margin: 0; overflow: hidden; color: var(--ink); font-size: 16px; font-weight: 600; line-height: 18px; white-space: nowrap; text-overflow: ellipsis; }
-.card-family-parent-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; height: 18px; margin-bottom: 12px; }
-/* A -3 px offset centers 24 px buttons in the 18 px heading row. */
-.card-family-parent-actions { display: flex; flex-shrink: 0; gap: 4px; margin-block: -3px; }
+.card-family-panel { --family-tool-size: 30px; --family-row-tool-size: 24px; flex: 0 1 379px; width: 379px; min-width: 0; min-height: 100%; padding: var(--space-3) var(--space-3) var(--space-6); background: var(--canvas); }
+.card-family-parent-heading h2, .card-family-heading h2 { margin: 0; color: var(--ink); font-size: var(--text-ui-size); font-weight: 600; line-height: var(--text-ui-leading); white-space: nowrap; }
+.card-family-parent-heading { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); min-height: var(--family-tool-size); margin-bottom: var(--space-2); }
+.card-family-parent-actions { display: flex; flex-shrink: 0; gap: var(--space-1); }
 .card-family-parent-empty { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.6; }
-.card-family-parent-slot { margin-top: 12px; }
-.card-family-subcards-slot { margin-top: 32px; }
-.card-family-heading { display: flex; align-items: center; gap: 12px; height: 24px; margin-bottom: 12px; }
-.card-family-heading-title { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.card-family-parent-slot { margin-top: var(--space-3); }
+.card-family-subcards-slot { margin-top: var(--space-6); }
+.card-family-heading { display: flex; align-items: center; gap: var(--space-2); min-height: var(--family-tool-size); margin-bottom: var(--space-3); }
+.card-family-heading-title { display: flex; align-items: center; gap: var(--space-1); min-width: 0; }
 /* 2026-11-09: a Sub Card without a deck is an indication, not a block; the heading count and row badge use the quiet warning tone in both themes. */
 .card-family-no-deck-count { flex: 0 0 auto; padding: 0 6px; border: 1px solid color-mix(in srgb, var(--warning-ink) 35%, var(--line)); border-radius: var(--control-radius); background: var(--warning-bg); color: var(--warning-ink); font-size: 10px; font-weight: 500; line-height: 14px; }
-.card-family-actions { display: flex; flex-shrink: 0; gap: 16px; margin-left: auto; }
-.card-family-action-group { display: flex; gap: 4px; }
-/* 2026-11-10: secondary buttons keep their 24px height and use the Foil line, 2px corner and 12/500 label. */
-.card-family-parent-actions .ui-button, .card-family-heading .ui-button { height: 24px; min-height: 24px; padding: 0 7px; gap: 4px; border: var(--control-hairline) solid var(--control-line); border-radius: var(--control-radius); background: transparent; color: var(--edit-link); font-size: 12px; font-weight: 500; line-height: 14px; letter-spacing: .12px; }
-.card-family-heading .ui-button { width: 24px; padding: 0 3px; }
-.card-family-parent-actions .ui-button:hover:not(:disabled), .card-family-heading .ui-button:hover:not(:disabled) { border-color: var(--button-line); background: var(--hover); }
+.card-family-actions { display: flex; flex-shrink: 0; gap: var(--space-1); margin-left: auto; }
+.card-family-heading .ui-button { flex: 0 0 auto; width: var(--family-tool-size); height: var(--family-tool-size); min-height: var(--family-tool-size); padding: 0; }
+.card-family-heading .card-family-overflow { display: none; }
+.card-family-deck-hint { margin: 0 0 var(--space-2); }
 .card-family-heading .ui-button[aria-pressed="true"], .card-family-heading .ui-button[aria-expanded="true"], .card-family-heading .ui-button.is-active { border-color: var(--mark); background: var(--mark-tint); color: var(--mark); }
-.card-family-heading .ui-button:is([aria-pressed="true"], [aria-expanded="true"], .is-active):hover:not(:disabled) { border-color: var(--mark); background: var(--mark-tint-strong); color: var(--mark); }
+@media (hover: hover) { .card-family-heading .ui-button:is([aria-pressed="true"], [aria-expanded="true"], .is-active):hover:not(:disabled) { border-color: var(--mark); background: var(--mark-tint-strong); color: var(--mark); } }
 /* Change order groups cards into lanes by the selected property. */
 .card-family-order-menu { min-width: 160px; }
 .card-family-order-check { display: inline-flex; flex-shrink: 0; width: 14px; }
@@ -29,94 +25,100 @@
 .card-family-group > span { font-weight: 400; }
 .card-family-parent-actions .ui-button:disabled, .card-family-heading .ui-button:disabled { opacity: .5; cursor: default; }
 
-/* Hero boxes and Sub Card rows share one mini-card layout. */
-.card-family-hero, .card-family-row { --strip: var(--card-strip, var(--card-metal)); position: relative; border: 1px solid var(--line); border-left: 6px solid var(--strip); border-radius: var(--control-radius); background: var(--canvas); color: var(--card-meta-ink, var(--muted)); box-shadow: none; transition: background-color var(--motion-feedback), box-shadow var(--motion-feedback); }
-.card-family-hero { --strip: var(--hero-strip); display: flex; flex-direction: column; gap: 4px; width: 100%; min-height: 53px; padding: 8px 12px 7px 7px; font: inherit; text-align: left; cursor: pointer; }
-.card-family-hero[data-kind="doc"] { --strip: var(--doc-metal); }
-.card-family-hero-title { display: flex; align-items: center; gap: 4px; min-width: 0; height: 16px; }
-.card-family-hero-icon { display: grid; flex-shrink: 0; place-items: center; width: 16px; height: 16px; border: 1px solid var(--card-icon-line, var(--line)); border-radius: var(--control-radius); background: var(--sidebar); }
-.card-family-hero-title strong { overflow: hidden; color: var(--ink); font-size: 12px; font-weight: 400; line-height: 14px; white-space: nowrap; text-overflow: ellipsis; }
-.card-family-row { display: flex; flex-direction: column; width: 100%; min-height: 53px; overflow: hidden; cursor: default; }
+.card-family-row { --strip: var(--card-metal); position: relative; width: 100%; border: 1px solid var(--card-edge); border-left: calc(var(--space-1) * 1.5) solid var(--strip); border-radius: var(--glass-radius); background: var(--card-face); color: var(--card-muted); transition: background-color 0ms, box-shadow 0ms; }
+.card-family-hero-icon { display: grid; flex-shrink: 0; place-items: center; width: var(--space-4); height: var(--space-4); border: 1px solid var(--line); border-radius: var(--control-radius); background: var(--sidebar); color: var(--ink); }
 .card-family-row[data-kind="doc"] { --strip: var(--doc-metal); }
 /* Strip = state of the Sub Card in the full state colors; the Hero tile shows the same states as light tints on its gold (2026-11-09). */
-.card-family-row[data-progress-state="accepted"] { --strip: var(--sub-card-state-accepted); }
+.card-family-row[data-progress-state="accepted"] { --strip: var(--accepted-metal); }
 .card-family-row[data-progress-state="working"] { --strip: var(--sub-card-state-working); }
 .card-family-row[data-progress-state="review"] { --strip: var(--sub-card-state-review); }
 .card-family-row[data-progress-state="blocked"] { --strip: var(--sub-card-state-blocked); }
-.card-family-row:hover, .card-family-hero:hover:not(:disabled) { background: var(--hover); }
-.card-family-row.is-current, .card-family-hero.is-current { box-shadow: 0 0 0 2px var(--card-current-ring, var(--card-highlight)), 0 0 10.4px var(--card-current-ring, var(--card-highlight)); }
-.card-family-row:has(.card-family-row-open:focus-visible), .card-family-hero:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
-.card-family-hero:disabled { cursor: default; opacity: .65; }
-.card-family-row-main { display: flex; min-width: 0; }
-.card-family-row-body { flex: 1; min-width: 0; padding: 8px 12px 5px 7px; }
-/* An 18 px title line holds the 24 px close button at -3 px; close and drag controls sit at the right. */
-.card-family-row-open { display: flex; align-items: flex-start; width: 100%; min-height: 18px; padding: 0; border: 0; background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer; }
-.card-family-row:has(.card-family-detach) .card-family-row-open, .card-family-row:has(.card-family-drag-handle) .card-family-row-open { padding-right: 25px; }
-.card-family-row:has(.card-family-detach):has(.card-family-drag-handle) .card-family-row-open { padding-right: 53px; }
-.card-family-row-open > strong { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; flex: 1 1 auto; min-width: 0; overflow: hidden; overflow-wrap: anywhere; color: var(--ink); font-size: 12px; font-weight: 400; line-height: 14px; white-space: normal; }
-.card-family-row-open small { margin-right: 6px; color: var(--muted); font: 10px/14px 'Geist Mono', monospace; vertical-align: top; }
+.card-family-row[data-kind="hero"] { --strip: var(--hero-metal); }
+@media (hover: hover) {
+  .card-family-row:hover:not(:has(.card-family-row-open:disabled)) { background: var(--hover); transition-duration: var(--motion-control); }
+}
+.card-family-row.is-current:not(:has(:focus-visible)) { box-shadow: 0 0 0 2px color-mix(in srgb, var(--tile-highlight) 85%, transparent), 0 0 18px color-mix(in srgb, var(--tile-highlight) 38%, transparent); }
+.card-family-row:has(.card-family-row-open:focus-visible) { outline: 2px solid var(--focus); outline-offset: 2px; }
+.card-family-row-main { position: relative; display: flex; flex-direction: column; gap: var(--space-1); min-width: 0; min-height: calc(var(--space-10) + var(--space-4)); padding: var(--space-2); }
+.card-family-row-title { display: flex; align-items: center; gap: var(--space-1); min-height: var(--text-ui-leading); }
+.card-family-row-title > .card-value-hint { flex: 1; min-width: 0; }
+.card-family-row-open { display: flex; flex: 1; align-items: center; gap: var(--space-1); min-width: 0; width: 100%; padding: 0; border: 0; background: transparent; color: var(--card-ink); font: inherit; text-align: left; cursor: pointer; }
+.card-family-row-open::after { content: ''; position: absolute; inset: 0; }
+.card-family-row-open > strong { flex: 1; min-width: 0; overflow: hidden; color: var(--card-ink); font-size: var(--text-ui-size); font-weight: 500; line-height: var(--text-ui-leading); white-space: nowrap; text-overflow: ellipsis; }
+.card-family-row-open small { margin-right: var(--space-1); color: var(--card-muted); font: 10px/var(--text-help-leading) 'Geist Mono', monospace; }
 .card-family-row-open:focus-visible { outline: 0; }
 .card-family-row-open:disabled { opacity: .65; cursor: default; }
-.card-family-row-details { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; min-width: 0; min-height: 16px; margin-top: 4px; }
-.card-family-row-state { display: inline-flex; flex: 0 0 auto; align-items: center; gap: var(--space-1); color: var(--ink); font-size: 12px; }
-.card-family-row-waiting { display: flex; align-items: center; gap: 4px; min-width: 0; margin-top: 4px; color: var(--sub-card-state-blocked); font-size: 10px; line-height: 14px; }
-.card-family-row-waiting > svg { flex-shrink: 0; }
-.card-family-row-waiting > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-/* The badge keeps the wrapped details row's flow: at narrow widths it wraps whole onto its own line instead of truncating. */
-.card-family-row-no-deck { display: inline-flex; flex: 0 0 auto; align-items: center; max-width: 100%; padding: 0 6px; border: 1px solid color-mix(in srgb, var(--warning-ink) 35%, var(--line)); border-radius: var(--control-radius); background: var(--warning-bg); color: var(--warning-ink); font-size: 10px; font-weight: 500; line-height: 14px; }
-.card-metrics.is-compact { flex-wrap: nowrap; align-items: center; gap: 4px; color: inherit; font-size: 12px; font-weight: 500; line-height: 14px; letter-spacing: .12px; }
+/* 2026-11-11: an emoji is wider than its font size, so at the title's size it stood out to the right of the owner
+   avatar below it. It takes the avatar's 16px box, centered, and the two share one axis. */
+.card-family-row-title .card-title-tags .card-tag-emoji { width: var(--space-4); font-size: 12px; text-align: center; }
+.card-family-row-tags { position: relative; z-index: 1; display: flex; align-items: center; flex: 0 1 auto; min-width: 0; max-width: 42%; }
+.card-family-row-tags .card-tags { max-width: 100%; }
+.card-family-row-tags .card-tags > :first-child:not(:last-child) { flex-shrink: 0; max-width: 50%; }
+/* 2026-11-11: the "+1" overflow chip is a 24 px control (card-tags.css); inside the 18 px title line it grew
+   the row by 6 px. It keeps its full touch target on coarse pointers; a fine pointer centers the smaller chip. */
+.card-family-row-tags button.tag-overflow { min-width: 0; min-height: 0; padding: 0 2px; }
+@media (pointer: coarse) { .card-family-row-tags button.tag-overflow { min-width: var(--control-target-touch); min-height: var(--control-target-touch); } }
+.card-family-row-details { display: flex; align-items: center; gap: var(--space-1); min-width: 0; min-height: var(--space-4); font-size: var(--text-help-size); line-height: var(--text-help-leading); }
+.card-family-row-summary { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 0 var(--space-2); order: 5; margin-left: auto; min-width: 0; }
+.card-family-row-summary:empty { display: none; }
+.card-family-row-state, .card-family-row-questions { display: inline-flex; align-items: center; gap: var(--space-1); white-space: nowrap; }
+.card-family-row[data-progress-state="blocked"] .card-family-row-state, .card-family-row-due.is-urgent { color: var(--danger); }
+.card-family-row-due { color: var(--warning-ink); white-space: nowrap; }
+.card-family-row-deck { display: inline-flex; }
+.card-family-row-no-deck { order: 4; color: var(--warning-ink); white-space: nowrap; }
+.card-family-row-details .card-indicators { display: contents; }
+.card-family-row-details .card-indicator { order: 3; }
+.card-family-row-details .card-hand-indicator { order: 2; color: var(--action-mint-ink); }
+.card-family-row-details:has(.card-family-row-due) .card-due-indicator { display: none; }
+.card-family-row-details .card-hand-indicator > strong { color: inherit; font: 500 var(--text-help-size)/var(--text-help-leading) 'Geist Mono', monospace; }
+.card-family-row-details .card-indicator-button { z-index: 1; }
+.card-family-progress-count { font-variant-numeric: tabular-nums; }
+.card-family-progress { position: absolute; inset: auto var(--space-2) 0; pointer-events: none; }
+.card-family-progress .sub-card-progress { height: 3px; margin: 0; }
+.card-metrics.is-compact { flex: 0 0 auto; flex-wrap: nowrap; align-items: center; gap: var(--space-2); color: var(--card-ink); font: 500 var(--text-ui-size)/var(--text-ui-leading) 'Geist Mono', monospace; }
 .card-metrics.is-compact > span { gap: 2px; }
 .card-metrics.is-compact svg { flex-shrink: 0; }
 .card-metrics-owner { min-width: 0; }
 .card-metrics-owner > span:last-child { max-width: 120px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .card-metrics .card-owner-avatar { width: 18px; height: 18px; font-size: 8px; }
-.card-metrics.is-compact .card-owner-avatar, .card-family-row-owner .card-owner-avatar { width: 16px; height: 16px; font-size: 7px; }
-.card-family-row-owner { display: inline-flex; flex: 0 1 auto; align-items: center; gap: 2px; min-width: 0; height: 16px; padding: 0; border: 0; border-radius: var(--control-radius); background: transparent; color: inherit; font: inherit; font-size: 12px; font-weight: 500; line-height: 14px; letter-spacing: .12px; cursor: pointer; }
-.card-family-row-owner > span:not(.card-owner-avatar) { max-width: 96px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
-.card-family-row-owner:hover:not(:disabled) { color: var(--ink); }
+.card-metrics.is-compact .card-owner-avatar, .card-family-row-owner .card-owner-avatar { width: var(--space-4); height: var(--space-4); font-size: 7px; }
+.card-family-row-owner { z-index: 1; display: inline-flex; flex: 0 0 auto; align-items: center; justify-content: center; padding: 0; border: 0; border-radius: var(--control-radius); background: transparent; color: inherit; cursor: pointer; }
+@media (hover: hover) { .card-family-row-owner:hover:not(:disabled) { color: var(--ink); } }
 .card-family-row-owner:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
 .card-family-row-owner:disabled { cursor: default; }
-/* Row close button: 24 px, no border, violet text, 6/10 px from the top right corner. */
-.card-family-detach { position: absolute; z-index: 2; top: 5px; right: 9px; display: flex; }
-.card-family-detach .ui-button { width: 24px; height: 24px; min-height: 24px; padding: 4px; border: 0; border-radius: var(--control-radius); color: var(--edit-link); }
-.card-family-detach .ui-button:hover:not(:disabled) { background: var(--hover); }
-.card-family-journey-note { padding: 0 12px 8px 7px; color: var(--muted); font-size: 10px; }
+.card-family-row-actions { z-index: 1; display: flex; flex-shrink: 0; align-items: center; gap: var(--space-1); margin-block: calc((var(--text-ui-leading) - var(--family-row-tool-size)) / 2); }
+.card-family-row-actions:empty { display: none; }
+.card-family-detach { display: flex; }
+.card-family-row-actions .ui-button { width: var(--family-row-tool-size); height: var(--family-row-tool-size); min-height: var(--family-row-tool-size); padding: 0; }
 .card-family-detach-confirm { padding: 11px 12px 11px 7px; border-top: 1px solid var(--line); background: var(--surface); }
-.card-family-detach-confirm p { margin: 0 0 8px; color: var(--muted); font-size: 11px; line-height: 1.6; overflow-wrap: anywhere; }
+.card-family-detach-confirm p { margin: 0 0 8px; color: var(--muted); font-size: 12px; line-height: 1.6; overflow-wrap: anywhere; }
 .card-family-detach-confirm > div { display: flex; justify-content: flex-end; gap: 6px; }
 .card-family-sortable { min-width: 0; position: relative; }
 .card-family-sortable.is-drag-source { opacity: .22; }
-.card-family-list { display: grid; gap: 4px; }
+.card-family-list { display: grid; gap: var(--space-2); }
 .card-family-row.is-reorderable { cursor: grab; touch-action: none; user-select: none; }
 .card-family-row.is-reorderable .card-family-row-open { cursor: grab; }
-/* 2026-11-04: the grip sits beside the close button to keep the number and state mark clear. The row supports pointer dragging; the grip supports keyboard dragging. */
-.card-family-drag-handle { position: absolute; z-index: 2; top: 5px; right: 9px; display: flex; align-items: center; justify-content: center; width: 24px; height: 24px; padding: 0; border: 0; border-radius: var(--control-radius); background: transparent; color: var(--edit-link); cursor: grab; touch-action: none; opacity: 0; transition: opacity var(--motion-feedback); }
-.card-family-row:has(.card-family-detach) .card-family-drag-handle { right: 37px; }
-.card-family-row:hover .card-family-drag-handle, .card-family-row:focus-within .card-family-drag-handle { opacity: 1; }
-.card-family-drag-handle:hover:not([aria-disabled="true"]) { background: var(--hover); }
+.card-family-drag-handle { cursor: grab; touch-action: none; }
+@media (hover: hover) and (pointer: fine) {
+  .card-family-row:not(:hover):not(:focus-within) :is(.card-family-drag-handle, .card-family-assign-owner) { opacity: 0; }
+}
 .card-family-drag-handle:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
 .card-family-drag-handle[aria-disabled="true"] { cursor: default; }
-.card-family-row:hover .card-family-drag-handle[aria-disabled="true"], .card-family-row:focus-within .card-family-drag-handle[aria-disabled="true"] { opacity: .35; }
 .card-family-list.is-dragging .card-family-drag-handle, .card-family-list.is-dragging .card-family-row, .card-family-list.is-dragging .card-family-row-open { cursor: grabbing; }
 .card-family-list.is-dragging .card-family-row:hover { background: var(--canvas); }
 .card-family-list.is-dragging .card-family-row-open:disabled { opacity: 1; }
-.card-family-drag-overlay { gap: 4px; padding: 8px 12px 5px 7px; box-shadow: var(--card-hover-shadow), 0 0 0 1px var(--card-current-ring, var(--card-highlight)); cursor: grabbing; }
-.card-family-drag-overlay > strong { overflow: hidden; color: var(--ink); font-size: 12px; font-weight: 400; line-height: 18px; white-space: nowrap; text-overflow: ellipsis; }
+.card-family-drag-overlay { --family-row-tool-size: 24px; box-shadow: var(--card-hover-shadow); cursor: grabbing; }
 @media (max-width: 600px) { .card-family-panel { width: 100%; flex-basis: auto; } }
 .card-family-search { display: flex; align-items: center; gap: 6px; margin: 0 0 10px; border: var(--control-hairline) solid var(--control-field-line); border-radius: var(--control-radius); padding: 0 8px; color: var(--muted); background: var(--control-field); }
 .card-family-search:focus-within { border-color: var(--focus); }
-.card-family-search input { width: 100%; min-width: 0; border: 0; outline: 0; padding: 8px 0; background: transparent; color: var(--ink); font: inherit; font-size: 12px; }
-.card-family-filter-hint, .card-family-reorder-hint, .card-family-reorder-notice { display: flex; align-items: center; gap: 6px; margin: 0 0 10px; color: var(--muted); font-size: 11px; line-height: 1.5; }
+.card-family-search input { width: 100%; min-width: 0; border: 0; outline: 0; padding: var(--space-2) 0; background: transparent; color: var(--ink); font: inherit; font-size: var(--text-ui-size); }
+.card-family-filter-hint, .card-family-reorder-hint, .card-family-reorder-notice { display: flex; align-items: center; gap: 6px; margin: 0 0 10px; color: var(--muted); font-size: 12px; line-height: 1.5; }
 .card-family-reorder-notice { color: var(--ink); padding: 9px 10px; border: 1px solid var(--line); border-radius: var(--glass-radius); background: var(--canvas); }
 .card-family-refresh-notice { flex-direction: column; align-items: flex-start; gap: 8px; }
-.card-family-empty { color: var(--muted); font-size: 12px; line-height: 1.6; }.card-metrics { display: flex; flex-wrap: wrap; gap: 10px; color: inherit; font-size: 10px; }.card-metrics:empty { display: none; }.card-metrics > span { display: inline-flex; gap: 4px; align-items: center; }
-.card-family-trigger { display: flex; align-items: center; gap: 5px; min-width: 0; max-width: 100%; color: var(--ink); background: color-mix(in srgb, var(--hero-chip) 20%,var(--surface)); border: 1px solid color-mix(in srgb,var(--hero-chip) 30%,var(--line)); border-radius: 4px; padding: 4px 7px; font-size: 10px; text-align: left; cursor: pointer; }.card-family-trigger > span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }.card-family-trigger svg { flex-shrink: 0; }
-/* The Sub Card strip shows the Hero's tag emoji at 12 px, followed by its name. */
-/* One 14 px line box: the glyphs sit centered on the name instead of riding 2 px high (2026-11-05). */
-.card-family-trigger .card-title-tags { gap: 1px; height: 14px; margin-right: 4px; vertical-align: top; }
-.card-family-trigger .card-title-tags .card-tag-emoji { font-size: 12px; }
-.card-family-trigger .card-title-tags .card-tag-icon { width: 13px; height: 13px; }
-.card-family-popover { z-index: 120; width: min(310px,calc(100vw - 28px)); padding: 15px; border: 1px solid var(--line); border-radius: var(--glass-radius); background: var(--surface); color: var(--ink); box-shadow: var(--shadow); transform-origin: var(--radix-dropdown-menu-content-transform-origin); animation: overlay-pop var(--motion-spring-quick) var(--ease-spring-quick); }
+.card-family-empty { color: var(--muted); font-size: 12px; line-height: 1.6; }.card-metrics { display: flex; flex-wrap: wrap; gap: 10px; color: inherit; font-size: var(--text-ui-size); }.card-metrics:empty { display: none; }.card-metrics > span { display: inline-flex; gap: 4px; align-items: center; }
+.card-metrics > span > span[aria-hidden="true"] > span { display: inline-flex; color: inherit; }
+.card-family-trigger { display: flex; align-items: center; gap: 5px; min-width: 0; max-width: 100%; color: var(--ink); background: color-mix(in srgb, var(--hero-chip) 20%,var(--surface)); border: 1px solid color-mix(in srgb,var(--hero-chip) 30%,var(--line)); border-radius: var(--control-radius); padding: 4px 7px; font-size: 12px; text-align: left; cursor: pointer; }.card-family-trigger > span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.card-family-popover { z-index: 120; width: min(310px,calc(100vw - 28px)); max-height: min(var(--radix-dropdown-menu-content-available-height, 100dvh), calc(100dvh - 24px)); overflow-y: auto; overscroll-behavior: contain; padding: var(--space-4); border: 1px solid var(--line); border-radius: var(--glass-radius); background: var(--surface); color: var(--ink); box-shadow: var(--shadow); transform-origin: var(--radix-dropdown-menu-content-transform-origin); animation: overlay-pop var(--motion-spring-quick) var(--ease-spring-quick); }
 .card-family-popover [data-highlighted] { outline: 2px solid var(--focus); outline-offset: -2px; }
 .card-family-popover-arrow { fill: var(--surface); }
 /* 2026-11-07: hero, label, list and row had two conflicting definitions; this one group keeps the effective result —
@@ -129,13 +131,14 @@
 .card-family-popover-hero progress::-moz-progress-bar { background: var(--hero-chip); }
 .card-family-popover-label { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 17px 0 10px; font-size: 12px; font-weight: 600; }
 .card-family-popover-label strong { font-weight: 600; font-size: 13px; }
-.card-family-popover-label span { color: var(--muted); font-weight: 400; font-size: 10px; }
-.card-family-popover-list { display: grid; gap: 6px; max-height: min(380px,55dvh); overflow: auto; scrollbar-width: thin; }
-.card-family-popover-row { display: flex; flex-direction: column; gap: 6px; padding: 11px 12px; border: 1px solid var(--line); border-left: 4px solid var(--card-metal); border-radius: var(--control-radius); background: color-mix(in srgb, var(--canvas) 55%, var(--surface)); cursor: pointer; transition: background-color var(--motion-feedback); }
+.card-family-popover-label span { color: var(--muted); font-weight: 400; font-size: 12px; }
+.card-family-popover-list { display: grid; gap: var(--space-2); }
+.card-family-popover-row { display: flex; flex-direction: column; gap: 6px; padding: 11px 12px; border: 1px solid var(--line); border-left: 4px solid var(--card-metal); border-radius: var(--control-radius); background: color-mix(in srgb, var(--canvas) 55%, var(--surface)); cursor: pointer; }
 .card-family-popover-row strong { font-size: 12px; line-height: 1.4; font-weight: 500; }
-.card-family-popover-row > span:not(.card-tags) { display: flex; align-items: center; gap: 4px; font-size: 10px; color: var(--muted); }
+.card-family-popover-row > span:not(.card-tags) { display: flex; align-items: center; gap: 4px; font-size: 12px; color: var(--muted); }
 .card-family-popover-row:hover { background: var(--hover); }
 .card-family-popover-row .card-metrics { gap: 10px; }
+.card-family-popover-row > .card-metrics { font-size: var(--text-ui-size); }
 @keyframes family-reveal { from { opacity: 0; transform: translateY(3px); } to { opacity: 1; transform: translateY(0); } }
 @media (prefers-reduced-motion: reduce) { .card-family-popover { animation: none; }.card-family-row, .card-family-popover-row, .card-family-drag-handle { transition: none; }.card-family-sortable { transition: none !important; } }
 .card-parent-picker { position: fixed; z-index: var(--z-parent-picker); top: max(68px, 14vh); left: 50%; transform: translateX(-50%); width: min(440px, calc(100vw - 24px)); max-height: calc(100dvh - 92px); display: flex; flex-direction: column; overflow: hidden; border: 1px solid var(--line); border-radius: var(--glass-radius); background: var(--surface); color: var(--ink); box-shadow: var(--shadow); outline: none; }
@@ -148,13 +151,13 @@
 .card-parent-picker form { display: flex; flex-direction: column; min-height: 0; }
 .card-parent-picker .card-family-search { flex-shrink: 0; margin: 14px 16px 10px; }
 .card-parent-picker-list { min-height: 0; margin: 0; padding: 0 16px 12px; border: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; }
-.card-parent-picker-group h3 { margin: 18px 0 8px; color: var(--muted); font-size: 11px; font-weight: 500; }
+.card-parent-picker-group h3 { margin: 18px 0 8px; color: var(--muted); font-size: 12px; font-weight: 500; }
 .card-parent-picker-option { display: flex; align-items: center; gap: 8px; padding: 9px 8px; margin: 3px 0; border: 1px solid transparent; border-radius: var(--control-radius); cursor: pointer; }
 button.card-parent-picker-option { width: 100%; background: transparent; color: var(--ink); font: inherit; text-align: left; }
 .card-parent-picker-option > span { flex: 1; min-width: 0; }
 .card-parent-picker-option strong, .card-parent-picker-option small { display: block; overflow-wrap: anywhere; }
 .card-parent-picker-option strong { font-size: 12px; font-weight: 500; }
-.card-parent-picker-option small { margin-top: 3px; color: var(--muted); font-size: 10px; }
+.card-parent-picker-option small { margin-top: 3px; color: var(--muted); font-size: 12px; }
 .card-parent-picker-option input { accent-color: var(--accent); }
 .card-parent-picker-option svg { flex-shrink: 0; }
 .card-parent-picker-option:not(.card-parent-option-card):is([data-selected], [aria-current="true"]) { border-color: var(--mark); background: var(--mark-tint); color: var(--mark); }
@@ -162,20 +165,20 @@ button.card-parent-picker-option { width: 100%; background: transparent; color: 
 .card-parent-picker-option:not(.card-parent-option-card):is([data-selected], [aria-current="true"]):hover { border-color: var(--mark); background: var(--mark-tint-strong); color: var(--mark); }
 .card-parent-picker-option:focus-within { outline: 2px solid var(--focus); outline-offset: -2px; }
 .card-parent-picker-list:disabled .card-parent-picker-option { cursor: default; opacity: .55; }
-.card-parent-picker-notice { flex-shrink: 0; padding: 10px 16px; margin: 0; color: var(--warning-ink); background: var(--warning-bg); font-size: 11px; line-height: 1.6; }
+.card-parent-picker-notice { flex-shrink: 0; padding: 10px 16px; margin: 0; color: var(--warning-ink); background: var(--warning-bg); font-size: 12px; line-height: 1.6; }
 .card-parent-picker-footer { flex-shrink: 0; display: flex; justify-content: flex-end; gap: 8px; padding: 12px 16px; border-top: 1px solid var(--line); }
 .card-family-parent-slot, .card-family-subcards-slot { min-width: 0; animation: family-reveal var(--motion-feedback) var(--ease-out); }
 .card-parent-picker.is-embedded { position: relative; z-index: auto; top: auto; left: auto; transform: none; width: 100%; max-height: none; margin-top: 0; border: 0; border-radius: 0; background: transparent; box-shadow: none; }
 .card-parent-picker.is-embedded .card-family-search { margin-inline: 0; }
 .card-parent-picker.is-embedded .card-parent-picker-list { max-height: min(440px, 50dvh); padding-inline: 0; }
-.card-parent-picker .card-parent-option-card { align-items: flex-start; min-height: 68px; margin-block: 6px; padding: 10px; border: 1px solid var(--line); border-left: 4px solid var(--card-metal); border-radius: var(--control-radius); background: var(--canvas); transition: background-color var(--motion-feedback), outline-color var(--motion-feedback); }
+.card-parent-picker .card-parent-option-card { align-items: flex-start; min-height: 68px; margin-block: 6px; padding: 10px; border: 1px solid var(--line); border-left: 4px solid var(--card-metal); border-radius: var(--control-radius); background: var(--canvas); }
 .card-parent-picker .card-parent-option-card[data-kind="hero"] { border-left-color: var(--hero-metal); }
 .card-parent-picker .card-parent-option-card[data-kind="doc"] { border-left-color: var(--doc-metal); }
 .card-parent-picker .card-parent-option-card[data-kind="task"][data-state="done"] { border-left-color: var(--accepted-metal); }
 .card-parent-option-kind { margin-top: 2px; color: var(--muted); }
 .card-parent-option-card .card-parent-option-content { min-width: 0; }
 .card-parent-option-content > strong { font-size: 13px; line-height: 1.45; }
-.card-parent-option-card .card-parent-option-metrics { display: flex; flex-wrap: wrap; align-items: center; gap: 5px 10px; margin-top: 5px; color: var(--muted); font-size: 11px; }
+.card-parent-option-card .card-parent-option-metrics { display: flex; flex-wrap: wrap; align-items: center; gap: 5px 10px; margin-top: 5px; color: var(--muted); font-size: 12px; }
 .card-parent-option-metrics > span { display: inline-flex; align-items: center; gap: 4px; }
 .card-parent-option-owner { min-width: 0; max-width: 135px; }
 .card-parent-option-owner > span:last-child { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
@@ -190,7 +193,7 @@ button.card-parent-picker-option { width: 100%; background: transparent; color: 
 .card-parent-promotion { min-width: 0; padding: 12px 16px; animation: family-reveal var(--motion-feedback) var(--ease-out); }
 .card-parent-picker.is-embedded .card-parent-promotion { padding-inline: 0; }
 .card-parent-promotion > p { margin: 10px 0; color: var(--muted); font-size: 12px; line-height: 1.6; overflow-wrap: anywhere; }
-.card-parent-promotion-deck { display: flex; flex-direction: column; gap: 6px; margin: 14px 0; color: var(--muted); font-size: 11px; }
+.card-parent-promotion-deck { display: flex; flex-direction: column; gap: 6px; margin: 14px 0; color: var(--muted); font-size: 12px; }
 .card-parent-promotion-deck select { width: 100%; min-width: 0; padding: 8px; border: var(--control-hairline) solid var(--control-field-line); border-radius: var(--control-radius); background: var(--control-field); color: var(--ink); font: inherit; font-size: 12px; }
 .card-parent-promotion-deck select:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
 .card-parent-promotion-actions { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 6px; margin-top: 14px; }
@@ -202,7 +205,7 @@ button.card-parent-picker-option { width: 100%; background: transparent; color: 
 .card-family-composer-slot:not([hidden]), .card-family-cards-slot:not([hidden]) { animation: family-reveal var(--motion-feedback) var(--ease-out); }
 .card-family-composer { display: flex; flex-direction: column; gap: 12px; min-width: 0; padding-top: 8px; }
 .card-family-composer-deck, .card-family-composer-content { display: flex; flex-direction: column; gap: 7px; min-width: 0; }
-.card-family-composer-deck > span:first-child, .card-family-composer-content > span { color: var(--muted); font-size: 10px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; }
+.card-family-composer-deck > span:first-child, .card-family-composer-content > span { color: var(--muted); font-size: 12px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; }
 .card-family-composer-deck > .card-family-composer-field { display: flex; align-items: center; gap: 8px; min-width: 0; padding: 0 9px; border: var(--control-hairline) solid var(--control-field-line); border-radius: var(--control-radius); background: var(--control-field); }
 .card-family-composer-deck svg { flex-shrink: 0; color: var(--muted); }
 .card-family-composer-deck select { flex: 1; min-width: 0; width: 100%; height: 34px; padding: 0; border: 0; background: transparent; color: var(--ink); font: inherit; font-size: 12px; }
@@ -210,17 +213,17 @@ button.card-parent-picker-option { width: 100%; background: transparent; color: 
 /* The framed row above already shows focus; the select's own ring would draw a second frame inside it. */
 .card-family-composer-deck select:focus-visible { outline: none; }
 .card-family-composer-recents { display: flex; flex-wrap: wrap; gap: 6px; margin-top: -5px; }
-.card-family-composer-recents .ui-button { max-width: 100%; min-height: 25px; padding: 3px 8px; overflow: hidden; text-overflow: ellipsis; font-size: 11px; }
+.card-family-composer-recents .ui-button { max-width: 100%; min-height: 25px; padding: 3px 8px; overflow: hidden; text-overflow: ellipsis; font-size: 12px; }
 .card-family-composer-recents .ui-button[aria-pressed="true"] { border-color: var(--mark); background: var(--mark-tint); color: var(--mark); }
 .card-family-composer-recents .ui-button[aria-pressed="true"]:hover:not(:disabled) { border-color: var(--mark); background: var(--mark-tint-strong); color: var(--mark); }
 .card-family-composer-content textarea { width: 100%; min-width: 0; min-height: 160px; padding: 12px; border: var(--control-hairline) solid var(--control-field-line); border-radius: var(--control-radius); background: var(--control-field); color: var(--ink); font: 12px/1.65 'Geist Mono', monospace; resize: vertical; }
 .card-family-composer-content textarea:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
 .card-family-composer-content textarea::placeholder { color: var(--muted); }
-.card-family-composer-hint, .card-family-draft-hint { margin: 0; color: var(--muted); font-size: 11px; line-height: 1.5; }
+.card-family-composer-hint, .card-family-draft-hint { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.5; }
 .card-family-draft-hint { margin-bottom: 12px; }
 .card-family-composer > footer { display: flex; align-items: center; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
-.card-family-composer > footer > span { margin-left: auto; color: var(--muted); font-size: 10px; }
-.card-family-composer-error, .card-family-composer-discard { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; margin: 0; padding: 9px; border: 1px solid var(--line); border-radius: var(--glass-radius); color: var(--warning-ink); background: var(--warning-bg); font-size: 11px; line-height: 1.5; }
+.card-family-composer > footer > span { margin-left: auto; color: var(--muted); font-size: 12px; }
+.card-family-composer-error, .card-family-composer-discard { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; margin: 0; padding: 9px; border: 1px solid var(--line); border-radius: var(--glass-radius); color: var(--warning-ink); background: var(--warning-bg); font-size: 12px; line-height: 1.5; }
 .card-family-composer-discard p { margin: 0; }
 .card-family-composer-discard > div { display: flex; flex-wrap: wrap; gap: 6px; align-self: flex-end; }
 /* Accepted describes state; selection keeps its independent mint outline. */
@@ -228,6 +231,19 @@ button.card-parent-picker-option { width: 100%; background: transparent; color: 
 
 .card-family-popover-hero > .card-tags { grid-column: 1 / -1; }
 .card-family-popover-hero { --tag-personal-foreground: var(--tag-personal-on-tint); }
-.card-family-row-body > .card-tags { margin-top: 4px; }
-.card-family-row-planning { display: flex; flex-basis: 100%; flex-wrap: wrap; gap: var(--space-1); min-width: 0; font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; }
-.card-family-row-open { min-height: var(--space-10); }
+@media (max-width: 480px), (pointer: coarse) {
+  .card-family-heading .card-family-secondary { display: none; }
+  .card-family-heading .card-family-overflow { display: inline-flex; }
+}
+@media (pointer: coarse) {
+  .card-family-panel, .card-family-drag-overlay { --family-tool-size: var(--control-target-touch); --family-row-tool-size: var(--control-target-touch); }
+  .card-family-actions, .card-family-heading-title, .card-family-row-actions { gap: var(--space-2); }
+  .card-family-row-main { min-height: calc(2 * var(--control-target-touch) + var(--space-3)); }
+  .card-family-row-actions { margin-block: 0; }
+  .card-family-row-open { min-height: var(--control-target-touch); }
+  .card-family-row-details { min-height: var(--control-target-touch); }
+  .card-family-row.is-reorderable { touch-action: pan-y; }
+  .card-family-row-owner, .card-family-row-details .card-indicator-button { min-width: var(--control-target-touch); min-height: var(--control-target-touch); }
+  .card-family-parent-actions .ui-button, .card-family-card-tools .ui-button, .card-family-composer-recents .ui-button, .card-family-composer-deck select, .card-family-search input,
+  .card-family-trigger, .card-family-popover-hero, .card-family-popover-row { min-height: var(--control-target-touch); }
+}

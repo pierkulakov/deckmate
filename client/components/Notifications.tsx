@@ -1,10 +1,7 @@
 import { moveFocus } from '../focus.ts';
-// The bottom-right corner groups notifications into three stacks: Cards you own (others' journal changes),
-// Cards you watch (major changes to cards watched explicitly, through a deck or a live @-mention),
-// and Due Cards (due today; removed automatically). Opening a card dismisses its changes;
-// holding a stack's button dismisses the whole stack. Due cards cannot be dismissed manually.
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react';
-import { CalendarClock, ChevronDown, ChevronUp, Eye, UserRound } from 'lucide-react';
+import * as Dialog from '@radix-ui/react-dialog';
+import { Bell, CalendarClock, ChevronDown, ChevronUp, Eye, UserRound, X } from 'lucide-react';
 import type { NotificationCard, NotificationStack, NotificationStackId, NotificationsView } from '../../src/notification-contracts.ts';
 import type { WorkspaceSnapshot } from '../../src/workspace-contracts.ts';
 import { onMemberChange, rememberMember, storedMemberId } from '../current-member.ts';
@@ -14,16 +11,23 @@ import { stateLabel } from '../locales/common.ts';
 import { failureMessage } from '../failure-message.ts';
 import { ErrorState } from './ErrorState.tsx';
 import { LoadingState } from './LoadingState.tsx';
+import { Button } from './ui/button.tsx';
+import { readOnlyDescription } from '../source-access.ts';
+import { prepareEntrance } from '../prepared-motion.ts';
+import { useSelectEscapeGuard } from '../select-escape.ts';
 import '../notifications.css';
 
 const text = defineText({
   failure: 'Could not get notifications. Check that Deckmate is running.',
   notifications: 'Notifications',
   loading: 'Loading notifications…',
-  readOnly: 'The original is read-only: notifications can be dismissed in the test copy.',
+  readOnly: 'Notifications can be dismissed in a source with write access.',
+  close: 'Close notifications',
+  entry: (count: number) => `Notifications: ${count.toLocaleString(locale())}`,
   for: 'Acting as',
   member: 'Acting member',
   noneFor: (name: string) => `No notifications for ${name}`,
+  none: 'No notifications',
   dueHint: 'A due reminder cannot be dismissed with the button: the card leaves when it is accepted, archived, given another due date or Owner; otherwise it leaves tomorrow.',
   dueAccepted: 'leaves when the card is accepted',
   noDeck: 'No deck',
@@ -40,10 +44,13 @@ const text = defineText({
   failure: 'Не удалось получить уведомления. Проверьте, что Deckmate запущен.',
   notifications: 'Уведомления',
   loading: 'Загружаем уведомления…',
-  readOnly: 'Оригинал открыт только для чтения: уведомления убираются в тестовой копии.',
+  readOnly: 'Уведомления можно убрать в источнике с разрешённой записью.',
+  close: 'Закрыть уведомления',
+  entry: (count: number) => `Уведомления: ${count.toLocaleString(locale())}`,
   for: 'От имени',
   member: 'Действующий участник',
   noneFor: (name: string) => `Нет уведомлений для ${name}`,
+  none: 'Нет уведомлений',
   dueHint: 'Напоминание о сроке кнопкой не убирается: карточка уйдёт, когда её примут, уберут в архив, сменят срок или исполнителя; иначе — завтра.',
   dueAccepted: 'уйдёт, когда карточка принята',
   noDeck: 'Без колоды',
@@ -96,26 +103,14 @@ function useCompactNotifications(): boolean {
 
 type DismissTarget = { cardId: string } | { stack: 'owned' | 'watching' };
 
-/** 2026-11-05: the corner is fixed over the scrolling views. The height it covers from the window bottom becomes
- *  --notifications-clearance, the bottom padding of the scroll owners (styles.css, workspace.css), so their last rows scroll out from under it. */
-function publishClearance(corner: HTMLElement | null) {
-  if (!corner) return;
-  const root = document.documentElement.style;
-  let frame = 0;
-  // 2026-11-09: defer the scroll-owner padding change so it does not re-enter ResizeObserver delivery.
-  const observer = new ResizeObserver(() => {
-    cancelAnimationFrame(frame);
-    frame = requestAnimationFrame(() => root.setProperty('--notifications-clearance', `${Math.ceil(innerHeight - corner.getBoundingClientRect().top)}px`));
-  });
-  observer.observe(corner);
-  return () => { observer.disconnect(); cancelAnimationFrame(frame); root.removeProperty('--notifications-clearance'); };
-}
-
-export function Notifications({ snapshot, refreshKey, onOpenCard }: {
+export function Notifications({ snapshot, refreshKey, onOpenCard, open: controlledOpen, onOpenChange }: {
   snapshot: WorkspaceSnapshot;
   refreshKey: number;
   onOpenCard: (id: string) => void;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
 }) {
+  useSelectEscapeGuard();
   const [memberId, setMemberId] = useState(() => storedMemberId() ?? '');
   const t = useText(text);
   const lang = useLang();
@@ -123,7 +118,11 @@ export function Notifications({ snapshot, refreshKey, onOpenCard }: {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [focusWithin, setFocusWithin] = useState(false);
+  const [localOpen, setLocalOpen] = useState(false);
+  const open = controlledOpen ?? localOpen;
+  const trigger = useRef<HTMLButtonElement>(null);
+  const interactedOutside = useRef(false);
+  const restoreFocus = useRef(false);
   const requestNumber = useRef(0);
   const currentView = useRef<NotificationsView | null>(null);
   const lastSeen = useRef('');
@@ -153,7 +152,7 @@ export function Notifications({ snapshot, refreshKey, onOpenCard }: {
     }
   }, [snapshot.source, memberId, lang]);
 
-  useEffect(() => { void load(); }, [load, refreshKey]);
+  useEffect(() => { void load(); return () => { requestNumber.current++; }; }, [load, refreshKey]);
   useEffect(() => {
     const timer = setInterval(() => void load(), dueRefreshMs);
     return () => clearInterval(timer);
@@ -195,11 +194,20 @@ export function Notifications({ snapshot, refreshKey, onOpenCard }: {
     return () => clearInterval(timer);
   }, [dismiss]);
 
+  function changeOpen(next: boolean) {
+    restoreFocus.current = !next && !interactedOutside.current;
+    if (next) interactedOutside.current = false;
+    if (onOpenChange) onOpenChange(next);
+    else setLocalOpen(next);
+  }
+
   function openCard(card: NotificationCard) {
     if (card.latestAt) {
       lastSeen.current = card.cardId + '@' + card.latestAt;
       void dismiss({ cardId: card.cardId }, card.latestAt);
     }
+    interactedOutside.current = true;
+    changeOpen(false);
     onOpenCard(card.cardId);
   }
 
@@ -223,14 +231,29 @@ export function Notifications({ snapshot, refreshKey, onOpenCard }: {
   };
 
   const visibleStacks = view?.stacks.filter(stack => stack.total > 0) ?? [];
-  // 2026-11-05: keep the chooser available for a nondefault member even without news, so the user can switch back.
-  // Hide the corner only when the default member has no news.
-  const defaultMember = view?.members.find(member => member.kind === 'human') ?? view?.members[0];
-  const otherMemberChosen = Boolean(view?.member && defaultMember && view.member.id !== defaultMember.id);
-  if (!visibleStacks.length && !error && !otherMemberChosen && (view?.members.length ?? 0) < 2 && !loading && !focusWithin) return null;
-  return <section ref={publishClearance} className="notifications-corner" aria-label={t.notifications}
-    onFocusCapture={() => setFocusWithin(true)}
-    onBlurCapture={event => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setFocusWithin(false); }}>
+  const total = visibleStacks.reduce((count, stack) => count + stack.total, 0);
+  return <Dialog.Root modal={false} open={open} onOpenChange={changeOpen}>
+    <Dialog.Trigger asChild><Button ref={trigger} variant="ghost" size="icon" className="notifications-trigger"
+      aria-label={t.entry(total)} title={t.notifications + (view?.member ? ` · ${t.for} ${view.member.label}` : '')}>
+      <Bell size={18} aria-hidden="true" />{total > 0 && <span className="page-number">{total.toLocaleString(locale(lang))}</span>}
+      {error && <span className="notifications-failure-mark" aria-hidden="true">!</span>}
+    </Button></Dialog.Trigger>
+    <Dialog.Portal><Dialog.Content ref={prepareEntrance} className="notifications-panel dialog-panel" aria-describedby={undefined}
+      onInteractOutside={() => { interactedOutside.current = true; restoreFocus.current = false; }}
+      onCloseAutoFocus={event => {
+        event.preventDefault();
+        if (restoreFocus.current) moveFocus(trigger.current, { preventScroll: true });
+        restoreFocus.current = false;
+      }}>
+      <header className="dialog-head"><Dialog.Title className="dialog-title">{t.notifications}</Dialog.Title>
+        <Dialog.Close asChild><Button variant="ghost" size="icon" className="notifications-close" aria-label={t.close}><X size={18} /></Button></Dialog.Close>
+      </header>
+      <div className="notifications-body dialog-body">
+    {view && view.members.length > 0 && <label className="notifications-member"><span>{t.member}</span>
+      <select className="control-field" value={view.member?.id ?? ''} onChange={event => rememberMember(event.target.value)} aria-label={t.member}>
+        {view.members.map(member => <option key={member.id} value={member.id}>{member.label}</option>)}
+      </select>
+    </label>}
     <ErrorState variant="inline" className="notifications-error" message={error} onRetry={load} pending={loading} />
     <LoadingState variant="keep-data" active={loading} message={t.loading} />
     {visibleStacks.map(stack => viewerId && (collapsedBy[viewerId]?.[stack.id] ?? storedCollapsed(viewerId, stack.id) ?? compact)
@@ -238,15 +261,12 @@ export function Notifications({ snapshot, refreshKey, onOpenCard }: {
       : <NotificationStackView key={stack.id} stack={stack} canDismiss={Boolean(view?.writable && token) && !busy}
         onOpen={openCard} onDismiss={() => dismissStack(stack)}
         collapse={viewerId ? { ref: focusOnMount(stack.id, 'collapse'), onCollapse: () => collapseStack(stack.id, true) } : undefined} />)}
-    {!visibleStacks.length && !error && !loading && <p className="notifications-note" role="status">{t.noneFor(view?.member?.label ?? '')}</p>}
-    {view && !view.writable && visibleStacks.some(stack => stack.dismissible) && <p className="notifications-note">{t.readOnly}</p>}
-    {view && view.members.length > 1 && <label className="notifications-member"><span>{t.for}</span>
-      <select className="control-field" value={view.member?.id ?? ''} onChange={event => rememberMember(event.target.value)} aria-label={t.member}>
-        {view.members.map(member => <option key={member.id} value={member.id}>{member.label}</option>)}
-      </select>
-    </label>}
+    {!visibleStacks.length && !error && !loading && <p className="notifications-note" role="status">{view?.member ? t.noneFor(view.member.label) : t.none}</p>}
+    {view && !view.writable && visibleStacks.some(stack => stack.dismissible) && <p className="notifications-note">{readOnlyDescription(snapshot)} {t.readOnly}</p>}
     {view?.warnings.map(warning => <p key={warning} className="notifications-note" role="status">{warning}</p>)}
-  </section>;
+      </div>
+    </Dialog.Content></Dialog.Portal>
+  </Dialog.Root>;
 }
 
 function NotificationStackView({ stack, canDismiss, onOpen, onDismiss, collapse }: {
@@ -260,7 +280,7 @@ function NotificationStackView({ stack, canDismiss, onOpen, onDismiss, collapse 
   const t = useText(text);
   const lang = useLang();
   const Icon = stackIcons[stack.id];
-  return <section className={`notification-stack dialog-panel notification-stack-${stack.id}`} aria-labelledby={headingId}>
+  return <section className={`notification-stack notification-stack-${stack.id}`} aria-labelledby={headingId}>
     <header className="notification-stack-header panel-head">
       <Icon size={14} aria-hidden="true" />
       <h3 id={headingId}>{stack.title}</h3>
@@ -304,6 +324,7 @@ function CollapsedStack({ stack, buttonRef, onExpand }: {
   const label = t.expandStack(stack.title, count);
   return <button ref={buttonRef} type="button" className="notification-pill control" aria-expanded={false} aria-label={label} title={label} onClick={onExpand}>
     <Icon size={14} aria-hidden="true" />
+    <span className="notification-pill-title">{stack.title}</span>
     <span className="notification-stack-count page-number">{count}</span>
     <ChevronUp size={12} aria-hidden="true" />
   </button>;
@@ -330,6 +351,13 @@ function HoldToDismiss({ label, disabled, onDismiss }: { label: string; disabled
     hintTimer.current = setTimeout(() => setHint(false), holdHintMs);
   }, [cancel]);
   useEffect(() => () => { clearTimeout(timer.current); clearTimeout(hintTimer.current); }, []);
+  useEffect(() => { if (disabled) cancel(); }, [disabled, cancel]);
+  useEffect(() => {
+    const hidden = () => { if (document.hidden) cancel(); };
+    window.addEventListener('blur', cancel);
+    document.addEventListener('visibilitychange', hidden);
+    return () => { window.removeEventListener('blur', cancel); document.removeEventListener('visibilitychange', hidden); };
+  }, [cancel]);
   function start() {
     if (disabled || timer.current) return;
     clearTimeout(hintTimer.current);
@@ -341,7 +369,7 @@ function HoldToDismiss({ label, disabled, onDismiss }: { label: string; disabled
     <button type="button" className={`notification-hold control${holding ? ' is-holding' : ''}`} disabled={disabled}
       style={{ '--hold-ms': `${holdToDismissMs}ms` } as CSSProperties}
       aria-label={t.dismissStack(label)} title={t.holdTitle}
-      onPointerDown={start} onPointerUp={releaseEarly} onPointerLeave={cancel} onPointerCancel={cancel}
+      onPointerDown={event => { if (event.button === 0) start(); }} onPointerUp={releaseEarly} onPointerLeave={cancel} onPointerCancel={cancel} onBlur={cancel}
       onKeyDown={event => { if ((event.key === ' ' || event.key === 'Enter') && !event.repeat) { event.preventDefault(); start(); } }}
       onKeyUp={event => { if (event.key === ' ' || event.key === 'Enter') releaseEarly(); }}>
       <span className="notification-hold-fill" aria-hidden="true" />

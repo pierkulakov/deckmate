@@ -3,7 +3,7 @@ import type { CatalogCard, CatalogView } from '../src/catalog-contracts.ts';
 import { shortReference } from '../src/references.ts';
 
 vi.stubGlobal('document', { documentElement: { lang: '' }, cookie: '' });
-const { parseSearch, RESULT_LIMIT, runSearch, toggleTagOr, withoutToken } = await import('../client/search-query.ts');
+const { parseSearch, RESULT_LIMIT, runSearch, toggleTagOr, withoutToken, suggestTagFilters, completeTagFilter, matchedTagsFirst } = await import('../client/search-query.ts');
 
 beforeEach(() => {
   vi.useFakeTimers({ toFake: ['Date'] });
@@ -92,6 +92,76 @@ describe('search query compatibility', () => {
     ]);
   });
 
+  it('ignores empty tag alternatives without losing the remaining tag', () => {
+    checkCases([['#RED|', ['a', 'c']], ['#|#RED', ['a', 'c']], ['!#RED||', ['b', 'h', 'u']]]);
+  });
+
+  it('suggests tag prefixes with and without #, counts cards once and commits an exact filter', () => {
+    const catalog = fixture([
+      card('play', { tags: ['bug', 'Playtest', 'Playtest'] }), card('longer', { tags: ['Playtesting'] }),
+      card('hidden', { tags: ['Playtest'], archived: true }), card('trash', { tags: ['Playtest'], deleted: true }),
+    ]);
+    catalog.projectTags = [{ name: 'Playtest', color: '#cc5c65' }, { name: 'План', color: '#687e9c' }];
+    for (const query of ['pla', '#PLA']) {
+      const suggestions = suggestTagFilters(catalog, query);
+      expect(suggestions.map(({ name, count }) => [name, count])).toEqual([['Playtest', 1], ['Playtesting', 1]]);
+      const completed = completeTagFilter(query, suggestions[0]);
+      expect(completed).toBe('#Playtest ');
+      expectCards(catalog, completed, ['play']);
+    }
+    expectCards(catalog, '#pla', []);
+    expect(suggestTagFilters(catalog, 'playtest').map(({ name }) => name)).toEqual(['Playtest', 'Playtesting']);
+    expect(suggestTagFilters(catalog, '#пл').map(({ name, count }) => [name, count])).toEqual([['План', 0]]);
+    expect(suggestTagFilters(catalog, 'lay')).toEqual([]);
+    for (const query of ['#Playtest ', 'deck:pla', '@pla', '$pla']) expect(suggestTagFilters(catalog, query)).toEqual([]);
+  });
+
+  it('completes the current alternative without losing negation, OR or surrounding filters', () => {
+    const catalog = fixture([card('both', { tags: ['bug', 'playtest'] }), card('other', { tags: ['playtesting'] })]);
+    const query = 'kind:task !#bug|#pla @none';
+    const caret = query.indexOf(' @none');
+    const suggestion = suggestTagFilters(catalog, query, caret)[0];
+    expect(completeTagFilter(query, suggestion)).toBe('kind:task !#bug|#playtest @none');
+    expectCards(catalog, completeTagFilter(query, suggestion), ['other']);
+    expect(toggleTagOr('#bug #playtest !#other')).toBe('#bug|#playtest !#other');
+  });
+
+  it('keeps quoted tag names exact, including spaces, pipes and quotes, through parsing and OR toggles', () => {
+    const name = 'play test|"русский"';
+    const catalog = fixture([card('exact', { tags: [name] }), card('prefix', { tags: [name + ' next'] })]);
+    const query = '!#' + JSON.stringify(name);
+    expect(parseSearch(query)).toMatchObject([{ kind: 'tag', value: name, negated: true, raw: query, start: 0, end: query.length }]);
+    expectCards(catalog, query, ['prefix']);
+    expectCards(catalog, query.slice(1), ['exact']);
+    const completed = completeTagFilter('pla', suggestTagFilters(catalog, 'pla')[0]);
+    expectCards(catalog, completed, ['exact']);
+    const joined = toggleTagOr(query.slice(1) + ' #bug');
+    expectCards(catalog, joined, ['exact']);
+    expect(toggleTagOr(joined)).toBe(query.slice(1) + ' #bug');
+    for (const token of parseSearch(joined)) expect(joined.slice(token.start, token.end)).toBe(token.raw);
+  });
+
+  it('puts positive matching tags before other badges without mutating assignments', () => {
+    const tags = Object.freeze(['bug', 'audio', 'Playtest', 'later']);
+    expect(matchedTagsFirst(tags, '#playtest !#bug')).toEqual(['Playtest', 'bug', 'audio', 'later']);
+    expect(matchedTagsFirst(tags, 'pla')).toEqual(['Playtest', 'bug', 'audio', 'later']);
+    expect(matchedTagsFirst(tags, '#audio|#playtest')).toEqual(['audio', 'Playtest', 'bug', 'later']);
+    expect(tags).toEqual(['bug', 'audio', 'Playtest', 'later']);
+  });
+
+  it('preserves case-sensitive canonical IDs while matching parent titles without case', () => {
+    const parent = card('hero:features/Audio.md#1', { kind: 'hero', title: 'Sound World' });
+    const child = card('task:features/Audio.md#1.0', { parentId: parent.id });
+    const catalog = fixture([parent, child]);
+    expect(runSearch(catalog, '$' + parent.id).navigation).toEqual([{ kind: 'card', card: parent }]);
+    expectCards(catalog, 'sub:' + parent.id, [child.id]);
+    expectCards(catalog, '!sub:' + parent.id, [parent.id]);
+    expectCards(catalog, 'sub:SOUND', [child.id]);
+    expectCards(catalog, 'sub:' + shortReference('c', parent.id).toUpperCase(), [child.id]);
+    parent.title = 'Sound: World';
+    expectCards(catalog, 'sub:SOUND:', [child.id]);
+  });
+
   it('resolves owners by label, member ID and aliases, preserving null versus empty', () => {
     checkCases([
       ['@мар', ['a']], ['@maria', ['a']], ['@MASHA', ['a']], ['@машенька', ['a']], ['@bot', ['c']],
@@ -110,6 +180,47 @@ describe('search query compatibility', () => {
       ['!state:принято', ['h', 'a', 'c', 'u']], ['deck:missing', []], ['kind:missing', []], ['state:missing', []],
       ['!deck:missing !kind:missing !state:missing', ['b', 'h', 'a', 'c', 'u']],
     ]);
+  });
+
+  it('R20 resolves exact members before partial owner matches, including aliases and Unicode', () => {
+    const catalog = fixture([
+      card('al', { owner: 'Alex' }), card('alias', { owner: 'АЛЕКС' }),
+      card('sally', { owner: 'Sally' }), card('none'),
+    ]);
+    catalog.members = [
+      { id: 'al', label: 'Alex', kind: 'human', aliases: ['Алекс'] },
+      { id: 'sally', label: 'Sally', kind: 'human', aliases: ['Alexandra'] },
+    ];
+    for (const query of ['@al', '@Alex', '@АЛЕКС']) expectCards(catalog, query, ['al', 'alias']);
+    expectCards(catalog, '!@al', ['sally', 'none']);
+    expectCards(catalog, '@all', ['sally']);
+    expectCards(catalog, '@unknown', []);
+    expectCards(catalog, '@none', ['none']);
+    catalog.members[1].aliases.push('Алекс');
+    expectCards(catalog, '@алекс', []);
+    expectCards(catalog, '@al', ['al', 'alias']);
+  });
+
+  it('R21 searches finite fractional effort with inclusive ranges and negation', () => {
+    const catalog = fixture([card('zero', { effort: 0 }), card('half', { effort: .5 }), card('one', { effort: 1 }), card('none')]);
+    for (const [query, expected] of [
+      ['effort:0.5', ['half']], ['effort:0.5+', ['half', 'one']], ['effort:0.5-', ['zero', 'half']],
+      ['!effort:0.5', ['zero', 'one', 'none']], ['effort:0', ['zero']], ['effort:0-', ['zero']],
+    ] as const) expectCards(catalog, query, [...expected]);
+    for (const value of ['-0.5', 'Infinity', 'NaN', '1.2.3', '1e999']) {
+      expectCards(catalog, 'effort:' + value, []);
+      expectCards(catalog, '!effort:' + value, ['zero', 'half', 'one', 'none']);
+    }
+  });
+
+  it('R22 treats an early finished Run as past before its planned dates', () => {
+    const catalog = fixture();
+    catalog.runs![1].finishedAt = '2026-11-05T08:00:00Z';
+    catalog.runs![2].finishedAt = '2026-11-05T09:00:00Z';
+    expectCards(catalog, 'run:past', ['b', 'a', 'c']);
+    expectCards(catalog, 'run:current', []);
+    expectCards(catalog, 'run:future', []);
+    expectCards(catalog, '!run:past', ['h', 'u']);
   });
 
   it('only exposes archive and trash for a positive shelf filter, with deleted taking precedence', () => {

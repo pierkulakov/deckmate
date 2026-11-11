@@ -95,6 +95,35 @@ it('deduplicates explicit concurrent refreshes but reads again after an event du
   expect(store.getSnapshot()).toMatchObject({ loading: false, error: null, catalog: { indexedAt: 'after-event' } });
 });
 
+it('retries the current revision when a file event supersedes a failed GET', async () => {
+  const store = new CatalogStore('sandbox');
+  fetchMock.mockResolvedValueOnce(response(view('initial')));
+  await store.load();
+  const oldRead = deferred<Response>();
+  fetchMock.mockReturnValueOnce(oldRead.promise).mockResolvedValueOnce(response(view('after-event')));
+  const refreshing = store.refresh();
+  store.invalidate();
+  const eventRead = store.load();
+  oldRead.resolve(response({ message: 'outdated failure' }, 500));
+  await Promise.all([refreshing, eventRead]);
+  expect(store.getSnapshot()).toMatchObject({ loading: false, error: null, catalog: { indexedAt: 'after-event' } });
+  expect(fetchMock).toHaveBeenCalledTimes(3);
+});
+
+it('optimistically clears a manual Hero mark to null and restores it after rejection', async () => {
+  const store = new CatalogStore('sandbox');
+  fetchMock.mockResolvedValueOnce(response(view('initial', { kind: 'hero', state: 'done' })));
+  await store.load();
+  const saving = deferred<Response>();
+  fetchMock.mockReturnValueOnce(saving.promise);
+  const editing = store.edit(snapshot, stateEdit({ state: 'not-started' }));
+  const optimisticState = store.getSnapshot().catalog?.cards[0].state;
+  saving.resolve(response({ message: 'not saved' }, 500));
+  expect(await editing).toBe(false);
+  expect(optimisticState).toBeNull();
+  expect(store.getSnapshot().catalog?.cards[0].state).toBe('done');
+});
+
 it('keeps a failed initial request retryable instead of caching its rejected result', async () => {
   const store = new CatalogStore('sandbox');
   fetchMock.mockRejectedValueOnce(new Error('offline')).mockResolvedValueOnce(response(view('recovered')));

@@ -96,7 +96,7 @@ describe.skipIf(!browserPath)('Members registry states (browser + disk/API)', ()
   }
 
   async function open(options: { lang?: 'en' | 'ru'; theme?: 'dark' | 'light'; width?: number;
-    mode?: EditMode; empty?: boolean; holdRead?: boolean } = {}) {
+    mode?: EditMode; empty?: boolean; many?: boolean; holdRead?: boolean } = {}) {
     posts = []; responses = []; getCount = 0;
     failRead = false; savedStatus = undefined;
     writeGate = undefined; readGate = options.holdRead ? gate() : undefined;
@@ -110,6 +110,9 @@ describe.skipIf(!browserPath)('Members registry states (browser + disk/API)', ()
       { id: 'maya', label: 'Maya Chen', kind: 'human', aliases: ['Maya'] },
       { id: 'leo', label: 'Leo Park', kind: 'human', aliases: ['Leo'] },
     ];
+    if (options.many) manifest.members.push(...Array.from({ length: 18 }, (_, index) => ({
+      id: `member-${index}`, label: `Participant with a long name ${index}`, kind: 'human' as const, aliases: [],
+    })));
     manifestPath = path.join(root, 'tasks/deckmate.md');
     await writeFile(manifestPath, renderCatalogManifest(manifest));
     const port = await freePort();
@@ -169,6 +172,130 @@ describe.skipIf(!browserPath)('Members registry states (browser + disk/API)', ()
     root = undefined;
   }, 20000);
   afterAll(async () => { await page?.close(); }, 20000);
+
+  it.each([375, 1440])('F03 closes only the open member picker on the first Escape at %s px, retaining the draft', async width => {
+    await open({ width });
+    await editMaya();
+    for (const theme of ['dark', 'light']) {
+      await page.callFunction(`theme => document.documentElement.classList.toggle('dark', theme === 'dark')`, theme);
+      await focus('.members-editor-kind select');
+      await key('Enter', 13);
+      await until(`Boolean(document.querySelector('.members-editor select:open'))`);
+      await key('Escape', 27);
+      expect(await page.evaluate(`Boolean(document.querySelector('.members-editor'))`)).toBe(true);
+      expect(await page.evaluate(`Boolean(document.querySelector('select:open'))`)).toBe(false);
+      expect(await page.evaluate(`document.activeElement.matches('.members-editor-kind select')`)).toBe(true);
+      expect(await names()).toEqual(['Local Maya', 'Leo Park']);
+    }
+    await key('Escape', 27);
+    await until(`!document.querySelector('.members-editor')`);
+    await click('button');
+    await until(`Boolean(document.querySelector('.members-editor'))`);
+    expect(await names()).toEqual(['Local Maya', 'Leo Park']);
+    expect(posts).toHaveLength(0);
+  });
+
+  it('keeps the draft and its original hash when closed and reopened; only discard replaces it', async () => {
+    await open();
+    await editMaya();
+    await key('Escape', 27);
+    await until(`!document.querySelector('.members-editor')`);
+    await click('button');
+    await until(`Boolean(document.querySelector('.members-editor'))`);
+    expect(await names()).toEqual(['Local Maya', 'Leo Park']);
+    await click('.members-editor-close');
+    await until(`!document.querySelector('.members-editor')`);
+    await externalLeo();
+    await waitForExternal();
+    await click('button');
+    await until(`Boolean(document.querySelector('.members-editor-conflict'))`);
+    expect(await names()).toEqual(['Local Maya', 'Leo Park']);
+    expect(posts).toHaveLength(0);
+    await click('.members-editor-discard');
+    await until(`document.querySelector('.members-editor-name input')?.value === 'Maya Chen'`);
+    expect(await names()).toEqual(['Maya Chen', 'External Leo']);
+    expect(await page.evaluate(`document.activeElement === document.querySelector('.members-editor-body')`)).toBe(true);
+    expect(posts).toHaveLength(0);
+  });
+
+  it('focuses a new member and associates validation errors with the affected field', async () => {
+    await open({ width: 375 });
+    await click('.members-editor-add');
+    await until(`document.querySelectorAll('.members-editor-name input').length === 3`);
+    const name = '.members-editor-row:last-child .members-editor-name input';
+    await until(`document.activeElement === document.querySelector(${JSON.stringify(name)})`);
+    const alignment = await page.evaluate(`(() => { const row=document.querySelector('.members-editor-row:last-child');
+      const name=row.querySelector('.members-editor-name input').getBoundingClientRect(), kind=row.querySelector('.members-editor-kind select').getBoundingClientRect(), remove=row.querySelector('.members-editor-remove').getBoundingClientRect();
+      return { kind:Math.abs(name.top-kind.top), remove:Math.abs(name.top-remove.top) }; })()`);
+    expect(alignment.kind).toBeLessThanOrEqual(1);
+    expect(alignment.remove).toBeLessThanOrEqual(1);
+    expect(await page.callFunction(`s => document.querySelector(s).getAttribute('aria-invalid')`, name)).toBe('true');
+    expect(await page.callFunction(`s => document.getElementById(document.querySelector(s).getAttribute('aria-describedby')).textContent`, name)).toContain('has no name');
+    await page.callFunction(`s => { const input = document.querySelector(s); Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(input, 'New member'); input.dispatchEvent(new Event('input', { bubbles: true })); }`, name);
+    const aliases = '.members-editor-row:last-child .members-editor-aliases input';
+    await page.callFunction(`s => { const input = document.querySelector(s); input.focus(); Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(input, 'Maya'); input.dispatchEvent(new Event('input', { bubbles: true })); }`, aliases);
+    await until(`document.querySelector(${JSON.stringify(aliases)})?.getAttribute('aria-invalid') === 'true'`);
+    expect(await page.callFunction(`s => document.activeElement === document.querySelector(s)`, aliases)).toBe(true);
+    expect(await page.callFunction(`s => document.getElementById(document.querySelector(s).getAttribute('aria-describedby')).textContent`, aliases)).toContain('matches two members');
+    expect(await page.callFunction(`s => document.querySelector(s).disabled`, saveButton)).toBe(true);
+    expect(posts).toHaveLength(0);
+  });
+
+  it('does not save a retained draft into a different project with the same manifest hash', async () => {
+    await open();
+    await editMaya();
+    await page.evaluate(`(() => {
+      const original = window.fetch;
+      window.fetch = async (...args) => {
+        const response = await original(...args);
+        if (String(args[0]).startsWith('/api/catalog?') && response.ok) {
+          const catalog = await response.json();
+          return Response.json({ ...catalog, rootIdentity: 'different-project' });
+        }
+        return response;
+      };
+      membersStatesTest.refresh();
+    })()`);
+    await until(`membersStatesTest.state().catalog?.rootIdentity === 'different-project'`);
+    await until(`Boolean(document.querySelector('.members-editor-conflict'))`);
+    expect(await names()).toEqual(['Local Maya', 'Leo Park']);
+    await click(saveButton);
+    expect(posts).toHaveLength(0);
+  });
+
+  it('keeps a twenty-member roster, header and save action reachable at 375×600', async () => {
+    await open({ many: true, width: 375, lang: 'ru' });
+    await page.send('Emulation.setDeviceMetricsOverride', { width: 375, height: 600, deviceScaleFactor: 1, mobile: false });
+    const geometry = await page.evaluate(`(() => {
+      const panel=document.querySelector('.members-editor'), header=panel.querySelector('header').getBoundingClientRect();
+      const footer=panel.querySelector('footer').getBoundingClientRect(), body=panel.querySelector('.members-editor-body');
+      const name=panel.querySelector('.members-editor-name').getBoundingClientRect(),kind=panel.querySelector('.members-editor-kind').getBoundingClientRect();
+      const remove=panel.querySelector('.members-editor-remove').getBoundingClientRect();
+      return { count:panel.querySelectorAll('.members-editor-row').length, pageFits:document.documentElement.scrollWidth<=innerWidth,
+        headerFits:header.top>=0&&header.bottom<=innerHeight,footerFits:footer.top>=0&&footer.bottom<=innerHeight,
+        bodyScrolls:body.scrollHeight>body.clientHeight,firstRow:name.top===kind.top&&kind.right<=remove.left };
+    })()`);
+    expect(geometry).toEqual({ count: 20, pageFits: true, headerFits: true, footerFits: true, bodyScrolls: true, firstRow: true });
+    await page.evaluate(`document.querySelector('.members-editor-body').scrollTop=1e6`);
+    expect(await page.evaluate(`(() => { const body=document.querySelector('.members-editor-body').getBoundingClientRect(); const last=document.querySelector('.members-editor-add').getBoundingClientRect(); return last.bottom<=body.bottom+1; })()`)).toBe(true);
+  });
+
+  it('keeps the member removal target touch-sized without covering the adjacent kind field', async () => {
+    await open({ width: 375 });
+    await page.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 1 });
+    await page.send('Emulation.setDeviceMetricsOverride', { width: 375, height: 900, deviceScaleFactor: 1, mobile: true });
+    try {
+      const geometry = await page.evaluate(`(() => {
+        const remove=document.querySelector('.members-editor-remove').getBoundingClientRect();
+        const kind=document.querySelector('.members-editor-kind').getBoundingClientRect();
+        return { coarse:matchMedia('(pointer: coarse)').matches, width:remove.width, height:remove.height, separate:kind.right<=remove.left };
+      })()`);
+      expect(geometry.coarse).toBe(true);
+      expect(geometry.width).toBeGreaterThanOrEqual(44);
+      expect(geometry.height).toBeGreaterThanOrEqual(44);
+      expect(geometry.separate).toBe(true);
+    } finally { await page.send('Emulation.setTouchEmulationEnabled', { enabled: false }); }
+  });
 
   it('keeps a dirty roster and its focus across a live file refresh, blocking overwrite until explicit re-read', async () => {
     await open();

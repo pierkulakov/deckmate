@@ -2,28 +2,28 @@
 .card-history { margin-top: 12px; padding: 12px; border: 1px solid var(--line); border-radius: var(--glass-radius); background: var(--canvas); animation: family-reveal 150ms ease-out; }
 .card-history-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 10px; }
 .card-history-heading h3 { min-width: 0; margin: 0; font-size: 12px; font-weight: 600; line-height: 18px; overflow-wrap: anywhere; }
-.card-history-created { display: flex; align-items: baseline; gap: 8px; margin: 0 0 12px; padding: 7px 9px; border: 1px solid var(--line); border-radius: var(--control-radius); background: var(--surface); color: var(--muted); font-size: 11px; line-height: 1.5; }
+.card-history-created { display: flex; align-items: baseline; gap: 8px; margin: 0 0 12px; padding: 7px 9px; border: 1px solid var(--line); border-radius: var(--control-radius); background: var(--surface); color: var(--muted); font-size: 12px; line-height: 1.5; }
 .card-history-created strong { color: var(--ink); font-weight: 500; }
 .card-history-created time { font-variant-numeric: tabular-nums; }
 .card-history-feed { display: grid; gap: 0; }
-.card-history-day { margin: 10px 0 2px; color: var(--muted); font-size: 10px; font-weight: 500; }
+.card-history-day { margin: 10px 0 2px; color: var(--muted); font-size: 12px; font-weight: 500; }
 .card-history-day:first-child { margin-top: 0; }
 .card-history-event { display: grid; grid-template-columns: minmax(56px, auto) minmax(0, 1fr); gap: 9px; padding: 8px 0; }
 .card-history-event + .card-history-event { border-top: 1px solid color-mix(in srgb, var(--line) 65%, transparent); }
-.card-history-event > time { color: var(--muted); font: 10px 'Geist Mono', monospace; font-variant-numeric: tabular-nums; white-space: nowrap; padding-top: 2px; }
+.card-history-event > time { color: var(--muted); font: 12px 'Geist Mono', monospace; font-variant-numeric: tabular-nums; white-space: nowrap; padding-top: 2px; }
 .card-history-event-body { min-width: 0; }
 .card-history-event-body > p { margin: 0; font-size: 12px; line-height: 1.5; color: var(--ink); overflow-wrap: anywhere; }
-.card-history-details { margin: 5px 0 0; padding: 0; list-style: none; display: grid; gap: 3px; color: var(--muted); font-size: 11px; line-height: 1.55; }
+.card-history-details { margin: 5px 0 0; padding: 0; list-style: none; display: grid; gap: 3px; color: var(--muted); font-size: 12px; line-height: 1.55; }
 .card-history-details li { overflow-wrap: anywhere; }
 /* 2026-11-08: the dark accent reads 2.94:1 on the history canvas (audit CP-10); the edit-link token stays above 4.5:1 on it in both themes. */
 .card-history-details li > button { border: 0; padding: 0; background: transparent; color: var(--edit-link); text-align: left; font: inherit; text-decoration: underline; text-decoration-color: color-mix(in srgb, var(--edit-link) 35%, transparent); text-underline-offset: 3px; cursor: pointer; }
 .card-history-details li > button:hover { text-decoration-color: var(--edit-link); }
 .card-history-more { margin: 10px 0 0; }
-.card-history-empty, .card-history-loading, .card-history-error { margin: 4px 0 0; color: var(--muted); font-size: 11px; line-height: 1.6; }
+.card-history-empty, .card-history-loading, .card-history-error { margin: 4px 0 0; color: var(--muted); font-size: 12px; line-height: 1.6; }
 .card-history-loading { display: flex; align-items: center; gap: 7px; }
 .card-history-error { color: var(--danger); }
 .card-history-error p { margin: 0 0 var(--space-2); overflow-wrap: anywhere; }
 .card-history-error .ui-button { min-height: var(--space-10); height: auto; white-space: normal; }
-.card-history-warning { margin: 8px 0 0; color: var(--warning-ink); font-size: 11px; line-height: 1.5; }
+.card-history-warning { margin: 8px 0 0; color: var(--warning-ink); font-size: 12px; line-height: 1.5; }
 
 @media (prefers-reduced-motion: reduce) { .card-history { animation: none; } }

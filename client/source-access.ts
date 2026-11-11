@@ -13,14 +13,14 @@ export const sourceText = defineText({
   openTestCopy: 'Открыть тестовую копию →',
 });
 
-export type SourceLabels = (typeof sourceText)['en'];
+type SourceLabels = (typeof sourceText)['en'];
 
 /** All source labels in the current interface language; safe in render and in event handlers. */
 export function currentSourceLabels(): SourceLabels {
   return textNow(sourceText);
 }
 
-export interface ReadOnlyAccess {
+interface ReadOnlyAccess {
   /** Localized explanation of why editing is unavailable; empty when the snapshot is writable. */
   description: string;
   /** Localized action that opens an existing writable copy; null when no such copy exists. */

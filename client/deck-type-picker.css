@@ -1,32 +1,26 @@
-/* 2026-11-10: the saved deck type keeps its mint identity with a flat mark instead of a glowing control. */
+/* 2026-11-11: the saved deck type uses the common selected mark. */
 .deck-type-trigger.ui-button { width: 30px; height: 30px; padding: 0; }
 
-/* Light theme needs a darker mint for 3:1 against the tile; dark theme keeps the card highlight #63e6cf. */
-.deck-type-menu { --deck-type-selected: #1f9d7a; z-index: 150; width: min(640px, calc(100vw - 24px)); max-height: min(640px, var(--radix-dropdown-menu-content-available-height)); padding: 0 0 18px; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; transform-origin: var(--radix-dropdown-menu-content-transform-origin); animation: overlay-pop var(--motion-spring-quick) var(--ease-spring-quick); }
-.dark .deck-type-menu { --deck-type-selected: #63e6cf; }
+.deck-type-menu { z-index: 150; width: min(640px, calc(100vw - 24px)); max-height: min(640px, var(--radix-dropdown-menu-content-available-height)); padding: 0 0 18px; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; transform-origin: var(--radix-dropdown-menu-content-transform-origin); animation: overlay-pop var(--motion-spring-quick) var(--ease-spring-quick); }
 .deck-type-heading { padding: 12px 20px; }
-.deck-type-options { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; padding: 18px 20px 0; }
-/* 2026-11-06: tiles share their rows (title, description, accepts, warning) through subgrid, so "Accepts …" and the warnings
-   start on one line across a row; before, margin-top: auto pushed "Accepts" down by the height of the neighbour's warning.
-   Spacing is a top margin, not a row gap, so a row where no tile has a warning adds no empty band at the bottom. */
-.deck-type-option { display: grid; grid-row: span 4; grid-template-rows: subgrid; row-gap: 0; align-content: start; min-width: 0; padding: 14px 16px 16px; border: 1px solid var(--control-line); border-radius: var(--control-radius); outline: none; background: transparent; color: var(--ink); font-weight: 500; cursor: pointer; user-select: none; transition: border-color var(--motion-feedback), color var(--motion-feedback), background-color var(--motion-feedback); }
+.deck-type-current { margin: var(--space-3) 20px 0; color: var(--ink); font-size: 13px; line-height: 18px; }
+.deck-type-options { display: grid; gap: var(--space-2); padding: var(--space-3) 20px 0; }
+.deck-type-option { position: relative; display: grid; gap: var(--space-1); align-content: start; min-width: 0; padding: var(--space-2) var(--space-3); border: 1px solid var(--control-line); border-radius: var(--control-radius); outline: none; background: transparent; color: var(--ink); font-weight: 500; cursor: pointer; user-select: none; }
 .deck-type-option[data-highlighted]:not([aria-disabled="true"]) { border-color: var(--button-line); background: var(--hover); }
 .deck-type-option:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
-.deck-type-option[data-state="checked"] { border-color: var(--deck-type-selected); background: color-mix(in srgb, var(--deck-type-selected) 9%, transparent); }
-.deck-type-option[data-state="checked"][data-highlighted]:not([aria-disabled="true"]) { border-color: var(--deck-type-selected); background: color-mix(in srgb, var(--deck-type-selected) 16%, transparent); }
+.deck-type-option[data-state="checked"] { border-color: var(--mark); background: var(--mark-tint); }
+.deck-type-option[data-state="checked"][data-highlighted]:not([aria-disabled="true"]) { border-color: var(--mark); background: var(--mark-tint-strong); }
 .deck-type-option[aria-disabled="true"] { cursor: not-allowed; }
-.deck-type-option[aria-disabled="true"] > .deck-type-option-heading, .deck-type-option[aria-disabled="true"] > .deck-type-option-description, .deck-type-option[aria-disabled="true"] > .deck-type-option-accepts { opacity: .6; }
+.deck-type-option[aria-disabled="true"] > .deck-type-option-heading, .deck-type-option[aria-disabled="true"] > .deck-type-option-accepts { opacity: .6; }
 .deck-type-option.is-blocked { border-style: dashed; }
-.deck-type-option > * + * { margin-top: 8px; }
 .deck-type-option-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-.deck-type-option-title { display: inline-flex; align-items: center; gap: 7px; min-width: 0; font-size: 16px; font-weight: 500; letter-spacing: .01em; }
+.deck-type-option-title { display: inline-flex; align-items: center; gap: 7px; min-width: 0; font-size: 14px; font-weight: 600; }
 .deck-type-option-title > svg { flex-shrink: 0; color: var(--muted); }
 .deck-type-radio { position: relative; display: grid; place-items: center; flex-shrink: 0; width: 20px; height: 20px; border: 2px solid var(--control-line); border-radius: var(--control-radius); color: var(--muted); }
-.deck-type-option[data-state="checked"] .deck-type-radio { border-color: var(--deck-type-selected); background: transparent; }
-.deck-type-option[data-state="checked"] .deck-type-radio::after { content: ''; width: 6px; height: 6px; border-radius: var(--control-radius); background: var(--deck-type-selected); }
-.deck-type-option-description { color: var(--muted); font-size: 12px; line-height: 1.6; }
-.deck-type-option-accepts { color: var(--ink); font-size: 11px; font-weight: 500; }
-.deck-type-option-issue { display: flex; align-self: start; align-items: flex-start; gap: 6px; padding: 8px 9px; border-radius: var(--glass-radius); background: var(--warning-bg); color: var(--warning-ink); font-size: 11px; line-height: 1.5; overflow-wrap: anywhere; }
+.deck-type-option[data-state="checked"] .deck-type-radio { border-color: var(--mark); background: transparent; }
+.deck-type-option[data-state="checked"] .deck-type-radio::after { content: ''; width: 6px; height: 6px; border-radius: var(--control-radius); background: var(--mark); }
+.deck-type-option-accepts { color: var(--ink); font-size: 12px; font-weight: 500; }
+.deck-type-option-issue { display: flex; align-self: start; align-items: flex-start; gap: 6px; color: var(--warning-ink); font-size: 12px; line-height: 16px; overflow-wrap: anywhere; }
 .deck-type-option-issue > svg { flex-shrink: 0; margin-top: 2px; }
 .deck-type-status, .deck-type-error, .deck-type-note { margin: 14px 20px 0; font-size: 12px; line-height: 1.6; overflow-wrap: anywhere; }
 .deck-type-status { color: var(--muted); }

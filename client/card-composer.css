@@ -12,25 +12,22 @@
 .card-composer-context { flex-wrap: nowrap; gap: 8px; }
 .card-composer-context > h2 { flex-shrink: 0; margin: 0; color: var(--muted); font-size: 14px; font-weight: 600; line-height: 16px; white-space: nowrap; }
 
-.card-composer-panel { display: flex; flex: 1 1 0; flex-direction: column; min-width: 0; min-height: 0; animation: composer-panel-enter 150ms var(--ease-out); }
+.card-composer-panel { display: flex; flex: 1 1 0; flex-direction: column; min-width: 0; min-height: 0; animation: composer-panel-enter var(--motion-feedback) var(--ease-out); }
 .card-composer-panel[hidden] { display: none; }
 /* Text column: 8px above and between the hint, box and footer; the box fills the remaining space and scrolls (18 / flex / 32). */
 .card-composer-content { padding-top: 8px; }
 .card-composer-content > .card-edit { flex: 1 1 0; }
 .card-composer-content .card-edit-box { display: flex; flex: 1 1 0; flex-direction: column; min-height: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; }
 .card-composer-content :is(.card-edit-text, .card-edit-preview) { flex: 1 0 auto; }
-/* Save Card to Deck uses violet rgb(112,77,158) with rgb(241,235,252) text to emphasize creation. */
+/* 2026-11-11: the primary role distinguishes saving from previewing the draft. */
 .card-composer-content .card-edit-save { background: var(--violet-fill, var(--edit-save)); color: var(--violet-fill-ink, var(--surface)); }
-/* Create another card: right-aligned 11px uppercase label and 28×12 toggle, with 4 + 8 px spacing. */
-.card-composer-again { flex-shrink: 0; padding: 12px 8px 8px; }
-.card-composer-again > .deck-panel-switch-row { justify-content: flex-end; min-height: 12px; height: auto; color: var(--edit-hint); font-size: 11px; line-height: 14px; letter-spacing: .22px; text-transform: uppercase; }
+/* 2026-11-11: repeat creation is secondary to Save, but keeps a readable sentence-case label. */
+.card-composer-again { flex-shrink: 0; padding: var(--space-3) var(--space-2) var(--space-2); }
+.card-composer-again > .deck-panel-switch-row { justify-content: flex-end; gap: var(--space-2); min-height: 12px; height: auto; color: var(--edit-hint); font-size: 12px; line-height: 16px; letter-spacing: .01em; }
 .card-composer-again > .deck-panel-switch-row > label { flex: 0 1 auto; overflow: visible; white-space: normal; }
 .card-composer-again .deck-panel-switch:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
-/* 2026-11-08 (NW-06): the 28×12 track keeps its look; the label pads 5px vertically (24px target) and its right padding
-   reaches 4px past the switch, so the whole row line is one 24px-tall target. Negative margins keep the layout byte-stable:
-   the target ends 7px under Save and 3px above the Effort band. Clicks over the track hit the switch itself; the label
-   forwards the rest to the same control (htmlFor), so no positioning or pseudo is needed on the track. */
-.card-composer-again > .deck-panel-switch-row > label { padding: 5px 36px 5px 4px; margin: -5px -36px -5px -4px; }
+/* 2026-11-11: reserve the label's target in flow so repeat creation never overlaps Save or the property band. */
+.card-composer-again > .deck-panel-switch-row > label { display: inline-flex; align-items: center; min-height: 24px; padding-inline-end: 36px; margin-inline-end: -36px; }
 /* The empty owner slot allows a 44px band; an open card needs 58px for its medallion. */
 .card-preview-sheet > .card-composer-band { height: 44px; min-height: 44px; }
 
@@ -38,15 +35,19 @@
 .card-composer-settings > header { display: flex; align-items: center; gap: 8px; margin-bottom: 16px; color: var(--muted); }
 .card-composer-settings h3 { margin: 0; color: var(--ink); font-size: 15px; font-weight: 600; }
 .card-composer-settings > fieldset { display: flex; flex-direction: column; gap: 16px; min-width: 0; margin: 0; padding: 0; border: 0; }
-.card-composer-settings .catalog-field { margin: 0; font-size: 11px; }
-.card-composer-settings .catalog-field > small { color: var(--muted); font-size: 10px; font-weight: 400; line-height: 1.5; }
+.card-composer-settings .catalog-field { margin: 0; font-size: 12px; }
+.card-composer-settings .catalog-field > small { color: var(--muted); font-size: 12px; font-weight: 400; line-height: 16px; }
 .card-composer-settings .catalog-field select, .card-composer-settings .catalog-field input { min-height: 34px; font-size: 12px; }
-.card-composer-kind-context { margin: 0; color: var(--muted); font-size: 11px; line-height: 1.6; }
+.card-composer-kind-context { margin: 0; color: var(--muted); font-size: 12px; line-height: 16px; }
 .card-composer-settings-pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
 .card-composer-tracks { display: flex; flex-wrap: wrap; gap: 8px 12px; margin: 0; padding: 0; border: 0; }
-.card-composer-tracks legend { width: 100%; margin-bottom: 2px; color: var(--muted); font-size: 11px; }
-.card-composer-tracks label { display: inline-flex; align-items: center; gap: 7px; color: var(--muted); font-size: 11px; }
-.card-composer-field-error { margin: -6px 0 0; color: var(--danger); font-size: 11px; }
+.card-composer-tracks legend { width: 100%; margin-bottom: var(--space-1); color: var(--muted); font-size: 12px; line-height: 16px; }
+.card-composer-tracks label { display: inline-flex; align-items: center; gap: var(--space-2); color: var(--muted); font-size: 12px; line-height: 16px; }
+.card-composer-field-error { margin: 0; color: var(--danger); font-size: 12px; line-height: 16px; }
 @keyframes composer-panel-enter { from { opacity: .4; transform: translateY(3px); } to { opacity: 1; transform: translateY(0); } }
 @media (max-width: 640px) { .card-composer-context > h2 { display: none; } }
+@media (pointer: coarse) {
+  .card-composer-again > .deck-panel-switch-row > label, .card-composer-tracks label,
+  .card-composer-settings .catalog-field :is(select, input) { min-height: var(--control-target-touch); }
+}
 @media (prefers-reduced-motion: reduce) { .card-composer-panel { animation: none; } }

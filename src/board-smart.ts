@@ -3,6 +3,7 @@
 // Pure logic without React so the server, agents and tests can reuse the same counting.
 import type { BoardSmartQuery } from './board-contracts.ts';
 import type { CatalogCard, CatalogView } from './catalog-contracts.ts';
+import { isActiveCatalogCard } from './catalog-hand.ts';
 import { defaultLang, defineText, localeOf, type Lang } from './i18n.ts';
 import { readCardState } from './format-vocabulary.ts';
 
@@ -32,7 +33,7 @@ export interface SmartNodeData {
 export function smartNodeData(catalog: CatalogView | null, query: BoardSmartQuery, lang: Lang = defaultLang,
   stateLabel?: (state: string) => string): SmartNodeData {
   const deck = catalog?.decks.find(candidate => candidate.id === query.deckId) ?? null;
-  const all = catalog ? catalog.cards.filter(card => matchesQuery(card, query)) : [];
+  const all = catalog ? catalog.cards.filter(card => card.kind === 'task' && isActiveCatalogCard(card) && matchesQuery(card, query)) : [];
   const capped = all.length > SMART_NODE_CARD_LIMIT;
   const counted = capped ? all.slice(0, SMART_NODE_CARD_LIMIT) : all;
   const total = counted.length;

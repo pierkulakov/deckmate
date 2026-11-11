@@ -1,4 +1,4 @@
-export interface MarkdownTag { name: string }
+interface MarkdownTag { name: string }
 
 /** 2026-11-05: source offsets preserve escaped hashtags after Markdown removes their backslashes. */
 function escapedTagOffsets(value: string, rawValue?: string): Set<number> | null {

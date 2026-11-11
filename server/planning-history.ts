@@ -4,7 +4,7 @@ import type { FormatLanguage } from '../src/format-vocabulary.ts';
 import { milestonesPath, planningHistoryPath, runsPath } from '../src/planning-files.ts';
 import { cardOptionsPath } from './card-options.ts';
 import { catalogPath, verifyCardSources } from './catalog.ts';
-import { createManagedMarkdown, readProjectMarkdown, replaceProjectMarkdown } from './native-cards.ts';
+import { createManagedMarkdown, replaceProjectMarkdown } from './native-cards.ts';
 import { capturePlanningStatistics, isRunExpired, validatePlanningDetails, zonedRunClock } from './run-model.ts';
 import { readOptionalPlanning } from './planning-files.ts';
 import { defineText, serverText } from './i18n.ts';

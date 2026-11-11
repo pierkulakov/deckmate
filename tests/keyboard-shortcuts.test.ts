@@ -13,6 +13,12 @@ beforeEach(() => setLang('en'));
 afterAll(() => vi.unstubAllGlobals());
 
 describe('shortcut labels and matching', () => {
+  it('registers open-card H independently of hover and bulk, including the Russian layout', () => {
+    const event = { code: 'KeyH', key: 'р', altKey: false, ctrlKey: false, metaKey: false, shiftKey: false } as KeyboardEvent;
+    expect(matchShortcut(event, OPEN_CARD_SHORTCUTS)?.id).toBe('open-card-hand');
+    expect(ALL_SHORTCUTS.filter(item => item.code === 'KeyH').map(item => item.group)).toEqual(['mini-card', 'bulk', 'open-card']);
+    expect(shortcutGroupsFor(['card'], false).flatMap(group => group.items).some(item => item.id === 'open-card-hand')).toBe(false);
+  });
   it('resolves labels after a language switch while preserving registry identity and matching', () => {
     const event = { code: 'KeyW', key: 'ц', altKey: false, ctrlKey: false, metaKey: false, shiftKey: false } as KeyboardEvent;
     const shortcut = matchShortcut(event, OPEN_CARD_SHORTCUTS);

@@ -75,7 +75,10 @@ describe.skipIf(!browserPath)('card attachment insertion (headless CDP)', () => 
     await selection(start, start + 6);
     await open('ArrowDown');
     await until(`document.querySelectorAll('.card-edit-attachment').length === 2`);
-    await key('ArrowDown'); await key('ArrowDown'); await key('ArrowUp'); await key('ArrowDown');
+    // 2026-11-11: async items may arrive before or after Radix's entry focus; Home establishes the same keyboard starting point.
+    await key('Home');
+    expect(await highlighted()).toContain('Sketch [v2].png');
+    await key('ArrowDown'); await key('ArrowUp'); await key('ArrowDown');
     expect(await highlighted()).toContain('Brief.pdf');
     await key('Enter');
     await until(`document.activeElement?.classList.contains('card-edit-text')`);

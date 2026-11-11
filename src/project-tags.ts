@@ -64,14 +64,14 @@ export function validTagName(value: unknown): value is string {
     && value.trim() === value && !/[\u0000-\u001f\u007f]/u.test(value);
 }
 
-export function validTagCardId(value: unknown): value is string {
+function validTagCardId(value: unknown): value is string {
   // Same bounds as card option IDs: `card:<uuid>`, `task:<path>#<slice>` and friends.
   return typeof value === 'string' && value.length > 0 && value.length <= 1000
     && value.trim() === value && !/[\u0000-\u001f\u007f]/u.test(value);
 }
 
 const graphemeSegmenter = new Intl.Segmenter(undefined, { granularity: 'grapheme' });
-export function validTagEmoji(value: unknown): value is string {
+function validTagEmoji(value: unknown): value is string {
   if (typeof value !== 'string' || !value || value.length > 16) return false;
   const segments = Array.from(graphemeSegmenter.segment(value));
   return segments.length === 1;
@@ -174,4 +174,11 @@ export function collectProjectTags(cards: readonly { tags?: readonly string[] }[
   const tags = new Map(definitions.map(tag => [tag.name, tag]));
   for (const card of cards) for (const name of card.tags ?? []) if (!tags.has(name)) tags.set(name, { name, color: defaultTagColor });
   return [...tags.values()].sort((left, right) => left.name.localeCompare(right.name));
+}
+
+/** Search is case-insensitive; prefix matching suggests names but never broadens an assigned-tag filter. */
+export function matchesTagName(name: string, query: string, mode: 'exact' | 'prefix' = 'exact'): boolean {
+  const normalized = name.toLocaleLowerCase('ru');
+  const term = query.toLocaleLowerCase('ru');
+  return mode === 'prefix' ? normalized.startsWith(term) : normalized === term;
 }

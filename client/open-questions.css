@@ -5,26 +5,24 @@
   font: 700 11px/1 var(--font-sans); white-space: nowrap; box-shadow: 0 1px 2px #0003; }
 .catalog-card-open-questions.has-warning::after { content: ''; position: absolute; top: -2px; right: -2px; width: 7px; height: 7px;
   border: 1.5px solid var(--kind-doc-bg); border-radius: 50%; background: var(--danger); }
-.catalog-card-doc .deck-card-identity { gap: 4px; }
 
-.open-questions { margin: 4px 16px 20px; color: var(--ink); }
-/* Reading needs a negative margin for Edit; after questions, TagPicker stays in normal flow to avoid overlap. */
-.card-preview-panel > .open-questions + .card-tag-control { margin: 0 16px 10px; }
-.open-questions-heading { display: flex; align-items: center; gap: 8px; min-height: 28px; margin-bottom: 8px; }
-.open-questions-heading h3 { margin: 0; font-size: 14px; font-weight: 600; line-height: 20px; }
+.open-questions { margin: var(--space-4) 0; color: var(--ink); }
+.open-questions-heading { display: flex; align-items: center; gap: var(--space-2); min-height: 32px; padding: 0; border: 0; background: transparent; color: var(--muted); font: 600 13px/20px var(--font-sans); cursor: pointer; }
+.open-questions-heading::before { content: '›'; transform: rotate(90deg); }
+.open-questions-heading[aria-expanded="false"]::before { transform: none; }
+.open-questions-heading:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 .open-questions-count { display: inline-flex; align-items: center; justify-content: center; min-width: 22px; height: 22px;
-  padding: 0 6px; border-radius: var(--control-radius); background: var(--accent-soft); color: var(--focus);
+  padding: 0 6px; color: var(--muted);
   font: 600 11px/1 'Geist Mono', monospace; font-variant-numeric: tabular-nums; }
 .open-question-warnings { display: grid; gap: 5px; margin: 0 0 8px; padding: 10px 12px; list-style: none;
   border-radius: var(--glass-radius); background: var(--warning-bg); color: var(--warning-ink); }
-.open-question-warnings li { display: flex; align-items: flex-start; gap: 6px; font-size: 11px; line-height: 1.5; }
+.open-question-warnings li { display: flex; align-items: flex-start; gap: 6px; font-size: 12px; line-height: 1.5; }
 .open-question-warnings svg { flex: 0 0 auto; margin-top: 2px; }
-.open-questions-empty { margin: 0; padding: 13px 14px; border: 1px dashed var(--line); border-radius: var(--glass-radius);
-  background: var(--surface); color: var(--muted); font-size: 13px; line-height: 20px; }
 .open-questions-list { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; }
-.open-question { padding: 12px 14px 10px; border: 1px solid var(--line); border-radius: var(--glass-radius);
-  background: var(--surface); box-shadow: none; transition: border-color var(--motion-feedback); }
-.open-question:focus-within { border-color: var(--focus); }
+.open-question { padding: var(--space-2) 0; }
+.open-question-text .markdown { color: var(--ink); font-size: 14px; line-height: 20px; }
+.open-question-text .markdown > ul { margin: 0; padding-left: var(--space-4); }
+.open-question-text .markdown p { margin: 0; }
 .open-question-row { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; }
 .open-question-text { min-width: 0; margin: 0; color: var(--ink); font-size: 14px; line-height: 20px; overflow-wrap: anywhere; }
 .open-question-actions { display: flex; flex-wrap: wrap; justify-content: flex-start; gap: 4px; }
@@ -45,11 +43,11 @@
 .open-question-answer textarea:disabled { opacity: .65; }
 .open-question-answer textarea::placeholder { color: var(--muted); }
 .open-question-answer-footer { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
-.open-question-answer-footer > span { flex: 1 1 100%; color: var(--muted); font-size: 10px; line-height: 1.5; }
+.open-question-answer-footer > span { flex: 1 1 100%; color: var(--muted); font-size: 12px; line-height: 1.5; }
 .open-question-error { margin: 8px 0 0; padding: 8px 10px; border-radius: var(--glass-radius); background: var(--warning-bg);
-  color: var(--danger); font-size: 11px; line-height: 1.5; overflow-wrap: anywhere; }
+  color: var(--danger); font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; }
 .open-questions-readonly { margin: 8px 0 0; padding: 12px 14px; border: 1px solid var(--line); border-radius: var(--glass-radius);
-  background: var(--surface); color: var(--muted); font-size: 11px; line-height: 1.6; }
+  background: var(--surface); color: var(--muted); font-size: 12px; line-height: 1.6; }
 
 .open-questions-overlay { position: fixed; inset: 0; z-index: 120; background: color-mix(in srgb, var(--sidebar) 68%, transparent);
   animation: backdrop-fade var(--motion-spring-firm) ease-out; }
@@ -63,11 +61,15 @@
 .open-questions-dialog-question { margin: 8px 0 14px; color: var(--muted); font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; }
 .open-questions-dialog-fields { display: grid; gap: 10px; }
 .open-questions-dialog-fields label { display: grid; gap: 5px; }
-.open-questions-dialog-fields label > span { color: var(--muted); font-size: 10px; font-weight: 600; }
+.open-questions-dialog-fields label > span { color: var(--muted); font-size: 12px; font-weight: 600; }
 .open-questions-dialog-fields select { width: 100%; min-height: 36px; padding: 7px 9px; border: var(--control-hairline) solid var(--control-field-line);
   border-radius: var(--control-radius); background: var(--control-field); color: var(--ink); font: 12px var(--font-sans); }
-.open-questions-dialog-note { margin: 12px 0 0; color: var(--muted); font-size: 10px; line-height: 1.5; }
+.open-questions-dialog-note { margin: 12px 0 0; color: var(--muted); font-size: 12px; line-height: 1.5; }
 .open-questions-dialog-footer { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 6px; margin-top: 14px; }
-.open-questions-dialog-footer > span { flex: 1 1 120px; color: var(--muted); font-size: 9px; }
+.open-questions-dialog-footer > span { flex: 1 1 120px; color: var(--muted); font-size: 12px; }
 
 @media (prefers-reduced-motion: reduce) { .open-questions-overlay, .open-questions-dialog { animation: none; } }
+@media (pointer: coarse) {
+  .open-questions-heading, .open-questions-dialog :is(button, select), .open-question-answer select { min-height: var(--control-target-touch); }
+  .open-questions-dialog-heading .ui-button { width: var(--control-target-touch); height: var(--control-target-touch); }
+}

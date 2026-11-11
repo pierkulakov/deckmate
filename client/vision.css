@@ -1,15 +1,24 @@
 /* Live card nodes and the Smart Node widget render in Excalidraw embeddables; their tools live in the side panel. Use theme tokens, not local hex values. */
 
 /* --- Live nodes on the canvas ------------------------------------------------- */
+/* 2026-11-11: DESIGN.md «Shapes» rounds Board cards by 8px. Excalidraw's embeddable rule
+   (`.excalidraw__embeddable-container .excalidraw__embeddable__outer > *`) re-applies the frame's
+   --embeddable-radius to the content, so the node carries the token itself; with only the 6px
+   declaration below the computed radius inside the canvas was 0px. */
 .deckmate-vision-card, .deckmate-vision-smart {
+  --embeddable-radius: 8px;
   width: 100%; height: 100%; overflow: hidden; display: flex; flex-direction: column;
-  border-radius: 6px; border: 1px solid var(--card-edge); background: var(--card-face);
+  border-radius: 8px; border: 1px solid var(--card-edge); background: var(--card-face);
   color: var(--card-ink); font-family: var(--font-sans); box-shadow: var(--card-shadow);
 }
 .deckmate-vision-card.is-missing { align-items: center; justify-content: center; gap: 6px; padding: 10px; font-size: 11px; color: var(--card-muted); }
 .deckmate-vision-card.is-missing code { font: 10px 'Geist Mono', monospace; overflow-wrap: anywhere; }
+.deckmate-vision-card { position: relative; }
+.deckmate-card-opener { position: absolute; inset: 0; width: 100%; height: 100%; padding: 0; border: 0; background: transparent; cursor: pointer; }
+.deckmate-card-opener:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
+.deckmate-vision-card .card-tags { position: relative; z-index: 1; min-width: 0; }
 
-.deckmate-card-kind { flex-shrink: 0; align-self: start; margin-top: 1px; padding: 1px 6px; border-radius: 3px; font-size: 9px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase;
+.deckmate-card-kind { flex-shrink: 0; align-self: start; margin-top: 1px; padding: 1px 6px; border-radius: var(--control-radius); font-size: 10px; font-weight: 600;
   background: var(--kind-task-bg); color: var(--kind-task-ink); }
 .deckmate-vision-card.kind-hero .deckmate-card-kind { background: var(--kind-hero-bg); color: var(--kind-hero-ink); }
 .deckmate-vision-card.kind-doc .deckmate-card-kind { background: var(--kind-doc-bg); color: var(--kind-doc-ink); }
@@ -17,27 +26,58 @@
 .is-lane .deckmate-card-title { white-space: nowrap; }
 .is-mini .deckmate-card-title, .is-full .deckmate-card-title { -webkit-line-clamp: 2; display: -webkit-box; -webkit-box-orient: vertical; }
 .is-full .deckmate-card-title { font-size: 15px; }
-.deckmate-card-owner, .deckmate-card-effort, .deckmate-card-deck, .deckmate-card-muted, .deckmate-card-properties span {
-  flex-shrink: 0; font-size: 10px; color: var(--card-muted); }
-.deckmate-card-owner::before { content: '@'; }
+.deckmate-card-owner, .deckmate-card-effort, .deckmate-card-deck, .deckmate-card-properties span {
+  flex-shrink: 0; font-size: 12px; line-height: 16px; color: var(--card-muted); }
 .deckmate-card-effort { font-family: 'Geist Mono', monospace; }
+.deckmate-vision-card .vision-card-priority-icon { display: inline-flex; color: var(--card-ink); }
+.vision-card-priority-icon :is(span, svg) { color: inherit; }
+.deckmate-card-properties .deckmate-card-priority { display: inline-flex; align-items: center; gap: var(--space-1); }
 .deckmate-card-owner, .deckmate-card-deck { min-width: 0; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .is-lane { flex-direction: row; align-items: center; gap: 8px; padding: 0 10px; }
-.is-lane .status-badge { margin-left: auto; }
-.is-lane .deckmate-card-owner { order: 3; }
+.is-lane .card-face-status { flex: 0 0 auto; max-width: 110px; }
+.is-lane .deckmate-card-meta { flex-wrap: nowrap; }
+.is-lane .deckmate-card-owner { flex: 1; font-size: 11px; }
+/* 2026-11-11: the 24px +N expander target cannot fit the 44px lane — its min-height raised the tag row to 24px and the
+   lane column to 44.55px inside the 42px content box. The lane keeps the compact badge height; the opener covers the row. */
+.deckmate-vision-card.is-lane .card-tags button.tag-overflow { min-height: 0; padding-block: 1px; }
 .is-mini { padding: 9px 10px; justify-content: space-between; }
 .is-full { padding: 11px 12px; gap: 7px; justify-content: start; }
 .deckmate-card-head { display: flex; align-items: start; gap: 7px; min-width: 0; }
 .deckmate-card-open { display: inline-flex; align-items: center; gap: 3px; flex-shrink: 0; padding: 2px 7px; border-radius: 4px;
   background: var(--accent-soft); color: var(--accent); font-size: 10px; font-weight: 500; }
-.deckmate-card-meta { display: flex; align-items: center; gap: 8px; min-width: 0; flex-wrap: wrap; }
+.deckmate-card-meta { display: flex; align-items: center; gap: var(--space-2); min-width: 0; flex-wrap: wrap; }
+.deckmate-vision-card .card-face-status { font-size: 12px; line-height: 16px; }
+.is-mini .card-face-status { flex-direction: row; flex-wrap: wrap; column-gap: var(--space-2); }
+.is-mini .deckmate-card-meta:empty { display: none; }
+.is-mini .card-tags { margin-left: auto; }
 .is-mini .deckmate-card-head, .is-mini .deckmate-card-meta { flex-shrink: 0; }
 .is-mini .deckmate-card-meta { flex-wrap: nowrap; }
 .is-mini .deckmate-card-owner { flex-shrink: 1; }
-.deckmate-card-excerpt { margin: 0; font-size: 11px; line-height: 1.55; color: var(--card-muted);
+.deckmate-card-excerpt { margin: 0; min-height: 0; font-size: 12px; line-height: 16px; color: var(--card-muted);
   display: -webkit-box; -webkit-line-clamp: 6; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }
 .deckmate-card-properties { margin-top: auto; display: flex; gap: 10px; flex-wrap: wrap; border-top: 1px solid var(--card-edge); padding-top: 6px; }
-.is-mini .deckmate-card-properties { border: 0; padding: 0; margin: 0; }
+
+/* 2026-11-11: a Task in progress or on review carries its state metal in Vision as it does on the tile and in Hand
+   (DESIGN.md, Type bands): started is cool steel, review is amethyst. The node's footer row becomes the band, so the
+   documented node sizes stay; the state word moves off the meta rows onto the metal, as on the tile face. No review foil here. */
+.deckmate-vision-card.kind-task[data-state="started"] { --state-band-metal: var(--started-metal); --state-band-ink: var(--started-metal-ink); }
+.deckmate-vision-card.kind-task[data-state="review"] { --state-band-metal: var(--review-metal); --state-band-ink: var(--review-metal-ink); }
+.deckmate-card-state-word { flex-shrink: 0; font-size: 10px; font-weight: 600; line-height: 14px; letter-spacing: .02em; white-space: nowrap; }
+.deckmate-card-foot.is-state-band, .deckmate-card-properties.is-state-band {
+  gap: var(--space-2);
+  border-top: 1px solid color-mix(in srgb, var(--state-band-metal, var(--card-metal)) 84%, var(--metal-shadow, #241b24));
+  background-color: var(--state-band-metal, var(--card-metal));
+  /* The Task band's satin: one quiet sweep of the same metal, without the tile's moving ribbon. */
+  background-image: linear-gradient(110deg, color-mix(in srgb, var(--state-band-metal, var(--card-metal)) 94%, #fff), var(--state-band-metal, var(--card-metal)) 55%, color-mix(in srgb, var(--state-band-metal, var(--card-metal)) 94%, #364057));
+  color: var(--state-band-ink, var(--card-metal-ink));
+}
+.is-state-band :is(.deckmate-card-state-word, .deckmate-card-owner, .deckmate-card-effort, .deckmate-card-priority, .vision-card-priority-icon, .tag-badge.is-personal) { color: inherit; }
+/* The band runs full-bleed to the node's bottom corners: the negative margins cancel each view's padding. */
+.is-mini .deckmate-card-foot.is-state-band { margin: auto -10px -9px; padding: 0 10px; min-height: 24px; }
+.is-full .deckmate-card-properties.is-state-band { margin: auto -12px -11px; padding: 0 12px; min-height: 23px; align-items: center; }
+/* The state word wraps the property row onto a second line (measured 2026-11-11: the 230px node has no slack); the
+   excerpt yields two of its six lines to the band, so a node in progress keeps its size without dropping properties. */
+.deckmate-vision-card.kind-task:is([data-state="started"], [data-state="review"]) .deckmate-card-excerpt { -webkit-line-clamp: 4; }
 
 .deckmate-vision-smart { padding: 10px 12px; gap: 7px; justify-content: center; }
 .deckmate-vision-video {
@@ -64,34 +104,34 @@
 .vision-links { --shelf-inset: var(--space-3); padding: var(--space-4) var(--space-3) calc(var(--space-4) + var(--notifications-clearance, 0px)); border-left: 0; background: none; }
 /* 2026-11-10: the sidebar is one glass sheet of sections (surface.css .glass-sheet), not a column of separate panels. */
 .vision-stack { min-width: 0; }
-/* workspace.css styles .vision-links headings and paragraphs by element; the panel title needs the shared 17/600 back. */
-.vision-panel .panel-title { display: flex; align-items: center; gap: 8px; margin: 0; color: var(--ink); font-size: 17px; font-weight: 600; line-height: 24px; }
+/* 2026-11-11: qualify the shared panel type against the workspace's element rules. */
+.vision-panel .panel-title { display: flex; align-items: center; gap: var(--space-2); margin: 0; color: var(--ink); font-size: 15px; font-weight: 600; line-height: 24px; }
 .vision-panel .panel-title > svg { flex-shrink: 0; color: var(--muted); }
-.vision-note { margin: 0 0 var(--space-2); }
+.vision-links :is(.vision-note, .vision-ref-note) { margin: 0 0 var(--space-2); font-size: var(--text-help-size); line-height: var(--text-help-leading); }
 /* Panel fields use the shared recessed well. */
-.vision-tools select, .vision-tools input, .vision-selected-row select, .vision-selected-row input { height: 30px; padding: 0 8px; font-size: 11px; }
+.vision-tools select, .vision-tools input, .vision-selected-row select, .vision-selected-row input { min-height: 30px; padding: 0 var(--space-2); font-size: var(--text-ui-size); }
 .vision-tools .ui-button { flex-shrink: 0; }
 .vision-tools > .inline-error { color: var(--danger); }
 .vision-error { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-3); }
 .vision-error > span { flex: 1; }
-.vision-tool-row { display: flex; gap: 5px; align-items: center; }
+.vision-tool-row { display: flex; gap: var(--space-2); align-items: center; }
 .vision-tool-row select, .vision-tool-row input { flex: 1; min-width: 0; }
-.vision-tool-row.vision-smart-controls { display: grid; grid-template-columns: minmax(0, 1fr); gap: 5px; }
+.vision-tool-row.vision-smart-controls { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--space-2); }
 .vision-smart-controls select { width: 100%; }
 .vision-smart-controls .ui-button { justify-self: start; }
-.vision-selected { display: flex; flex-direction: column; gap: 5px; }
-.vision-selected-row { display: flex; gap: 5px; align-items: center; font-size: 11px; color: var(--muted); }
-.vision-text-refs { display: flex; flex-direction: column; gap: 5px; }
+.vision-selected { display: flex; flex-direction: column; gap: var(--space-2); }
+.vision-selected-row { display: flex; gap: var(--space-2); align-items: center; font-size: var(--text-ui-size); color: var(--muted); }
+.vision-text-refs { display: flex; flex-direction: column; gap: var(--space-2); }
 .vision-ref-row { display: flex; align-items: center; gap: 7px; padding: 7px 9px; border: 1px solid var(--control-line); border-radius: var(--control-radius);
   background: var(--card-face); color: var(--card-ink); font-size: 11px; text-align: left; }
-.vision-ref-row:hover:not(:disabled) { border-color: var(--button-line); background: var(--hover); }
+@media (hover: hover) { .vision-ref-row:hover:not(:disabled) { border-color: var(--button-line); background: var(--hover); } }
 .vision-ref-row small { display: block; margin-top: 3px; overflow: hidden; color: var(--card-muted); font-size: 9px; font-family: 'Geist Mono', monospace; text-overflow: ellipsis; white-space: nowrap; }
 .vision-ref-row > svg { flex-shrink: 0; margin-left: auto; color: var(--card-muted); }
 .vision-ref-kind { flex-shrink: 0; width: 18px; height: 18px; display: grid; place-items: center; border-radius: 4px;
   background: var(--accent-soft); color: var(--accent); font: 600 10px 'Geist Mono', monospace; }
-.vision-ref-note { margin: 2px 0 0; }
-/* The sidebar search uses the shared recessed well. */
-.vision-search { min-height: 30px; padding: 0 8px; color: var(--muted); margin: 0 0 var(--space-2); }
+/* The workspace's search border must not replace the shared field edge. */
+.vision-search.control-field { min-height: 30px; padding: 0 8px; border: var(--control-hairline) solid var(--control-field-line); color: var(--muted); margin: 0 0 var(--space-2); }
+.vision-search.control-field:focus-within { border-color: var(--focus); }
 .vision-results, .vision-linked-list { margin-top: var(--space-2); }
 /* Panel empty states use the shared EmptyState, at the sidebar's tighter spacing. */
 .vision-panel .ui-empty { padding: var(--space-2) 0; }
@@ -100,8 +140,14 @@
 .vision-toolbar.page-head { min-height: 0; margin: 0; padding: 10px var(--space-4) 10px var(--shelf-inset, var(--space-4)); border-bottom: 1px solid var(--line); background: none; }
 /* The name stays bare until hover, then reads as a flat field; it is a title first, never a boxed input.
    The qualified selector outweighs workspace.css's element rule for .vision-toolbar inputs. */
-.vision-toolbar .vision-board-name { width: 100%; max-width: 460px; border: 0; border-radius: var(--control-radius); padding: 0 4px; background: transparent; }
-.vision-board-name:hover:not(:disabled) { background: var(--hover); }
+.vision-title-field { position: relative; min-width: 0; max-width: 460px; }
+/* 2026-11-11: the name sizes to its content, so a title that fits the row is never ellipsized while free
+   space remains before the tools; it shrinks with the ellipsis only on a real collision (the 375px case). */
+.vision-toolbar .vision-board-name { width: auto; max-width: 100%; field-sizing: content; border: 0; border-radius: var(--control-radius); padding: 0 var(--space-1); background: transparent; text-overflow: ellipsis; }
+.vision-board-name:focus { text-overflow: clip; }
+.vision-title-full { display: none; position: absolute; inset: 100% 0 auto; z-index: 5; padding: var(--space-2) var(--space-3); border: 1px solid var(--line); border-radius: var(--glass-radius); background: var(--surface); color: var(--ink); box-shadow: var(--shadow); font-size: 14px; font-weight: 400; line-height: 20px; overflow-wrap: anywhere; }
+.vision-title-field:focus-within .vision-title-full { display: block; }
+@media (hover: hover) { .vision-board-name:hover:not(:disabled) { background: var(--hover); } }
 .vision-board-name:disabled { opacity: .6; }
 /* The caption keeps the save word and the board reference on one quiet line under the name. */
 .vision-toolbar .vision-save-state { display: inline; margin: 0; }
@@ -113,16 +159,26 @@
 .vision-toolbar .vision-board-picker:focus { border-color: var(--focus); }
 .vision-toolbar-actions { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-2); min-width: 0; }
 .vision-access { display: inline-flex; padding: 0 9px; }
-.vision-access-state { font-size: 10px; color: var(--muted); }
+.vision-access-state { font-size: var(--text-help-size); color: var(--muted); }
 .vision-access-state.is-locked { color: var(--warning-ink); }
 
 .deckmate-vision-card > .card-tags { flex-shrink: 0; }
-.vision-lane-main { display: flex; flex: 1; flex-direction: column; gap: 3px; min-width: 0; }
+/* 2026-11-11: the title and 24px tag action must fit inside the lane's 42px content height. */
+.vision-lane-main { display: flex; flex: 1; flex-direction: column; gap: 0; min-width: 0; }
 .vision-lane-main > .deckmate-card-title { flex: none; width: 100%; }
-.vision-lane-main > .card-tags { align-self: flex-start; }
-.vision-results > button > span, .vision-linked-list > button > span { display: block; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.vision-card-row { min-width: 0; border: 1px solid var(--control-line); border-radius: var(--control-radius); background: var(--card-face); }
+:is(.vision-results, .vision-linked-list) .vision-card-row-open { width: 100%; min-width: 0; border: 0; background: transparent; }
+.vision-card-row-open > span { display: block; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.vision-card-row-tags { min-width: 0; padding: 0 var(--space-3) var(--space-2); }
+.vision-card-row-tags:empty, .vision-card-row-tags:not(:has(.card-tags)) { display: none; }
 .vision-results small, .vision-linked-list small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .vision-ref-row > span:not(.vision-ref-kind) { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.vision-board { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+.vision-board > .vision-canvas { flex: 1; }
+.vision-viewport-tools { display: flex; flex: 0 0 auto; align-items: center; gap: var(--space-2); padding: var(--space-1) var(--space-2); border-bottom: 1px solid var(--line); background: var(--ground); }
+.vision-viewport-tools [data-vision-viewport="actual"] { font-family: 'Geist Mono', monospace; }
+.vision-viewport-tools .ui-button { white-space: nowrap; }
 
 /* 2026-11-08: the canvas has its own palette; a token-backed hint remains readable over any drawing background. */
 .vision-canvas .excalidraw .ToolIcon__keybinding { color: var(--ink); }
@@ -137,6 +193,14 @@
   .vision-toolbar.page-head { padding: 10px var(--space-2); }
   .vision-toolbar .page-tools { flex-basis: 100%; margin-inline-start: 0; }
   .vision-toolbar .vision-board-picker { flex-basis: 100%; }
+  .vision-body { display: flex; flex-direction: column; }
+  .vision-board { flex: 0 0 auto; }
+  .vision-board > .vision-canvas { height: 400px; flex: none; }
+  .vision-body > .vision-links { flex: 0 0 auto; max-height: none; overflow: visible; }
+}
+
+@media (pointer: coarse) {
+  .vision-viewport-tools .ui-button, .vision-tools :is(input, select), .vision-selected-row :is(input, select), .vision-ref-row { min-height: var(--control-target-touch, 44px); }
 }
 
 /* 2026-11-06: while the remembered board is read, the canvas area shows the shared loading state instead of an empty board that

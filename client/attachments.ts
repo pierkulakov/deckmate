@@ -26,8 +26,8 @@ const text = defineText({
 // Attachment requests use /api/attachments and /api/file; the chosen sort order applies to all cards.
 
 // Keep the 10 MB file limit in sync with server validation.
-export const attachmentMaximumBytes = 10 * 1024 * 1024;
-export const attachmentAcceptedTypes = ['image/png', 'image/jpeg', 'image/webp', 'image/gif', 'application/pdf'];
+const attachmentMaximumBytes = 10 * 1024 * 1024;
+const attachmentAcceptedTypes = ['image/png', 'image/jpeg', 'image/webp', 'image/gif', 'application/pdf'];
 const sortOrderStorageKey = 'deckmate.attachments.sort';
 
 export type AttachmentSortOrder = 'newest' | 'oldest';

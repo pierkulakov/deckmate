@@ -1,17 +1,17 @@
-/* The full-width Your Hand panel has a done pile, seven numbered slots and tabs below. */
+/* The full-width Your Hand panel has a done pile, seven numbered slots and a queue. */
 .hand-view { --shelf-inset: var(--space-6); min-width: 0; min-height: 100%; padding: 20px 24px 56px 16px; }
 
 /* 2026-11-04: Hand tokens live with the owned surface; central declarations belong to the styles.css integration. */
 :root { --hand-slot-background: color-mix(in srgb, var(--accent-soft) 20%, transparent); --hand-slot-ink: var(--ink); --hand-slot-line: var(--line); }
-/* Red and yellow due-date badges use shared tokens for both themes. */
-:root { --hand-due-now-face: var(--danger); --hand-due-now-ink: var(--count-face); --hand-due-soon-face: var(--gold-chip); --hand-due-soon-ink: var(--gold-chip-ink); }
-:root.dark { --hand-due-now-ink: var(--sidebar); }
-:root.dark { --hand-slot-background: color-mix(in srgb, var(--accent-soft) 20%, transparent); }
+:root { --hand-due-now-face: var(--danger); }
 .hand-panel { --hand-panel-ink: var(--ink); display: flex; flex-direction: column; }
 .hand-panel-body { display: flex; flex-direction: column; gap: 8px; }
 .hand-panel-header .page-head-main { flex: 1 1 300px; }
 .hand-panel-header .page-tools { min-width: 0; }
-.hand-panel-effort { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; line-height: 12px; color: var(--hand-panel-ink); }
+.hand-agent-hint { flex: 0 0 100%; }
+.hand-overview-hint { flex: 0 0 100%; margin: 0; color: var(--muted); font-size: 13px; line-height: 18px; }
+.hand-error { position: sticky; top: var(--space-2); z-index: 20; margin-bottom: var(--space-4); border-radius: var(--glass-radius); }
+.hand-panel-effort { display: inline-flex; align-items: center; gap: 4px; font-size: var(--text-ui-size); line-height: var(--text-ui-leading); color: var(--ink); }
 /* The All Hands switch uses only theme tokens so its track and thumb work in the light theme. */
 .hand-all-toggle { position: relative; display: inline-flex; align-items: center; gap: 8px; color: var(--ink); font-size: 12px; font-weight: 600; cursor: pointer; }
 .hand-all-toggle input { position: absolute; width: 1px; height: 1px; margin: 0; opacity: 0; }
@@ -19,7 +19,7 @@
 .hand-all-thumb { width: 14px; height: 14px; border-radius: 50%; background: var(--muted); transition: translate var(--motion-feedback) var(--ease-out), background var(--motion-feedback); }
 .hand-all-toggle input:checked + .hand-all-track { border-color: var(--accent); background: var(--accent); }
 .hand-all-toggle input:checked + .hand-all-track .hand-all-thumb { translate: 14px 0; background: var(--surface); }
-.hand-all-toggle input:focus-visible + .hand-all-track { outline: 2px solid var(--focus); outline-offset: 1px; }
+.hand-all-toggle input:focus-visible + .hand-all-track { outline: 2px solid var(--focus); outline-offset: 2px; }
 .hand-member-picker { width: 280px; min-width: 0; max-width: 100%; }
 .hand-member-picker select { width: 100%; min-width: 0; max-width: 100%; padding: 0 24px 0 8px; font-size: 12px; font-weight: 500; }
 
@@ -27,34 +27,46 @@
 .hand-all-list { display: flex; flex-direction: column; gap: 20px; }
 .hand-all-member { display: flex; flex-direction: column; gap: 8px; }
 .hand-all-member + .hand-all-member { padding-top: 16px; }
-.hand-all-member-heading { display: flex; align-items: center; gap: 8px; height: 28px; color: var(--hand-panel-ink); }
-.hand-all-member-heading h2 { margin: 0; font-size: 14px; font-weight: 600; line-height: 16px; }
+.hand-all-member-heading { display: flex; align-items: flex-start; gap: var(--space-2); min-height: 28px; color: var(--hand-panel-ink); }
+.hand-all-member-heading h2 { min-width: 0; margin: 0; overflow-wrap: anywhere; font-size: 14px; font-weight: 600; line-height: 16px; }
 .hand-all-member-heading .card-owner-avatar { width: 28px; height: 28px; }
 .hand-all-member .hand-queue { margin: 0; }
 
 /* Done pile first, then slots 1–7 in hand order; a filled slot is draggable across its entire area. 2026-11-10: slots
    share the deck tile tokens (styles.css) so sorting and its empty targets have the same footprint. */
 .hand-slots { display: flex; flex-wrap: wrap; gap: var(--tile-gap); }
+/* Keep this space during saves, when the action buttons are temporarily removed. */
+.hand-slots.has-slot-actions { row-gap: calc(var(--tile-gap) + var(--space-6) + var(--space-1)); padding-bottom: calc(var(--space-6) + var(--space-1)); }
 .hand-slot { width: var(--tile-width); height: var(--tile-height); flex: 0 0 var(--tile-width); border: 0.67px solid var(--hand-slot-line); border-radius: var(--glass-radius); background: var(--hand-slot-background); color: var(--hand-slot-ink); }
-.hand-slot-number { display: flex; align-items: center; justify-content: center; width: 100%; height: 100%; font-size: 24px; font-weight: 700; line-height: 32px; }
+.hand-slot-number { display: flex; align-items: center; justify-content: center; width: 100%; height: 100%; color: var(--muted); font-size: 14px; font-weight: 600; line-height: 20px; }
 .hand-slot.is-filled { position: relative; border: 0; background: none; }
-/* 2026-11-10: opacity keeps the handle in Tab order; touch scrolling never starts a slot drag. */
-.hand-slot-handle { position: absolute; top: var(--space-1); right: var(--space-1); z-index: 2; display: inline-flex; align-items: center; justify-content: center; width: var(--space-6); height: var(--space-6); padding: 0; border: 1px solid var(--card-edge); border-radius: var(--space-1); background: var(--card-face); color: var(--card-ink); cursor: grab; opacity: 0; touch-action: auto; transition: opacity var(--motion-feedback) var(--ease-out); }
-.hand-slot:focus-within > .hand-slot-handle { opacity: 1; }
-.hand-slot-handle:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
-@media (hover: hover) { .hand-slot:hover > .hand-slot-handle { opacity: 1; } }
-@media (prefers-reduced-motion: reduce) { .hand-slot-handle { transition: none; } }
+.hand-slot-handle, .hand-slot-remove { --control-opacity-duration: var(--motion-feedback); position: absolute; top: calc(100% + var(--space-1)); z-index: 2; display: inline-flex; align-items: center; justify-content: center; width: var(--space-6); height: var(--space-6); padding: 0; border: 1px solid var(--card-edge); border-radius: var(--control-radius); background: var(--card-face); color: var(--card-ink); opacity: 0; }
+.hand-slot-handle { right: var(--space-1); cursor: grab; touch-action: none; }
+.hand-slot-remove { left: var(--space-1); cursor: pointer; }
+.hand-slot:focus-within > :is(.hand-slot-handle, .hand-slot-remove) { opacity: 1; }
+.hand-slot :is(.hand-slot-handle, .hand-slot-remove):focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+@media (hover: hover) { .hand-slot:hover > :is(.hand-slot-handle, .hand-slot-remove) { opacity: 1; } }
+@media (hover: none), (pointer: coarse) {
+  .hand-slots.has-slot-actions { row-gap: calc(var(--tile-gap) + var(--control-target-touch, 44px) + var(--space-1)); padding-bottom: calc(var(--control-target-touch, 44px) + var(--space-1)); }
+  .hand-slot-handle, .hand-slot-remove { width: var(--control-target-touch, 44px); height: var(--control-target-touch, 44px); border-color: transparent; background: transparent; color: var(--muted); opacity: 1; }
+}
 .hand-slot.is-drag-source { position: relative; z-index: 1; border-radius: var(--glass-radius); box-shadow: var(--shadow); outline: 2px solid var(--focus); outline-offset: 2px; cursor: grabbing; }
 /* 2026-11-10: only the source becomes a placeholder; the shared frozen card face follows the pointer independently of hit testing. */
 .has-hand-drag-overlay .hand-slot.is-drag-source { background: var(--hand-slot-background); box-shadow: none; outline: none; }
 .has-hand-drag-overlay .hand-slot.is-drag-source > * { visibility: hidden; }
-.hand-board.is-card-transfer-active .hand-slot-handle { opacity: 0; }
+.hand-board.is-card-transfer-active :is(.hand-slot-handle, .hand-slot-remove) { opacity: 0; }
 @media (prefers-reduced-motion: reduce) { .hand-slot, .hand-queue li { transition: none !important; } }
-.hand-slot-done { position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; border-radius: 4px; padding: 8px; }
+.hand-slot-done { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--space-2); padding: var(--space-2); text-align: center; cursor: pointer; }
 .hand-slot-done-chip { display: grid; place-items: center; width: 32px; height: 32px; padding: 4px; border-radius: 50%; background: var(--hand-slot-background); }
-/* The check is centered; its label starts 16px below the 32px chip. */
-.hand-slot-done-label { position: absolute; top: calc(50% + 32px); left: 0; right: 0; font-size: 12px; font-weight: 700; line-height: 14px; letter-spacing: .12px; text-align: center; }
-.hand-slot-done-count { display: block; }
+.hand-slot-done-label { font-size: 12px; font-weight: 700; line-height: 14px; }
+.hand-slot-done-week { color: var(--muted); font-size: 12px; line-height: 16px; }
+.hand-slot-done:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+@media (hover: hover) { .hand-slot-done:hover { background: var(--hover); } }
+.hand-done-list:not([hidden]) { margin-top: var(--space-3); }
+.hand-done-list > p { margin: 0 0 var(--space-2); color: var(--muted); font-size: 12px; line-height: 16px; }
+.hand-done-list ul { margin: 0; padding: 0; list-style: none; }
+.hand-empty-guide { flex: 1 1 180px; align-self: center; min-width: 0; color: var(--muted); font-size: 13px; line-height: 18px; }
+.hand-empty-guide p { margin: 0 0 var(--space-2); }
 
 /* Cards beyond the first seven use sortable queue rows with a handle and title below the panel. */
 .hand-queue { margin: 32px 0 0; }
@@ -65,32 +77,31 @@
 .hand-queue.has-drag-overlay li.is-drag-source { opacity: .35; box-shadow: none; outline: none; }
 .hand-queue-handle { flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; min-width: 24px; padding: 6px 3px; border: 0; border-radius: var(--control-radius); background: none; color: var(--muted); cursor: grab; touch-action: none; }
 .hand-queue-handle:hover { background: var(--hover); color: var(--ink); }
-.hand-queue-open { display: flex; align-items: baseline; gap: 10px; flex: 1; min-width: 0; padding: 6px 10px; border: 0; border-radius: var(--control-radius); background: none; color: var(--ink); font-size: 12px; text-align: left; }
+.hand-queue-content { flex: 1; min-width: 0; }
+.hand-queue-open { display: flex; align-items: baseline; gap: 10px; width: 100%; min-width: 0; padding: 6px 10px; border: 0; border-radius: var(--control-radius); background: none; color: var(--ink); font-size: 12px; text-align: left; }
 .hand-queue-open:hover { background: var(--hover); }
-.hand-queue-open > span:not(.card-tags) { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
-.hand-queue-open > small { min-width: 0; max-width: 40%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); font-size: 11px; }
+.hand-queue-open > .hand-queue-title { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.hand-queue-open > small { min-width: 0; max-width: 40%; white-space: normal; overflow-wrap: anywhere; color: var(--muted); font-size: 12px; }
+.hand-queue-tags { min-width: 0; padding: 0 var(--space-3) var(--space-1); }
+.hand-queue-tags .card-tags > :first-child:not(:last-child) { flex-shrink: 0; max-width: 50%; }
+.hand-queue-remove { display: inline-flex; align-items: center; justify-content: center; flex: 0 0 24px; min-height: 24px; padding: 0; border: 0; border-radius: var(--control-radius); background: transparent; color: var(--muted); }
+@media (hover: hover) { .hand-queue-remove:hover { background: var(--hover); color: var(--ink); } }
 
 /* 2026-11-10: the section tabs are the shared underline tabs (surface.css .control-tabs/.control-tab) on one rule with
    Show all at its end. */
-.hand-tabs { align-items: flex-end; flex-wrap: nowrap; gap: 24px; margin: 32px 0 24px; }
-.hand-tab-list { display: flex; flex: 1; min-width: 0; flex-wrap: wrap; align-items: flex-end; gap: 12px 24px; }
-/* A white count chip serves as the tab icon. 2026-11-10: it stays a plate under the Foil Rule,
-   without hairline cells. */
-/* 2026-11-10: the 7px foot hangs below the plate; the bottom margin reserves it, so the plate and foot center on the label
-   together and the foot ends above the active tab's underline instead of covering it. */
-.hand-tab-count { position: relative; display: grid; place-items: center; min-width: 22px; height: 22px; margin-bottom: 7px; padding: 4px 2px; border-radius: 3px 3px 0 0; background: var(--count-face); color: var(--count-ink); }
-.hand-tab-count::after { content: ''; position: absolute; top: 100%; left: 0; right: 0; height: 7px; border-radius: 0 0 3px 3px; background: var(--count-foot); }
-/* The Your due cards badge uses the state color of the most urgent cards. */
-.hand-tab-count.is-due-now { background: var(--hand-due-now-face); color: var(--hand-due-now-ink); }
-.hand-tab-count.is-due-now::after { background: color-mix(in srgb, var(--hand-due-now-face) 80%, var(--ground)); }
-.hand-tab-count.is-due-soon { background: var(--hand-due-soon-face); color: var(--hand-due-soon-ink); }
-.hand-tab-count.is-due-soon::after { background: color-mix(in srgb, var(--hand-due-soon-face) 80%, var(--ground)); }
+.hand-tabs { align-items: flex-end; flex-wrap: nowrap; gap: var(--space-6); margin: 0 0 var(--space-4); }
+.hand-tab-list { display: flex; flex: 1; min-width: 0; flex-wrap: wrap; align-items: flex-end; gap: 0 var(--space-6); }
+.hand-tab { gap: var(--space-2); }
+.hand-tab-count { color: var(--muted); }
+.hand-tab-count.is-due-now { color: var(--danger); }
+.hand-tab-count.is-due-soon { color: var(--warning-ink); }
+.hand-tab-panel { margin-top: var(--space-6); }
 .hand-bookmarks { display: flex; flex-wrap: wrap; gap: var(--tile-gap); }
 
 /* Your due cards, Your Runs and Pinned Milestone use hand-style queue rows; Show all sits to the right of the tabs. */
 .hand-section { display: flex; flex-direction: column; gap: 16px; }
 .hand-section-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 24px; }
-.hand-show-all { flex-shrink: 0; max-width: 100%; min-height: 24px; margin-bottom: 7px; padding: 0 7px; font-size: 12px; line-height: 14px; white-space: normal; }
+.hand-show-all { flex-shrink: 0; max-width: 100%; min-height: 24px; margin-bottom: var(--space-1); padding: 0 7px; font-size: 12px; line-height: 14px; white-space: normal; }
 .hand-group { display: flex; flex-direction: column; gap: 4px; }
 .hand-group-title { margin: 0; font-size: 12px; font-weight: 700; line-height: 14px; color: var(--muted); }
 .hand-group-title.is-due-now { color: var(--hand-due-now-face); }
@@ -101,7 +112,8 @@
 .hand-row-owner { flex: 0 0 auto; display: inline-flex; }
 .hand-row-owner .card-owner-avatar { width: 18px; height: 18px; }
 .hand-row-title { flex: 0 1 auto; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-weight: 600; }
-.hand-section-row small { flex: 0 1 auto; min-width: 0; overflow: hidden; color: var(--muted); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.hand-section-row small { flex: 0 1 auto; min-width: 0; overflow: hidden; color: var(--muted); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+.hand-section-row > small:last-child { white-space: normal; overflow-wrap: anywhere; }
 .hand-section-row .hand-row-due { flex-shrink: 0; font-variant-numeric: tabular-nums; }
 /* Due dates use their group's red or yellow highlight. */
 .hand-row-due.is-due-now { color: var(--hand-due-now-face); font-weight: 700; }
@@ -114,45 +126,45 @@
 .hand-run-name:hover { color: var(--focus); text-decoration: underline; }
 /* 2026-11-06: plain Hand buttons press 1px like the shared .ui-button; translate leaves the sortable row's transform alone. */
 .hand-queue-handle:active:not(:disabled), .hand-queue-open:active:not(:disabled), .hand-section-row:active:not(:disabled), .hand-run-name:active:not(:disabled) { translate: 0 1px; }
-.hand-run-dates { color: var(--muted); font-size: 11px; }
+.hand-run-dates { color: var(--muted); font-size: 12px; }
+.hand-run-workload { flex: 1 0 100%; color: var(--muted); font-size: 12px; line-height: 16px; overflow-wrap: anywhere; }
 .hand-milestone-title { display: flex; flex-wrap: wrap; align-items: baseline; gap: 10px; }
 .hand-milestone-title > span { min-width: 0; max-width: 100%; }
-.hand-milestone-title small { color: var(--muted); font-size: 11px; font-weight: 400; }
+.hand-milestone-title small { color: var(--muted); font-size: 12px; font-weight: 400; }
 .hand-section .hand-empty { padding: 8px 0; }
 
-/* Team Hands keeps the 2026-11-03 per-member lists below the tabs. */
 .hand-member-heading { flex-wrap: wrap; }
-.hand-member-kind { font-size: 11px; color: var(--muted); }
+.hand-member-heading h2 { min-width: 0; overflow-wrap: anywhere; }
+.hand-member-kind { font-size: 12px; color: var(--muted); }
 .hand-count { margin-left: 4px; font: 12px 'Geist Mono', monospace; color: var(--muted); }
 .hand-empty { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.7; }
-.hand-cards { display: grid; grid-template-columns: repeat(auto-fill, 168px); align-items: stretch; gap: 18px; }
-.hand-card.sprint-task { width: 168px; min-height: 216px; margin: 0; }
-.hand-card .hand-card-open { display: flex; flex-direction: column; flex: 1; min-width: 0; padding: 0; border: 0; background: none; color: inherit; text-align: left; }
-.hand-card .hand-card-open:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
-.hand-card .sprint-task-body { flex: 1; min-width: 0; }
-.hand-card .sprint-task-body > strong { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
-.hand-card .sprint-task-owner > span { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
-.hand-card .sprint-task-owner .card-owner-avatar { flex-shrink: 0; width: 18px; height: 18px; }
-.hand-card.kind-hero { --card-metal: var(--hero-metal); --card-metal-ink: var(--hero-ink); --metal-sheen: var(--hero-sheen); }
-.hand-card.kind-doc { --card-metal: var(--doc-metal); }
-.hand-card-kind { display: inline-flex; align-items: center; gap: 4px; font-size: 10px; }
+.hand-cards { display: grid; grid-template-columns: repeat(auto-fill, var(--tile-width)); align-items: start; gap: var(--tile-gap); }
+.hand-team-card { display: flex; min-width: 0; flex-direction: column; gap: var(--space-2); }
+.hand-team-card-meta { display: flex; min-width: 0; flex-direction: column; gap: var(--space-1); color: var(--muted); font-size: var(--text-help-size); line-height: var(--text-help-leading); overflow-wrap: anywhere; }
+.hand-team-bookmark { display: inline-flex; align-items: baseline; gap: var(--space-1); }
+.hand-team-bookmark svg { flex-shrink: 0; }
+.hand-view .card-tags { --tag-compact-height: var(--text-help-leading); --tag-compact-font-size: var(--text-help-size); --tag-compact-line-height: var(--text-help-leading); }
 @media (max-width: 900px) {
   .hand-view { padding: 20px 16px 32px; }
   .hand-panel-header { flex-wrap: wrap; }
-  .hand-cards { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 12px; }
-  .hand-card.sprint-task { width: 100%; }
 }
 @media (max-width: 600px) {
   .hand-view { --shelf-inset: var(--space-3); }
   .hand-panel-header .page-tools { margin-inline-start: 0; }
   .hand-member-picker { width: 100%; }
   .hand-tabs { align-items: flex-end; gap: 12px; }
-  .hand-tab-list { gap: 8px 16px; }
+  .hand-tab-list { gap: 0 var(--space-4); }
+  .hand-queue-open { gap: var(--space-2); }
+  .hand-queue-open > .hand-queue-title { flex: 1 1 auto; }
   .hand-section-toolbar { flex-wrap: wrap; }
   .hand-section-row { flex-wrap: wrap; gap: 4px 10px; }
   .hand-row-title { flex: 1 1 calc(100% - 28px); white-space: normal; overflow-wrap: anywhere; }
 }
 
-/* 2026-11-05: tags take their own width (up to 40%), so the deck label follows the title on every row. */
-.hand-queue-open > .card-tags { flex: 0 1 auto; max-width: 40%; }
+@media (hover: none), (pointer: coarse) {
+  .hand-all-toggle, .hand-member-picker select, .hand-tab, .hand-show-all, .hand-empty-guide .control, .hand-section-row, .hand-run-name, .hand-queue-handle, .hand-queue-open, .hand-queue-remove { min-height: var(--control-target-touch, 44px); }
+  .hand-queue-handle, .hand-queue-remove { min-width: var(--control-target-touch, 44px); }
+  .hand-queue li { gap: var(--space-2); }
+}
+
 .hand-section-row .card-tags { max-width: 240px; }

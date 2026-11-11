@@ -111,67 +111,43 @@ const text = defineText({
   browse: 'выберите файл',
 });
 
-export interface AttachmentsPanelProps {
+interface AttachmentsPanelProps {
   card: CatalogCard;
   catalog: CatalogView;
   writable: boolean;
   onEdit: (action: CatalogAction) => Promise<boolean>;
+  resource?: ReturnType<typeof useCardAttachments>;
 }
 
 type UploadOrigin = 'browse' | 'drop' | 'paste';
 
-/** Attachments sidebar with type and order filters, file metadata, Markdown links, download, and deletion.
- *  Image previews open the viewer. Uploads support browsing, dropping onto the panel, and Ctrl+V.
- *  Mounted only while the panel is open. */
-export function AttachmentsPanel({ card, catalog, writable, onEdit }: AttachmentsPanelProps) {
-  const t = useText(text);
+/** The preview count and open panel share one revision and the same attachment event subscription. */
+export function useCardAttachments(cardId: string, source = attachmentSource(), enabled = true) {
   const [view, setView] = useState<CardAttachments | null>(null);
+  const [loadedIdentity, setLoadedIdentity] = useState('');
   const [listFailure, setListFailure] = useState('');
   const [loading, setLoading] = useState(true);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState('');
-  const [notice, setNotice] = useState('');
-  const [filter, setFilter] = useState<AttachmentTypeFilter>('all');
-  const [sortOrder, setSortOrder] = useState<AttachmentSortOrder>(readAttachmentSortOrder);
-  const [dragActive, setDragActive] = useState(false);
-  const [viewerIndex, setViewerIndex] = useState<number | null>(null);
-  const [pendingRemoval, setPendingRemoval] = useState<{ file: string; count: number } | null>(null);
   const viewRef = useRef<CardAttachments | null>(null);
   const operationInFlight = useRef(false);
   const reloadPending = useRef(false);
   const loadEpoch = useRef(0);
   const mounted = useRef(false);
-  const fileInput = useRef<HTMLInputElement>(null);
-  const panel = useRef<HTMLElement>(null);
-
-  const source = attachmentSource();
-  const identity = source + ':' + card.id;
+  const identity = source + ':' + cardId;
   const currentIdentity = useRef(identity);
   currentIdentity.current = identity;
-  const sortedFiles = view ? sortAttachmentFiles(view.files, sortOrder) : [];
-  const images = sortedFiles.filter(file => file.kind === 'image' && !file.missing);
-  const visibleFiles = sortedFiles.filter(file => filter === 'all' || file.kind === filter);
-  const members = catalog.members ?? [];
-  const filterOptions: { key: AttachmentTypeFilter; label: string }[] = [
-    { key: 'all', label: t.allFiles },
-    { key: 'image', label: t.images },
-    { key: 'pdf', label: t.documents },
-  ];
-  // Sort direction controls whether the newest or oldest file appears first.
-  const sortOptions: { key: AttachmentSortOrder; label: string }[] = [
-    { key: 'newest', label: t.newestFirst },
-    { key: 'oldest', label: t.oldestFirst },
-  ];
-
   const load = useCallback(async () => {
     if (!mounted.current || currentIdentity.current !== identity) return;
     const epoch = ++loadEpoch.current;
     setLoading(true);
     try {
-      const next = await fetchCardAttachments(source, card.id);
-      if (epoch !== loadEpoch.current) return;
+      const next = await fetchCardAttachments(source, cardId);
+      if (epoch !== loadEpoch.current || currentIdentity.current !== identity) return;
+      if (!next || !Array.isArray(next.files) || !Array.isArray(next.warnings) || typeof next.hash !== 'string') {
+        throw new Error(textNow(text).loadFailed);
+      }
       viewRef.current = next;
       setView(next);
+      setLoadedIdentity(identity);
       setListFailure('');
     } catch (failure) {
       if (epoch !== loadEpoch.current) return;
@@ -179,12 +155,13 @@ export function AttachmentsPanel({ card, catalog, writable, onEdit }: Attachment
     } finally {
       if (epoch === loadEpoch.current) setLoading(false);
     }
-  }, [card.id, source, identity]);
+  }, [cardId, source, identity]);
 
   useEffect(() => { viewRef.current = view; }, [view]);
   useEffect(() => {
+    if (!enabled) return;
     mounted.current = true;
-    const unsubscribe = subscribeCardAttachments(source, card.id, () => {
+    const unsubscribe = subscribeCardAttachments(source, cardId, () => {
       if (operationInFlight.current) { reloadPending.current = true; return; }
       void load();
     });
@@ -194,7 +171,35 @@ export function AttachmentsPanel({ card, catalog, writable, onEdit }: Attachment
     reloadPending.current = false;
     void load();
     return () => { mounted.current = false; loadEpoch.current += 1; unsubscribe(); };
-  }, [card.id, source, load]);
+  }, [cardId, source, load, enabled]);
+
+  return { view: loadedIdentity === identity ? view : null, listFailure, loading, setLoading, viewRef, operationInFlight, reloadPending, loadEpoch, load, source };
+}
+
+export function AttachmentsPanel({ card, catalog, writable, onEdit, resource }: AttachmentsPanelProps) {
+  const local = useCardAttachments(card.id, undefined, !resource);
+  const { view, listFailure, loading, setLoading, viewRef, operationInFlight, reloadPending, loadEpoch, load, source } = resource ?? local;
+  const t = useText(text);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
+  const [filter, setFilter] = useState<AttachmentTypeFilter>('all');
+  const [sortOrder, setSortOrder] = useState<AttachmentSortOrder>(readAttachmentSortOrder);
+  const [dragActive, setDragActive] = useState(false);
+  const [viewerIndex, setViewerIndex] = useState<number | null>(null);
+  const [pendingRemoval, setPendingRemoval] = useState<{ file: string; count: number } | null>(null);
+  const fileInput = useRef<HTMLInputElement>(null);
+  const panel = useRef<HTMLElement>(null);
+  const sortedFiles = view ? sortAttachmentFiles(view.files, sortOrder) : [];
+  const images = sortedFiles.filter(file => file.kind === 'image' && !file.missing);
+  const visibleFiles = sortedFiles.filter(file => filter === 'all' || file.kind === filter);
+  const members = catalog.members ?? [];
+  const filterOptions: { key: AttachmentTypeFilter; label: string }[] = [
+    { key: 'all', label: t.allFiles }, { key: 'image', label: t.images }, { key: 'pdf', label: t.documents },
+  ];
+  const sortOptions: { key: AttachmentSortOrder; label: string }[] = [
+    { key: 'newest', label: t.newestFirst }, { key: 'oldest', label: t.oldestFirst },
+  ];
 
   function finishOperation() {
     operationInFlight.current = false;

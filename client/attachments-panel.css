@@ -22,7 +22,7 @@
 /* 2026-11-08: the invitation wraps on a narrow panel; the browse link is the only way to pick a file, so it never hides
    under an ellipsis — only the invitation text may break (CP-09). */
 .attachments-drop-text { max-width: 100%; color: var(--ink); font-size: 16px; font-weight: 700; line-height: 18px; }
-.attachments-browse { padding: 0; border: 0; background: none; color: var(--mint, var(--accent)); font: inherit; white-space: nowrap; cursor: pointer; }
+.attachments-browse { padding: 0; border: 0; background: none; color: var(--action-mint-ink); font: inherit; white-space: nowrap; cursor: pointer; }
 .attachments-browse:hover:not(:disabled) { text-decoration: underline; text-underline-offset: 3px; }
 .attachments-browse:disabled { cursor: default; opacity: .5; }
 .attachments-busy { position: absolute; top: 50%; right: 16px; margin-top: -7px; color: var(--edit-hint); }
@@ -40,12 +40,12 @@
 .attachments-row-head { display: flex; align-items: center; gap: 8px; min-width: 0; min-height: 24px; }
 .attachments-row-head .card-owner-avatar { width: 24px; height: 24px; font-size: 9px; }
 .attachments-row-author { min-width: 0; overflow: hidden; color: var(--ink); font-size: 14px; font-weight: 700; line-height: 16px; white-space: nowrap; text-overflow: ellipsis; }
-.attachments-row-when { flex-shrink: 0; color: var(--mint, var(--accent)); white-space: nowrap; }
+.attachments-row-when { flex-shrink: 0; color: var(--action-mint-ink); white-space: nowrap; }
 .attachments-row-size { flex-shrink: 0; color: var(--edit-hint); white-space: nowrap; font-variant-numeric: tabular-nums; }
 .attachments-row-actions { display: flex; flex-shrink: 0; gap: 4px; margin-left: auto; }
 .attachments-row-actions .ui-button { width: 24px; height: 24px; padding: 0; border: 0; border-radius: var(--control-radius); color: var(--edit-hint); text-decoration: none; }
 .attachments-row-actions .ui-button:hover:not(:disabled) { color: var(--ink); background: var(--hover); }
-.attachments-row-actions .ui-button[data-copied] { color: var(--mint, var(--accent)); }
+.attachments-row-actions .ui-button[data-copied] { color: var(--action-mint-ink); }
 .attachments-row-actions .attachments-remove:hover:not(:disabled) { color: var(--danger); }
 /* 2026-11-09: reuse the card ID's short feedback bubble, anchored inward so it fits the attachment panel. */
 .attachment-copy-control { position: relative; display: inline-flex; }
@@ -65,10 +65,10 @@
 .attachment-viewer-name { display: flex; align-items: baseline; gap: 10px; min-width: 0; color: var(--ink); }
 .attachment-viewer-name strong { font-size: 13px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* 2026-11-08: the counter is one short number; it never shrinks or breaks — the long file name takes the ellipsis (CP-12). */
-.attachment-viewer-name span { flex-shrink: 0; color: var(--muted); font-family: 'Geist Mono', monospace; font-size: 11px; white-space: nowrap; }
-.attachment-viewer-tools { display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
+.attachment-viewer-name span { flex-shrink: 0; color: var(--muted); font-family: 'Geist Mono', monospace; font-size: 12px; white-space: nowrap; }
+.attachment-viewer-tools { display: flex; align-items: center; gap: var(--space-2); flex-shrink: 0; }
 .attachment-viewer-tools .ui-button, .attachment-viewer-tools a { color: var(--ink); }
-.attachment-viewer-zoom { min-width: 44px; color: var(--muted); font-family: 'Geist Mono', monospace; font-size: 11px; text-align: center; }
+.attachment-viewer-zoom { min-width: var(--control-target-touch); color: var(--muted); font-family: 'Geist Mono', monospace; font-size: 12px; text-align: center; }
 .attachment-viewer-stage { position: relative; display: grid; place-items: center; min-height: 0; flex: 1; overflow: hidden; }
 .attachment-viewer-pan { display: grid; place-items: center; width: 100%; height: 100%; cursor: default; }
 .attachment-viewer-pan.is-dragging { cursor: grabbing; }
@@ -77,4 +77,15 @@
 .attachment-viewer-previous { left: 14px; }
 .attachment-viewer-next { right: 14px; }
 .attachment-viewer-arrow:hover:not(:disabled) { background: var(--overlay-face); }
-.attachment-viewer-hint { padding: 8px 16px; background: var(--sidebar); border-top: 1px solid var(--line); color: var(--muted); font-size: 11px; text-align: center; }
+.attachment-viewer-hint { padding: 8px 16px; background: var(--sidebar); border-top: 1px solid var(--line); color: var(--muted); font-size: 12px; text-align: center; }
+@media (max-width: 600px) {
+  .attachment-viewer-bar { flex-direction: column; align-items: stretch; gap: var(--space-2); padding: var(--space-3); }
+  .attachment-viewer-name { justify-content: space-between; }
+  .attachment-viewer-tools { justify-content: flex-end; }
+}
+@media (pointer: coarse) {
+  .attachments-tools .ui-button, .attachments-row-actions .ui-button { width: var(--control-target-touch); height: var(--control-target-touch); min-height: var(--control-target-touch); }
+  .attachments-tools, .attachments-row-actions { gap: var(--space-2); }
+  .attachments-row-head { flex-wrap: wrap; }
+  .attachments-browse, .attachments-preview { min-height: var(--control-target-touch); }
+}

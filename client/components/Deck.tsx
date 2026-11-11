@@ -1,20 +1,21 @@
 import { defineText, formatNumber, locale, textNow, useLang, useText } from '../i18n.ts';
 import { moveFocus } from '../focus.ts';
-import { stateLabel } from '../locales/common.ts';
+import { kindLabel, priorityLabel, stateLabel } from '../locales/common.ts';
 import { readStoredValue } from '../storage.ts';
 import { navigateTabs } from '../tab-navigation.ts';
 import { useEscapeToClose } from '../useEscapeToClose.ts';
 import { useDesktopDirty } from '../desktop-bridge.ts';
 import { Fragment, useCallback, useDeferredValue, useEffect, useEffectEvent, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import type { ComponentProps, CSSProperties, FormEvent, PointerEvent, ReactElement, ReactNode, RefObject } from 'react';
+import type { ComponentProps, CSSProperties, FormEvent, ReactElement, ReactNode, RefObject } from 'react';
 import * as Dialog from '@radix-ui/react-dialog';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import * as Tooltip from '@radix-ui/react-tooltip';
 import { DndContext, DragOverlay, KeyboardSensor, MeasuringStrategy, PointerSensor, closestCenter, pointerWithin, useDndContext, useDraggable, useDroppable, useSensor, useSensors } from '@dnd-kit/core';
 import { SortableContext, arrayMove, rectSortingStrategy, sortableKeyboardCoordinates, useSortable } from '@dnd-kit/sortable';
 import type { AutoScrollOptions, CollisionDetection, DragStartEvent, DragEndEvent, DragOverEvent, KeyboardCoordinateGetter } from '@dnd-kit/core';
-import { Activity, Archive, ArrowDown, ArrowUp, BookOpen, Bot, Box, Braces, Bug, ChevronDown, ChevronRight, CircleCheck, Eye, Flag, Gamepad2, Gauge, GripVertical, Hourglass, Image, Inbox, Layers, ListChecks, LoaderCircle, Palette, Pencil, Plus, Route, ScrollText, Search, Shield, Swords, Tag, Trash2, UsersRound, Volume2, X } from 'lucide-react';
+import { Activity, Archive, ArrowDown, ArrowUp, BookOpen, Box, Braces, Bug, ChevronDown, ChevronRight, CircleCheck, Copy, Ellipsis, Eye, Flag, Gamepad2, GripVertical, Hourglass, Image, Inbox, Layers, ListChecks, LoaderCircle, Palette, Pencil, Plus, Route, ScrollText, Search, SlidersHorizontal, Swords, Trash2, UsersRound, Volume2, X } from 'lucide-react';
 import type { CatalogCard, CatalogDeck, CatalogDeckZone, CatalogSpace, CatalogView, CardKind, CardPriority, DeckKind, DeckStyle, SpaceKind } from '../../src/catalog-contracts.ts';
+import { catalogHandPositions } from '../../src/catalog-hand.ts';
 import { defaultDeckKind, deckCanBeInbox } from '../../src/catalog-contracts.ts';
 import type { WorkspaceSnapshot } from '../../src/workspace-contracts.ts';
 import { useCatalog } from '../useCatalog.ts';
@@ -39,6 +40,7 @@ import { DeckTagsPanel, cardsMatchingTagPick, emptyTagPick, tagPickSize, type Ta
 import { AttachSubCards, type AttachSubCardsRequest } from '../AttachSubCards.tsx';
 import { DeckActivity } from './DeckActivity.tsx';
 import { DeckSummary } from './DeckSummary.tsx';
+import { EffortIcon } from './EffortIcon.tsx';
 import { EmptyState } from './EmptyState.tsx';
 import { DeckTypePicker } from './DeckTypePicker.tsx';
 import { DeckAutomation, type DeckAutomationSettings } from './DeckAutomation.tsx';
@@ -55,9 +57,9 @@ import { currentMember } from '../current-member.ts';
 import { emitSignal } from '../onboarding/signals.ts';
 import { CardTags, TagBadge, TagTitlePrefix } from './CardTags.tsx';
 import { cardHeroEffort } from './CardPropertiesPanel.tsx';
-import { JourneyPriorityIcon } from './JourneyMiniCard.tsx';
+import { PriorityIcon } from './PriorityIcon.tsx';
 import { CardIndicators } from './CardIndicators.tsx';
-import { CardAttachmentRefreshContext, CardTransferContext, CatalogCardTile, OpenQuestionsBadge, cardIcons, cardKinds, emptyCards, taskStateIcons, useCardTransferDrag } from './CatalogCardTile.tsx';
+import { CardTransferContext, CatalogCardTile, OpenQuestionsBadge, cardIcons, emptyCards, taskStateIcons, useCardTransferDrag } from './CatalogCardTile.tsx';
 import { DependencyStateWarning, dependencyConflicts, type DependencyConflict } from './DependencyWarning.tsx';
 import { ConfirmStrip } from './ConfirmStrip.tsx';
 import type { CatalogMember } from '../../src/catalog-contracts.ts';
@@ -70,6 +72,7 @@ import '../deck-settings.css';
 import '../deck-zones.css';
 import '../deck-table.css';
 import '../card-scope.css';
+import '../project-templates.css';
 import { deckArt, type DeckArt } from '../deck-art.ts';
 import { captureCardTransfer, cardTransferRequest, cardTransferTargetIssue, type CardTransferBaseline } from '../card-transfer.ts';
 import { CardDragFace, CardDragTabs, CardDropDeckPicker, CardGroupDropSurface, CardHeroPromotionConfirmation, captureCardDragPreview, cardDragText, type CardDragPreview } from './CardDragPresentation.tsx';
@@ -109,8 +112,11 @@ const text = defineText({
   targetDeck: "Target deck",
   transferHelp: "Family and dependencies stay linked · Esc to cancel",
   transferChoose: "drop on a deck below",
+  transferChooseGroup: "drop on a group below",
+  transferDeckMode: "Deck",
+  transferGroupMode: "Group",
   transferHere: "Here",
-  unassigned: "Unassigned",
+  unassigned: "No deck",
   selection: "Selection",
   card: "Card",
   properties: "Properties",
@@ -178,13 +184,18 @@ const text = defineText({
   startTemplateTitle: "Give your project a starting structure",
   startTemplateHelp: "A starter adds ready spaces, decks and Journeys — for a game or a software project.",
   deckActions: "Deck actions",
+  deckTools: "Search and deck tools",
+  copyDeckLink: "Copy deck link",
+  deckLinkCopied: "Deck link copied",
+  deckLinkFailed: "Could not copy the link. Try again.",
+  spaceActions: "Space actions",
   scopeActions: "Card view tools",
   customOrderHint: "Order differs from the deck order",
   leftPanelWidth: "Left panel width",
   noMatches: "No matches. Clear search or change the filters.",
   noCardsProject: "No cards yet.",
   emptyDeckTitle: "No cards yet",
-  emptyDeckHelp: "Add the first card here or bring cards in from a CSV file.",
+  emptyDeckHelp: "Create the first card to start working in this deck.",
   noCardsDeck: "No cards in this deck yet. Add the first one with “New card”.",
   scopeNoCardsHelp: "Cards are created inside a deck. Open your decks to add the first one.",
   scopeOpenDecks: "Open decks",
@@ -197,8 +208,8 @@ const text = defineText({
   searchScopeCards: "Filter cards…",
   zone: "Zone",
   noSpaces: "No spaces yet.",
-  createSpaceHelp: " Create the first space with +, then add decks to it.",
-  sandboxSpaceHelp: " Open the test copy to create a space.",
+  createSpaceHelp: "Create the first space, then add decks to it.",
+  sandboxSpaceHelp: "Open the test copy to create a space.",
   noDeckMatches: "No decks found. Change the query or clear search.",
   emptySpace: "This space has no decks.",
   deckTitle: "Deck title",
@@ -215,8 +226,6 @@ const text = defineText({
   imageReadFailed: "Could not read the image. Choose the file again.",
   artFailed: "Could not load the library cover. Try again.",
   coverSaveFailed: "Settings saved, but the image was not. The file and fields are still in the form. Try saving again.",
-  inboxAssigned: "This deck is now the Inbox for new cards with no deck selected.",
-  inboxRemoved: "Inbox assignment removed.",
   newDeck: "New deck",
   space: "Space",
   deckType: "Deck type",
@@ -224,7 +233,7 @@ const text = defineText({
   appearance: "Appearance",
   color: "Color",
   inboxDeck: "Inbox deck",
-  inboxHelp: "Cards with no deck selected go here. This setting saves immediately.",
+  inboxHelp: "Cards with no deck selected go here. Applied when you save.",
   inboxBadgeHint: "Inbox: cards with no deck chosen go here",
   inboxTasksOnly: "Inbox must take Tasks: Task or Mixed decks only",
   customImage: "Custom image",
@@ -239,12 +248,12 @@ const text = defineText({
   beforeSpace: (title: string) => `Before “${title}”`,
   atEnd: "At the end",
   move: "Move",
-  saveBeforeMove: "Save the appearance before moving.",
   save: "Save",
   labelAddZone: "Add zone",
   labelPriority: "Priority",
   labelEffort: "Effort",
   labelTags: "Tags",
+  notTagged: "Not tagged",
   labelArchiveCard: "Archive card",
   labelUnarchiveCard: "Unarchive card",
   labelMovetoTrash: "Move to Trash",
@@ -276,6 +285,7 @@ const text = defineText({
   deckProgress: (accepted: number, tasks: number) => `${number(accepted)} of ${number(tasks)} tasks accepted`,
   openCount: (count: number) => `Open tasks and other cards: ${number(count)}`,
   acceptedCount: (count: number) => `Done tasks: ${number(count)}`,
+  reviewCount: (count: number) => `Tasks in review: ${number(count)} (part of the open count)`,
   effortProgress: (done: string, total: string, missing: number) => `Effort: ${done} of ${total} done; ${number(missing)} unestimated`,
   selectGroup: (title: string) => `Select group: ${title}`,
   selectAll: (title: string) => `Select all: ${title}`,
@@ -308,8 +318,6 @@ const text = defineText({
   sourceWarnings: (count: number) => `Source warnings: ${number(count)}`,
   // 2026-11-09: the inventory under the project name sets each number apart in Geist Mono, so the nouns are separate keys.
   sourceDocuments: (count: number) => `Markdown ${new Intl.PluralRules(locale('en')).select(count) === 'one' ? 'document' : 'documents'}`,
-  sourceTasks: 'Task',
-  sourceHeroes: 'Hero',
   sourceDocs: 'Doc Cards',
   transferCount: (count: number) => count === 1 ? 'Move the card to' : `Move ${number(count)} cards to`,
   defaultDeckType: (kind: string) => `Default deck type: ${kind}`,
@@ -317,7 +325,7 @@ const text = defineText({
     let consequence = '';
     if (count > 0) {
       const cards = new Intl.PluralRules(locale('en')).select(count) === 'one' ? 'card' : `${number(count)} cards`;
-      consequence = ` Its ${cards} will move to “Unassigned”.`;
+      consequence = ` Its ${cards} will move to “No deck”.`;
     }
     return `Delete deck “${title}”?${consequence} Deck Journeys prevent deletion.`;
   },
@@ -345,6 +353,9 @@ const text = defineText({
   targetDeck: "Целевая колода",
   transferHelp: "Семья и зависимости сохраняются · Esc — отмена",
   transferChoose: "отпустите над колодой внизу",
+  transferChooseGroup: "отпустите над группой внизу",
+  transferDeckMode: "Колода",
+  transferGroupMode: "Группа",
   transferHere: "Здесь",
   unassigned: "Без колоды",
   selection: "Выбор",
@@ -414,13 +425,18 @@ const text = defineText({
   startTemplateTitle: "Создайте начальную структуру проекта",
   startTemplateHelp: "Заготовка добавит готовые пространства, колоды и Journeys — для игры или софтверного проекта.",
   deckActions: "Действия колоды",
+  deckTools: "Поиск и инструменты колоды",
+  copyDeckLink: "Копировать ссылку на колоду",
+  deckLinkCopied: "Ссылка на колоду скопирована",
+  deckLinkFailed: "Не удалось скопировать ссылку. Повторите попытку.",
+  spaceActions: "Действия пространства",
   scopeActions: "Инструменты списка",
   customOrderHint: "Порядок отличается от порядка колоды",
   leftPanelWidth: "Ширина левой панели",
   noMatches: "Совпадений нет. Сбросьте поиск или измените фильтры.",
   noCardsProject: "Карточек пока нет.",
   emptyDeckTitle: "Карточек пока нет",
-  emptyDeckHelp: "Добавьте первую карточку или перенесите карточки из CSV-файла.",
+  emptyDeckHelp: "Создайте первую карточку, чтобы начать работу в колоде.",
   noCardsDeck: "В этой колоде пока нет карточек. Добавьте первую кнопкой «Новая карточка».",
   scopeNoCardsHelp: "Карточки создаются внутри колоды. Откройте колоды, чтобы добавить первую.",
   scopeOpenDecks: "К колодам",
@@ -433,8 +449,8 @@ const text = defineText({
   searchScopeCards: "Фильтр карточек…",
   zone: "Зона",
   noSpaces: "Пространств пока нет.",
-  createSpaceHelp: " Создайте первое пространство кнопкой + и добавьте в него колоды.",
-  sandboxSpaceHelp: " Откройте тестовую копию для создания пространства.",
+  createSpaceHelp: "Создайте первое пространство и добавьте в него колоды.",
+  sandboxSpaceHelp: "Откройте тестовую копию, чтобы создать пространство.",
   noDeckMatches: "Колоды не найдены. Измените запрос или сбросьте поиск.",
   emptySpace: "В пространстве нет колод.",
   deckTitle: "Название колоды",
@@ -457,8 +473,6 @@ const text = defineText({
   imageReadFailed: "Не удалось прочитать изображение. Выберите файл ещё раз.",
   artFailed: "Не удалось взять обложку из библиотеки. Попробуйте ещё раз.",
   coverSaveFailed: "Настройки сохранены. Изображение не сохранено; файл и поля оставлены в форме. Повторите сохранение.",
-  inboxAssigned: "Эта колода назначена Inbox для новых карточек без явного выбора.",
-  inboxRemoved: "Назначение Inbox снято.",
   newDeck: "Новая колода",
   space: "Пространство",
   deckType: "Тип колоды",
@@ -466,7 +480,7 @@ const text = defineText({
   appearance: "Оформление",
   color: "Цвет",
   inboxDeck: "Колода-приёмник Inbox",
-  inboxHelp: "Карточки без явно выбранной колоды попадают сюда. Настройка сохраняется сразу.",
+  inboxHelp: "Карточки без выбранной колоды попадают сюда. Применяется при сохранении.",
   inboxBadgeHint: "Inbox: сюда попадают карточки без выбранной колоды",
   inboxTasksOnly: "Inbox принимает задачи: только колоды Task и Mixed",
   customImage: "Собственное изображение",
@@ -481,12 +495,12 @@ const text = defineText({
   beforeSpace: (title: string) => `Перед «${title}»`,
   atEnd: "В конец",
   move: "Переместить",
-  saveBeforeMove: "Сохраните оформление перед перемещением.",
   save: "Сохранить",
   labelAddZone: "Добавить зону",
   labelPriority: "Приоритет",
   labelEffort: "Оценка",
   labelTags: "Теги",
+  notTagged: "Без тегов",
   labelArchiveCard: "Архивировать карточку",
   labelUnarchiveCard: "Вернуть из архива",
   labelMovetoTrash: "Переместить в корзину",
@@ -518,6 +532,7 @@ const text = defineText({
   deckProgress: (accepted: number, tasks: number) => `Принято задач: ${number(accepted)} из ${number(tasks)}`,
   openCount: (count: number) => `Открытые задачи и обычные карточки: ${number(count)}`,
   acceptedCount: (count: number) => `Принятые задачи: ${number(count)}`,
+  reviewCount: (count: number) => `Задач на приёмке: ${number(count)} (в составе открытых)`,
   effortProgress: (done: string, total: string, missing: number) => `Оценка: принято ${done} из ${total}; без оценки ${number(missing)}`,
   selectGroup: (title: string) => `Выбрать группу: ${title}`,
   selectAll: (title: string) => `Выбрать все: ${title}`,
@@ -558,8 +573,6 @@ const text = defineText({
     if (rule === 'one') return 'Markdown-документ';
     return rule === 'few' ? 'Markdown-документа' : 'Markdown-документов';
   },
-  sourceTasks: 'Task',
-  sourceHeroes: 'Hero',
   sourceDocs: 'Doc Cards',
   transferCount: (count: number) => count === 1 ? 'Перенести карточку в' : `Перенести карточки (${number(count)}) в`,
   defaultDeckType: (kind: string) => `Тип колоды по умолчанию: ${kind}`,
@@ -601,6 +614,7 @@ function transferAutoScrollOptions(manualOrdering: boolean): AutoScrollOptions {
     canScroll: element => {
       if (element === document.scrollingElement) return false;
       if (element instanceof HTMLElement && getComputedStyle(element).position === 'fixed') return true;
+      if (element.matches('.card-transfer-target-groups, .card-group-drop-panel') && element.closest('.card-transfer-targets')) return true;
       return manualOrdering && element.classList.contains('workspace-main');
     },
   };
@@ -616,19 +630,19 @@ function readLaneSearch(query: URLSearchParams): LaneSearchEntry[] {
   });
 }
 
-interface DeckCardCounts { open: number; accepted: number; tasks: number }
-const emptyDeckCounts: DeckCardCounts = { open: 0, accepted: 0, tasks: 0 };
+interface DeckCardCounts { open: number; accepted: number; tasks: number; review?: number }
+const emptyDeckCounts: DeckCardCounts = { open: 0, accepted: 0, tasks: 0, review: 0 };
 
 function countDeckCards(cards: readonly CatalogCard[]): DeckCardCounts {
   // Hero progress belongs to its children; only a Task has its own accepted state (2026-11-03).
   const tasks = cards.filter(card => card.kind === 'task');
   const accepted = tasks.filter(card => card.state === 'done').length;
-  return { open: cards.length - accepted, accepted, tasks: tasks.length };
+  return { open: cards.length - accepted, accepted, tasks: tasks.length, review: tasks.filter(card => card.state === 'review').length };
 }
 
 function deckCountLabel(counts: DeckCardCounts) {
   const t = textNow(text);
-  const label = t.deckCounts(counts.open, counts.accepted);
+  const label = t.deckCounts(counts.open, counts.accepted) + (counts.review ? `; ${t.reviewCount(counts.review)}` : '');
   return counts.tasks > 0 ? `${label}; ${t.deckProgress(counts.accepted, counts.tasks)}` : label;
 }
 
@@ -652,7 +666,8 @@ export function DeckHeaderHint({ label, keys, note, side = 'bottom', children }:
  * under the covers; the same line opens the source warnings, which list under the header. */
 function CatalogSourceLine({ documents, kinds, warnings, warningsOpen, onToggleWarnings }: { documents: number; kinds: Record<CardKind, number>; warnings: number; warningsOpen: boolean; onToggleWarnings: () => void }) {
   const t = useText(text);
-  const parts: [number, string][] = [[documents, t.sourceDocuments(documents)], [kinds.task, t.sourceTasks], [kinds.hero, t.sourceHeroes], [kinds.doc, t.sourceDocs]];
+  const lang = useLang();
+  const parts: [number, string][] = [[documents, t.sourceDocuments(documents)], [kinds.task, kindLabel('task', lang)], [kinds.hero, kindLabel('hero', lang)], [kinds.doc, t.sourceDocs]];
   return <p className="catalog-source">
     {parts.map(([count, label], index) => <Fragment key={index}>{index > 0 && <span className="dot-separator">·</span>}<span className="catalog-source-part"><span className="catalog-source-count">{number(count)}</span> {label}</span></Fragment>)}
     {warnings > 0 && <><span className="dot-separator">·</span><button type="button" className="catalog-source-warnings" aria-expanded={warningsOpen} aria-controls="catalog-source-warnings" onClick={onToggleWarnings}>{t.sourceWarnings(warnings)}</button></>}
@@ -663,6 +678,7 @@ function DeckCounts({ counts }: { counts: DeckCardCounts }) {
   const t = useText(text);
   return <span className="catalog-cover-counts" role="group" aria-label={deckCountLabel(counts)}>
     {(counts.open > 0 || counts.accepted === 0) && <span className="catalog-cover-count" title={t.openCount(counts.open)} aria-hidden="true">{number(counts.open)}</span>}
+    {Boolean(counts.review) && <span className="catalog-cover-count is-review" title={t.reviewCount(counts.review!)} aria-hidden="true"><Eye size={12} />{number(counts.review!)}</span>}
     {counts.accepted > 0 && <span className="catalog-cover-count is-accepted" title={t.acceptedCount(counts.accepted)} aria-hidden="true">{number(counts.accepted)}</span>}
   </span>;
 }
@@ -801,8 +817,8 @@ function defaultPreviewWidth() {
 function useCatalogPanels() {
   const [leftPanelWidth, setLeftPanelWidth] = useState(() => storedPanelWidth('deckmate-left-panel-width-v6', defaultPreviewWidth(), 420, 800));
   const [summaryCollapsed, setSummaryCollapsed] = useState(() => {
-    if (window.matchMedia('(max-width: 760px)').matches) return true;
-    try { return readStoredValue(localStorage, 'deckmate-summary-collapsed') === 'true'; } catch { return false; }
+    const fallback = window.matchMedia('(max-width: 760px)').matches;
+    try { const saved = readStoredValue(localStorage, 'deckmate-summary-collapsed'); return saved === null ? fallback : saved === 'true'; } catch { return fallback; }
   });
   useEffect(() => {
     try { localStorage.setItem('deckmate-left-panel-width-v6', String(leftPanelWidth)); localStorage.setItem('deckmate-summary-collapsed', String(summaryCollapsed)); }
@@ -864,7 +880,8 @@ function CardGroupHeading({ group, tagDefinitions, lookups, selectedIds, disable
   }
   const tagName = group.key.startsWith('tags:') && group.key !== 'tags:none' ? group.key.slice(5) : null;
   const groupLabel = tagName ? <TagBadge name={tagName} definition={tagDefinitions?.find(tag => tag.name === tagName)} /> : group.title;
-  const laneIcon = group.key.startsWith('deck:') || group.key.startsWith('priority:') ? <Layers size={13} /> : null;
+  const laneIcon = group.key.startsWith('priority:') ? <span aria-hidden="true"><PriorityIcon priority={groupPriorities[group.key]} size={16} /></span>
+    : group.key.startsWith('deck:') ? <Layers size={13} /> : null;
   return <div className={'catalog-card-group-heading' + (zone ? ' catalog-zone-heading' : '')} data-layout-follow={'heading:' + group.key} data-selecting={selectedIds.size > 0 || undefined}>
     {zone && zone.dragHandle}
     <div className="catalog-group-label">
@@ -888,7 +905,7 @@ function CardGroupHeading({ group, tagDefinitions, lookups, selectedIds, disable
             onEscape={zone.deleteConfirm.onKeep} onKeep={zone.deleteConfirm.onKeep} onConfirm={zone.deleteConfirm.onConfirm} />
         : <Button type="button" variant="ghost" size="icon" className="is-danger" disabled={disabled} title={t.deleteZone(group.title)} aria-label={t.deleteZone(group.title)} onClick={zone.onDelete}><Trash2 size={13} /></Button>)}
     </span>}
-    {effort && <span className="catalog-group-effort" title={effort.description} aria-label={effort.description}><Gauge size={14} />{effort.label}</span>}
+    {effort && <span className="catalog-group-effort" title={effort.description} aria-label={effort.description}><EffortIcon size={14} />{effort.label}</span>}
   </div>;
 }
 
@@ -970,13 +987,14 @@ function CardGroupDropTarget({ group, baseline, lane, catalogCards }: { group: C
     className={'card-group-drop-target' + (current ? ' is-current' : '') + (drop.isOver ? ' is-over' : '')}>{group.title}</button>;
 }
 
-function CardGroupDropPanel({ groups, baseline, laneOf, catalogCards }: { groups: CardGroup[]; baseline: CardTransferBaseline; laneOf: (group: CardGroup) => GroupLane | null; catalogCards: CatalogView['cards'] }) {
+function CardGroupDropPanel({ groups, baseline, laneOf, catalogCards, embedded = false }: { groups: CardGroup[]; baseline: CardTransferBaseline; laneOf: (group: CardGroup) => GroupLane | null; catalogCards: CatalogView['cards']; embedded?: boolean }) {
   const text = useCardDragText(cardDragText);
   const blocker = useDroppable({ id: 'card-group-panel-background', data: { operation: 'card-drop-blocker', surface: 'card-group-panel' } });
   const panel = useRef<HTMLElement>(null);
   const [bounds, setBounds] = useState({ top: 0, bottom: 0 });
   useLayoutEffect(() => {
-    const workbench = panel.current?.closest('.catalog-workbench');
+    if (embedded) return;
+    const workbench = panel.current?.closest('.deck-view')?.querySelector('.catalog-workbench');
     if (!workbench) return;
     const dock = document.querySelector<HTMLElement>('.card-transfer-targets');
     // 2026-11-08: the dock wraps by viewport/language; its layout height excludes the entrance animation's translate.
@@ -991,10 +1009,10 @@ function CardGroupDropPanel({ groups, baseline, laneOf, catalogCards }: { groups
     window.addEventListener('resize', measure);
     window.addEventListener('scroll', measure, true);
     return () => { observer.disconnect(); window.removeEventListener('resize', measure); window.removeEventListener('scroll', measure, true); };
-  }, []);
+  }, [embedded]);
   const targets = groups.flatMap(group => { const lane = laneOf(group); return lane ? [{ group, lane }] : []; });
   if (!targets.length) return null;
-  return <aside ref={node => { panel.current = node; blocker.setNodeRef(node); }} className="card-group-drop-panel" style={bounds} aria-label={text.groups}>{targets.map(({ group, lane }) =>
+  return <aside ref={node => { panel.current = node; blocker.setNodeRef(node); }} className={'card-group-drop-panel' + (embedded ? ' is-embedded' : '')} style={embedded ? undefined : bounds} aria-label={text.groups}>{targets.map(({ group, lane }) =>
     <CardGroupDropTarget key={group.key} group={group} baseline={baseline} lane={lane} catalogCards={catalogCards} />)}</aside>;
 }
 
@@ -1034,13 +1052,13 @@ function CatalogCardGroupSection({ group, baseline, lane, zoneDrag, children, po
 }
 
 /** One deck in the drag dock: the deck's own cover in miniature, so the destination is recognized at a glance. */
-function CardTransferTarget({ baseline, deck, label, source, catalogCards }: { baseline: CardTransferBaseline; deck: CatalogDeck | null; label: string; source: WorkspaceSnapshot['source']; catalogCards: CatalogView['cards'] }) {
+function CardTransferTarget({ baseline, deck, label, source, catalogCards, surface }: { baseline: CardTransferBaseline; deck: CatalogDeck | null; label: string; source: WorkspaceSnapshot['source']; catalogCards: CatalogView['cards']; surface?: 'card-deck-dock' }) {
   const t = useText(text);
   const dragText = useCardDragText(cardDragText);
   const issue = cardTransferTargetIssue(baseline, deck, catalogCards);
   const blocked = issue === 'same-deck' || issue === 'incompatible';
   const { setNodeRef, isOver } = useDroppable({ id: deck ? 'card-deck-target:deck:' + deck.id : 'card-deck-target:none', disabled: blocked,
-    data: { kind: 'deck', operation: 'card-transfer', deckId: deck?.id ?? null, spaceId: deck?.spaceId ?? '', label } });
+    data: { kind: 'deck', operation: 'card-transfer', surface, deckId: deck?.id ?? null, spaceId: deck?.spaceId ?? '', label } });
   let hint = label;
   if (issue === 'same-deck') hint = t.alreadyHere;
   else if (issue === 'incompatible') hint = t.incompatibleDeck;
@@ -1095,8 +1113,31 @@ function AddZoneControl({ disabled, onAdd }: { disabled: boolean; onAdd: (title:
  * The deck dock (2026-11-06): it rises from the bottom while a card is dragged, lists every deck as a small cover grouped
  * by space, and names the deck under the pointer in its heading, so the destination is never a guess.
  */
-function CardTransferTargets({ baseline, catalog, source }: { baseline: CardTransferBaseline; catalog: CatalogView; source: WorkspaceSnapshot['source'] }) {
+function CardDropMode({ mode, label, current, onChange }: { mode: 'deck' | 'group'; label: string; current: string; onChange: (mode: 'deck' | 'group') => void }) {
+  const drop = useDroppable({ id: 'card-drop-mode:' + mode, data: { operation: 'card-drop-blocker', surface: 'card-drop-mode' } });
+  // 2026-11-11: a captured touch pointer switches destinations by dragging over the tab, without releasing the card.
+  useEffect(() => { if (drop.isOver) onChange(mode); }, [drop.isOver, mode, onChange]);
+  return <button ref={drop.setNodeRef} type="button" className="control" data-drop-mode={mode} aria-pressed={current === mode} tabIndex={-1} onClick={() => onChange(mode)}>{label}</button>;
+}
+
+function CardTransferTargets({ baseline, catalog, source, groups, laneOf, pointerDrag }: {
+  baseline: CardTransferBaseline; catalog: CatalogView; source: WorkspaceSnapshot['source'];
+  groups: CardGroup[]; laneOf: (group: CardGroup) => GroupLane | null; pointerDrag: boolean;
+}) {
   const t = useText(text);
+  const [mobile, setMobile] = useState(() => window.matchMedia('(max-width: 600px)').matches);
+  const [mode, setMode] = useState<'deck' | 'group'>('deck');
+  const blocker = useDroppable({ id: 'card-deck-dock-background', disabled: !mobile, data: { operation: 'card-drop-blocker', surface: 'card-deck-dock' } });
+  useEffect(() => {
+    const media = window.matchMedia('(max-width: 600px)');
+    const update = () => setMobile(media.matches);
+    media.addEventListener('change', update);
+    update();
+    return () => media.removeEventListener('change', update);
+  }, []);
+  const hasGroups = pointerDrag && groups.some(group => laneOf(group) !== null);
+  const showGroups = mobile && hasGroups && mode === 'group';
+  const groupPanel = hasGroups && <CardGroupDropPanel groups={groups} baseline={baseline} laneOf={laneOf} catalogCards={catalog.cards} embedded={mobile} />;
   const { over } = useDndContext();
   const target = over?.data.current?.operation === 'card-transfer' ? over.data.current as { deckId: string | null; spaceId: string; label: string } : null;
   const targetSpace = target?.deckId ? catalog.spaces.find(space => space.id === target.spaceId)?.title : undefined;
@@ -1106,28 +1147,32 @@ function CardTransferTargets({ baseline, catalog, source }: { baseline: CardTran
     document.documentElement.classList.toggle('is-transfer-target-over', overDeck);
     return () => document.documentElement.classList.remove('is-transfer-target-over');
   }, [overDeck]);
-  return <aside className={'card-transfer-targets' + (target ? ' has-target' : '')} aria-label={t.targetDeck}>
+  return <><aside className={'card-transfer-targets' + (target ? ' has-target' : '') + (mobile ? ' is-mobile' : '')} aria-label={showGroups ? t.transferGroupMode : t.targetDeck}>
     <header className="card-transfer-targets-heading">
       <p className="card-transfer-destination" aria-live="polite">
         <span>{t.transferCount(baseline.cards.length)}</span>
         {target ? <><strong key={target.label}>{target.label}</strong>{targetSpace && <span className="card-transfer-destination-space">{targetSpace}</span>}</>
-          : <em>{t.transferChoose}</em>}
+          : <em>{showGroups ? t.transferChooseGroup : t.transferChoose}</em>}
       </p>
       <span className="card-transfer-help">{t.transferHelp}</span>
     </header>
-    <div className="card-transfer-target-groups">
+    {mobile && hasGroups && <div className="deck-drop-mode-switch control-segmented" role="group" aria-label={t.transferCount(baseline.cards.length)}>
+      <CardDropMode mode="deck" label={t.transferDeckMode} current={mode} onChange={setMode} />
+      <CardDropMode mode="group" label={t.transferGroupMode} current={mode} onChange={setMode} />
+    </div>}
+    {showGroups ? groupPanel : <div className="card-transfer-target-groups" ref={mobile ? blocker.setNodeRef : undefined}>
       <div className="card-transfer-target-group"><span className="card-transfer-space">{t.unassigned}</span>
-        <div className="card-transfer-target-row"><CardTransferTarget baseline={baseline} deck={null} label={t.unassigned} source={source} catalogCards={catalog.cards} /></div></div>
+        <div className="card-transfer-target-row"><CardTransferTarget baseline={baseline} deck={null} label={t.unassigned} source={source} catalogCards={catalog.cards} surface={mobile ? 'card-deck-dock' : undefined} /></div></div>
       {catalog.spaces.map(space => {
         const decks = catalog.decks.filter(deck => deck.spaceId === space.id);
         if (!decks.length) return null;
         return <div className="card-transfer-target-group" key={space.id} role="group" aria-label={space.title}>
           <span className="card-transfer-space">{space.title}</span>
-          <div className="card-transfer-target-row">{decks.map(deck => <CardTransferTarget key={deck.id} baseline={baseline} deck={deck} label={deck.title} source={source} catalogCards={catalog.cards} />)}</div>
+          <div className="card-transfer-target-row">{decks.map(deck => <CardTransferTarget key={deck.id} baseline={baseline} deck={deck} label={deck.title} source={source} catalogCards={catalog.cards} surface={mobile ? 'card-deck-dock' : undefined} />)}</div>
         </div>;
       })}
-    </div>
-  </aside>;
+    </div>}
+  </aside>{!mobile && groupPanel}</>;
 }
 
 function DeckNeighborCover({ deck, counts, source, inbox, current, disabled, baseline, catalogCards, onOpen }: {
@@ -1212,8 +1257,8 @@ function CatalogTableRow({ card, lookups, members, tagDefinitions, catalog, curr
     data-kind={card.kind} data-state={card.kind === 'task' ? statusClass(card.state ?? '') : undefined}
     className={'deck-table-row' + (checked ? ' is-multi-selected' : '') + (openedId === card.id ? ' is-opened' : '') + (orderDrop.isOver ? ' is-card-order-target' : '')}>
     <td className="deck-table-select"><input className="deck-table-check" type="checkbox" checked={checked} disabled={disabled} aria-label={t.selectCard(card.title)} onChange={event => onToggle(card.id, Boolean((event.nativeEvent as MouseEvent).shiftKey))} /></td>
-    <td className={'deck-table-priority' + (card.priority ? '' : ' is-empty')}><span data-shortcut-property="priority"><JourneyPriorityIcon priority={card.priority} size={16} /></span></td>
-    <td className={'deck-table-effort' + (effort == null ? ' is-empty' : '')}><span data-shortcut-property="effort"><Gauge size={16} aria-hidden="true" />{effort == null ? <span className="visually-hidden">{t.noEffort}</span> : <span>{formatNumber(effort, 2, lang)}</span>}</span></td>
+    <td className={'deck-table-priority' + (card.priority ? '' : ' is-empty')}><span data-shortcut-property="priority"><PriorityIcon priority={card.priority} size={16} /></span></td>
+    <td className={'deck-table-effort' + (effort == null ? ' is-empty' : '')}><span data-shortcut-property="effort"><EffortIcon size={16} />{effort == null ? <span className="visually-hidden">{t.noEffort}</span> : <span>{formatNumber(effort, 2, lang)}</span>}</span></td>
     <td className="deck-table-card">{parent && <CardFamilyPopover projectTags={tagDefinitions} members={members} hero={parent} children={familyChildren(lookups, parent.id)} disabled={disabled} onOpen={onFamilyOpen} />}
       {heroChildren.length > 0 ? <span className="deck-table-hero">{titleButton}<SubCardProgress cards={heroChildren} cardsById={lookups.cardById} /></span> : titleButton}
       </td>
@@ -1251,7 +1296,7 @@ function DeckHoveredCardActions({ ref, root, catalog, lookups, snapshot, writabl
   const [panel, setPanel] = useState<HoverCardPanel | null>(null);
   const [tagQuery, setTagQuery] = useState('');
   const [saving, setSaving] = useState(false);
-  const [notice, setNotice] = useState<'changeUnconfirmed' | 'saveFailed' | 'reopenRequired' | 'coverSaveFailed' | 'inboxAssigned' | 'inboxRemoved' | ''>('');
+  const [notice, setNotice] = useState<'changeUnconfirmed' | 'saveFailed' | 'reopenRequired' | 'coverSaveFailed' | ''>('');
   const inFlight = useRef(false);
   const busy = locked || saving;
   const stale = Boolean(panel && (lookups.cardById.get(panel.card.id)?.sourceHash !== panel.card.sourceHash
@@ -1452,6 +1497,9 @@ export function Deck({ snapshot, refreshKey, onEditing, onImportCsv, onStartFrom
     try { return readStoredValue(localStorage, 'deckmate-hide-empty-zones') === 'true'; } catch { return false; }
   });
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [deckActionsAnchor, setDeckActionsAnchor] = useState<HTMLElement | null>(null);
+  const [deckToolsOpen, setDeckToolsOpen] = useState(false);
+  const [deckLinkResult, setDeckLinkResult] = useState<'deckLinkCopied' | 'deckLinkFailed' | null>(null);
   const [deletingDeck, setDeletingDeck] = useState(false);
   const [deleteError, setDeleteError] = useState(false);
   const transferBaseline = useRef<CardTransferBaseline | null>(null);
@@ -1466,11 +1514,18 @@ export function Deck({ snapshot, refreshKey, onEditing, onImportCsv, onStartFrom
   const createSpaceButton = useRef<HTMLButtonElement>(null);
   const [requestedCardFocus, setRequestedCardFocus] = useState<string | null>(null);
   const searchField = useRef<HTMLInputElement>(null);
+  const searchFocusPending = useRef(false);
   const pulseReturnFocus = useRef<string | null>(null);
   const scopeFocusPending = useRef(false);
   const journeyReturnFocus = useRef<HTMLElement | null>(null);
   const writable = snapshot.writable && snapshot.source === 'sandbox';
   const selectedDeck = scope.kind === 'deck' ? catalog?.decks.find(deck => deck.id === scope.id) : null;
+  useEffect(() => { setDeckActionsAnchor(null); setDeckLinkResult(null); setDeckToolsOpen(false); }, [selectedDeck?.id, snapshot.source, catalog?.rootIdentity]);
+  useLayoutEffect(() => {
+    if (!deckToolsOpen || !searchFocusPending.current) return;
+    searchFocusPending.current = false;
+    moveFocus(searchField.current, { preventScroll: true });
+  }, [deckToolsOpen]);
   useEffect(() => {
     if (!catalog) return;
     setCollapsedSpaces(previous => {
@@ -1482,6 +1537,7 @@ export function Deck({ snapshot, refreshKey, onEditing, onImportCsv, onStartFrom
   const resolvedView = cardView ?? 'cards';
   const cards = catalog?.cards ?? emptyCards;
   const lookups = useMemo(() => buildCatalogLookups(cards, catalog?.subCardOrder), [cards, catalog?.subCardOrder]);
+  const handPositions = useMemo(() => catalog ? catalogHandPositions(catalog) : new Map<string, Record<string, number>>(), [catalog]);
   const tileDataById = useMemo(() => new Map(catalog ? cards.map(card => [card.id, cardTileData(card, lookups, catalog)]) : []), [cards, lookups, catalog]);
   const activeLookups = useMemo(() => buildCatalogLookups(cards.filter(card => !card.archived && !card.deleted), catalog?.subCardOrder), [cards, catalog?.subCardOrder]);
   const deckCounts = useMemo(() => new Map([...activeLookups.cardsByDeck].map(([deckId, deckCards]) => [deckId, countDeckCards(deckCards)])), [activeLookups]);
@@ -1548,7 +1604,7 @@ export function Deck({ snapshot, refreshKey, onEditing, onImportCsv, onStartFrom
   const projectTagNames = useMemo(() => new Set((catalog?.projectTags ?? []).map(tag => tag.name)), [catalog?.projectTags]);
   const orderingContext = useMemo<OrderingContext>(() => ({ deckById, deckOrder: catalog?.deckOrder, deckId: scope.kind === 'deck' ? scope.id : null,
     runs: catalog?.runs, milestones: catalog?.milestones, projectTagNames }), [deckById, catalog?.deckOrder, catalog?.runs, catalog?.milestones, projectTagNames, scope]);
-  const visibleCards = useMemo(() => {
+  const tagPickCards = useMemo(() => {
     // 2026-11-05: reuse the grouping rules for search entries, including None and names with spaces.
     const memberships = laneSearch.map(entry => {
       if (entry.ordering.order === 'tags') {
@@ -1564,6 +1620,12 @@ export function Deck({ snapshot, refreshKey, onEditing, onImportCsv, onStartFrom
     });
     return searchedCards.filter(card => memberships.every(ids => ids.has(card.id)));
   }, [searchedCards, scopedCards, lookups.cardById, orderingContext, laneSearch, projectTagNames]);
+  const showingTagPick = tagPick.purpose !== 'select' && tagPickSize(tagPick) > 0;
+  const visibleCards = useMemo(() => {
+    if (!showingTagPick) return tagPickCards;
+    const ids = new Set(cardsMatchingTagPick(tagPickCards, tagPick));
+    return tagPickCards.filter(card => ids.has(card.id));
+  }, [tagPickCards, tagPick, showingTagPick]);
   const tableGroups = useMemo(() => groupAndSortCards(visibleCards, lookups.cardById, ordering, orderingContext), [visibleCards, lookups.cardById, ordering, orderingContext, lang]);
   const labeledLaneSearch = useMemo(() => laneSearch.map(entry => {
     let title = groupAndSortCards(scopedCards, lookups.cardById, entry.ordering, orderingContext)
@@ -1578,10 +1640,10 @@ export function Deck({ snapshot, refreshKey, onEditing, onImportCsv, onStartFrom
   // 2026-11-05: the side rail also offers empty priorities; creating a target must not reflow the source grid.
   const dragGroups = useMemo(() => {
     if (laneOrderOf(ordering) !== 'priority') return tableGroups;
-    const priorities = [{ key: 'priority:high', title: dragText.high }, { key: 'priority:medium', title: dragText.medium },
-      { key: 'priority:low', title: dragText.low }, { key: 'priority:none', title: dragText.noPriority }];
+    const priorities = [{ key: 'priority:high', title: priorityLabel('high', lang) }, { key: 'priority:medium', title: priorityLabel('medium', lang) },
+      { key: 'priority:low', title: priorityLabel('low', lang) }, { key: 'priority:none', title: dragText.noPriority }];
     return priorities.map(group => ({ ...group, state: null, cards: tableGroups.find(current => current.key === group.key)?.cards ?? [] }));
-  }, [ordering, tableGroups, dragText]);
+  }, [ordering, tableGroups, dragText, lang]);
   // Selection and bulk actions include each card once, even if groups repeat its presentation (2026-11-04).
   const orderedCards = useMemo(() => [...new Map(tableGroups.flatMap(group => group.cards).map(card => [card.id, card])).values()], [tableGroups]);
   // Manual Order is scoped to one deck: its zones and only its cards can be reordered.
@@ -1606,7 +1668,8 @@ export function Deck({ snapshot, refreshKey, onEditing, onImportCsv, onStartFrom
   const selectedCards = orderedCards.filter(card => selection.selectedIds.has(card.id));
   // A tag pick stays active only while the selection is exactly its cards; any other selection change ends it.
   const tagPickIds = useMemo(() => cardsMatchingTagPick(orderedCards, tagPick), [orderedCards, tagPick]);
-  const tagPickActive = tagPickSize(tagPick) > 0 && tagPickIds.length === selection.selectedIds.size && tagPickIds.every(id => selection.selectedIds.has(id));
+  const tagPickActive = tagPick.purpose !== 'select' || (tagPickSize(tagPick) > 0
+    && tagPickIds.length === selection.selectedIds.size && tagPickIds.every(id => selection.selectedIds.has(id)));
   const sticky = useCatalogStickyLayout(Boolean(selectedDeck), showCards && selectedCards.length > 0);
   const deckTransition = useDeckTransition(sticky.root, selectedDeck?.id ?? null);
   const members = useMemo(() => catalog?.members ?? [], [catalog?.members]);
@@ -2176,7 +2239,8 @@ export function Deck({ snapshot, refreshKey, onEditing, onImportCsv, onStartFrom
   function pickTags(next: TagPick) {
     if (navigationLocked || cardTransfer) return;
     setTagPick(next);
-    selection.retain(cardsMatchingTagPick(orderedCards, next));
+    if (next.purpose === 'select') selection.retain(cardsMatchingTagPick(orderedCards, next));
+    else if (tagPick.purpose === 'select') selection.clear();
   }
   function familyCardCreated(cardId: string) {
     setFamilyDirty(false); 
@@ -2199,8 +2263,13 @@ export function Deck({ snapshot, refreshKey, onEditing, onImportCsv, onStartFrom
     if (target?.isConnected) moveFocus(target, { preventScroll: true });
     else moveFocus(searchField.current, { preventScroll: true });
   }
-  function resetCardFilters() { setSearch(''); setMineOnly(false); setTagFilter(''); setLaneSearch([]); }
-  function focusCardSearch() { moveFocus(searchField.current, { preventScroll: true }); }
+  function resetCardFilters() { setSearch(''); setMineOnly(false); setTagFilter(''); setLaneSearch([]); setTagPick(emptyTagPick); }
+  function focusCardSearch() {
+    if (selectedDeck && !deckToolsOpen && window.matchMedia('(max-width: 760px)').matches) {
+      searchFocusPending.current = true;
+      setDeckToolsOpen(true);
+    } else moveFocus(searchField.current, { preventScroll: true });
+  }
   function clearCardFilters() { if (!navigationLocked) { resetCardFilters(); focusCardSearch(); } }
   function filterGroup(group: CardGroup) {
     if (navigationLocked || group.key === 'all') return;
@@ -2388,6 +2457,13 @@ export function Deck({ snapshot, refreshKey, onEditing, onImportCsv, onStartFrom
   function saveDeckAutomation(deckId: string, settings: DeckAutomationSettings, manifestHash: string) {
     return edit({ action: 'set-deck-automation', deckId, ...settings, manifestHash });
   }
+  async function copyDeckLink() {
+    if (!selectedDeck) return;
+    const url = new URL('/', location.href);
+    url.search = new URLSearchParams({ view: 'deck', catalogSource: snapshot.source, deck: selectedDeck.id }).toString();
+    try { await navigator.clipboard.writeText(url.href); setDeckLinkResult('deckLinkCopied'); }
+    catch { setDeckLinkResult('deckLinkFailed'); }
+  }
   async function confirmDeckDelete() {
     if (!selectedDeck || !catalog || navigationLocked || !writable || deletingDeck) return;
     setDeletingDeck(true);
@@ -2419,6 +2495,9 @@ export function Deck({ snapshot, refreshKey, onEditing, onImportCsv, onStartFrom
     onRemove: () => setLaneSearch(entries => entries.filter((_, position) => position !== index)),
   }));
   if (tagFilter) activeFilters.push({ id: 'tag', kind: 'tags', value: tagFilter, onRemove: () => setTagFilter('') });
+  if (showingTagPick) activeFilters.push({ id: 'tag-pick', kind: 'tags',
+    value: [...tagPick.tags.map(name => '#' + name), ...(tagPick.notTagged ? [t.notTagged] : [])].join(tagPick.mode === 'and' ? ' + ' : ' | '),
+    onRemove: () => setTagPick({ ...emptyTagPick, mode: tagPick.mode }) });
   if (mineOnly) activeFilters.push({ id: 'mine', kind: 'mine', value: '', onRemove: () => setMineOnly(false) });
   if (search.trim()) activeFilters.push({ id: 'search', kind: 'search', value: search.trim(), onRemove: () => setSearch('') });
   const hasFilters = activeFilters.length > 0;
@@ -2469,42 +2548,42 @@ export function Deck({ snapshot, refreshKey, onEditing, onImportCsv, onStartFrom
       onDragCancel: () => t.dragCancelledUnchanged,
     } }}>
     <CardTransferContext.Provider value={transferContext}>
-    <CardAttachmentRefreshContext.Provider value={catalog?.indexedAt}>
     <section ref={sticky.root} onClickCapture={event => { if (transferBaseline.current || Date.now() < suppressTransferClickUntil.current) { event.preventDefault(); event.stopPropagation(); } }} className={'deck-view catalog-view' + (cardTransfer ? ' is-card-transfer-active' : '') + (cardDragPreview ? ' is-card-pointer-transfer' : '') + (selectedDeck ? ' is-deck-open' : '') + (hasPreview ? ' has-preview' : '') + (!selectedDeck && !showCards ? ' deck-gallery' : '') + (!selectedDeck && showCards ? ' card-scope-view' : '')} data-toolbar-sticky={sticky.rendered['data-toolbar-sticky']} data-selection-sticky={sticky.rendered['data-selection-sticky']} style={{ ...sticky.rendered.style, '--left-panel-width': panels.leftPanelWidth + 'px' } as CSSProperties} aria-label={t.projectCatalog}>
     {selectedDeck && catalog && <nav className="deck-neighbor-rail" aria-label={t.spaceDecks}>{catalog.decks.filter(deck => deck.spaceId === selectedDeck.spaceId).map(deck => {
       const counts = deckCounts.get(deck.id) ?? emptyDeckCounts;
       return <DeckNeighborCover key={deck.id} deck={deck} counts={counts} source={snapshot.source} inbox={deck.id === (catalog.inboxDeckId ?? null)} current={deck.id === selectedDeck.id} disabled={navigationLocked} baseline={cardTransfer} catalogCards={cards} onOpen={() => openDeck(deck)} />;
     })}</nav>}
     {selectedDeck && catalog ? <header ref={sticky.toolbar} className={'deck-open-toolbar page-head' + (selectionToolbar ? ' is-selection' : '')}>
-      {selectionToolbar ?? <Tooltip.Provider delayDuration={200}>
+      <div className="deck-toolbar-content" inert={Boolean(selectionToolbar) || undefined} aria-hidden={selectionToolbar ? true : undefined}><Tooltip.Provider delayDuration={200}>
       <DeckHeaderHint label={t.closeDeck}>
         <Button variant="ghost" size="icon" disabled={navigationLocked} onClick={returnToCatalog} aria-label={t.closeDeck}><X size={17} /></Button>
       </DeckHeaderHint>
       <DeckTypePicker key={selectedDeck.id} deck={selectedDeck} cards={catalog.cards} journeys={catalog.journeys ?? []} pending={navigationLocked} writable={writable} manifestHash={catalog.manifestHash} onChange={(kind, manifestHash) => edit({ action: 'set-deck-kind', deckId: selectedDeck.id, kind, manifestHash })} /><h1 className="page-title" tabIndex={-1} title={selectedDeck.title}>{selectedDeck.title}</h1><span className="page-caption">{t.cardsCount(scopedCards.length)}</span>
-      <div className="deck-open-tools page-tools">{(selectedDeck.kind === 'asset' || selectedDeck.kind === 'mixed') && <DeckHeaderHint label={t.labelPrepareJourney}>
+      <Button variant="ghost" size="icon" className="deck-tools-toggle" aria-label={t.deckTools} aria-expanded={deckToolsOpen} aria-controls="deck-open-tools" disabled={navigationLocked} onClick={() => setDeckToolsOpen(open => !open)}><SlidersHorizontal size={20} /></Button>
+      <div id="deck-open-tools" className="deck-open-tools page-tools" data-expanded={deckToolsOpen}>{(selectedDeck.kind === 'asset' || selectedDeck.kind === 'mixed') && <DeckHeaderHint label={t.labelPrepareJourney}>
         <Button variant="ghost" size="sm" className="deck-journey-button action-mint" aria-label={t.labelJourney} disabled={navigationLocked} onClick={event => { closeInlinePanels(); journeyReturnFocus.current = event.currentTarget; setJourneyDeckId(selectedDeck.id); }}><ScrollText size={14} /><span>{t.labelJourney}</span></Button>
       </DeckHeaderHint>}
-        {writable && <DeckHeaderHint label={t.deckSettings}>
-          <Button variant="ghost" size="icon" disabled={navigationLocked} onClick={() => { closeInlinePanels(); openCreation({ kind: 'deck', deckId: selectedDeck.id, editing: true }); }} aria-label={t.deckSettings}><Pencil size={14} /></Button>
-        </DeckHeaderHint>}
-        <DeckHeaderHint label={watchHint}>
-          <Button variant="ghost" size="icon" className={'deck-watch-toggle' + (watchingDeck ? ' is-watching' : '')} aria-pressed={watchingDeck}
-            disabled={!writable || navigationLocked} onClick={() => void toggleDeckWatch()} aria-label={t.deckWatch}><Eye size={14} /></Button>
-        </DeckHeaderHint>
-        <DeckHeaderHint label={t.importDeckCsv}>
-          <Button variant="ghost" size="icon" disabled={navigationLocked || !onImportCsv || !selectedDeck} onClick={() => selectedDeck && onImportCsv?.(selectedDeck.id)} aria-label={t.importCsv}><Inbox size={14} /></Button>
-        </DeckHeaderHint>
-        <DeckAutomation deck={selectedDeck} members={members} tagNames={(catalog.projectTags ?? []).map(tag => tag.name)}
+        <Button variant="ghost" size="icon" className="deck-actions-toggle" aria-label={t.deckActions} aria-haspopup="dialog" aria-expanded={Boolean(deckActionsAnchor)} disabled={navigationLocked}
+          onClick={event => { setDeckActionsAnchor(deckActionsAnchor ? null : event.currentTarget); setDeckLinkResult(null); }}><Ellipsis size={20} /></Button>
+        {deckActionsAnchor && <QuickSettingsPopover anchor={deckActionsAnchor} busy={pending || deletingDeck} onClose={() => setDeckActionsAnchor(null)}><div className="deck-actions-menu">
+          <Dialog.Title className="dialog-title">{t.deckActions}</Dialog.Title>
+          {writable && <Button data-autofocus variant="ghost" disabled={navigationLocked} onClick={() => { const opener = deckActionsAnchor; setDeckActionsAnchor(null); closeInlinePanels(); openCreation({ kind: 'deck', deckId: selectedDeck.id, editing: true }, opener); }} aria-label={t.deckSettings}><Pencil size={16} />{t.deckSettings}</Button>}
+          <Button variant="ghost" size="icon" aria-pressed={watchingDeck}
+            disabled={!writable || navigationLocked || !currentMember} onClick={() => void toggleDeckWatch()} aria-label={t.deckWatch} title={watchHint}><Eye size={16} />{watchingDeck ? t.unwatch : t.watch}</Button>
+          <Button variant="ghost" disabled={!writable || navigationLocked || !onImportCsv} onClick={() => { setDeckActionsAnchor(null); onImportCsv?.(selectedDeck.id); }} aria-label={t.importCsv}><Inbox size={16} />{t.importCsv}</Button>
+        <DeckAutomation draftKey={JSON.stringify([catalog.rootIdentity, snapshot.source, selectedDeck.id])} deck={selectedDeck} members={members} tagNames={(catalog.projectTags ?? []).map(tag => tag.name)} projectTags={catalog.projectTags} cards={catalog.cards}
           manifestHash={catalog.manifestHash} pending={navigationLocked} writable={writable} onSave={saveDeckAutomation} />
         <DeckGuardians deck={selectedDeck} members={members} manifestHash={catalog.manifestHash}
           pending={navigationLocked} writable={writable} onSave={saveDeckGuardians} />
-        <DeckHeaderHint label={t.deleteDeck}>
+          <Button variant="ghost" onClick={() => void copyDeckLink()}><Copy size={16} />{t.copyDeckLink}</Button>
+          {deckLinkResult && <p className="deck-actions-feedback" role={deckLinkResult === 'deckLinkFailed' ? 'alert' : 'status'}>{t[deckLinkResult]}</p>}
+          <Button type="button" variant="ghost" className="deck-archive-toggle" aria-pressed={includeShelved} disabled={navigationLocked} onClick={() => setIncludeShelved(value => !value)}><Archive size={16} />{t.labelArchiveTrash}</Button>
           <DropdownMenu.Root open={deleteConfirmOpen} onOpenChange={next => { if (!deletingDeck) setDeleteConfirmOpen(next); }}>
             <DropdownMenu.Trigger asChild>
-              <Button variant="ghost" size="icon" className="deck-delete-toggle" disabled={!writable || navigationLocked} aria-label={t.deleteDeck}><Trash2 size={14} /></Button>
+              <Button variant="ghost" className="deck-delete-toggle" disabled={!writable || navigationLocked} aria-label={t.deleteDeck}><Trash2 size={16} />{t.deleteDeck}</Button>
             </DropdownMenu.Trigger>
             <DropdownMenu.Portal>
-              <DropdownMenu.Content className="deck-settings-menu deck-delete-menu" align="start" sideOffset={8} collisionPadding={12}>
+               <DropdownMenu.Content className="deck-settings-menu deck-delete-menu dialog-panel" align="start" sideOffset={8} collisionPadding={12}>
                 <DropdownMenu.Label className="deck-settings-heading">{t.labelDeleteDeck}</DropdownMenu.Label>
                 <p className="deck-settings-note">{t.deleteDeckConfirm(selectedDeck.title, openDeckCardCount)}</p>
                 {deleteError && <p className="deck-settings-error" role="alert">{t.deleteFailed}</p>}
@@ -2515,16 +2594,14 @@ export function Deck({ snapshot, refreshKey, onEditing, onImportCsv, onStartFrom
               </DropdownMenu.Content>
             </DropdownMenu.Portal>
           </DropdownMenu.Root>
-        </DeckHeaderHint>
+        </div></QuickSettingsPopover>}
         <DeckHeaderHint label={mineOnly ? t.showAllCards : t.showMyCards}>
           <Button variant="outline" size="sm" className="deck-mine-toggle" aria-pressed={mineOnly} disabled={navigationLocked} onClick={() => setMineOnly(value => !value)}>{t.labelMyCards}</Button>
         </DeckHeaderHint>
         <label className="catalog-search deck-toolbar-search control-field"><Search size={14} /><span className="visually-hidden">{t.searchCards(searchScope)}</span><input ref={searchField} type="search" value={search} disabled={navigationLocked} onChange={event => setSearch(event.target.value)} placeholder={t.searchDeck} /></label>
-        <DeckHeaderHint label={t.includeShelved}>
-          <Button type="button" variant="outline" size="sm" className="deck-archive-toggle" aria-pressed={includeShelved} disabled={navigationLocked} onClick={() => setIncludeShelved(value => !value)}><Archive size={14} />{t.labelArchiveTrash}</Button>
-        </DeckHeaderHint>
       </div>
-      </Tooltip.Provider>}
+      </Tooltip.Provider></div>
+      {selectionToolbar && <div className="deck-selection-slot">{selectionToolbar}</div>}
     </header> : <header className={!showCards ? 'deck-heading catalog-heading deck-gallery-header' : 'page-head card-scope-header'}>{!showCards ? <div className="deck-gallery-project"><div className="deck-gallery-title"><div className="deck-gallery-name"><h1>{snapshot.projectName}</h1>{writable && <button ref={createSpaceButton} type="button" className="deck-gallery-add action-mint" onClick={event => openCreation({ kind: 'space' }, event.currentTarget)} disabled={navigationLocked || !catalog} aria-label={t.labelCreateSpace}><Plus size={16} aria-hidden="true" /><span>{t.labelCreateSpace}</span></button>}</div>
       {/* 2026-11-06: a first-run folder has nothing to count; the template prompt below already says what to do. */}
       {catalog && (catalog.documents.length > 0 || catalog.cards.length > 0) && <CatalogSourceLine documents={catalog.documents.length} kinds={lookups.kindCounts} warnings={catalog.warnings.length} warningsOpen={sourceWarningsOpen} onToggleWarnings={() => setSourceWarningsOpen(open => !open)} />}</div></div> :<div className="page-head-main"><div className="page-title-block"><h1 className="page-title">{title}</h1><p className="page-caption"><span>{snapshot.projectName}</span>{catalog && <><span className="dot-separator" aria-hidden="true">·</span><span><span className="page-number">{number(scopedCards.length)}</span> {t.cardWord(scopedCards.length)}</span></>}</p></div></div>}<div className={!showCards ? 'catalog-heading-actions' : 'page-tools'}>{loading && catalog && <span className="catalog-updating" role="status"><LoaderCircle size={14} className="spin" />{t.updating}</span>}
@@ -2539,10 +2616,11 @@ export function Deck({ snapshot, refreshKey, onEditing, onImportCsv, onStartFrom
       {!showCards && catalog.warnings.length > 0 && <ul id="catalog-source-warnings" className="catalog-warnings" aria-label={t.sourceWarnings(catalog.warnings.length)} hidden={!sourceWarningsOpen}>{catalog.warnings.map((item, index) => <li key={index}>{item}</li>)}</ul>}
 
       {!showCards && catalog.decks.length === 0 && onStartFromTemplate && <section className="project-template-start"><div><h2>{t.startTemplateTitle}</h2><p>{t.startTemplateHelp}</p></div><Button disabled={navigationLocked} onClick={onStartFromTemplate}><Layers size={16} />{t.startTemplate}</Button></section>}
-      {!showCards && <ProjectPulseStrip source={snapshot.source} refreshKey={`${refreshKey}:${catalog.indexedAt}`} members={catalog.members ?? []} disabled={navigationLocked}
+      {/* 2026-11-11: keep the pulse loaded behind card views so a direct-link return measures the final gallery. */}
+      <div className="deck-gallery-pulse" hidden={showCards}><ProjectPulseStrip key={`${snapshot.source}:${catalog.rootIdentity}`} source={snapshot.source} rootIdentity={catalog.rootIdentity} refreshKey={`${refreshKey}:${catalog.indexedAt}`} members={catalog.members ?? []} disabled={navigationLocked}
         onInProgress={() => openPulseCards('started')} onReview={() => openPulseCards('review')}
         onWithoutDeck={() => { openCardView('unassigned'); setIncludeShelved(false); pulseReturnFocus.current = 'unassigned'; }}
-        onRun={id => { if (!navigationLocked) navigateToPlanning(snapshot.source, catalog.rootIdentity, { kind: 'run', id }); }} />}
+        onRun={id => { if (!navigationLocked) navigateToPlanning(snapshot.source, catalog.rootIdentity, { kind: 'run', id }); }} /></div>
 
       {!showCards && deckSearchText && <p className="deck-gallery-search-status">{t.foundDecks(visibleDecks.length, catalog.decks.length)}</p>}
       {selectedTrack && !selectedDeck && <div className="catalog-track-context"><Route size={16} /><div><strong>{selectedTrack.title}</strong>{selectedTrack.description && <p>{selectedTrack.description}</p>}<span>{t.trackProgress(trackProgress?.accepted ?? 0, trackProgress?.total ?? 0)}</span></div><Button variant="ghost" size="sm" disabled={navigationLocked} onClick={() => openCardView('all')}>{t.leaveTrack}</Button></div>}
@@ -2571,7 +2649,7 @@ export function Deck({ snapshot, refreshKey, onEditing, onImportCsv, onStartFrom
           onEdit={edit} onDirtyChange={setMembershipDirty} onShowTagCards={name => { openCardView('all'); setTagFilter(name); }} onOpenDeck={selectedCard.deckId && selectedCard.deckId !== deckScopeId ? () => showCardInDeck(selectedCard.id, selectedCard.deckId!) : undefined} onManageJourney={selectedCard.deckId ? opener => { journeyReturnFocus.current = opener ?? null; closeInlinePanels(); setJourneyDeckId(selectedCard.deckId); } : undefined} familyVisible={showFamily} onShowFamily={() => { if (navigationLocked) return; setFamilyVisible(true); }} onToggleFamily={() => { if (navigationLocked) return; if (showFamily) resetFamilyContext(); else setFamilyVisible(true); }} />}</div><PanelResize label={t.leftPanelWidth} value={panels.leftPanelWidth} minimum={420} maximum={800} direction={1} onChange={panels.setLeftPanelWidth} /></> : <>{showSummary && (narrowPanel ? <aside className="deck-summary deck-narrow-panel">{activeDeckPanel === 'ordering'
           ? <CardOrdering value={ordering} onChange={changeOrdering} disabled={navigationLocked} inDeck={Boolean(selectedDeck)} hideEmpty={hideEmptyZones} onHideEmpty={setHideEmptyZones} view={resolvedView} onViewChange={setCardView}
             defaultView={selectedDeck ? { canReset: orderingChoice !== null && orderDiffersFromDefault, canSave: writable && orderDiffersFromDefault, onReset: resetOrdering, onSave: () => void saveDefaultOrdering() } : undefined} />
-          : <DeckTagsPanel cards={visibleCards} projectTags={catalog.projectTags} pick={tagPick} active={tagPickActive} disabled={navigationLocked} onPick={pickTags} />}</aside>
+          : <DeckTagsPanel cards={tagPickCards} projectTags={catalog.projectTags} pick={tagPick} active={tagPickActive} selectedCount={selection.selectedIds.size} disabled={navigationLocked} onPick={pickTags} />}</aside>
           : selectedDeck && <><>{activityOpen ? <aside className="deck-summary deck-activity-sidebar"><DeckActivity deckId={selectedDeck.id} source={snapshot.source} refreshKey={refreshKey + ":" + catalog.indexedAt} disabled={navigationLocked} onOpen={id => { const card = lookups.cardById.get(id); if (card) openCard(card); }} /></aside> : <DeckSummary deck={selectedDeck} cards={lookups.cardsByDeck.get(selectedDeck.id) ?? emptyCards} catalog={catalog} source={snapshot.source} refreshKey={refreshKey + ":" + catalog.indexedAt} onOpen={id => { const card = lookups.cardById.get(id); if (card) openCard(card); }} disabled={navigationLocked} onCollapse={() => panels.setSummaryCollapsed(true)} onTrack={id => openCardView('all', id)} />}</><PanelResize label={t.leftPanelWidth} value={panels.leftPanelWidth} minimum={420} maximum={800} direction={1} onChange={panels.setLeftPanelWidth} /></>)}</>}
         <div className="catalog-results" ref={attachResults} role="region" aria-label={t.cards} tabIndex={-1}
           onPointerDown={event => { if (familyShown && !navigationLocked && event.target === event.currentTarget) resetFamilyContext(); }}>
@@ -2584,9 +2662,8 @@ export function Deck({ snapshot, refreshKey, onEditing, onImportCsv, onStartFrom
           <CardFilterBar filters={activeFilters} shown={visibleCards.length} total={scopedCards.length} disabled={navigationLocked}
             onClear={clearCardFilters} onEmptyFocus={focusCardSearch} />
           {visibleCards.length === 0 && (!manualOrdering || emptyDeck) && (emptyDeck && selectedDeck
-            ? <EmptyState variant="first-run" className="deck-empty" title={t.emptyDeckTitle} message={writable ? t.emptyDeckHelp : undefined} icon={<span className="deck-empty-icon" aria-hidden="true"><DeckIcon name={selectedDeck.icon} size={24} /></span>} primary
-              action={writable ? { label: t.labelNewCard, onClick: () => newCard(), disabled: navigationLocked } : undefined}
-              secondary={writable && onImportCsv ? { label: t.importCsv, onClick: () => onImportCsv(selectedDeck.id), disabled: navigationLocked } : undefined} />
+            ? <EmptyState variant="first-run" className="deck-empty" art="first-card" title={t.emptyDeckTitle} message={writable ? t.emptyDeckHelp : undefined} primary
+              action={writable ? { label: t.labelNewCard, onClick: () => newCard(), disabled: navigationLocked } : undefined} />
             : listEmpty ?? <p className="catalog-empty">{cardsEmptyText}</p>)}
           {resolvedView === 'table'
             ? <CatalogTable groups={shownGroups} transfer={cardTransfer} pointerDrag={Boolean(cardDragPreview)} lookups={lookups} members={members} tagDefinitions={catalog.projectTags} catalog={catalog} currentMemberId={currentMember?.id} openedId={selectedCard?.id} selectedIds={selection.selectedIds} disabled={draftLocked} onOpen={activateCard} onFamilyOpen={openCard} onToggle={selection.toggle} onToggleGroup={selection.toggleGroup} onFilterGroup={filterGroup} onCreateGroup={writable ? createGroupCard : undefined} laneOf={laneOfGroup} zoneOf={zoneControlsOf} zoneDrag={zoneDrag} manualDrop={manualDrop} />
@@ -2594,7 +2671,7 @@ export function Deck({ snapshot, refreshKey, onEditing, onImportCsv, onStartFrom
               {shownGroups.map(group => <CatalogCardGroupSection key={group.key} group={group} pointerDrag={Boolean(cardDragPreview)} baseline={cardTransfer} lane={laneOfGroup(group)} zoneDrag={zoneDrag} catalogCards={cards}>
                 {group.key !== 'all' && <CardGroupHeading group={group} tagDefinitions={catalog.projectTags} lookups={lookups} selectedIds={selection.selectedIds} disabled={navigationLocked} onToggleGroup={selection.toggleGroup} onFilter={filterGroup} onCreate={writable ? () => createGroupCard(group) : undefined} zone={zoneControlsOf(group)} />}
                 <VirtualCardGrid cards={group.cards} enabled={orderedCards.length >= 50} pinnedIds={pinnedTileIds}>{card => <ManualCardDrop key={card.id} cardId={card.id} enabled={manualDrop} deckId={scope.kind === 'deck' ? scope.id : ''} zoneId={zoneIdOfGroup(group)}>
-                  <CatalogCardTile card={card} {...tileDataById.get(card.id)!} members={members} tagDefinitions={catalog.projectTags} currentMemberId={currentMember?.id} calendarDay={calendarDay} selected={selectedCard?.id === card.id} checked={selection.selectedIds.has(card.id)} selectionActive={selection.selectedIds.size > 0} disabled={draftLocked} onToggle={toggleTile} onOpen={activateTile} onFamilyOpen={openTileFamily}
+                  <CatalogCardTile card={card} {...tileDataById.get(card.id)!} members={members} tagDefinitions={catalog.projectTags} currentMemberId={currentMember?.id} handPositions={handPositions.get(card.id)} calendarDay={calendarDay} selected={selectedCard?.id === card.id} checked={selection.selectedIds.has(card.id)} selectionActive={selection.selectedIds.size > 0} disabled={draftLocked} onToggle={toggleTile} onOpen={activateTile} onFamilyOpen={openTileFamily}
                     onQuickSettings={writable && !navigationLocked && !cardTransfer && !showFamily ? openTileQuickSettings : undefined} />
                 </ManualCardDrop>}</VirtualCardGrid>
               </CatalogCardGroupSection>)}
@@ -2603,10 +2680,10 @@ export function Deck({ snapshot, refreshKey, onEditing, onImportCsv, onStartFrom
           </div>
         </div>
         {!showFamily && <DeckHoveredCardActions ref={hoveredCardActions} key={selectionKey} root={resultsRoot} catalog={catalog} lookups={lookups} snapshot={snapshot} writable={writable} locked={navigationLocked || Boolean(cardTransfer)} onEdit={edit} onSelect={selection.toggle} onOpenReview={openReview} />}
-      </div>{cardTransfer && cardDragPreview && <CardGroupDropPanel groups={dragGroups} baseline={cardTransfer} laneOf={laneOfGroup} catalogCards={cards} />}</div>}
+      </div></div>}
       {attachmentHeroId && lookups.cardById.get(attachmentHeroId) && <AttachSubCards key={attachmentHeroId} hero={lookups.cardById.get(attachmentHeroId)!} catalog={catalog} writable={writable} pending={pending} onAttach={attachCards} onClose={() => setAttachmentHeroId(null)} />}
     </>}
-    {cardTransfer && catalog && <CardTransferTargets baseline={cardTransfer} catalog={catalog} source={snapshot.source} />}
+    {cardTransfer && catalog && <CardTransferTargets baseline={cardTransfer} catalog={catalog} source={snapshot.source} groups={dragGroups} laneOf={laneOfGroup} pointerDrag={Boolean(cardDragPreview)} />}
     {cardTransfer && cardDragPreview && catalog && <CardDragTabs baseline={cardTransfer} catalog={catalog} memberLabel={currentMember?.label} />}
     {dropDeckPicker && catalog && <CardDropDeckPicker baseline={dropDeckPicker} catalog={catalog} onClose={() => setDropDeckPicker(null)} onChoose={deck => {
       if (deck && cardTransferTargetIssue(dropDeckPicker, deck, cards) === 'confirm-promotion') {
@@ -2621,8 +2698,8 @@ export function Deck({ snapshot, refreshKey, onEditing, onImportCsv, onStartFrom
       onConfirm={() => { void promoteDroppedCard(); }} onCancel={() => setDropHeroPromotion(null)} />}
     <ShortcutsHelp screens={shortcutScreens} writable={writable} />
   </section>
-  <DragOverlay dropAnimation={null} adjustScale={false} style={{ pointerEvents: 'none' }}>{cardTransfer && cardDragPreview && <CardDragFace preview={cardDragPreview} count={cardTransfer.cards.length} />}{cardTransfer && !cardDragPreview && <div className="card-transfer-overlay"><Layers size={14} /><strong>{cardTransfer.cards[0].title}</strong>{cardTransfer.cards.length > 1 && <span className="card-transfer-overlay-count">+{cardTransfer.cards.length - 1}</span>}</div>}{zoneDrag && <div className="card-transfer-overlay zone-transfer-overlay"><GripVertical size={14} /><strong>{currentZones().find(zone => zone.id === zoneDrag)?.title ?? t.zone}</strong></div>}</DragOverlay>
-  </CardAttachmentRefreshContext.Provider></CardTransferContext.Provider></DndContext>;
+  <DragOverlay dropAnimation={null} adjustScale={false} style={{ pointerEvents: 'none' }}>{cardTransfer && cardDragPreview && <CardDragFace preview={cardDragPreview} count={cardTransfer.cards.length} />}{cardTransfer && !cardDragPreview && <div className="card-transfer-overlay"><Layers size={14} /><strong>{cardTransfer.cards[0].title}</strong>{cardTransfer.cards.length > 1 && <span className="card-transfer-overlay-count">+{cardTransfer.cards.length - 1}</span>}</div>}{zoneDrag && <div className="card-transfer-overlay"><GripVertical size={14} /><strong>{currentZones().find(zone => zone.id === zoneDrag)?.title ?? t.zone}</strong></div>}</DragOverlay>
+  </CardTransferContext.Provider></DndContext>;
 }
 
 const coverCollisions: CollisionDetection = arguments_ => {
@@ -2638,12 +2715,12 @@ const coverCollisions: CollisionDetection = arguments_ => {
     return coordinates.x >= rectangle.left && coordinates.x <= rectangle.right && coordinates.y >= rectangle.top && coordinates.y <= rectangle.bottom;
   });
   // 2026-11-05: clipped rows keep full DnD rectangles; only the visible menu/panel viewport can accept them.
-  for (const surface of ['card-deck-menu', 'card-group-panel']) {
+  for (const surface of ['card-deck-menu', 'card-group-panel', 'card-deck-dock']) {
     if (candidates.some(hit => dataOf(hit.id)?.surface === surface && dataOf(hit.id)?.operation === 'card-drop-blocker')) continue;
     candidates = candidates.filter(hit => dataOf(hit.id)?.surface !== surface);
   }
   // 2026-11-05: opaque panels intercept drops even on disabled rows and padding; the cards behind them are not targets.
-  for (const surface of ['card-navigation', 'card-deck-menu', 'card-group-panel']) {
+  for (const surface of ['card-drop-mode', 'card-navigation', 'card-deck-menu', 'card-group-panel', 'card-deck-dock']) {
     const hits = candidates.filter(hit => dataOf(hit.id)?.surface === surface);
     if (!hits.length) continue;
     const targets = hits.filter(hit => dataOf(hit.id)?.operation !== 'card-drop-blocker');
@@ -2663,7 +2740,7 @@ const coverKeyboardCoordinates: KeyboardCoordinateGetter = (event, { currentCoor
   event.preventDefault();
   const rectangle = context.collisionRect;
   const center = { x: rectangle.left + rectangle.width / 2, y: rectangle.top + rectangle.height / 2 };
-  const containers = context.droppableContainers.getEnabled().filter(container => { const rect = context.droppableRects.get(container.id); return rect && rect.width > 0 && rect.height > 0; });
+  const containers = context.droppableContainers.getEnabled().filter(container => { const rect = context.droppableRects.get(container.id); return container.data.current?.operation !== 'card-drop-blocker' && rect && rect.width > 0 && rect.height > 0; });
   const candidates = containers.filter(container => container.id !== context.over?.id && (container.data.current?.kind === 'deck' || !containers.some(other => other.data.current?.kind === 'deck' && other.data.current?.spaceId === container.data.current?.spaceId))).map(container => {
     const rect = context.droppableRects.get(container.id)!;
     const position = { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
@@ -2817,7 +2894,11 @@ function CatalogSpaces({ catalog, deckCounts, visibleDecks, filtering, source, w
   return <DndContext sensors={sensors} collisionDetection={deckSortCollisions} measuring={{ droppable: { strategy: MeasuringStrategy.Always } }} onDragStart={start} onDragOver={over} onDragEnd={finish} onDragCancel={cancel}>
     <div ref={coverMotion} className={'catalog-spaces' + (dragged ? ' is-dragging' : '')}>
       <p className="visually-hidden" role="status">{dragged ? t.moveToSpace(spaceTitle) : ''}</p>
-      {catalog.spaces.length === 0 && <p className="catalog-empty">{t.noSpaces}{writable ? t.createSpaceHelp : t.sandboxSpaceHelp}</p>}
+      {/* 2026-11-11: a first-run catalog is a large empty area (DESIGN.md, Empty states): the shared scene
+          with the one available action, centered like the other catalog empty states, not a lone line at the edge. */}
+      {catalog.spaces.length === 0 && <EmptyState variant="first-run" art="first-card"
+        title={t.noSpaces} message={writable ? t.createSpaceHelp : t.sandboxSpaceHelp}
+        action={writable ? { label: t.labelCreateSpace, disabled, onClick: () => onForm({ kind: 'space' }) } : undefined} />}
       {filtering && visibleDecks.length === 0 && <p className="catalog-empty">{t.noDeckMatches}</p>}
       {catalog.spaces.filter(space => !filtering || visibleDecks.some(deck => deck.spaceId === space.id)).map(space => {
         const spaceIndex = catalog.spaces.indexOf(space);
@@ -2832,12 +2913,12 @@ function CatalogSpaces({ catalog, deckCounts, visibleDecks, filtering, source, w
         const tileProps = (deck: CatalogDeck) => ({ deck, source, counts: deckCounts.get(deck.id) ?? emptyDeckCounts, disabled, writable, inbox: deck.id === (catalog.inboxDeckId ?? null), canOpen, onOpen: () => onOpen(deck), onSettings: () => onForm({ kind: 'deck', deckId: deck.id, editing: true }) });
         return <SpaceDrop key={space.id} space={space} empty={spaceEmpty} disabled={disabled || !writable}>
           <header className="catalog-space-heading"><h2 id={`space-heading-${space.id}`} tabIndex={-1}><button type="button" disabled={filtering || spaceEmpty} aria-expanded={spaceEmpty ? undefined : !spaceCollapsed} aria-controls={spaceEmpty ? undefined : `space-${space.id}`} onClick={() => onToggle(space.id)}>{!spaceEmpty && (spaceCollapsed ? <ChevronRight size={17} /> : <ChevronDown size={17} />)}<DeckIcon name={space.icon ?? spacePresets[space.kind ?? 'custom'].icon} size={17} /><span>{space.title}</span></button><small className="catalog-space-count">{t.shelfDecks(ids.length)}</small></h2>
-            <div className="catalog-space-actions">{writable && <>
-              <Button variant="ghost" size="icon" disabled={disabled} onClick={event => onForm({ kind: 'space', spaceId: space.id, editing: true }, event.currentTarget)} aria-label={t.configureSpace(space.title)}><Pencil size={14} /></Button>
-              <Button variant="ghost" size="icon" disabled={disabled || spaceIndex === 0} aria-label={t.moveSpaceUp} title={t.moveSpaceUp} onClick={() => void onEdit({ action: 'move-space', spaceId: space.id, beforeSpaceId: catalog.spaces[spaceIndex - 1].id })}><ArrowUp size={14} /></Button>
-              <Button variant="ghost" size="icon" disabled={disabled || spaceIndex === catalog.spaces.length - 1} aria-label={t.moveSpaceDown} title={t.moveSpaceDown} onClick={() => void onEdit({ action: 'move-space', spaceId: space.id, beforeSpaceId: catalog.spaces[spaceIndex + 2]?.id ?? null })}><ArrowDown size={14} /></Button>
-            </>}<Button variant="ghost" size="icon" disabled={disabled || !writable || hasDecks} aria-label={t.deleteSpace} title={deleteHint} aria-description={hasDecks || !writable ? deleteHint : undefined}
-              onClick={() => { setDeleteFailed(false); setDeletion({ spaceId: space.id, manifestHash: catalog.manifestHash, optionsHash: catalog.optionsHash }); }}><Trash2 size={14} /></Button></div>
+            <SpaceActions title={space.title} disabled={disabled} writable={writable} canDelete={!hasDecks} deleteHint={deleteHint}
+              canMoveUp={spaceIndex > 0} canMoveDown={spaceIndex < catalog.spaces.length - 1}
+              onEdit={opener => onForm({ kind: 'space', spaceId: space.id, editing: true }, opener)}
+              onMoveUp={() => void onEdit({ action: 'move-space', spaceId: space.id, beforeSpaceId: catalog.spaces[spaceIndex - 1].id })}
+              onMoveDown={() => void onEdit({ action: 'move-space', spaceId: space.id, beforeSpaceId: catalog.spaces[spaceIndex + 2]?.id ?? null })}
+              onDelete={() => { setDeleteFailed(false); setDeletion({ spaceId: space.id, manifestHash: catalog.manifestHash, optionsHash: catalog.optionsHash }); }} />
           </header>
           {deletion?.spaceId === space.id && <div ref={deletionPanel} aria-busy={disabled}>
             <ConfirmStrip question={t.deleteSpaceConfirm(space.title)} keepLabel={t.cancel} confirmLabel={t.delete} danger onEscape={cancelSpaceDelete} onKeep={cancelSpaceDelete} onConfirm={() => void confirmSpaceDelete()} />
@@ -2853,6 +2934,25 @@ function CatalogSpaces({ catalog, deckCounts, visibleDecks, filtering, source, w
     </div>
     <DragOverlay dropAnimation={null} adjustScale={false} style={{ pointerEvents: 'none' }}>{dragged && <div className={`catalog-deck-cover catalog-cover-${dragged.style ?? 'symbol'} cover-drag-overlay`} style={coverStyle(dragged)}><CoverFace deck={dragged} source={source} counts={deckCounts.get(dragged.id) ?? emptyDeckCounts} inbox={dragged.id === (catalog.inboxDeckId ?? null)} /></div>}</DragOverlay>
   </DndContext>;
+}
+
+function SpaceActions({ title, disabled, writable, canDelete, deleteHint, canMoveUp, canMoveDown, onEdit, onMoveUp, onMoveDown, onDelete }: {
+  title: string; disabled: boolean; writable: boolean; canDelete: boolean; deleteHint: string; canMoveUp: boolean; canMoveDown: boolean;
+  onEdit: (opener: HTMLElement) => void; onMoveUp: () => void; onMoveDown: () => void; onDelete: () => void;
+}) {
+  const t = useText(text);
+  const opener = useRef<HTMLButtonElement>(null);
+  const handoff = useRef<(() => void) | null>(null);
+  return <div className="catalog-space-actions"><DropdownMenu.Root><DropdownMenu.Trigger asChild>
+    <Button ref={opener} variant="ghost" size="icon" disabled={disabled || !writable} aria-label={`${t.spaceActions}: ${title}`} aria-description={!writable ? deleteHint : undefined}><Ellipsis size={16} /></Button>
+  </DropdownMenu.Trigger><DropdownMenu.Portal><DropdownMenu.Content className="deck-space-menu dialog-panel" align="end" sideOffset={8} collisionPadding={12}
+    onCloseAutoFocus={event => { if (handoff.current) { event.preventDefault(); const next = handoff.current; handoff.current = null; moveFocus(opener.current); next(); } }}>
+    <DropdownMenu.Item aria-label={t.configureSpace(title)} onSelect={() => { handoff.current = () => { if (opener.current) onEdit(opener.current); }; }}><Pencil size={16} />{t.configureSpace(title)}</DropdownMenu.Item>
+    <DropdownMenu.Item disabled={!canMoveUp} aria-label={t.moveSpaceUp} onSelect={onMoveUp}><ArrowUp size={16} />{t.moveSpaceUp}</DropdownMenu.Item>
+    <DropdownMenu.Item disabled={!canMoveDown} aria-label={t.moveSpaceDown} onSelect={onMoveDown}><ArrowDown size={16} />{t.moveSpaceDown}</DropdownMenu.Item>
+    <DropdownMenu.Item disabled={!canDelete} aria-label={t.deleteSpace} title={deleteHint} aria-description={canDelete ? undefined : deleteHint} onSelect={() => { handoff.current = onDelete; }}><Trash2 size={16} />{t.deleteSpace}</DropdownMenu.Item>
+    {!canDelete && <p className="deck-settings-note">{deleteHint}</p>}
+  </DropdownMenu.Content></DropdownMenu.Portal></DropdownMenu.Root></div>;
 }
 
 function AddDeckTile({ spaceId, disabled, onCreate }: { spaceId: string; disabled: boolean; onCreate: () => void }) {
@@ -3149,10 +3249,11 @@ export function DeckSettingsForm({ creation, catalog, source, disabled, pending,
   const [loadingArt, setLoadingArt] = useState(false);
   const [saving, setSaving] = useState(false);
   const [coverTab, setCoverTab] = useState<DeckCoverTab>('browse');
+  const [inbox, setInbox] = useState(Boolean(original && catalog.inboxDeckId === original.id));
   // New Deck names the deck up front: a cover picked before creation uploads to it right after (2026-11-06).
   const [newDeckId] = useState(() => crypto.randomUUID());
   const [showColor, setShowColor] = useState(false);
-  const [notice, setNotice] = useState<'changeUnconfirmed' | 'saveFailed' | 'coverSaveFailed' | 'inboxAssigned' | 'inboxRemoved' | ''>('');
+  const [notice, setNotice] = useState<'changeUnconfirmed' | 'saveFailed' | 'coverSaveFailed' | ''>('');
   const [chosenMoveSpaceId, setMoveSpaceId] = useState(initialSpaceId);
   const moveSpaceId = catalog.spaces.some(space => space.id === chosenMoveSpaceId) ? chosenMoveSpaceId : initialSpaceId;
   const [beforeDeckId, setBeforeDeckId] = useState('');
@@ -3172,8 +3273,9 @@ export function DeckSettingsForm({ creation, catalog, source, disabled, pending,
   const previewDeck: CatalogDeck = { id: original?.id ?? newDeckId, title, description, spaceId, kind, icon, color, style, cover, coverPosition };
   const previewCounts = original ? countDeckCards(catalog.cards.filter(card => card.deckId === original.id && !card.archived && !card.deleted)) : emptyDeckCounts;
   const metadataChanged = Boolean(original && (title !== original.title || description !== original.description || icon !== original.icon || color !== original.color || style !== (original.style ?? 'symbol') || cover !== (original.cover ?? null) || coverPosition !== (original.coverPosition ?? 50)));
+  const inboxChanged = Boolean(original && editedFields.current.has('inbox') && inbox !== (catalog.inboxDeckId === original.id));
   const dirty = original
-    ? metadataChanged || imageData !== null || moveSpaceId !== initialSpaceId || beforeDeckId !== ''
+    ? metadataChanged || inboxChanged || imageData !== null || moveSpaceId !== initialSpaceId || beforeDeckId !== ''
     : Boolean(title || description) || imageData !== null || spaceId !== initialSpaceId || kind !== defaultDeckKind(initialSpace?.kind ?? 'custom')
       || icon !== (initialSpace?.icon ?? 'layers') || color !== '#878787' || style !== 'symbol';
   useEffect(() => {
@@ -3193,6 +3295,7 @@ export function DeckSettingsForm({ creation, catalog, source, disabled, pending,
     if (!editedFields.current.has('cover')) setCover(original.cover ?? null);
     if (!editedFields.current.has('coverPosition')) setCoverPosition(original.coverPosition ?? 50);
   }, [original]);
+  useEffect(() => { if (!editedFields.current.has('inbox')) setInbox(Boolean(original && catalog.inboxDeckId === original.id)); }, [catalog.inboxDeckId, original?.id]);
 
   function selectImage(file: File | undefined) {
     if (!file) return;
@@ -3252,22 +3355,10 @@ export function DeckSettingsForm({ creation, catalog, source, disabled, pending,
         setNotice('coverSaveFailed');
         return;
       }
+      if (inboxChanged && !await onSubmit({ action: 'set-inbox-deck', deckId: inbox ? original.id : null })) { setNotice('changeUnconfirmed'); return; }
+      if ((moveSpaceId !== initialSpaceId || beforeDeckId !== '') && !await onSubmit({ action: 'move-deck', deckId: original.id, spaceId: moveSpaceId, beforeDeckId: beforeDeckId || null })) { setNotice('changeUnconfirmed'); return; }
       onSaved();
-    } finally { busy.current = false; setSaving(false); }
-  }
-  async function changeInbox(assigned: boolean) {
-    if (!original || unavailable || busy.current) return;
-    busy.current = true; setSaving(true); setNotice('');
-    try {
-      if (await onSubmit({ action: 'set-inbox-deck', deckId: assigned ? original.id : null })) {
-        setNotice(assigned ? 'inboxAssigned' : 'inboxRemoved');
-      } else setNotice('changeUnconfirmed');
-    } finally { busy.current = false; setSaving(false); }
-  }
-  async function move() {
-    if (!original || unavailable || metadataChanged || imageData || busy.current) return;
-    busy.current = true; setSaving(true);
-    try { if (await onSubmit({ action: 'move-deck', deckId: original.id, spaceId: moveSpaceId, beforeDeckId: beforeDeckId || null })) onSaved(); else setNotice('changeUnconfirmed'); }
+    } catch { setNotice('saveFailed'); }
     finally { busy.current = false; setSaving(false); }
   }
   return <Dialog.Root open onOpenChange={open => { if (!open && !closeDisabled) onCancel(); }}>
@@ -3304,7 +3395,7 @@ export function DeckSettingsForm({ creation, catalog, source, disabled, pending,
                         else if (event.key === 'Home') { event.preventDefault(); moveCover(0); }
                         else if (event.key === 'End') { event.preventDefault(); moveCover(100); }
                       } : undefined}>
-                      <CoverFace deck={previewDeck} counts={previewCounts} source={source} imageUrl={previewImage} inbox={Boolean(original && catalog.inboxDeckId === original.id)} />
+                      <CoverFace deck={previewDeck} counts={previewCounts} source={source} imageUrl={previewImage} inbox={inbox} />
                     </div>
                     {canMoveCover && <span className="deck-settings-position-help">{settings.positionHelp}</span>}
                   </div>
@@ -3313,7 +3404,7 @@ export function DeckSettingsForm({ creation, catalog, source, disabled, pending,
                     {showColor && <label id="deck-settings-color-picker" className="deck-settings-color-picker"><span className="visually-hidden">{t.color}</span><input className="control-field" type="color" value={color} onChange={event => { editedFields.current.add('color'); setColor(event.target.value); }} /><span className="page-number">{color.toUpperCase()}</span></label>}
                   </div>
                   {/* 2026-11-08: Inbox sits in the main form — it is the deck's role, not an extra. Decks without Tasks cannot take it. */}
-                  {original && <label className="deck-settings-inbox"><input type="checkbox" checked={catalog.inboxDeckId === original.id} disabled={!deckCanBeInbox(original.kind)} onChange={event => void changeInbox(event.target.checked)} /><Inbox size={15} /><strong>{t.inboxDeck}</strong><span>{deckCanBeInbox(original.kind) ? t.inboxHelp : t.inboxTasksOnly}</span></label>}
+                  {original && <label className="deck-settings-inbox"><input type="checkbox" checked={inbox} disabled={!deckCanBeInbox(original.kind)} onChange={event => { editedFields.current.add('inbox'); setInbox(event.target.checked); }} /><Inbox size={15} /><strong>{t.inboxDeck}</strong><span>{deckCanBeInbox(original.kind) ? t.inboxHelp : t.inboxTasksOnly}</span></label>}
                 </fieldset>
                 <details className="deck-settings-more" open={!original || undefined}>
                   <summary>{settings.more}</summary>
@@ -3326,19 +3417,13 @@ export function DeckSettingsForm({ creation, catalog, source, disabled, pending,
                   </fieldset>
                   {original && <details className="deck-move-settings">
                     <summary>{t.moveDeck}</summary>
-                    <fieldset disabled={unavailable || metadataChanged || Boolean(imageData)}>
+                    <fieldset disabled={unavailable}>
                       <label className="catalog-field"><span className="deck-settings-label">{t.space}</span><select className="control-field" value={moveSpaceId} onChange={event => { setMoveSpaceId(event.target.value); setBeforeDeckId(''); }}>{catalog.spaces.map(space => <option key={space.id} value={space.id}>{space.title}</option>)}</select></label>
                       <label className="catalog-field"><span className="deck-settings-label">{t.position}</span><select className="control-field" value={beforeDeckId} onChange={event => setBeforeDeckId(event.target.value)}><option value="">{t.atEnd}</option>{catalog.decks.filter(deck => deck.spaceId === moveSpaceId && deck.id !== original.id).map(deck => <option key={deck.id} value={deck.id}>{t.beforeDeck(deck.title)}</option>)}</select></label>
-                      <Button type="button" variant="outline" size="sm" onClick={() => void move()}>{t.move}</Button>
                     </fieldset>
-                    {(metadataChanged || imageData) && <p className="catalog-form-help">{t.saveBeforeMove}</p>}
                   </details>}
                 </details>
               </div>
-              <footer className="deck-settings-modal-actions dialog-foot">
-                {formNotice && <p className={formError ? 'inline-error' : 'catalog-notice'} role={formError ? 'alert' : 'status'}>{formNotice}</p>}
-                <div><Button type="button" variant="ghost" disabled={closeDisabled} onClick={onCancel}>{t.cancel}</Button><Button className="action-mint" type="submit" disabled={unavailable || !title.trim() || !spaceId || Boolean(imageError)}>{closeDisabled && <LoaderCircle size={14} className="spin" />}{original ? t.save : t.create}</Button></div>
-              </footer>
             </div>
             <section className="deck-settings-picker glass-panel" aria-label={settings.pickCover}>
               <div className="deck-settings-picker-heading panel-head">
@@ -3361,7 +3446,7 @@ export function DeckSettingsForm({ creation, catalog, source, disabled, pending,
                   </fieldset>
                 </div>
                 <div role="tabpanel" id="deck-cover-panel-icon" aria-labelledby="deck-cover-tab-icon" hidden={coverTab !== 'icon'} tabIndex={0}>
-                  <fieldset disabled={unavailable} className="deck-settings-icon-fields">
+                  <fieldset disabled={unavailable}>
                     <label className="catalog-field"><span className="deck-settings-label">{t.appearance}</span><select className="control-field" value={style} onChange={event => { editedFields.current.add('style'); setStyle(event.target.value as DeckStyle); }}><option value="symbol">{t.labelSymbol}</option><option value="artwork">{t.labelArtwork}</option><option value="minimal">{t.labelMinimal}</option></select></label>
                     <label className="catalog-field"><span className="deck-settings-label">{t.icon}</span><select className="control-field" value={icon} onChange={event => { editedFields.current.add('icon'); setIcon(event.target.value); }}>{Object.entries(deckIconNames()).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
                   </fieldset>
@@ -3373,6 +3458,10 @@ export function DeckSettingsForm({ creation, catalog, source, disabled, pending,
               </div>
             </section>
           </div>
+          <footer className="deck-settings-modal-actions dialog-foot">
+            {formNotice && <p className={formError ? 'inline-error' : 'catalog-notice'} role={formError ? 'alert' : 'status'}>{formNotice}</p>}
+            <div><Button type="button" variant="ghost" disabled={closeDisabled} onClick={onCancel}>{t.cancel}</Button><Button className="action-mint" type="submit" disabled={unavailable || !title.trim() || !spaceId || Boolean(imageError)}>{closeDisabled && <LoaderCircle size={14} className="spin" />}{original ? t.save : t.create}</Button></div>
+          </footer>
         </form>
       </Dialog.Content>
     </Dialog.Portal>

@@ -1,18 +1,16 @@
-/* 2026-11-06: finishing a card: the band's colour
-   flows to green in 180 ms, and the small state check on the card rises into place;
-   in the card preview the Accept button's check does the same. Nothing floats over the card. Reduced motion keeps the
-   colour change only. */
+/* 2026-11-06: completion feedback stays on the band and the preview's Accept button rather than floating over the
+   card. Reduced motion keeps the colour change only. */
 
 /* The band's base colour is a registered property, so every state change of a band flows instead of jumping. */
 @property --material-base { syntax: '<color>'; inherits: false; initial-value: #cdc8dc; }
 .deck-card > .deck-card-band, .card-preview-sheet > .card-preview-material-band { transition: --material-base 180ms var(--ease-out); }
 .deck-card-owner-medallion { transition: border-color 180ms var(--ease-out); }
 
-/* The state check rises into place: on the tile and on the preview's pressed Accept button. */
-.deck-card.is-just-done .deck-card-state-mark svg, .card-preview-sheet.is-just-done .card-preview-state-actions .ui-button[aria-pressed="true"] svg { animation: done-icon-rise var(--motion-material) var(--ease-out) both; }
+/* The accepted Hero medallion and the preview's pressed Accept button keep the completion feedback. */
+.deck-card.is-just-done .deck-card-done-medallion svg, .card-preview-sheet.is-just-done .card-preview-state-actions .ui-button[aria-pressed="true"] svg { animation: done-icon-rise var(--motion-material) var(--ease-out) both; }
 @keyframes done-icon-rise { from { opacity: 0; scale: .25; translate: 0 50%; } }
 
 @media (prefers-reduced-motion: reduce) {
-  .deck-card.is-just-done .deck-card-state-mark svg, .card-preview-sheet.is-just-done .card-preview-state-actions .ui-button[aria-pressed="true"] svg { animation: none; }
+  .deck-card.is-just-done .deck-card-done-medallion svg, .card-preview-sheet.is-just-done .card-preview-state-actions .ui-button[aria-pressed="true"] svg { animation: none; }
   .deck-card > .deck-card-band, .card-preview-sheet > .card-preview-material-band, .deck-card-owner-medallion { transition: none; }
 }

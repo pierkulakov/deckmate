@@ -7,25 +7,26 @@ import * as Dialog from '@radix-ui/react-dialog';
 import type { CatalogDeck, CatalogView } from '../../src/catalog-contracts.ts';
 import { cardTransferTargetIssue, type CardTransferBaseline } from '../card-transfer.ts';
 import { defineText, useText } from '../i18n.ts';
+import { priorityLabel } from '../locales/common.ts';
 import { Button } from './ui/button.tsx';
 import '../card-transfer.css';
 
 export const cardDragText = defineText({
-  hand: 'Add to hand', decks: 'Change deck', timeline: 'Timeline', vision: 'Vision',
+  hand: 'Add to hand', decks: 'Change deck',
   drop: (value: string) => `Drop to set ${value}`, groups: 'Set card group',
   noDeck: 'No deck', cancel: 'Cancel', chooseDeck: 'Choose a deck for the dragged cards',
   sameDeck: 'All dragged cards are already here', incompatible: 'This deck cannot accept all dragged card types',
-  high: 'High', medium: 'Medium', low: 'Low', noPriority: 'No priority',
+  noPriority: 'No priority',
   handFor: (member: string) => `Add to ${member}’s hand`,
   promoteHeroTitle: 'Make Hero?',
   promoteHeroDescription: (deck: string) => `The card will become a Hero in “${deck}”. Its text, ID and links will be preserved; its Task state will be removed.`,
   promoteHeroConfirm: 'Make Hero',
 }, {
-  hand: 'Добавить в Hand', decks: 'Сменить колоду', timeline: 'Календарь', vision: 'Полотно',
+  hand: 'Добавить в Hand', decks: 'Сменить колоду',
   drop: (value: string) => `Отпустите, чтобы задать: ${value}`, groups: 'Группа карточек',
   noDeck: 'Без колоды', cancel: 'Отмена', chooseDeck: 'Выберите колоду для переносимых карточек',
   sameDeck: 'Все переносимые карточки уже здесь', incompatible: 'Колода не принимает все переносимые типы карточек',
-  high: 'Высокий', medium: 'Средний', low: 'Низкий', noPriority: 'Без приоритета',
+  noPriority: 'Без приоритета',
   handFor: (member: string) => `Добавить в Hand: ${member}`,
   promoteHeroTitle: 'Сделать Hero?',
   promoteHeroDescription: (deck: string) => `Карточка станет Hero в колоде «${deck}». Её текст, ID и ссылки сохранятся; состояние задачи будет убрано.`,
@@ -122,12 +123,10 @@ export function CardDragTabs({ baseline, catalog, memberLabel }: {
   } });
   if (!host) return null;
   return <>{createPortal(<div className="card-drag-tabs">
-    <DragTab operation="card-hand" disabled={!memberLabel} title={memberLabel ? text.handFor(memberLabel) : text.hand}>{text.hand}</DragTab>
+    {memberLabel && <DragTab operation="card-hand" title={text.handFor(memberLabel)}>{text.hand}</DragTab>}
     <DragTab operation="card-deck-picker" title={text.decks} onNode={node => { deckTab.current = node; }}>{text.decks}</DragTab>
-    <DragTab operation="card-timeline" disabled>{text.timeline}</DragTab>
-    <DragTab operation="card-vision" disabled>{text.vision}</DragTab>
   </div>, host)}
-    {menu && createPortal(<aside ref={menuDrop.setNodeRef} className="card-drag-deck-menu" style={anchor} aria-label={text.decks}>
+    {menu && createPortal(<aside ref={menuDrop.setNodeRef} className="card-drag-deck-menu dialog-panel" style={anchor} aria-label={text.decks}>
       <DeckDestinations baseline={baseline} catalog={catalog} />
     </aside>, document.body)}
   </>;
@@ -138,10 +137,10 @@ export function CardDropDeckPicker({ baseline, catalog, onChoose, onClose }: {
 }) {
   const text = useText(cardDragText);
   return <Dialog.Root open onOpenChange={open => { if (!open) onClose(); }}><Dialog.Portal>
-    <Dialog.Overlay className="dialog-overlay" /><Dialog.Content className="card-drop-deck-picker">
-      <Dialog.Title>{text.decks}</Dialog.Title><Dialog.Description>{text.chooseDeck}</Dialog.Description>
-      <div className="card-drop-deck-list"><DeckDestinations baseline={baseline} catalog={catalog} onChoose={onChoose} /></div>
-      <Dialog.Close className="ui-button button-ghost">{text.cancel}</Dialog.Close>
+    <Dialog.Overlay className="dialog-overlay" /><Dialog.Content className="card-drop-deck-picker dialog-panel">
+      <header className="dialog-head"><Dialog.Title className="dialog-title">{text.decks}</Dialog.Title></header>
+      <div className="card-drop-deck-list dialog-body"><Dialog.Description>{text.chooseDeck}</Dialog.Description><DeckDestinations baseline={baseline} catalog={catalog} onChoose={onChoose} /></div>
+      <footer className="dialog-foot"><Dialog.Close asChild><Button variant="ghost">{text.cancel}</Button></Dialog.Close></footer>
     </Dialog.Content>
   </Dialog.Portal></Dialog.Root>;
 }
@@ -168,6 +167,6 @@ export function CardHeroPromotionConfirmation(props: Parameters<typeof CardHeroP
 
 export function CardGroupDropSurface({ title, groupKey }: { title: string; groupKey: string }) {
   const text = useText(cardDragText);
-  const priorities: Record<string, string> = { 'priority:high': text.high, 'priority:medium': text.medium, 'priority:low': text.low, 'priority:none': text.noPriority };
+  const priorities: Record<string, string> = { 'priority:high': priorityLabel('high'), 'priority:medium': priorityLabel('medium'), 'priority:low': priorityLabel('low'), 'priority:none': text.noPriority };
   return <div className="card-group-drop-surface" aria-hidden="true"><span>{text.drop(priorities[groupKey] ?? title)}</span></div>;
 }

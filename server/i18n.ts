@@ -8,7 +8,7 @@ export { defineText, type Lang } from '../src/i18n.ts';
 
 const requestLang = new AsyncLocalStorage<Lang>();
 
-export function langFromCookie(cookie: string | undefined): Lang {
+function langFromCookie(cookie: string | undefined): Lang {
   const match = cookie?.split(';').map(part => part.trim()).find(part => part.startsWith(langCookie + '='));
   return parseLang(match?.slice(langCookie.length + 1));
 }

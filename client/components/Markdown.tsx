@@ -26,6 +26,7 @@ const text = defineText({
   check: (label: string) => `Complete: ${label}`,
   checklist: (done: number, total: number) => `Checklist: ${done} of ${total}`,
   completed: (done: number, total: number) => `${done}/${total} completed`,
+  table: 'Table',
 }, {
   missingCard: 'Карточка не найдена',
   missingCardInline: (label: string) => `${label} — карточка не найдена`,
@@ -39,6 +40,7 @@ const text = defineText({
   check: (label: string) => `Выполнить: ${label}`,
   checklist: (done: number, total: number) => `Чеклист: ${done} из ${total}`,
   completed: (done: number, total: number) => `${done}/${total} выполнено`,
+  table: 'Таблица',
 });
 
 /** Short card ref of a safe in-app link of the shown source; links to the other source stay plain links. */
@@ -66,7 +68,7 @@ function CardReferenceChip({ reference, card, href, onOpenCard }: {
   }
   return <a className="card-reference-chip" href={href} target={onOpenCard ? undefined : '_blank'} rel="noreferrer"
     title={target.state ? `${target.title} · ${stateLabel(target.state)}` : target.title} onClick={open}>
-    <span className="card-reference-chip-id">{label}</span> <span className="card-reference-chip-title">{target.title}</span>
+    <span className="card-reference-chip-id">{label}</span> <span>{target.title}</span>
   </a>;
 }
 
@@ -165,7 +167,7 @@ export function Markdown({ tree, source, path = 'features/match.md', onTaskToggl
   }
   function render(node: RootContent | PhrasingContent, key: number | string, mentions = true): ReactNode {
     const childMentions = mentions && node.type !== 'link' && node.type !== 'linkReference';
-    const children = 'children' in node ? node.children.map((child, index) => render(child as RootContent, index, childMentions)) : null;
+    const children = 'children' in node && node.type !== 'table' ? node.children.map((child, index) => render(child as RootContent, index, childMentions)) : null;
     switch (node.type) {
       case 'text': return mentions ? renderText(node.value, key, node.position?.start.offset === undefined ? undefined
         : rawMarkdown?.slice(node.position.start.offset, node.position.end.offset)) : node.value;
@@ -216,9 +218,17 @@ export function Markdown({ tree, source, path = 'features/match.md', onTaskToggl
             disabled={!editable || taskToggleDisabled} aria-label={(node.checked ? t.uncheck(label) : t.check(label))}
             onChange={editable ? event => onTaskToggle(offset, event.target.checked) : undefined} />}{children}</li>;
       }
-      case 'table': return <div className="table-scroll" key={key}><table><tbody>{children}</tbody></table></div>;
-      case 'tableRow': return <tr key={key}>{children}</tr>;
-      case 'tableCell': return <td key={key}>{children}</td>;
+      case 'table': {
+        const rows = node.children.map((row, rowIndex) => <tr key={rowIndex}>{row.children.map((cell, columnIndex) => {
+          const Cell = rowIndex === 0 ? 'th' : 'td';
+          return <Cell key={columnIndex} scope={rowIndex === 0 ? 'col' : undefined} style={{ textAlign: node.align?.[columnIndex] ?? undefined }}>
+            {cell.children.map((child, index) => render(child, index, mentions))}
+          </Cell>;
+        })}</tr>);
+        return <div className="table-scroll" key={key} tabIndex={0} role="region" aria-label={t.table}>
+          <table><thead>{rows[0]}</thead><tbody>{rows.slice(1)}</tbody></table>
+        </div>;
+      }
       case 'html': return <code key={key}>{node.value}</code>;
       default: return children;
     }

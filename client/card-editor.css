@@ -9,7 +9,7 @@
 .card-edit-attachment > svg { flex-shrink: 0; }
 .card-edit-attachment-info { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
 .card-edit-attachment-name { overflow-wrap: anywhere; }
-.card-edit-attachment-meta { color: var(--muted); font-size: 11px; overflow-wrap: anywhere; }
+.card-edit-attachment-meta { color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
 .card-content-notice { color: var(--muted); font-size: 12px; line-height: 1.65; }
 .card-content-notice { padding: 4px 6px; border-radius: 0; background: var(--warning-bg); color: var(--warning-ink); }
 .card-content-heading { margin-bottom: 20px; }
@@ -18,13 +18,13 @@
 .card-content-reading-footer > .catalog-reference { min-width: 0; }
 .card-content-reading-actions { display: inline-flex; align-items: center; gap: 8px; flex-shrink: 0; margin-left: auto; }
 .card-content-reading-actions > .ui-button { flex-shrink: 0; }
-.card-content-readonly { margin: 0 0 16px; color: var(--muted); font-size: 11px; }
+.card-content-readonly { margin: 0 0 16px; color: var(--muted); font-size: 12px; }
 .card-content-conflict { padding: 14px; border: 1px solid color-mix(in srgb, var(--warning-ink) 35%, var(--line)); border-radius: var(--glass-radius); background: var(--warning-bg); }
 .card-content-conflict > p { margin: 0 0 12px; color: var(--warning-ink); font-size: 12px; line-height: 1.6; }
 .card-content-conflict-columns { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
 .card-content-conflict-columns section { min-width: 0; }
-.card-content-conflict-columns h3 { margin: 0 0 6px; color: var(--warning-ink); font-size: 11px; font-weight: 500; }
-.card-content-conflict-columns pre { max-height: 220px; overflow: auto; margin: 0; padding: 10px; border: 1px solid var(--line); border-radius: var(--control-radius); background: var(--surface); color: var(--ink); white-space: pre-wrap; overflow-wrap: anywhere; font: 11px/1.65 'Geist Mono', monospace; }
+.card-content-conflict-columns h3 { margin: 0 0 6px; color: var(--warning-ink); font-size: 12px; font-weight: 500; }
+.card-content-conflict-columns pre { max-height: 220px; overflow: auto; margin: 0; padding: 10px; border: 1px solid var(--line); border-radius: var(--control-radius); background: var(--surface); color: var(--ink); white-space: pre-wrap; overflow-wrap: anywhere; font: 12px/1.65 'Geist Mono', monospace; }
 .card-content-conflict-actions { display: flex; justify-content: flex-end; margin-top: 12px; }
 @media (max-width: 640px) { .card-content-conflict-columns { grid-template-columns: 1fr; } }
 
@@ -35,7 +35,7 @@
 .card-preview .card-draft-banner { margin: -16px -16px 16px; border-radius: 0; }
 .card-draft-banner p { margin: 0; font-size: 14px; font-weight: 700; line-height: 18px; }
 .card-draft-banner-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; }
-.card-draft-banner-actions .ui-button { gap: 6px; height: 28px; padding: 0 10px; border: 0; border-radius: var(--control-radius); background: var(--draft-banner-button); color: var(--draft-banner-ink); font-weight: 600; transition: background-color var(--motion-feedback); }
+.card-draft-banner-actions .ui-button { gap: 6px; height: 28px; padding: 0 10px; border: 0; border-radius: var(--control-radius); background: var(--draft-banner-button); color: var(--draft-banner-ink); font-weight: 600; }
 .card-draft-banner-actions .ui-button:hover:not(:disabled) { background: var(--draft-banner-button-hover); }
 .card-draft-banner-actions .ui-button:focus-visible { outline: 2px solid var(--draft-banner-ink); outline-offset: 2px; }
 .card-content-save-status { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; }

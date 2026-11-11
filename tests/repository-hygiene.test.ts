@@ -131,6 +131,14 @@ function textViolations(file: string, text: string): string[] {
 }
 
 describe('repository hygiene', () => {
+  it.each(['components/JourneyCatalog.tsx', 'components/Notifications.tsx', 'components/CardPreview.tsx',
+    'components/JourneyMetrics.tsx', 'components/DocumentPreview.tsx', 'components/CardFamily.tsx', 'AttachSubCards.tsx'])('%s uses the shared formatter instead of exposing fetch TypeErrors', file => {
+    const source = readFileSync(path.join(root, 'client', file), 'utf8');
+    expect(source).toMatch(/import \{ failureMessage \} from ['"].*failure-message\.ts['"]/u);
+    expect(source).not.toMatch(/function failureMessage\(/u);
+    expect(source).toMatch(/failureMessage\((?:failure|error), /u);
+  });
+
   it('distinguishes comments from localized strings, templates and regular expressions', () => {
     const russian = '\u0442\u0435\u043a\u0441\u0442';
     const script = [`const s = "// ${russian}";`, `const r = /\\/\\/${russian}/;`,

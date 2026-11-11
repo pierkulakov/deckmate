@@ -6,7 +6,7 @@ import type { CatalogAction } from '../catalog-store.ts';
 // action is confirmed, never waits and never reads quest progress, so the quests can change without touching the app.
 
 export type AppView = 'deck' | 'hand' | 'timeline' | 'vision';
-export type OnboardingPanel = 'activity' | 'shortcuts' | 'members';
+type OnboardingPanel = 'activity' | 'shortcuts' | 'members';
 
 export type OnboardingSignal =
   /** A save from this browser was confirmed: the catalog before it and the server's answer. */

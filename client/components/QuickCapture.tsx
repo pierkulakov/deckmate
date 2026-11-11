@@ -4,12 +4,14 @@ import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import * as Dialog from '@radix-ui/react-dialog';
 import { Check, LoaderCircle, Plus, X } from 'lucide-react';
 import type { WorkspaceSnapshot } from '../../src/workspace-contracts.ts';
+import { deckCanBeInbox, newCardDeckId } from '../../src/catalog-contracts.ts';
 import { useCatalog } from '../useCatalog.ts';
 import { catalogStore } from '../catalog-store.ts';
 import { defineText, useText } from '../i18n.ts';
 import { Button } from './ui/button.tsx';
 import { ErrorState } from './ErrorState.tsx';
 import { moveFocus } from '../focus.ts';
+import { readOnlyDescription } from '../source-access.ts';
 import '../surface.css';
 import '../quick-capture.css';
 import { prepareEntrance } from '../prepared-motion.ts';
@@ -18,11 +20,13 @@ const text = defineText({
   quickCapture: 'Quick capture to Inbox',
   closeQuickCapture: 'Close quick capture',
   close: 'Close',
-  description: 'A raw idea, bug, or agent finding becomes a Task card in the Inbox deck. Inbox is for triage, not work.',
+  description: 'Capture an idea, bug, or finding as a Task. Inbox is the deck chosen to collect cards for triage.',
   titleRequired: 'Enter a title; the card cannot be saved without one.',
   limits: 'The title is limited to 1000 characters and the text to 200000 characters.',
-  createInboxFirst: 'Create an Inbox deck first.',
-  noSpaces: 'First create a space in Decks.',
+  chooseInboxFirst: 'Choose a deck for Inbox first.',
+  noSpaces: 'First create a space and a Task or Mixed deck in Decks.',
+  noCompatibleDecks: 'First create a Task or Mixed deck in Decks, then choose it as Inbox here.',
+  inboxNotConfirmed: 'Inbox assignment was not confirmed. Choose the deck again and retry.',
   unconfirmed: 'The create result is not confirmed. Your draft is kept. Re-read the catalog to check before saving again.',
   savedWarning: 'The server reported a save warning. Re-read the catalog to check the card before continuing.',
   checkResult: 'Re-read and check',
@@ -37,11 +41,11 @@ const text = defineText({
   optionalText: 'Text — optional',
   textPlaceholder: 'Details, reproduction steps, link…',
   findingText: 'Finding text',
-  readOnly: 'This source is read-only. Open the test copy from the source menu in the top bar; quick capture saves cards there.',
   loading: 'Opening catalog…',
-  missingInbox: 'There is no Inbox deck yet. It will be created in the first tasks space (or the first space).',
-  createInbox: 'Create Inbox deck',
-  inboxDescription: 'Raw ideas, bugs, and findings — for triage only',
+  missingInbox: 'Choose an existing Task or Mixed deck as the project’s Inbox. Its name does not need to be Inbox.',
+  inboxDeck: 'Inbox deck',
+  chooseDeck: 'Choose a deck…',
+  setInbox: 'Set as Inbox',
   deck: (title: string) => `Deck “${title}”`,
   space: (title: string) => ` · space “${title}”`,
   shortcutHint: 'Enter — save · Esc — close',
@@ -50,11 +54,13 @@ const text = defineText({
   quickCapture: 'Быстрая запись в Inbox',
   closeQuickCapture: 'Закрыть быструю запись',
   close: 'Закрыть',
-  description: 'Сырая идея, баг или находка агента станет Task-карточкой в колоде Inbox. В Inbox не работают — только разбирают.',
+  description: 'Запишите идею, баг или находку как Task. Inbox — назначенная колода для входящих карточек, которые нужно разобрать.',
   titleRequired: 'Введите название — без него карточку не сохранить.',
   limits: 'Название ограничено 1000 знаками, текст — 200000 знаками.',
-  createInboxFirst: 'Сначала создайте колоду Inbox.',
-  noSpaces: 'Сначала создайте пространство в Decks.',
+  chooseInboxFirst: 'Сначала выберите колоду для Inbox.',
+  noSpaces: 'Сначала создайте пространство и колоду Task или Mixed в Decks.',
+  noCompatibleDecks: 'Сначала создайте колоду Task или Mixed в Decks, затем назначьте её Inbox здесь.',
+  inboxNotConfirmed: 'Назначение Inbox не подтверждено. Выберите колоду ещё раз и повторите.',
   unconfirmed: 'Результат создания не подтверждён. Черновик сохранён. Перечитайте каталог для проверки перед повторным сохранением.',
   savedWarning: 'Сервер сообщил о сохранении с предупреждением. Перечитайте каталог и проверьте карточку перед продолжением.',
   checkResult: 'Перечитать и проверить',
@@ -69,11 +75,11 @@ const text = defineText({
   optionalText: 'Текст — необязательно',
   textPlaceholder: 'Подробности, шаги воспроизведения, ссылка…',
   findingText: 'Текст находки',
-  readOnly: 'Источник открыт только для чтения. Откройте тестовую копию через меню источника в верхней полосе — быстрая запись сохраняет карточки туда.',
   loading: 'Открываем каталог…',
-  missingInbox: 'Колоды Inbox пока нет. Она появится в первом пространстве типа tasks (или в первом пространстве).',
-  createInbox: 'Создать колоду Inbox',
-  inboxDescription: 'Сырые идеи, баги и находки — только разбирать',
+  missingInbox: 'Назначьте существующую колоду Task или Mixed для входящих карточек проекта. Называть её Inbox необязательно.',
+  inboxDeck: 'Колода для Inbox',
+  chooseDeck: 'Выберите колоду…',
+  setInbox: 'Назначить Inbox',
   deck: (title: string) => `Колода «${title}»`,
   space: (title: string) => ` · пространство «${title}»`,
   shortcutHint: 'Enter — сохранить · Esc — закрыть',
@@ -97,16 +103,13 @@ export function QuickCapture({ snapshot, refreshKey, onOpenCard }: {
       {/* 2026-11-10: the frame, head, body and foot come from the shared dialog grammar in surface.css; the panel stays
           anchored under the top-bar “+”, like the Create space popover. */}
       <Dialog.Content ref={prepareEntrance} className="quick-capture-panel dialog-panel">
-        <header className="quick-capture-header dialog-head">
+        <header className="dialog-head">
           <Dialog.Title className="dialog-title">{t.quickCapture}</Dialog.Title>
           <Dialog.Close asChild>
             <Button variant="ghost" size="icon" className="quick-capture-close" aria-label={t.closeQuickCapture} title={t.close}><X size={17} /></Button>
           </Dialog.Close>
         </header>
-        <div className="quick-capture-body dialog-body">
-          <Dialog.Description className="quick-capture-caption">{t.description}</Dialog.Description>
-          <QuickCaptureForm snapshot={snapshot} refreshKey={refreshKey} onOpenCard={onOpenCard} />
-        </div>
+        <QuickCaptureForm snapshot={snapshot} refreshKey={refreshKey} onOpenCard={onOpenCard} />
       </Dialog.Content>
     </Dialog.Portal>
   </Dialog.Root>;
@@ -127,18 +130,26 @@ function QuickCaptureForm({ snapshot, refreshKey, onOpenCard }: {
   const [savedTitle, setSavedTitle] = useState('');
   const [notice, setNotice] = useState<{ message: string; unresolved: boolean; saved?: boolean } | null>(null);
   const [checking, setChecking] = useState(false);
-  const [localError, setLocalError] = useState<'' | 'titleRequired' | 'limits' | 'createInboxFirst' | 'noSpaces'>('');
+  const [localError, setLocalError] = useState<'' | 'titleRequired' | 'limits' | 'chooseInboxFirst' | 'noSpaces' | 'inboxNotConfirmed'>('');
+  const [inboxChoice, setInboxChoice] = useState<{ id: string; manifestHash: string } | null>(null);
+  const [inboxUnconfirmed, setInboxUnconfirmed] = useState(false);
   const titleInput = useRef<HTMLInputElement>(null);
   const checkButton = useRef<HTMLButtonElement>(null);
   const openButton = useRef<HTMLButtonElement>(null);
   const inFlight = useRef(false);
   const checkingInFlight = useRef(false);
+  const focusAfterAssignment = useRef(false);
 
   const canWrite = snapshot.source === 'sandbox' && snapshot.writable;
   const spaces = catalog.catalog?.spaces ?? [];
-  // Match Inbox case-insensitively; the first matching deck wins.
-  const inboxDeck = catalog.catalog?.decks.find(deck => deck.title.trim().toLowerCase() === 'inbox');
+  const decks = catalog.catalog?.decks ?? [];
+  const inboxId = newCardDeckId(null, catalog.catalog?.inboxDeckId, decks, 'task');
+  const inboxDeck = decks.find(deck => deck.id === inboxId);
+  const inboxChoices = decks.filter(deck => deckCanBeInbox(deck.kind));
   const inboxSpace = inboxDeck ? spaces.find(space => space.id === inboxDeck.spaceId) : undefined;
+  let inboxSetupHint = t.noSpaces;
+  if (inboxChoices.length) inboxSetupHint = t.missingInbox;
+  else if (spaces.length) inboxSetupHint = t.noCompatibleDecks;
   const error = localError ? t[localError] : catalog.error || '';
   const locked = saving || checking || catalog.pending || !canWrite || Boolean(notice?.unresolved);
 
@@ -149,12 +160,18 @@ function QuickCaptureForm({ snapshot, refreshKey, onOpenCard }: {
     else moveFocus(titleInput.current);
   }, [savedCardId, notice?.unresolved]);
 
+  useEffect(() => {
+    if (saving || !focusAfterAssignment.current) return;
+    focusAfterAssignment.current = false;
+    moveFocus(titleInput.current);
+  }, [saving]);
+
   async function save() {
     if (inFlight.current || locked || savedCardId || !catalog.catalog) return;
     const draftTitle = title.trim();
     if (!draftTitle) { setLocalError('titleRequired'); return; }
     if (draftTitle.length > 1000 || markdown.length > 200000) { setLocalError('limits'); return; }
-    if (!inboxDeck) { setLocalError(spaces.length ? 'createInboxFirst' : 'noSpaces'); return; }
+    if (!inboxDeck || inboxUnconfirmed) { setLocalError(spaces.length ? 'chooseInboxFirst' : 'noSpaces'); return; }
     inFlight.current = true;
     setLocalError('');
     setNotice(null);
@@ -204,13 +221,22 @@ function QuickCaptureForm({ snapshot, refreshKey, onOpenCard }: {
     }
   }
 
-  async function createInboxDeck() {
-    if (inFlight.current || locked) return;
-    const target = spaces.find(space => space.kind === 'tasks') ?? spaces[0];
-    if (!target) { setLocalError('noSpaces'); return; }
+  async function assignInbox() {
+    if (inFlight.current || locked || !inboxChoice || !inboxChoices.some(deck => deck.id === inboxChoice.id)) return;
+    inFlight.current = true;
+    setSaving(true);
     setLocalError('');
-    await catalog.edit({ action: 'create-deck', title: 'Inbox', spaceId: target.id, kind: 'task', icon: 'tasks',
-      color: '#5258b9', description: t.inboxDescription, style: 'symbol' });
+    try {
+      const saved = await catalog.edit({ action: 'set-inbox-deck', deckId: inboxChoice.id, manifestHash: inboxChoice.manifestHash });
+      const result = catalogStore(snapshot.source).getSnapshot();
+      const confirmed = saved && !result.warning && result.catalog?.inboxDeckId === inboxChoice.id;
+      setInboxUnconfirmed(!confirmed);
+      focusAfterAssignment.current = confirmed;
+      if (!confirmed) { setLocalError('inboxNotConfirmed'); setInboxChoice(null); }
+    } finally {
+      inFlight.current = false;
+      setSaving(false);
+    }
   }
 
   function startAnother() {
@@ -229,9 +255,12 @@ function QuickCaptureForm({ snapshot, refreshKey, onOpenCard }: {
   }
 
   if (savedCardId) return <div className="quick-capture-form" role="status" onKeyDown={handleKeys}>
+    <div className="quick-capture-body dialog-body">
+    <Dialog.Description className="quick-capture-caption">{t.description}</Dialog.Description>
     <div className="quick-capture-saved">
       <span className="quick-capture-saved-mark" aria-hidden="true"><Check size={15} /></span>
       <span className="quick-capture-saved-text"><strong>{t.saved}</strong>«{savedTitle}»</span>
+    </div>
     </div>
     {/* Actions sit at the end of a footer row, the primary one last, as in every dialog. */}
     <footer className="quick-capture-footer dialog-foot">
@@ -241,6 +270,8 @@ function QuickCaptureForm({ snapshot, refreshKey, onOpenCard }: {
   </div>;
 
   return <div className="quick-capture-form" onKeyDown={handleKeys}>
+    <div className="quick-capture-body dialog-body">
+    <Dialog.Description className="quick-capture-caption">{t.description}</Dialog.Description>
     <label className="quick-capture-field"><span>{t.title}</span>
       <input ref={titleInput} className="control-field quick-capture-input" value={title} maxLength={1000} placeholder={t.titlePlaceholder}
         aria-label={t.findingTitle} disabled={locked}
@@ -260,16 +291,24 @@ function QuickCaptureForm({ snapshot, refreshKey, onOpenCard }: {
       {notice.unresolved && <Button ref={checkButton} variant="outline" size="sm" aria-disabled={checking}
         onClick={() => void checkResult()}>{checking && <LoaderCircle size={12} className="spin" />}{checking ? t.checking : t.checkResult}</Button>}
     </div>}
-    {!canWrite && <p className="quick-capture-note">{t.readOnly}</p>}
+    {!canWrite && <p className="quick-capture-note">{readOnlyDescription(snapshot)}</p>}
     {canWrite && !catalog.catalog && !catalog.error && catalog.loading && <p className="quick-capture-note" role="status"><LoaderCircle size={12} className="spin" /> {t.loading}</p>}
-    {canWrite && catalog.catalog && !inboxDeck && <div className="quick-capture-missing">
-      <p className="quick-capture-note">{spaces.length ? t.missingInbox : t.noSpaces}</p>
-      {spaces.length > 0 && <Button size="sm" disabled={locked} onClick={() => void createInboxDeck()}>{t.createInbox}</Button>}
+    {canWrite && catalog.catalog && (!inboxDeck || inboxUnconfirmed) && <div className="quick-capture-missing">
+      <p className="quick-capture-note">{inboxSetupHint}</p>
+      {inboxChoices.length > 0 && <>
+        <label className="quick-capture-field"><span>{t.inboxDeck}</span>
+          <select className="control-field" value={inboxChoice?.id ?? ''} disabled={locked} onChange={event => {
+            setInboxChoice(event.target.value ? { id: event.target.value, manifestHash: catalog.catalog!.manifestHash } : null);
+          }}><option value="">{t.chooseDeck}</option>{inboxChoices.map(deck => <option key={deck.id} value={deck.id}>{deck.title}</option>)}</select>
+        </label>
+        <Button variant="outline" size="sm" disabled={locked || !inboxChoices.some(deck => deck.id === inboxChoice?.id)} onClick={() => void assignInbox()}>{t.setInbox}</Button>
+      </>}
     </div>}
-    {inboxDeck && <p className="quick-capture-note">{t.deck(inboxDeck.title)}{inboxSpace ? t.space(inboxSpace.title) : ''}</p>}
+    {inboxDeck && !inboxUnconfirmed && <p className="quick-capture-note">{t.deck(inboxDeck.title)}{inboxSpace ? t.space(inboxSpace.title) : ''}</p>}
+    </div>
     <footer className="quick-capture-footer dialog-foot">
       <span className="quick-capture-hint">{t.shortcutHint}</span>
-      <Button size="sm" disabled={locked || !title.trim() || !inboxDeck} onClick={() => void save()}>
+      <Button size="sm" disabled={locked || !title.trim() || !inboxDeck || inboxUnconfirmed} onClick={() => void save()}>
         {saving ? <LoaderCircle size={13} className="spin" /> : <Check size={13} />}{t.save}
       </Button>
     </footer>

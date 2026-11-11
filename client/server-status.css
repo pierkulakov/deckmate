@@ -1,4 +1,4 @@
-/* Server status beside the logo (2026-11-05): one chip for connection and saving, details on hover or focus.
+/* Server status beside the logo (2026-11-11): one chip for connection and saving; tap or keyboard opens details.
    The slot keeps the width of the longest label so the tabs never move; the pill inside hugs the active label. */
 :root { --server-live: #2b9e7f; --server-wait: #a8661a; --server-off: #b64267; }
 :root.dark { --server-live: #4cc9b0; --server-wait: #f0b24a; --server-off: #ff8a80; }
@@ -16,7 +16,8 @@
 .server-status-stack, .server-status-labels { font-size: 12px; font-weight: 500; line-height: 1; white-space: nowrap; }
 /* 2026-11-10: a deliberate exception to the Foil Rule — the Live badge stays a capsule;
    every save shows in it. */
-.server-status { position: relative; isolation: isolate; border-radius: 999px; cursor: default; }
+.server-status { position: relative; isolation: isolate; border: 0; background: transparent; border-radius: 999px; cursor: pointer; min-height: 24px; }
+.server-status:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 .server-status::before { content: ''; position: absolute; inset: 0; z-index: -1; border-radius: inherit;
   background: color-mix(in srgb, var(--server-color) 11%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--server-color) 24%, transparent);
   transform-origin: left center; transform: scaleX(var(--status-face-scale, 1)); transition: transform var(--motion-material) var(--ease-out); }
@@ -41,10 +42,11 @@
   to { opacity: 0; transform: scale(3); }
 }
 
-.server-status-card { z-index: 160; width: min(288px, calc(100vw - 16px)); padding: 12px 14px 13px; font-size: 13px; transform-origin: var(--radix-tooltip-content-transform-origin); }
-.server-status-card[data-state='delayed-open'], .server-status-card[data-state='instant-open'] { animation: server-status-card-in var(--motion-feedback) var(--ease-out); }
+.server-status-card { position: fixed; top: calc(var(--topbar-height, 52px) + var(--space-2)); left: var(--space-2); z-index: 160; width: min(288px, calc(100vw - 16px)); padding: 12px 14px 13px; font-size: 13px; }
+.server-status-card[data-state='open'] { animation: server-status-card-in var(--motion-feedback) var(--ease-out); }
 @keyframes server-status-card-in { from { opacity: 0; transform: translateY(-3px) scale(.98); } }
 .server-status-title { display: flex; align-items: center; gap: 8px; margin: 0 0 4px; font-size: 14px; font-weight: 600; }
+.server-status-heading { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); }
 .server-status-detail { margin: 0 0 11px; color: var(--muted); line-height: 1.4; }
 .server-status-facts { display: grid; grid-template-columns: auto 1fr; gap: 5px 14px; margin: 0; padding-top: 10px; border-top: 1px solid var(--line); font-size: 12px; }
 .server-status-facts dt { color: var(--muted); }
@@ -53,11 +55,14 @@
 
 /* 2026-11-06: below 1180 the label gives way with the source label and the search (workspace.css): its slot is
    reserved at the longest label ("Reconnecting...", longer in Russian) and cut the Timeline tab at 1024. The dot keeps
-   the state at a glance; the hover card carries the full text, and the aria-label never depends on the labels. */
+   the state at a glance; the detail panel carries the full text, and the aria-label never depends on the labels. */
 @media (max-width: 1180px) {
   .server-status-sizer, .server-status-labels { display: none; }
   .server-status { padding: 3px 7px; }
+  .server-status.is-offline .server-status-labels, .mission-control .server-status-labels { display: grid; }
+  .mission-control .server-status-sizer { display: inline-flex; }
 }
+@media (pointer: coarse) { .server-status { min-width: var(--control-target-touch, 44px); min-height: var(--control-target-touch, 44px); } }
 
 @media (prefers-reduced-motion: reduce) {
   .server-status::before, .server-status-labels > span.is-active { transition: none; }

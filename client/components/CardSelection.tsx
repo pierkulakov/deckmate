@@ -1,7 +1,7 @@
 import { defineText, locale, textNow, useLang, useText } from '../i18n.ts';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
-import { Check, Copy, Layers, LoaderCircle, Route, X } from 'lucide-react';
+import { Check, Copy, Layers, LoaderCircle, X } from 'lucide-react';
 import type { CatalogCard, CatalogView } from '../../src/catalog-contracts.ts';
 import { deckAcceptsCard } from '../../src/catalog-contracts.ts';
 import { shortReference } from '../../src/references.ts';
@@ -14,7 +14,6 @@ import { failureMessage } from '../failure-message.ts';
 import '../card-selection.css';
 
 const text = defineText({
-  noTracks: "No Tracks in this project yet",
   overLimit: "Limit: 1,000 cards per action. Select fewer cards.",
   copiedCount: (count: string) => `Links copied: ${count}`,
   copyFailed: "Could not copy links. Check clipboard access and try again.",
@@ -29,17 +28,13 @@ const text = defineText({
   limit: "Limit: 1,000 cards",
   compatibleDecks: "Decks compatible with all selected cards are shown.",
   noDeck: "No deck",
-  trackHint: "Adds a link and keeps existing Tracks.",
   copied: "Links copied",
   moveCount: (count: number) => `Move ${new Intl.NumberFormat(locale("en")).format(count)} ${new Intl.PluralRules(locale("en")).select(count) === "one" ? "card" : "cards"} to Deck`,
-  trackCount: (count: number) => `Add ${new Intl.NumberFormat(locale("en")).format(count)} ${new Intl.PluralRules(locale("en")).select(count) === "one" ? "card" : "cards"} to Track`,
-  selected: (count: number): string => new Intl.PluralRules(locale("en")).select(count) === "one" ? "card selected" : "cards selected",
-  uiAddToTrack: "Add to Track",
+  selected: "Selected",
   uiSelectAll: "Select all",
   uiMoveToDeck: "Move to Deck",
   uiCopyRefs: "Copy refs"
 }, {
-  noTracks: "В проекте ещё нет треков",
   overLimit: "Лимит — 1000 карточек за операцию. Уменьшите выделение.",
   copiedCount: (count: string) => `Скопировано ссылок: ${count}`,
   copyFailed: "Не удалось скопировать ссылки. Проверьте доступ к буферу обмена и повторите.",
@@ -54,23 +49,13 @@ const text = defineText({
   limit: "Лимит — 1000 карточек",
   compatibleDecks: "Показаны колоды, совместимые со всеми выбранными карточками.",
   noDeck: "Без колоды",
-  trackHint: "Добавляет связь, сохраняя существующие треки.",
   copied: "Ссылки скопированы",
   moveCount: (count: number) => {
     const rule = new Intl.PluralRules(locale("ru")).select(count);
     const noun = { one: 'карточку', few: 'карточки', many: 'карточек', zero: 'карточек', two: 'карточки', other: 'карточки' }[rule]!;
     return `Переместить ${new Intl.NumberFormat(locale("ru")).format(count)} ${noun} в колоду`;
   },
-  trackCount: (count: number) => {
-    const rule = new Intl.PluralRules(locale("ru")).select(count);
-    const noun = { one: 'карточку', few: 'карточки', many: 'карточек', zero: 'карточек', two: 'карточки', other: 'карточки' }[rule]!;
-    return `Добавить ${new Intl.NumberFormat(locale("ru")).format(count)} ${noun} в трек`;
-  },
-  selected: (count: number) => {
-    const rule = new Intl.PluralRules(locale("ru")).select(count);
-    return { one: 'карточка выбрана', few: 'карточки выбраны', many: 'карточек выбрано', zero: 'карточек выбрано', two: 'карточки выбраны', other: 'карточки выбраны' }[rule]!;
-  },
-  uiAddToTrack: "Добавить в трек",
+  selected: "Выбрано",
   uiSelectAll: "Выбрать все",
   uiMoveToDeck: "Переместить в колоду",
   uiCopyRefs: "Скопировать ссылки"
@@ -191,7 +176,7 @@ export function useCardSelection(orderedIds: readonly string[], scopeKey: string
 
 type SelectionAction = (id: string) => Promise<boolean> | boolean;
 
-export interface SelectionToolbarProps {
+interface SelectionToolbarProps {
   selectedCards: CatalogCard[];
   source: DataSource;
   catalog: CatalogView;
@@ -209,8 +194,8 @@ export function SelectionToolbar({ selectedCards, source, catalog, totalShown, p
   const t = useText(text);
   const lang = useLang();
   const amount = (value: number) => new Intl.NumberFormat(locale(lang)).format(value);
-  const [openMenu, setOpenMenu] = useState<'move' | 'track' | null>(null);
-  const [running, setRunning] = useState<'move' | 'track' | null>(null);
+  const [openMenu, setOpenMenu] = useState<'move' | null>(null);
+  const [running, setRunning] = useState(false);
   const [copyState, setCopyState] = useState<'idle' | 'copied' | 'error'>('idle');
   const [copyCount, setCopyCount] = useState(0);
   const [actionErrorMessage, setActionError] = useState<string | (() => string)>('');
@@ -220,10 +205,9 @@ export function SelectionToolbar({ selectedCards, source, catalog, totalShown, p
   const selectedKey = JSON.stringify(selected.map(card => card.id));
   const exceedsBulkLimit = selected.length > 1000;
   const compatibleDecks = catalog.decks.filter(deck => selected.every(card => deckAcceptsCard(deck.kind, card.kind)));
-  const busy = pending || running !== null;
+  const busy = pending || running;
   const canWrite = writable && source === 'sandbox';
   const mutationDisabled = busy || exceedsBulkLimit;
-  const trackActionTitle = catalog.tracks.length > 0 ? t.uiAddToTrack : t.noTracks;
   let feedback = actionError;
   if (exceedsBulkLimit && canWrite) feedback = t.overLimit;
   else if (!feedback && copyState === 'copied') feedback = t.copiedCount(amount(copyCount));
@@ -249,22 +233,21 @@ export function SelectionToolbar({ selectedCards, source, catalog, totalShown, p
     catch { setCopyState('error'); }
   }
 
-  async function runAction(kind: 'move' | 'track', target: string | null) {
+  async function moveCards(target: string | null) {
     if (inFlight.current || busy || !writable || source !== 'sandbox' || selected.length === 0 || exceedsBulkLimit) return;
-    if (kind === 'move' && ((target !== null && !compatibleDecks.some(deck => deck.id === target)) || selected.every(card => card.deckId === target))) return;
-    if (kind === 'track' && (!target || !catalog.tracks.some(track => track.id === target) || selected.every(card => card.trackIds.includes(target)))) return;
+    if ((target !== null && !compatibleDecks.some(deck => deck.id === target)) || selected.every(card => card.deckId === target)) return;
     inFlight.current = true;
-    setRunning(kind);
+    setRunning(true);
     setActionError('');
     try {
-      const saved = kind === 'move' ? await onMove(target) : await onAddTrack(target!);
+      const saved = await onMove(target);
       if (saved) setOpenMenu(null);
       else setActionError(() => () => textNow(text).saveUnconfirmed);
     } catch (error) {
       setActionError(() => failureMessage(error, textNow(text).saveFailed));
     } finally {
       inFlight.current = false;
-      setRunning(null);
+      setRunning(false);
     }
   }
 
@@ -272,40 +255,32 @@ export function SelectionToolbar({ selectedCards, source, catalog, totalShown, p
   return <section className="card-selection-toolbar card-selection-bar" aria-label={t.actions} aria-busy={busy}>
     <div className="card-selection-core">
       <Button type="button" variant="ghost" size="icon" className="card-selection-clear" disabled={busy} onClick={onClear} aria-label={t.clear} title={t.clearHint}><X size={17} /></Button>
-      <strong className="card-selection-count" aria-live="polite" title={t.selectedHint(amount(selected.length), amount(totalShown))}><span>{amount(selected.length)}</span> {t.selected(selected.length)}</strong>
+      <strong className="card-selection-count" aria-live="polite" title={t.selectedHint(amount(selected.length), amount(totalShown))}>{t.selected} <span>{amount(selected.length)}</span></strong>
       <Button type="button" variant="outline" size="sm" className="card-selection-all" disabled={busy || selected.length >= totalShown} onClick={onSelectAll} aria-keyshortcuts="Control+A Meta+A" title={t.selectAllHint}>{t.uiSelectAll}</Button>
       <span className="card-selection-divider" aria-hidden="true" />
       <div className="card-selection-buttons" role="group" aria-label={t.selectionActions}>
         {canWrite && <DropdownMenu.Root modal={false} open={openMenu === 'move'} onOpenChange={open => { setOpenMenu(open ? 'move' : null); if (open) setActionError(''); }}>
-          <DropdownMenu.Trigger asChild><Button type="button" variant="ghost" size="icon" disabled={mutationDisabled} aria-label={t.uiMoveToDeck} aria-keyshortcuts={bulkMoveShortcut?.keys} title={exceedsBulkLimit ? t.limit : t.uiMoveToDeck + ' · ' + (bulkMoveShortcut?.keys ?? '')}>{running === 'move' ? <LoaderCircle className="spin" size={17} /> : <Layers size={17} />}</Button></DropdownMenu.Trigger>
-          <DropdownMenu.Portal><DropdownMenu.Content className="card-selection-menu" align="start" sideOffset={7} collisionPadding={12} aria-label={t.uiMoveToDeck} onEscapeKeyDown={event => { event.preventDefault(); setOpenMenu(null); }}>
+          <DropdownMenu.Trigger asChild><Button type="button" variant="ghost" size="icon" disabled={mutationDisabled} aria-label={t.uiMoveToDeck} aria-keyshortcuts={bulkMoveShortcut?.keys} title={exceedsBulkLimit ? t.limit : t.uiMoveToDeck + ' · ' + (bulkMoveShortcut?.keys ?? '')}>{running ? <LoaderCircle className="spin" size={17} /> : <Layers size={17} />}</Button></DropdownMenu.Trigger>
+          <DropdownMenu.Portal><DropdownMenu.Content className="card-selection-menu dialog-panel" align="start" sideOffset={7} collisionPadding={12} aria-label={t.uiMoveToDeck} onEscapeKeyDown={event => { event.preventDefault(); setOpenMenu(null); }}>
             <DropdownMenu.Label className="card-selection-menu-heading">{t.moveCount(selected.length)}</DropdownMenu.Label>
             <p className="card-selection-menu-hint">{t.compatibleDecks}</p>
-            <DropdownMenu.Item className="card-selection-menu-item" disabled={mutationDisabled || selected.every(card => card.deckId === null)} onSelect={event => { event.preventDefault(); void runAction('move', null); }}><Layers size={15} /><span>{t.noDeck}</span>{selected.every(card => card.deckId === null) && <Check size={14} />}</DropdownMenu.Item>
+            <DropdownMenu.Item className="card-selection-menu-item" disabled={mutationDisabled || selected.every(card => card.deckId === null)} onSelect={event => { event.preventDefault(); void moveCards(null); }}><Layers size={15} /><span>{t.noDeck}</span>{selected.every(card => card.deckId === null) && <Check size={14} />}</DropdownMenu.Item>
             {catalog.spaces.map(space => {
               const decks = compatibleDecks.filter(deck => deck.spaceId === space.id);
               return decks.length > 0 ? <DropdownMenu.Group key={space.id}><DropdownMenu.Label className="card-selection-menu-group">{space.title}</DropdownMenu.Label>{decks.map(deck => {
                 const current = selected.every(card => card.deckId === deck.id);
-                return <DropdownMenu.Item key={deck.id} className="card-selection-menu-item" disabled={mutationDisabled || current} onSelect={event => { event.preventDefault(); void runAction('move', deck.id); }}><Layers size={15} /><span>{deck.title}</span>{current && <Check size={14} />}</DropdownMenu.Item>;
+                return <DropdownMenu.Item key={deck.id} className="card-selection-menu-item" disabled={mutationDisabled || current} onSelect={event => { event.preventDefault(); void moveCards(deck.id); }}><Layers size={15} /><span>{deck.title}</span>{current && <Check size={14} />}</DropdownMenu.Item>;
               })}</DropdownMenu.Group> : null;
             })}
             {actionError && <p className="card-selection-menu-error" role="alert">{actionError}</p>}
           </DropdownMenu.Content></DropdownMenu.Portal>
         </DropdownMenu.Root>}
-        <BulkActions cards={selected} catalog={catalog} source={source} writable={canWrite} pending={busy || openMenu !== null} onAction={onAction} onOpenDeck={canWrite ? () => { if (!mutationDisabled) setOpenMenu('move'); } : undefined} />
-        {canWrite && <DropdownMenu.Root modal={false} open={openMenu === 'track'} onOpenChange={open => { setOpenMenu(open ? 'track' : null); if (open) setActionError(''); }}>
-          <DropdownMenu.Trigger asChild><Button type="button" variant="ghost" size="icon" disabled={mutationDisabled || catalog.tracks.length === 0} aria-label={t.uiAddToTrack} title={exceedsBulkLimit ? t.limit : trackActionTitle}>{running === 'track' ? <LoaderCircle className="spin" size={17} /> : <Route size={17} />}</Button></DropdownMenu.Trigger>
-          <DropdownMenu.Portal><DropdownMenu.Content className="card-selection-menu" align="start" sideOffset={7} collisionPadding={12} aria-label={t.uiAddToTrack} onEscapeKeyDown={event => { event.preventDefault(); setOpenMenu(null); }}>
-            <DropdownMenu.Label className="card-selection-menu-heading">{t.trackCount(selected.length)}</DropdownMenu.Label>
-            <p className="card-selection-menu-hint">{t.trackHint}</p>
-            {catalog.tracks.map(track => {
-              const included = selected.every(card => card.trackIds.includes(track.id));
-              return <DropdownMenu.Item key={track.id} className="card-selection-menu-item" disabled={mutationDisabled || included} onSelect={event => { event.preventDefault(); void runAction('track', track.id); }}><Route size={15} /><span>{track.title}</span>{included && <Check size={14} />}</DropdownMenu.Item>;
-            })}
-            {actionError && <p className="card-selection-menu-error" role="alert">{actionError}</p>}
-          </DropdownMenu.Content></DropdownMenu.Portal>
-        </DropdownMenu.Root>}
-        <Button type="button" variant="ghost" size="icon" disabled={busy} onClick={() => void copyReferences()} aria-label={copyState === 'copied' ? t.copied : t.uiCopyRefs} title={t.uiCopyRefs}>{copyState === 'copied' ? <Check size={17} /> : <Copy size={17} />}</Button>
+        <BulkActions cards={selected} catalog={catalog} source={source} writable={canWrite} pending={busy || openMenu !== null}
+          onAction={change => change.kind === 'track' && change.mode === 'add' ? Promise.resolve(onAddTrack(change.trackId)) : onAction(change)}
+          onOpenDeck={canWrite ? () => { if (!mutationDisabled) setOpenMenu('move'); } : undefined}
+          overflowOrganization={<DropdownMenu.Item className="bulk-more-item" disabled={busy || selected.length >= totalShown} onSelect={onSelectAll}><Check size={16} /><span>{t.uiSelectAll}</span></DropdownMenu.Item>}
+          overflowExport={<DropdownMenu.Item className="bulk-more-item" disabled={busy} onSelect={() => void copyReferences()}><Copy size={16} /><span>{t.uiCopyRefs}</span></DropdownMenu.Item>} />
+        <Button type="button" variant="ghost" size="icon" className="card-selection-copy" disabled={busy} onClick={() => void copyReferences()} aria-label={copyState === 'copied' ? t.copied : t.uiCopyRefs} title={t.uiCopyRefs}>{copyState === 'copied' ? <Check size={17} /> : <Copy size={17} />}</Button>
       </div>
     </div>
     <span className="card-selection-status" role={actionError && !openMenu ? 'alert' : 'status'} title={feedback}>{feedback}</span>

@@ -2,6 +2,11 @@
 genre: rts
 title: Real-time strategy
 ---
+## First playable
+- Hypothesis: players can direct units under time pressure and make a meaningful tradeoff.
+- Play a graybox skirmish with two unit types; record order errors, idle time, and choices.
+- Create Heroes for unit control and the first skirmish map; integrate selection, orders, and combat.
+- Closest starter: `deckmate project init strategy --data <project>`.
 ## References
 - StarCraft II — study the dynamic navigation mesh, path smoothing, and steering during group collisions ([GDC](https://www.gdcvault.com/play/1014514/AI-Navigation-It-s-Not)).
 - Age of Empires II — study collisions and formations, deterministic replays, and the cost of fixing familiar behavior ([Meeting C++](https://meetingcpp.com/mcpp/slides/2025/25%2B%20Years%20of%20Pathfinding%20Problems442903.pdf)).
@@ -11,6 +16,6 @@ title: Real-time strategy
 - [r/starcraft](https://www.reddit.com/r/starcraft/) — look for replay analysis, balance debates, newcomer progression, and competitive play habits.
 - [r/CompanyOfHeroes](https://www.reddit.com/r/CompanyOfHeroes/) — look for complaints about readability, map control, factions, and analysis of team decisions.
 ## Genre pitfalls
-- Changing pathfinding without replay checks alters familiar formations and outcomes: Age of Empires II treats behavioral compatibility as a separate constraint ([source](https://meetingcpp.com/mcpp/slides/2025/25%2B%20Years%20of%20Pathfinding%20Problems442903.pdf)).
-- A distant overview without precise orders does not replace squad control: Supreme Commander separates the strategic view from individual unit interaction ([source](https://www.gamespot.com/articles/supreme-commander-updated-qanda-army-size-strategic-view-and-nuclear-warfare/1100-6164174/)).
-- Resource cost without comparison to gameplay value collapses strategic variety; evaluate scarcity and choice together ([economy analysis](https://www.gamedeveloper.com/business/in-game-economics-for-strategy-games)).
+- Changing pathfinding without replay checks alters familiar formations and outcomes — treat behavioral compatibility as a separate constraint (example: Age of Empires II; [source](https://meetingcpp.com/mcpp/slides/2025/25%2B%20Years%20of%20Pathfinding%20Problems442903.pdf)).
+- A distant overview without precise orders does not replace squad control — separate the strategic view from individual unit interaction (example: Supreme Commander; [source](https://www.gamespot.com/articles/supreme-commander-updated-qanda-army-size-strategic-view-and-nuclear-warfare/1100-6164174/)).
+- Resource cost without comparison to gameplay value collapses strategic variety — evaluate scarcity and choice together ([economy analysis](https://www.gamedeveloper.com/business/in-game-economics-for-strategy-games)).

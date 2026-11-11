@@ -12,5 +12,8 @@ Documentation index. Source code is in `client/`, `server/`, `src/`, `tools/`, a
 | [skills.md](skills.md) | `/deckmate` skills: project installation, six workflows, lenses, genres, engines, project profile, agent configuration, and `npm run agents -- run`. Configuration format: [agents-config.md](agents-config.md). |
 | [../PRODUCT.md](../PRODUCT.md) | Product direction: purpose, positioning, users, principles, and design requirements. |
 | [../DESIGN.md](../DESIGN.md) | Design system: tokens, card materials, decks, tilt, glare, and reduced motion. |
+| [ui-map.md](ui-map.md) | UI screens and entry points, component/CSS ownership, shared-element blast radius, responsive and shell branches, captures, and tests by zone. |
 | [../AGENTS.md](../AGENTS.md) | Rules for agents and people working on Deckmate: directories, the agent route on a project, code rules, checks, and commits. |
 | [github-settings.md](github-settings.md) | Maintainer setup: private preparation, public opening, npm credentials, publication and recovery. |
+
+After `npm run build`, use `npm run shots` to regenerate the README images; `npm run shots -- --skip-desktop` leaves the start screen untouched, and `npm run shots -- --social` renders only the social preview from the existing card crop.

@@ -43,7 +43,7 @@ export async function readStaleCards(catalog: CatalogView, root: string, options
 export async function nextAgentCard(catalog: CatalogView, root: string, requestedMember: string, options: QueueOptions = {}) {
   const hand = selectCatalogHand(getCatalogHands(catalog), requestedMember);
   const byId = new Map(catalog.cards.map(card => [card.id, card]));
-  const candidates = hand.cards.filter(card => !['review', 'done'].includes(normalizedState(card))
+  const candidates = hand.cards.filter(card => card.kind === 'task' && !['review', 'done', 'wont-do'].includes(normalizedState(card))
     && openDependencies(card.dependsOn, byId).length === 0);
   staleHours(options.staleHours);
   for (const card of candidates) {

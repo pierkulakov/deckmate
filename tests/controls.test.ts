@@ -2,6 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { openHeadlessBrowser, type HeadlessPage } from '../tools/layout-capture.ts';
 import { browserFixtureUrl } from './browser-fixture.ts';
 import { requireBrowser } from './browser-environment.ts';
+import { contrastRatio } from '../client/color-contrast.ts';
 
 const browserPath = requireBrowser();
 
@@ -112,7 +113,7 @@ describe.skipIf(!browserPath)('hairline controls and keyboard-only focus (browse
       const danger = await styleOf('#danger');
       expect(danger.ink).toBe(danger.danger);
       await delay(200);
-    const field = await styleOf('#search');
+      const field = await styleOf('#search');
       expect([field.radius, field.borderColor, field.face, field.image]).toEqual(['2px', field.fieldLine, field.field, 'none']);
       const select = await styleOf('#select');
       expect([select.radius, select.borderColor]).toEqual(['2px', select.fieldLine]);
@@ -134,6 +135,70 @@ describe.skipIf(!browserPath)('hairline controls and keyboard-only focus (browse
         expect(radius, id).toBeLessThanOrEqual(2);
         expect(image, id).toBe('none');
       }
+    }
+  });
+
+  it('keeps shared field placeholders opaque and readable, including Vision search and URL', async () => {
+    for (const theme of ['light', 'dark'] as const) {
+      await open(theme);
+      const fields = await page.evaluate(`(() => {
+        const probe = document.createElement('span'); document.body.append(probe);
+        probe.style.color = 'var(--muted)'; const muted = getComputedStyle(probe).color;
+        const rgb = color => color.match(/\\d+/g).slice(0, 3).map(Number);
+        const result = ['#search-input', '#vision-search-input', '#vision-url', '#ordinary-input', '#ordinary-textarea', '#nested-textarea'].map(selector => {
+          const input = document.querySelector(selector), field = input.closest('.control-field');
+          const placeholder = getComputedStyle(input, '::placeholder'), style = getComputedStyle(field);
+          return { selector, color: placeholder.color, opacity: placeholder.opacity, face: rgb(style.backgroundColor) };
+        });
+        probe.remove(); return { muted, fields: result };
+      })()`) as { muted: string; fields: { selector: string; color: string; opacity: string; face: number[] }[] };
+      const muted = fields.muted.match(/\d+/g)!.slice(0, 3).map(Number);
+      for (const field of fields.fields) {
+        expect(field.color, `${theme}: ${field.selector}`).toBe(fields.muted);
+        expect(field.opacity, `${theme}: ${field.selector}`).toBe('1');
+        expect(contrastRatio(muted, field.face), `${theme}: ${field.selector}`).toBeGreaterThanOrEqual(4.5);
+      }
+    }
+  });
+
+  it('keeps field edges distinct from the field and surrounding surface in both themes', async () => {
+    for (const theme of ['light', 'dark'] as const) {
+      await open(theme);
+      const colors = await page.evaluate(`(() => {
+        const probe = document.createElement('span'); document.body.append(probe);
+        const rgb = value => { probe.style.color = value; return getComputedStyle(probe).color.match(/\\d+/g).slice(0, 3).map(Number); };
+        const result = { line: rgb('var(--control-field-line)'), ground: rgb('var(--ground)'), surface: rgb('var(--surface)') };
+        probe.remove(); return result;
+      })()`) as { line: number[]; ground: number[]; surface: number[] };
+      for (const face of ['ground', 'surface'] as const) {
+        expect(contrastRatio(colors.line, colors[face]), `${theme}: field-line/${face}`).toBeGreaterThanOrEqual(3);
+      }
+      for (const selector of ['#search', '.vision-search.control-field', '#vision-url', '#vision-select', '#select']) {
+        const style = await styleOf(selector);
+        expect(style.borderColor, `${theme}: ${selector}`).toBe(style.fieldLine);
+        expect(style.face, `${theme}: ${selector}`).toBe(style.field);
+      }
+      await page.evaluate(`document.querySelector('.vision-search').scrollIntoView({ block: 'center' })`);
+      await hover('.vision-search');
+      await delay(200);
+      const hovered = await styleOf('.vision-search');
+      const buttonLine = await page.evaluate(`(() => { const probe = document.createElement('span'); document.body.append(probe); probe.style.color = 'var(--button-line)'; const color = getComputedStyle(probe).color; probe.remove(); return color; })()`);
+      expect(hovered.borderColor, `${theme}: Vision search hover`).toBe(buttonLine);
+      await click('#vision-search-input');
+      await delay(200);
+      const focused = await styleOf('.vision-search');
+      expect(focused.borderColor, `${theme}: Vision search focus`).toBe(focused.focus);
+    }
+  });
+
+  it('uses the shared help type scale for space guidance and the license footer', async () => {
+    for (const theme of ['light', 'dark'] as const) {
+      await open(theme);
+      const styles = await page.evaluate(`['#space-help', '#license-help'].map(selector => {
+        const style = getComputedStyle(document.querySelector(selector));
+        return [style.fontSize, style.lineHeight];
+      })`);
+      expect(styles).toEqual([['12px', '16px'], ['12px', '16px']]);
     }
   });
 
@@ -161,6 +226,207 @@ describe.skipIf(!browserPath)('hairline controls and keyboard-only focus (browse
     await hover('#button-disabled');
     await delay(200);
     expect((await styleOf('#button-disabled')).face).toBe('rgba(0, 0, 0, 0)');
+  });
+
+  it('clears the previous highlight immediately when moving between controls, segments and menu items', async () => {
+    for (const theme of ['dark', 'light'] as const) {
+      await open(theme);
+      for (const [first, second] of [['#outline', '#ghost'], ['#button-outline', '#button-ghost'],
+        ['#segment-a', '#segment-b'], ['#menu-a', '#menu-b']]) {
+        await hover('#first');
+        await delay(150);
+        const idle = await styleOf(first);
+        const geometry = await page.evaluate(`(() => { const e = document.querySelector(${JSON.stringify(first)}); const r = e.getBoundingClientRect(); const s = getComputedStyle(e); return [r.x, r.y, r.width, r.height, s.fontWeight, s.borderTopWidth]; })()`);
+        await hover(first);
+        await delay(150);
+        const hovered = await styleOf(first);
+        expect(hovered.face, first).not.toBe(idle.face);
+        await hover(second);
+        await delay(45);
+        const result = await page.evaluate(`(() => { const a = document.querySelector(${JSON.stringify(first)}); const b = document.querySelector(${JSON.stringify(second)}); const x = getComputedStyle(a); const y = getComputedStyle(b); const r = a.getBoundingClientRect(); return { old: x.backgroundColor, next: y.backgroundColor, oldDuration: x.transitionDuration, transition: y.transition, geometry: [r.x, r.y, r.width, r.height, x.fontWeight, x.borderTopWidth] }; })()`);
+        expect(result.old, first).toBe(idle.face);
+        expect(result.next, second).not.toBe(idle.face);
+        expect(result.transition).toContain('0.1s');
+        expect(result.transition).not.toMatch(/(?:^|,)\s*all\b/);
+        expect(parseFloat(result.oldDuration)).toBe(0);
+        expect(result.geometry).toEqual(geometry);
+      }
+      if (theme === 'light') {
+        await hover('#button-default');
+        await delay(150);
+        expect(Number(await page.evaluate(`getComputedStyle(document.querySelector('#button-default')).opacity`))).toBeLessThan(1);
+        await hover('#button-ghost');
+        await delay(45);
+        expect(Number(await page.evaluate(`getComputedStyle(document.querySelector('#button-default')).opacity`))).toBe(1);
+      }
+    }
+  });
+
+  it('keeps the delayed busy dim without delaying hover or reduced-motion changes', async () => {
+    await open();
+    for (const [selector, disable] of [['#button-outline', `e.disabled = true`], ['#busy-retry', `e.setAttribute('aria-disabled', 'true')`]]) {
+      await page.evaluate(`(() => { const e = document.querySelector(${JSON.stringify(selector)}); ${disable}; })()`);
+      await delay(100);
+      expect(Number(await page.evaluate(`getComputedStyle(document.querySelector(${JSON.stringify(selector)})).opacity`))).toBe(1);
+      await delay(450);
+      expect(Number(await page.evaluate(`getComputedStyle(document.querySelector(${JSON.stringify(selector)})).opacity`))).toBeLessThan(.6);
+    }
+    await page.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: 'reduce' }] });
+    try {
+      await hover('#segment-a');
+      const duration = await page.evaluate(`getComputedStyle(document.querySelector('#segment-a')).transitionDuration`);
+      expect(duration.split(',').every((value: string) => parseFloat(value) === 0)).toBe(true);
+    } finally {
+      await page.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: 'no-preference' }] });
+    }
+  });
+
+  it('keeps text, status badges and keyboard focus readable on both theme surfaces', async () => {
+    for (const theme of ['light', 'dark'] as const) {
+      await open(theme);
+      const pairs = await page.evaluate(`(() => {
+        const probe = document.createElement('span'); document.body.append(probe);
+        const canvas = document.createElement('canvas'); canvas.width = canvas.height = 1;
+        const context = canvas.getContext('2d');
+        const token = name => { probe.style.color = 'var(--' + name + ')'; return getComputedStyle(probe).color; };
+        const rgb = (color, background = '#fff') => {
+          context.clearRect(0, 0, 1, 1); context.fillStyle = background; context.fillRect(0, 0, 1, 1);
+          context.fillStyle = color; context.fillRect(0, 0, 1, 1); return [...context.getImageData(0, 0, 1, 1).data].slice(0, 3);
+        };
+        const pairs = [];
+        const add = (name, ink, face, minimum = 4.5, backing = token('canvas')) => pairs.push({ name, ink: rgb(ink), face: rgb(face, backing), minimum });
+        for (const surface of ['canvas', 'surface', 'ground', 'sidebar', 'hover', 'edit-bg', 'accent-soft']) {
+          for (const ink of ['ink', 'muted', 'accent', 'action-mint-ink', 'danger']) add(ink + '/' + surface, token(ink), token(surface));
+          add('focus/' + surface, token('focus'), token(surface), 3);
+        }
+        for (const ink of ['card-ink', 'card-muted']) add(ink + '/card-face', token(ink), token('card-face'));
+        for (const face of ['canvas', 'surface', 'ground']) for (const tint of ['mark-tint', 'mark-tint-strong']) {
+          add('mark/' + tint + '/' + face, token('mark'), token(tint), 4.5, token(face));
+        }
+        for (const name of ['violet', 'danger']) add(name + '-fill', token(name + '-fill-ink'), token(name + '-fill'));
+        for (const state of ['planned', 'discuss', 'iteration', 'working', 'review', 'accepted', 'cancelled']) {
+          probe.className = 'status-badge status-' + state; probe.style.color = '';
+          const style = getComputedStyle(probe);
+          add('badge/' + state, style.color, style.backgroundColor);
+        }
+        probe.remove(); return pairs;
+      })()`) as { name: string; ink: number[]; face: number[]; minimum: number }[];
+      for (const pair of pairs) expect(contrastRatio(pair.ink, pair.face), `${theme}: ${pair.name}`).toBeGreaterThanOrEqual(pair.minimum);
+    }
+  });
+
+  it('leaves aria-disabled actions at rest and keeps destructive hover in the danger role', async () => {
+    for (const theme of ['light', 'dark'] as const) {
+      await open(theme);
+      await page.evaluate(`document.querySelector('#busy-retry').setAttribute('aria-disabled', 'true')`);
+      const rest = await styleOf('#busy-retry');
+      await page.evaluate(`document.querySelector('#busy-retry').scrollIntoView()`);
+      await hover('#busy-retry');
+      await delay(150);
+      const hovered = await styleOf('#busy-retry');
+      expect([hovered.face, hovered.ink, hovered.borderColor]).toEqual([rest.face, rest.ink, rest.borderColor]);
+      const point = await center('#busy-retry');
+      await page.send('Input.dispatchMouseEvent', { type: 'mousePressed', ...point, button: 'left', buttons: 1 });
+      expect(await page.evaluate(`getComputedStyle(document.querySelector('#busy-retry')).transform`)).toBe('none');
+      await page.send('Input.dispatchMouseEvent', { type: 'mouseReleased', ...point, button: 'left', buttons: 0 });
+      await page.evaluate(`document.querySelector('#button-danger').scrollIntoView()`);
+      await hover('#button-danger');
+      await delay(150);
+      const danger = await page.evaluate(`(() => { const e = document.querySelector('#button-danger'), p = document.createElement('i'); document.body.append(p);
+        p.style.background = 'color-mix(in srgb, var(--danger-fill) 88%, white)'; const face = getComputedStyle(p).backgroundColor;
+        p.style.color = 'var(--danger-fill-ink)'; const ink = getComputedStyle(p).color;
+        const s = getComputedStyle(e); p.remove(); return { face:s.backgroundColor, ink:s.color, expectedFace:face, expectedInk:ink }; })()`);
+      expect([danger.face, danger.ink]).toEqual([danger.expectedFace, danger.expectedInk]);
+    }
+  });
+
+  it('grows touch targets in layout without enlarging glyphs or retaining hover', async () => {
+    await open('light');
+    const glyph = await page.evaluate(`document.querySelector('#button-icon svg').getBoundingClientRect().width`);
+    await page.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 1 });
+    try {
+      expect(await page.evaluate(`matchMedia('(pointer: coarse)').matches`)).toBe(true);
+      const targets = await page.evaluate(`['#outline','#button-outline','#button-small','#button-icon','#mint','#close','#tab-due','#segmented button'].map(selector => {
+        const e = document.querySelector(selector), r = e.getBoundingClientRect(); return { selector, width:r.width, height:r.height };
+      })`) as { selector: string; width: number; height: number }[];
+      for (const target of targets) {
+        expect(target.width, target.selector).toBeGreaterThanOrEqual(44);
+        expect(target.height, target.selector).toBeGreaterThanOrEqual(44);
+      }
+      expect(await page.evaluate(`document.querySelector('#button-icon svg').getBoundingClientRect().width`)).toBe(glyph);
+      await page.evaluate(`document.querySelector('#button-default').scrollIntoView()`);
+      await hover('#button-default');
+      await delay(150);
+      expect(Number(await page.evaluate(`getComputedStyle(document.querySelector('#button-default')).opacity`))).toBe(1);
+    } finally {
+      await page.send('Emulation.setTouchEmulationEnabled', { enabled: false });
+    }
+  });
+
+  it('fits adjacent 44px targets in a narrow toolbar and taps each without activating its neighbour', async () => {
+    await page.send('Emulation.setDeviceMetricsOverride', { width: 375, height: 600, deviceScaleFactor: 1, mobile: false });
+    try {
+      for (const theme of ['light', 'dark'] as const) {
+        await open(theme);
+        const desktop = await page.evaluate(`[...document.querySelectorAll('#touch-tools button')].map(e => e.getBoundingClientRect().width)`);
+        await page.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 1 });
+        await page.evaluate(`document.querySelector('#touch-tools').scrollIntoView({block:'center'})`);
+        const layout = await page.evaluate(`(() => {
+          const tools = document.querySelector('#touch-tools'), bounds = tools.getBoundingClientRect();
+          return { right:bounds.right, targets:[...tools.querySelectorAll('button')].map(e => {
+            const r=e.getBoundingClientRect(); return {id:e.id,x:r.x,y:r.y,width:r.width,height:r.height,glyph:e.querySelector('svg').getBoundingClientRect().width};
+          }) };
+        })()`) as { right: number; targets: { id: string; x: number; y: number; width: number; height: number; glyph: number }[] };
+        expect(layout.right).toBeLessThanOrEqual(375);
+        expect(layout.targets).toHaveLength(6);
+        const taps: string[] = [];
+        for (const [index, target] of layout.targets.entries()) {
+          expect([target.width, target.height, target.glyph], target.id).toEqual([44, 44, 16]);
+          expect(target.y).toBe(layout.targets[0].y);
+          if (index) expect(target.x - layout.targets[index - 1].x - 44).toBe(8);
+          for (const x of [target.x + 2, target.x + target.width - 2]) {
+            await page.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y: target.y + 22 }] });
+            await page.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+            taps.push(target.id.slice(6));
+            await until(`document.querySelector('#touch-tools').dataset.actions === ${JSON.stringify(taps.join(','))}`);
+          }
+        }
+        const long = await page.evaluate(`(() => { const e=document.querySelector('#long-control'),r=e.getBoundingClientRect(); return {right:r.right,height:r.height,overflow:e.scrollWidth-e.clientWidth}; })()`);
+        expect(long.right).toBeLessThanOrEqual(375);
+        expect(long.height).toBeGreaterThan(44);
+        expect(long.overflow).toBeLessThanOrEqual(1);
+        await page.send('Emulation.setTouchEmulationEnabled', { enabled: false });
+        expect(await page.evaluate(`[...document.querySelectorAll('#touch-tools button')].map(e => e.getBoundingClientRect().width)`)).toEqual(desktop);
+      }
+    } finally {
+      await page.send('Emulation.setTouchEmulationEnabled', { enabled: false });
+      await page.send('Emulation.setDeviceMetricsOverride', { width: 900, height: 700, deviceScaleFactor: 1, mobile: false });
+    }
+  });
+
+  it('keeps inline counts flat and the filtered-state action reachable with long text at 375px', async () => {
+    await open('light');
+    await page.send('Emulation.setDeviceMetricsOverride', { width: 375, height: 600, deviceScaleFactor: 1, mobile: false });
+    try {
+      const state = await page.evaluate(`(() => {
+        const count = getComputedStyle(document.querySelector('#quiet-count'));
+        const empty = document.querySelector('.ui-empty-filtered');
+        empty.querySelector('.ui-button').textContent = 'Сбросить очень длинный поисковый запрос и все выбранные фильтры';
+        const button = empty.querySelector('.ui-button'), r = button.getBoundingClientRect(), p = empty.getBoundingClientRect();
+        return { count:[count.display,count.backgroundColor,count.boxShadow,count.fontFamily], fits:r.left >= p.left && r.right <= p.right,
+          overflow:button.scrollWidth - button.clientWidth, height:r.height, fontSize:getComputedStyle(button).fontSize,
+          quiet:document.querySelector('.ui-empty-quiet').querySelector('.empty-art') === null };
+      })()`);
+      expect(state.count.slice(0, 3)).toEqual(['block', 'rgba(0, 0, 0, 0)', 'none']);
+      expect(state.count[3]).toContain('Geist Mono');
+      expect(state.fits).toBe(true);
+      expect(state.overflow).toBeLessThanOrEqual(1);
+      expect(state.height).toBeGreaterThan(30);
+      expect(state.fontSize).toBe('13px');
+      expect(state.quiet).toBe(true);
+    } finally {
+      await page.send('Emulation.setDeviceMetricsOverride', { width: 900, height: 700, deviceScaleFactor: 1, mobile: false });
+    }
   });
 
   it('shows no ring after a click, a tap or a focus moved by script after either', async () => {

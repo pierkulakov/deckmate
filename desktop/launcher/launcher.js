@@ -348,7 +348,7 @@ function renderRecentItem(entry, workspaceIndex) {
   const path = document.createElement('span');
   path.className = 'recent-path';
   const bdi = document.createElement('bdi');
-  bdi.textContent = compactPath(entry.path);
+  bdi.textContent = entry.path;
   path.append(bdi);
   path.title = entry.path;
 
@@ -405,12 +405,6 @@ function renderRecentItem(entry, workspaceIndex) {
   }
   item.append(remove);
   return item;
-}
-
-function compactPath(path, limit = 56) {
-  const chars = Array.from(path);
-  if (chars.length <= limit) return path;
-  return `${chars.slice(0, 16).join('')}…${chars.slice(-(limit - 17)).join('')}`;
 }
 
 async function changeWorkspace(action, { index = 0, refocus = false, recentIndex = null } = {}) {
@@ -659,7 +653,7 @@ bridge.onStatus?.(handleStatus);
   page.version.textContent = text('version', state.version || '—', state.deckmateVersion || '—');
   applyTexts();
   page.root.removeAttribute('aria-busy');
-  (document.querySelector('.project-sections .recent-open:not([aria-disabled="true"])') ?? page.createProject).focus();
+  (state.recent.length === 0 && state.workspace.length === 0 ? page.createProject : page.openFolder).focus();
 })();
 
 function mockBridge() {

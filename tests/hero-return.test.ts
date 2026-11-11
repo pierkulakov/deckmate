@@ -39,7 +39,7 @@ describe.skipIf(!browserPath)('one-step Hero return (browser)', () => {
   async function openHero(familyVisible = false) {
     await click(tile('hero'));
     await until(`${selected('hero')} && document.querySelector('.card-title-edit:not(:disabled)')`);
-    if (familyVisible) await click('.card-preview-subcards-toggle');
+    if (familyVisible) await click('.card-preview-action-rail [data-card-family]');
     await evaluate(`document.querySelector('.card-preview-panels').scrollTop = 10000`);
     await delay(100);
     const scroll = await evaluate(`document.querySelector('.card-preview-panels').scrollTop`);
@@ -191,7 +191,9 @@ describe.skipIf(!browserPath)('one-step Hero return (browser)', () => {
       await click(tile('review'));
     }
     if (origin === 'link') await click('.card-preview-document a');
-    if (origin === 'tag') await click('.card-preview-meta-row .tag-badge-link');
+    if (origin === 'tag') {
+      await click('.card-preview-tags .tag-badge-link');
+    }
     if (origin === 'family') await click(row('review'));
     await until(selected('review'));
     expect(await evaluate(`Boolean(document.querySelector('.card-preview-parent kbd'))`)).toBe(false);
@@ -244,6 +246,150 @@ describe.skipIf(!browserPath)('one-step Hero return (browser)', () => {
     expect(await evaluate(`document.querySelector('.card-preview-parent').title`)).toBe('Вернуться к Hero: Test Hero · Esc');
   });
 
+  it.each(['dark', 'light'].flatMap(theme => [[1440, false, theme], [375, true, theme]] as const))('family keeps metadata and one toolbar line at %s px (touch %s, %s)', async (width, touch, theme) => {
+    await send('Emulation.setDeviceMetricsOverride', { width, height: 1000, deviceScaleFactor: 1, mobile: false });
+    await send('Emulation.setTouchEmulationEnabled', { enabled: touch, maxTouchPoints: 1 });
+    try {
+      await render({ family: true, card: 'card:hero', lang: 'ru', theme });
+      await until(`Boolean(document.querySelector('.card-title-edit:not(:disabled)'))`);
+      await click('[data-card-family]');
+      await until(`Boolean(document.querySelector('.card-family-panel'))`);
+      await waitForLayout(evaluate, '.card-family-panel');
+      const layout = await evaluate(`(() => {
+        const panel = document.querySelector('.card-family-panel');
+        const buttons = [...panel.querySelectorAll('.card-family-heading button')].map(button => button.getBoundingClientRect()).filter(box => box.width);
+        const rows = [...panel.querySelectorAll('.card-family-row-main')].map(row => ({ height: row.getBoundingClientRect().height, tagged: Boolean(row.querySelector('.card-family-row-tags')),
+          inlineTags: !row.querySelector('.card-family-row-tags') || row.querySelector('.card-family-row-title')?.contains(row.querySelector('.card-family-row-tags')) }));
+        return { lines: new Set(buttons.map(box => Math.round(box.top))).size, minTarget: Math.min(...buttons.map(box => Math.min(box.width, box.height))),
+          overflow: panel.scrollWidth > panel.clientWidth, rows, text: panel.textContent,
+          hand: panel.querySelector('.card-hand-indicator')?.getAttribute('aria-label') };
+      })()`);
+      expect(layout.lines).toBe(1);
+      expect(layout.minTarget).toBeGreaterThanOrEqual(touch ? 44 : 30);
+      expect(layout.overflow).toBe(false);
+      const tagged = layout.rows.filter((row: { tagged: boolean }) => row.tagged).map((row: { height: number }) => row.height);
+      const untagged = layout.rows.filter((row: { tagged: boolean }) => !row.tagged).map((row: { height: number }) => row.height);
+      expect(tagged.length).toBeGreaterThan(0);
+      expect(untagged.length).toBeGreaterThan(0);
+      expect(Math.max(...tagged) - Math.min(...tagged)).toBeLessThanOrEqual(1);
+      expect(Math.max(...untagged) - Math.min(...untagged)).toBeLessThanOrEqual(1);
+      expect(layout.rows.every((row: { inlineTags: boolean }) => row.inlineTags)).toBe(true);
+      expect(Math.max(...tagged)).toBeLessThanOrEqual(Math.max(...untagged) + 1);
+      expect(layout.text).toContain('1 из 5 принято');
+      expect(layout.text).toContain('Просрочено');
+      expect(layout.text).toContain('Вопросов: 1');
+      expect(layout.hand).toContain('слот 1');
+      await click('.card-family-heading button:has(.lucide-filter)');
+      await until(`document.querySelectorAll('.card-family-list .card-family-row').length === 5`);
+      await click('.card-family-heading-title button');
+      await send('Input.insertText', { text: 'Integrate' });
+      await until(`document.querySelectorAll('.card-family-list .card-family-row').length === 1`);
+      expect(await evaluate(`document.querySelector('.card-family-list').textContent`)).toContain('Заблокирована');
+      await click('.card-family-heading-title button');
+      await evaluate(`document.querySelector(${JSON.stringify(row('build'))}).focus()`);
+      await key('ArrowDown');
+      expect(await evaluate(`document.activeElement === document.querySelector(${JSON.stringify(row('review'))})`)).toBe(true);
+      if (touch) {
+        await click('.card-family-overflow');
+        expect(await evaluate(`document.querySelector('[role="menu"]').textContent`)).toContain('Прикрепить существующие Sub Cards');
+        await key('Escape');
+      }
+    } finally {
+      await send('Emulation.setTouchEmulationEnabled', { enabled: false });
+    }
+  });
+
+  it.each([1440, 375])('keeps long family titles and extra tags independently reachable at %s px', async width => {
+    await send('Emulation.setDeviceMetricsOverride', { width, height: 1000, deviceScaleFactor: 1, mobile: false });
+    try {
+      await render({ family: true, card: 'card:hero', tags: ['related', 'очень-длинное-название-тега', 'third', 'fourth'], lang: 'ru' });
+      await until(`Boolean(document.querySelector('.card-title-edit:not(:disabled)'))`);
+      await click('[data-card-family]');
+      await until(`Boolean(document.querySelector('.card-family-list .tag-overflow'))`);
+      const targets = await evaluate(`(() => {
+        const row = document.querySelector('.card-family-list [data-card-id="card:build"]');
+        const title = row.querySelector('.card-family-row-open strong').getBoundingClientRect();
+        const tags = row.querySelector('.card-family-row-tags').getBoundingClientRect();
+        const more = row.querySelector('.tag-overflow').getBoundingClientRect();
+        return { clear: title.right <= tags.left, titleWidth: title.width, tagsWidth: tags.width,
+          moreReachable: Boolean(document.elementFromPoint(more.left + more.width / 2, more.top + more.height / 2)?.closest('.tag-overflow')) };
+      })()`);
+      expect(targets.clear).toBe(true);
+      expect(targets.titleWidth).toBeGreaterThan(40);
+      expect(targets.tagsWidth).toBeGreaterThan(20);
+      expect(targets.moreReachable).toBe(true);
+      await click('.card-family-list [data-card-id="card:build"] .tag-overflow');
+      await until(`Boolean(document.querySelector('.card-tag-menu'))`);
+      expect(await evaluate(`document.querySelector('.card-tag-menu').textContent`)).toContain('fourth');
+      await key('Escape');
+      await click(row('build'));
+      await until(selected('build'));
+    } finally { await send('Emulation.clearDeviceMetricsOverride'); }
+  });
+
+  it('family preserves draft, attachment, detach confirmation and keyboard ordering actions', async () => {
+    await render({ family: true, card: 'card:hero' });
+    await until(`Boolean(document.querySelector('.card-title-edit:not(:disabled)'))`);
+    await click('[data-card-family]');
+    await click('[data-new-subcard]');
+    await until(`Boolean(document.querySelector('.card-family-composer textarea'))`);
+    await send('Input.insertText', { text: 'Arena draft\nKeep this description' });
+    await click('[data-new-subcard]');
+    expect(await evaluate(`document.querySelector('.card-family-composer-slot').hidden`)).toBe(true);
+    await click('[data-new-subcard]');
+    expect(await evaluate(`document.querySelector('.card-family-composer textarea').value`)).toBe('Arena draft\nKeep this description');
+    await key('Escape');
+    await until(`Boolean(document.querySelector('.card-family-composer-discard'))`);
+    await click('.card-family-composer-discard .button-outline');
+    await until(`!document.querySelector('.card-family-composer')`);
+    expect(await evaluate(`({ active: document.activeElement?.getAttribute('aria-label'), disabled: document.querySelector('[data-new-subcard]').disabled })`))
+      .toEqual({ active: 'New Sub Card', disabled: false });
+    await click('.card-family-actions button:has(.lucide-link-2)');
+    await until(`Boolean(document.querySelector('.attach-subcards-dialog'))`);
+    await key('Escape');
+    await until(`!document.querySelector('.attach-subcards-dialog')`);
+    await click('.card-family-actions button:has(.lucide-arrow-down-up)');
+    await click('[role="menuitemradio"][data-state="unchecked"]');
+    await until(`Boolean(document.querySelector('.card-family-group'))`);
+    await click('.card-family-actions button:has(.lucide-arrow-down-up)');
+    await click('[role="menuitemradio"]');
+    await until(`!document.querySelector('.card-family-group')`);
+    await waitForLayout(evaluate, '.card-family-list');
+    const grip = '.card-family-list [data-card-id="card:planned"] .card-family-drag-handle';
+    await evaluate(`document.querySelector(${JSON.stringify(grip)}).focus()`);
+    await key(' ', 'Space');
+    await until(`Boolean(document.querySelector('.card-family-list.is-dragging'))`);
+    const startTop = await evaluate(`document.querySelector('.card-family-drag-overlay').getBoundingClientRect().top`);
+    await key('ArrowUp');
+    expect(await evaluate(`document.querySelector('.card-family-drag-overlay').getBoundingClientRect().top`)).toBeLessThan(startTop);
+    await key(' ', 'Space');
+    await until(`!document.querySelector('.card-family-list.is-dragging')`);
+    await until(`window.heroReturnTest.requests.some(request => request.action === 'reorder-subcards')`);
+    const reorder = await evaluate(`window.heroReturnTest.requests.find(request => request.action === 'reorder-subcards')`);
+    expect(reorder.cardIds.indexOf('card:planned')).toBeLessThan(reorder.cardIds.indexOf('card:review'));
+    await click('.card-family-list [data-card-id="card:planned"] .card-family-detach button');
+    expect(await evaluate(`window.heroReturnTest.requests.filter(request => request.action === 'set-card-parent').length`)).toBe(0);
+    await click('.card-family-detach-confirm .button-outline');
+    await until(`window.heroReturnTest.requests.some(request => request.action === 'set-card-parent')`);
+    expect(await evaluate(`window.heroReturnTest.requests.find(request => request.action === 'set-card-parent')`))
+      .toMatchObject({ cardId: 'card:planned', expectedParentId: 'card:hero', parentId: null, sourceHash: 'hero-hash', manifestHash: 'manifest-hash' });
+  });
+
+  it('opens the family in its deck table without matching unrelated cards', async () => {
+    await render({ family: true, card: 'card:hero' });
+    await until(`Boolean(document.querySelector('.card-title-edit:not(:disabled)'))`);
+    await click('[data-card-family]');
+    // Keep the HTTP fixture after a document navigation; Deck still reads the actual destination's filters.
+    await evaluate(`navigation.addEventListener('navigate', event => event.intercept({ handler: () =>
+      window.heroReturnTest.render({ family: true, query: new URL(event.destination.url).search }) }), { once: true })`);
+    await click('.card-family-actions button:has(.lucide-arrow-up-right)');
+    await until(`!document.querySelector('.card-preview') && new URLSearchParams(location.search).get('layout') === 'table'`);
+    await until(`document.querySelectorAll('.catalog-results [data-card-id]').length === 7`);
+    expect(await evaluate(`[...document.querySelectorAll('.catalog-results [data-card-id]')].map(row => row.dataset.cardId).sort()`))
+      .toEqual(['card:blocked', 'card:build', 'card:design', 'card:hero', 'card:planned', 'card:question', 'card:review']);
+    expect(await evaluate(`new URLSearchParams(location.search).get('deck')`)).toBe('mixed');
+  });
+
   it.each(['hero', 'task', 'doc', 'subcard'].flatMap(kind =>
     [[kind, 1700, 1000, 'en'], [kind, 375, 812, 'ru']] as const))('%s: unlinked tags reveal and focus the tags section at %s×%s (%s)', async (kind, width, height, lang) => {
     await send('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile: false });
@@ -251,7 +397,7 @@ describe.skipIf(!browserPath)('one-step Hero return (browser)', () => {
     await render({ card: 'card:' + card, kind: kind === 'subcard' ? 'hero' : kind, tags: ['unlinked', 'personal'], lang });
     await until(`Boolean(document.querySelector('.card-title-edit:not(:disabled)'))`);
     for (const name of ['unlinked', 'personal', 'unlinked']) {
-      const tag = `.card-preview-meta-row .tag-badge-link[aria-label="${name}"]`;
+      const tag = `.card-preview-tags .tag-badge-link[aria-label="${name}"]`;
       // 2026-11-08: returning from the stacked properties panel must reveal the tag below the sticky toolbar before clicking.
       if (width <= 760) await evaluate(`document.querySelector(${JSON.stringify(tag)}).scrollIntoView({ block: 'center', behavior: 'instant' })`);
       await click(tag);
@@ -262,7 +408,7 @@ describe.skipIf(!browserPath)('one-step Hero return (browser)', () => {
         const heading = target.querySelector('h3');
         const box = heading.getBoundingClientRect();
         return { visible: !target.closest('.card-properties-slot').hidden,
-          top: box.top, bottom: box.bottom, toolbarBottom: document.querySelector('.deck-open-toolbar').getBoundingClientRect().bottom,
+          top: box.top, bottom: box.bottom, toolbarBottom: innerWidth <= 760 ? document.querySelector('.card-preview-action-rail').getBoundingClientRect().bottom : document.querySelector('.deck-open-toolbar').getBoundingClientRect().bottom,
           hit: heading.contains(document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2)) };
       })()`);
       expect(section.visible).toBe(true);
@@ -276,23 +422,21 @@ describe.skipIf(!browserPath)('one-step Hero return (browser)', () => {
     }
   });
 
-  // 2026-11-09: the ID sits at the left of the reading footer, level with Journey and Edit.
-  it.each(['hero', 'task', 'doc', 'subcard'])('%s keeps its copyable ID at the left of the reading footer', async kind => {
+  it.each(['hero', 'task', 'doc', 'subcard'])('%s copies ID and URL independently from its menu', async kind => {
     const card = kind === 'subcard' ? 'build' : 'hero';
     await render({ card: 'card:' + card, kind: kind === 'subcard' ? 'hero' : kind, tags: [] });
     await until(`Boolean(document.querySelector('.card-title-edit:not(:disabled)'))`);
-    expect(await evaluate(`document.querySelectorAll('.card-content-reading-footer .card-id-chip').length`)).toBe(1);
-    expect(await evaluate(`Boolean(document.querySelector('.card-preview-meta-row .card-id-chip'))`)).toBe(false);
-    expect(await evaluate(`Boolean(document.querySelector('.card-preview-material-band .card-id-chip'))`)).toBe(false);
-    expect(await evaluate(`(() => {
-      const chip = document.querySelector('.card-content-reading-footer .card-id-chip').getBoundingClientRect();
-      const edit = document.querySelector('.card-content-edit-action')?.getBoundingClientRect();
-      return !edit || (chip.right < edit.left && Math.abs((chip.top + chip.bottom) / 2 - (edit.top + edit.bottom) / 2) <= 2);
-    })()`)).toBe(true);
+    expect(await evaluate(`Boolean(document.querySelector('.card-preview-dock .card-id-chip'))`)).toBe(true);
     await evaluate(`Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: async text => { window.copiedCardId = text; } } })`);
-    await click('.card-content-reading-footer .card-id-chip');
-    await until(`document.querySelector('.card-id-chip').dataset.copied === 'true'`);
-    expect(await evaluate(`window.copiedCardId`)).toBe(await evaluate(`document.querySelector('.card-id-chip').textContent`));
+    await click('.card-preview-more');
+    const id = await evaluate(`document.querySelector('.card-more-menu [role="menuitem"]:nth-child(2)').textContent.replace('Copy ID ', '')`);
+    await click('.card-more-menu [role="menuitem"]:nth-child(2)');
+    await until(`document.querySelector('.card-id-feedback')?.textContent === 'Copied'`);
+    expect(await evaluate(`Boolean(document.querySelector('.card-preview-state-notice'))`)).toBe(false);
+    expect(await evaluate(`window.copiedCardId`)).toBe(id);
+    await click('.card-preview-more');
+    await click('.card-more-menu [role="menuitem"]:nth-child(3)');
+    expect(await evaluate(`window.copiedCardId`)).toBe(await evaluate(`location.origin + '/r/${id}?source=sandbox'`));
   });
 
   // 2026-11-10: every section of the open card (Properties … History, and Sub Cards) opens as one
@@ -348,7 +492,8 @@ describe.skipIf(!browserPath)('one-step Hero return (browser)', () => {
     await openHero();
     expect(await evaluate(`Boolean(document.querySelector('.card-content-reading .card-preview-journey-progress'))`)).toBe(false);
     expect(await evaluate(`Boolean(document.querySelector('.card-preview-dock-journey > .card-preview-journey-progress'))`)).toBe(true);
-    expect(await evaluate(`document.querySelector('.card-preview-dock-journey').nextElementSibling.matches('.card-preview-dock-row')`)).toBe(true);
+    // The tag block exists only on a card that has tags; with or without it the dock row follows the Journey.
+    expect(await evaluate(`(() => { const next = document.querySelector('.card-preview-dock-journey').nextElementSibling; const row = next.matches('.card-preview-tags') ? next.nextElementSibling : next; return row.matches('.card-preview-dock-row'); })()`)).toBe(true);
     expect(await evaluate(`Boolean(document.querySelector('.card-content-reading-footer .card-preview-journey-action'))`)).toBe(false);
     await click('.journey-track-title-button');
     await until(`Boolean(document.querySelector('.journey-track-menu-open'))`);
@@ -357,20 +502,25 @@ describe.skipIf(!browserPath)('one-step Hero return (browser)', () => {
     await key('Escape');
   });
 
-  it('keeps the reading Journey action for a Hero without a run', async () => {
+  it('opens Journey creation from the dock for a Hero without a run and restores focus', async () => {
     await render({ card: 'card:hero', withoutJourney: true });
     await until(`Boolean(document.querySelector('.card-title-edit:not(:disabled)'))`);
     expect(await evaluate(`Boolean(document.querySelector('.card-preview-journey-progress'))`)).toBe(false);
-    await click('.card-content-reading-footer .card-preview-journey-action');
+    await click('.card-preview-dock .card-preview-journey');
     await until(`Boolean(document.querySelector('.card-journey-dialog'))`);
+    await key('Escape');
+    await until(`!document.querySelector('.card-journey-dialog') && document.body.style.pointerEvents !== 'none'`);
+    expect(await evaluate(`document.activeElement === document.querySelector('.card-preview-journey')`)).toBe(true);
+    await click('.card-preview-action-rail button');
+    await until(`document.querySelector('.card-properties-slot')?.hidden === false`);
     await key('Escape');
   });
 
-  it.each(['properties', 'attachments'])('reveals the stacked %s heading below the sticky toolbar', async panel => {
+  it.each(['properties', 'attachments'])('reveals the %s heading inside the phone focus shell', async panel => {
     await send('Emulation.setDeviceMetricsOverride', { width: 375, height: 812, deviceScaleFactor: 1, mobile: false });
     await render({ card: 'card:build', longContent: true, lang: 'ru' });
     await until(`Boolean(document.querySelector('.card-title-edit:not(:disabled)'))`);
-    const selector = panel === 'properties' ? '.card-preview-action-rail button:first-child' : '.card-preview-action-rail button:last-child';
+    const selector = `.card-preview-action-rail button[aria-controls$="-${panel}"]`;
     await click(selector);
     await until(`Boolean(document.querySelector('.card-properties-slot:not([hidden])'))`);
     await until(`document.activeElement === document.querySelector('.card-properties-slot:not([hidden])')`);
@@ -379,7 +529,7 @@ describe.skipIf(!browserPath)('one-step Hero return (browser)', () => {
       const slot = document.querySelector('.card-properties-slot:not([hidden])');
       const heading = slot.querySelector('h2, h3');
       const box = heading.getBoundingClientRect();
-      const toolbar = document.querySelector('.deck-open-toolbar').getBoundingClientRect();
+      const toolbar = document.querySelector('.card-preview-action-rail').getBoundingClientRect();
       return { top: box.top, bottom: box.bottom, toolbarBottom: toolbar.bottom, height: innerHeight,
         focused: document.activeElement === slot, hit: heading.contains(document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2)) };
     })()`);
@@ -387,6 +537,35 @@ describe.skipIf(!browserPath)('one-step Hero return (browser)', () => {
     expect(geometry.bottom).toBeLessThan(geometry.height);
     expect(geometry.focused).toBe(true);
     expect(geometry.hit).toBe(true);
+    expect(await evaluate(`document.querySelector('.card-preview-sheet').inert`)).toBe(true);
+  });
+
+  it('keeps a new phone card draft through Properties with Save in the viewport', async () => {
+    await send('Emulation.setDeviceMetricsOverride', { width: 375, height: 900, deviceScaleFactor: 1, mobile: false });
+    await render({ lang: 'ru' });
+    await click('.deck-action-rail button:has(.lucide-plus)');
+    await until(`Boolean(document.querySelector('.card-composer .card-edit-text'))`);
+    await send('Input.insertText', { text: 'Новая карточка\n\n' + 'Описание следующего шага.\n'.repeat(50) });
+    await waitForLayout(evaluate, '.card-edit-text');
+    const draft = await evaluate(`document.querySelector('.card-edit-text').value`);
+    const geometry = await evaluate(`(() => {
+      const editor = document.querySelector('.card-edit-text').getBoundingClientRect();
+      const save = document.querySelector('.card-edit-save'), box = save.getBoundingClientRect();
+      return { top: editor.top, height: editor.height, width: editor.width, saveBottom: box.bottom, saveRight: box.right,
+        hit: save.contains(document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2)), overflow: document.documentElement.scrollWidth > innerWidth };
+    })()`);
+    expect(geometry.top).toBeLessThanOrEqual(300);
+    expect(geometry.height).toBeGreaterThanOrEqual(360);
+    expect(geometry.width).toBeGreaterThanOrEqual(300);
+    expect(geometry.saveBottom).toBeLessThanOrEqual(900);
+    expect(geometry.saveRight).toBeLessThanOrEqual(375);
+    expect(geometry.hit).toBe(true);
+    expect(geometry.overflow).toBe(false);
+    await click('.card-composer .card-preview-action-rail button');
+    await until(`document.querySelector('.card-composer-settings')?.hidden === false`);
+    await click('.card-composer .card-preview-action-rail button');
+    await until(`document.querySelector('.card-composer-content')?.hidden === false`);
+    expect(await evaluate(`document.querySelector('.card-edit-text').value`)).toBe(draft);
   });
 
   // 2026-11-10: the pinned state icons and saved/draft row need room above the editor's minimum in this resize exercise.
@@ -405,7 +584,7 @@ describe.skipIf(!browserPath)('one-step Hero return (browser)', () => {
     await until(`document.querySelector('.card-edit-text').clientHeight < ${original - 40}`);
     const geometry = await evaluate(`(() => {
       const panels = document.querySelector('.card-preview-panels');
-      const bounds = panels.getBoundingClientRect();
+      const bounds = document.querySelector('.card-preview-dock').getBoundingClientRect();
       return { excess: panels.scrollHeight - panels.clientHeight, buttons: [...document.querySelectorAll('.card-edit-footer button')].map(button => {
         const box = button.getBoundingClientRect();
         return { inside: box.top >= bounds.top && box.bottom <= bounds.bottom + 1,
@@ -426,11 +605,11 @@ describe.skipIf(!browserPath)('one-step Hero return (browser)', () => {
     await click('.card-title-edit');
     await until(`Boolean(document.querySelector('.card-edit-text'))`);
     await waitForLayout(evaluate, '.card-edit-text, .card-preview-panels');
-    // 2026-11-10: 80px, not 60: the dock gives the editor more room than the old meta row, so 60px left it above the minimum.
-    await evaluate(`(() => { const panels = document.querySelector('.card-preview-panels'); panels.style.flex = 'none'; panels.style.height = (panels.clientHeight - 80) + 'px'; })()`);
+    // 2026-11-11: constrain the scrollport directly; the actions belong to the pinned dock outside it.
+    await evaluate(`(() => { const panels = document.querySelector('.card-preview-panels'); panels.style.flex = 'none'; panels.style.height = '210px'; })()`);
     await waitForLayout(evaluate, '.card-edit-text, .card-preview-panels');
     const geometry = await evaluate(`(() => {
-      const panels = document.querySelector('.card-preview-panels'), bounds = panels.getBoundingClientRect();
+      const panels = document.querySelector('.card-preview-panels'), bounds = document.querySelector('.card-preview-dock').getBoundingClientRect();
       return { excess: panels.scrollHeight - panels.clientHeight, text: document.querySelector('.card-edit-text').clientHeight,
         buttons: [...document.querySelectorAll('.card-edit-footer button')].map(button => {
           const box = button.getBoundingClientRect();

@@ -140,7 +140,7 @@ describe.skipIf(!browserPath)('agent collaboration on a private demo (browser + 
 
   it('returns to Decks with browser Back after leaving the pulse results for another tab', async () => {
     await navigate({});
-    await until(`Boolean(document.querySelector('[data-pulse="review"]'))`);
+    await until(`Boolean(document.querySelector('[data-pulse="review"]:not(:disabled)'))`);
     await click('[data-pulse="review"]');
     await until(`Boolean(document.querySelector('.card-filter-bar'))`);
     await click('.global-tabs button:first-child');
@@ -155,10 +155,12 @@ describe.skipIf(!browserPath)('agent collaboration on a private demo (browser + 
 
   it('shows Leo in the form and records the same human in Markdown and activity', async () => {
     await navigate({ card: docId });
+    await click('.notifications-trigger');
     await until(`Boolean(document.querySelector('select[aria-label="Действующий участник"]'))`);
     await select('select[aria-label="Действующий участник"]', 'leo');
     await until(`localStorage.getItem('deckmate-current-member') === 'leo'`);
-    await until(`Boolean(document.querySelector('.open-question-actions'))`);
+    await click('.notifications-close');
+    await until(`Boolean(document.querySelector('.open-question-actions button:last-child:not(:disabled)'))`);
     await click('.open-question-actions button:last-child');
     expect(await page!.evaluate(`document.querySelector('.open-question-answer select').value`)).toBe('leo');
     await capture('03-answer-leo-ru');
@@ -183,7 +185,7 @@ describe.skipIf(!browserPath)('agent collaboration on a private demo (browser + 
     for (const actor of ['build-agent', '']) {
       await page!.callFunction(`function(actor) { if (actor) localStorage.setItem('deckmate-current-member', actor); else localStorage.removeItem('deckmate-current-member'); }`, actor);
       await navigate({ card: docId });
-      await until(`Boolean(document.querySelector('.open-question-actions'))`);
+      await until(`Boolean(document.querySelector('.open-question-actions button:last-child:not(:disabled)'))`);
       await click('.open-question-actions button:last-child');
       expect(await page!.evaluate(`document.querySelector('.open-question-answer select').value`)).toBe('');
       expect(await page!.evaluate(`document.querySelector('.open-question-answer').innerText`)).toContain('Выберите человека для записи решения');
@@ -234,12 +236,16 @@ describe.skipIf(!browserPath)('agent collaboration on a private demo (browser + 
     await navigate({ deck: 'engineering' });
     await until(`Boolean(document.querySelector('.deck-table-check, .catalog-card-checkbox'))`);
     await click('.deck-table-check, .catalog-card-checkbox');
-    await click('.bulk-actions [aria-label="Hand"]');
+    await page!.evaluate(`document.querySelector('.bulk-actions [aria-label="Ещё действия"]').dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))`);
+    await until(`Boolean(document.querySelector('.bulk-more-menu'))`);
+    await page!.evaluate(`Array.from(document.querySelectorAll('.bulk-more-item')).find(node => node.textContent === 'Hand').click()`);
     await until(`Boolean(document.querySelector('.bulk-pick-option'))`);
     await page!.evaluate(`Array.from(document.querySelectorAll('.bulk-pick-option')).find(node => node.textContent.includes('Build Agent')).click()`);
     await until(`document.querySelector('.bulk-dialog-body').innerText.includes('Карточка попадёт в очередь агента')`);
     await capture('12-agent-hand-queue-hint-ru');
     await navigate({ deck: 'engineering' });
+    await until(`Boolean(document.querySelector('.deck-actions-toggle'))`);
+    await click('.deck-actions-toggle');
     await until(`Boolean(document.querySelector('.deck-automation-toggle'))`);
     expect(await page!.evaluate(`document.querySelector('.deck-automation-toggle').getAttribute('aria-label')`)).toContain('Теги и шаблон колоды');
     const point = await page!.evaluate(`(() => { const r = document.querySelector('.deck-automation-toggle').getBoundingClientRect(); return { x: r.x + r.width / 2, y: r.y + r.height / 2 }; })()`);

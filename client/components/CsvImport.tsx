@@ -2,7 +2,7 @@ import { defineText, formatNumber, locale, textNow, useLang, useText } from '../
 import { kindLabel, priorityLabel, stateLabel } from '../locales/common.ts';
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import * as Dialog from '@radix-ui/react-dialog';
-import { FileUp, LoaderCircle, RotateCcw, X } from 'lucide-react';
+import { ChevronDown, FileUp, LoaderCircle, RotateCcw, X } from 'lucide-react';
 import { deckAcceptsCard, type CardPriority, type CatalogImportReport, type CatalogImportRow, type CatalogView } from '../../src/catalog-contracts.ts';
 import { resolveReference } from '../../src/references.ts';
 import { readCardState } from '../../src/format-vocabulary.ts';
@@ -11,6 +11,9 @@ import { useCatalog } from '../useCatalog.ts';
 import { failureMessage } from '../failure-message.ts';
 import { Button } from './ui/button.tsx';
 import { CardTags } from './CardTags.tsx';
+import { EffortIcon } from './EffortIcon.tsx';
+import { PriorityIcon } from './PriorityIcon.tsx';
+import { useSelectEscapeGuard } from '../select-escape.ts';
 import '../csv-import.css';
 
 const text = defineText({
@@ -63,6 +66,11 @@ const text = defineText({
   noFile: "no file selected",
   otherFile: "Choose another file",
   import: "Import",
+  importRows: (count: number, amount: string) => `Import ${amount} ${count === 1 ? 'row' : 'rows'}`,
+  columnsUnused: (count: string) => `${count} not used`,
+  issues: "Rows that will not be imported",
+  issuesShown: (shown: string, total: string) => `Showing ${shown} of ${total} problem rows.`,
+  scrollHint: "Scroll the table horizontally to see all columns.",
   unknownPriority: (value: string) => `unknown priority “${value}”`,
   invalidEffort: (value: string) => `effort “${value}” is not a number`,
   unknownKind: (value: string) => `unknown type “${value}”`,
@@ -79,11 +87,11 @@ const text = defineText({
   column: (index: string) => `column ${index}`,
   // 2026-11-10: the row counters are label + Geist Mono value pairs (client/surface.css .page-number), like the pulse.
   previewCount: (shown: string, total: string) => `first ${shown} of ${total}`,
-  countNew: "New",
+  countNew: "Ready",
   countKnown: "in project",
   countSkip: "skipped",
   countError: "errors",
-  toWriteLabel: "to write:",
+  toWriteLabel: "rows to process:",
   uiOwner: "Owner",
   uiEffort: "Effort",
   uiPriority: "Priority",
@@ -138,6 +146,17 @@ const text = defineText({
   noFile: "файл не выбран",
   otherFile: "Другой файл",
   import: "Импортировать",
+  importRows: (count: number, amount: string) => {
+    const rule = new Intl.PluralRules('ru-RU').select(count);
+    let noun = 'строк';
+    if (rule === 'one') noun = 'строку';
+    else if (rule === 'few') noun = 'строки';
+    return `Импортировать ${amount} ${noun}`;
+  },
+  columnsUnused: (count: string) => `не используется: ${count}`,
+  issues: "Строки, которые не будут импортированы",
+  issuesShown: (shown: string, total: string) => `Показано проблемных строк: ${shown} из ${total}.`,
+  scrollHint: "Прокрутите таблицу по горизонтали, чтобы увидеть все столбцы.",
   unknownPriority: (value: string) => `неизвестный приоритет «${value}»`,
   invalidEffort: (value: string) => `оценка «${value}» — не число`,
   unknownKind: (value: string) => `неизвестный тип «${value}»`,
@@ -153,11 +172,11 @@ const text = defineText({
   rowLimit: (limit: string) => `В файле больше ${limit} строк — уменьшите файл или разделите импорт.`,
   column: (index: string) => `столбец ${index}`,
   previewCount: (shown: string, total: string) => `первые ${shown} из ${total}`,
-  countNew: "Новых",
+  countNew: "Готово",
   countKnown: "уже в проекте",
   countSkip: "пропусков",
   countError: "ошибок",
-  toWriteLabel: "к записи:",
+  toWriteLabel: "строк к обработке:",
   uiOwner: "Исполнитель",
   uiEffort: "Оценка",
   uiPriority: "Приоритет",
@@ -374,14 +393,16 @@ function parseCsvFile(name: string, content: string, catalog: CatalogView): Pars
   return { name, delimiter, columns, rows, overLimit: rows.length > rowLimit };
 }
 
-export function CsvImport({ snapshot, refreshKey, open, initialDeckId = null, onOpenChange }: {
+export function CsvImport({ snapshot, refreshKey, open, initialDeckId = null, onOpenChange, onCloseAutoFocus }: {
   snapshot: WorkspaceSnapshot;
   refreshKey: number;
   open: boolean;
   /** Deck whose header opened the import; null lets the user choose in the dialog. */
   initialDeckId?: string | null;
   onOpenChange: (open: boolean) => void;
+  onCloseAutoFocus?: (event: Event) => void;
 }) {
+  useSelectEscapeGuard();
   const t = useText(text);
   const lang = useLang();
   // 2026-11-10: the shared cached formatter keeps the pulse's number formatting in the preview and counters.
@@ -468,11 +489,13 @@ export function CsvImport({ snapshot, refreshKey, open, initialDeckId = null, on
   }
 
   const previewRows = parsed?.rows.slice(0, 10) ?? [];
+  const issueRows = parsed?.rows.filter(row => row.status === 'error' || row.status === 'skip') ?? [];
+  const unusedColumns = parsed?.columns.filter(column => column.field === null || column.field === 'ignored').length ?? 0;
   const allSkips = report ? [...report.skipped, ...skippedHere] : [];
 
   return <Dialog.Root open={open} onOpenChange={next => { if (!next && running) return; onOpenChange(next); }}><Dialog.Portal>
     <Dialog.Overlay className="dialog-overlay" />
-    <Dialog.Content className="csv-import dialog-panel" aria-busy={busy}>
+    <Dialog.Content className="csv-import dialog-panel" aria-busy={busy} onCloseAutoFocus={onCloseAutoFocus}>
       <header className="csv-import-head dialog-head">
         <div className="csv-import-heading">
           <Dialog.Title className="dialog-title">{t.heading}</Dialog.Title>
@@ -503,18 +526,13 @@ export function CsvImport({ snapshot, refreshKey, open, initialDeckId = null, on
           <p className="csv-import-file-line">{t.fileSummary(parsed.name, parsed.delimiter, amount(parsed.rows.length))}</p>
           {parseError && <p className="csv-import-error" role="alert">{parseError}</p>}
           {parsed.overLimit && <p className="csv-import-error" role="alert">{t.rowLimit(amount(rowLimit))}</p>}
-          <section className="csv-import-mapping glass-panel" aria-label={t.fileColumns}>
-            <div className="panel-head">
-              <h3 className="panel-title">{t.columns}</h3>
-              <span className="panel-count">{amount(parsed.columns.length)}</span>
-            </div>
-            <ul>{parsed.columns.map((column, index) => <li key={index}>
-              <span className="csv-import-column-name">{column.header || t.column(amount(index + 1))}</span>
-              <span className={column.field ? 'csv-import-column-field' : 'csv-import-column-unused'}>
-                {column.field ? columnLabels[column.field] : t.unused}
-              </span>
-            </li>)}</ul>
-          </section>
+          <p className="csv-import-note csv-import-counts">
+            {([[t.countNew, counts.new], [t.countError, counts.error], [t.countSkip, counts.skip], [t.countKnown, counts.known]] as const)
+              .map(([label, value], index) => <Fragment key={label}>
+                {index > 0 && <span className="dot-separator" aria-hidden="true">·</span>}
+                <span>{label} <span className="page-number">{amount(value)}</span></span>
+              </Fragment>)}
+          </p>
           <label className="csv-import-field">{t.deck}
             <select className="control-field" value={deckId} disabled={busy || compatibleDecks.length === 0} aria-label={t.deck}
               onChange={event => setDeckId(event.target.value)}>
@@ -523,12 +541,29 @@ export function CsvImport({ snapshot, refreshKey, open, initialDeckId = null, on
             </select>
           </label>
           {deckInvalid && <p className="csv-import-error" role="alert">{t.deckInvalid}</p>}
+          {issueRows.length > 0 && <section className="csv-import-issues" aria-label={t.issues}>
+            <h3>{t.issues}</h3>
+            <ul>{issueRows.slice(0, 10).map(row => <li key={row.number}>
+              <strong>{t.row(amount(row.number))}</strong>{row.title && <> · {row.title}</>} — {row.reason() || statusTitles[row.status]}
+            </li>)}</ul>
+            {issueRows.length > 10 && <p>{t.issuesShown(amount(10), amount(issueRows.length))}</p>}
+          </section>}
+          <details className="csv-import-mapping glass-panel" aria-label={t.fileColumns}>
+            <summary><span><ChevronDown size={14} aria-hidden="true" />{t.columns} · {amount(parsed.columns.length)}</span><span>{t.columnsUnused(amount(unusedColumns))}</span></summary>
+            <ul>{parsed.columns.map((column, index) => <li key={index}>
+              <span className="csv-import-column-name">{column.header || t.column(amount(index + 1))}</span>
+              <span className={column.field ? 'csv-import-column-field' : 'csv-import-column-unused'}>
+                {column.field ? columnLabels[column.field] : t.unused}
+              </span>
+            </li>)}</ul>
+          </details>
           <section className="csv-import-preview glass-panel" aria-label={t.preview}>
             <div className="panel-head">
               <h3 className="panel-title">{t.preview}</h3>
               <span className="panel-count">{t.previewCount(amount(previewRows.length), amount(parsed.rows.length))}</span>
             </div>
-            <div className="csv-import-table-scroll">
+            <p className="csv-import-note csv-import-scroll-hint">{t.scrollHint}</p>
+            <div className="csv-import-table-scroll" tabIndex={0} role="region" aria-label={t.preview}>
               <table>
                 <thead><tr><th>№</th><th>{t.title}</th><th>{t.type}</th><th>{t.uiOwner}</th><th>{t.uiEffort}</th><th>{t.uiPriority}</th><th>{t.uiState}</th><th>{t.tags}</th><th>{t.status}</th></tr></thead>
                 <tbody>{previewRows.map(row => <tr key={amount(row.number)} className={`is-${row.status}`}>
@@ -536,21 +571,14 @@ export function CsvImport({ snapshot, refreshKey, open, initialDeckId = null, on
                   <td><span className="csv-import-cell-title">{row.title || '—'}</span>{row.reason() && <small>{row.reason()}</small>}</td>
                   <td>{kindLabel(row.kind, lang)}</td>
                   <td>{row.owner ?? '—'}</td>
-                  <td>{row.effort == null ? '—' : amount(row.effort)}</td>
-                  <td>{row.priority ? priorityLabel(row.priority, lang) : '—'}</td>
+                  <td>{row.effort == null ? '—' : <><EffortIcon size={12} /> {amount(row.effort)}</>}</td>
+                  <td>{row.priority ? <><PriorityIcon priority={row.priority} size={12} /> {priorityLabel(row.priority, lang)}</> : '—'}</td>
                   <td>{row.state ? stateLabel(row.state, lang) : '—'}</td>
                   <td>{row.tags.length ? <CardTags tags={row.tags} definitions={view?.projectTags} compact /> : '—'}</td>
                   <td>{statusTitles[row.status]}</td>
                 </tr>)}</tbody>
               </table>
             </div>
-            <p className="csv-import-note csv-import-counts">
-              {([[t.countNew, counts.new], [t.countKnown, counts.known], [t.countSkip, counts.skip], [t.countError, counts.error]] as const)
-                .map(([label, value], index) => <Fragment key={label}>
-                  {index > 0 && <span className="dot-separator" aria-hidden="true">·</span>}
-                  <span>{label} <span className="page-number">{amount(value)}</span></span>
-                </Fragment>)}
-            </p>
           </section>
         </>}
         {importError && <p className="csv-import-error" role="alert">{importError}</p>}
@@ -561,7 +589,7 @@ export function CsvImport({ snapshot, refreshKey, open, initialDeckId = null, on
           {parsed && <Button variant="ghost" size="sm" disabled={busy} onClick={reset}><RotateCcw size={13} />{t.otherFile}</Button>}
           <Button variant="ghost" size="sm" className="action-mint" disabled={!canWrite || busy || !view || !parsed || parsed.overLimit || !deckId || deckInvalid || sendable.length === 0}
             onClick={() => void runImport()}>
-            {running && <LoaderCircle size={14} className="spin" />}{t.import}
+            {running && <LoaderCircle size={14} className="spin" />}{parsed && sendable.length > 0 ? t.importRows(sendable.length, amount(sendable.length)) : t.import}
           </Button>
         </span>
       </footer>

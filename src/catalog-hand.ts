@@ -51,6 +51,20 @@ export function getCatalogHands(catalog: Pick<ProjectCatalog, 'cards' | 'members
   return hands;
 }
 
+/** 2026-11-11: the slot a card shows is its place among the open cards of a member's Hand. The saved handOrder is a
+ *  sparse sorting key, never a slot number, so every surface reads the position from here. */
+export function catalogHandPositions(catalog: Pick<ProjectCatalog, 'cards' | 'members'>): Map<string, Record<string, number>> {
+  const positions = new Map<string, Record<string, number>>();
+  for (const hand of getCatalogHands(catalog)) {
+    hand.cards.filter(card => card.state !== 'done').forEach((card, index) => {
+      const slots = positions.get(card.id) ?? {};
+      slots[hand.member.id] = index + 1;
+      positions.set(card.id, slots);
+    });
+  }
+  return positions;
+}
+
 export function selectCatalogHand(hands: CatalogHand[], requested: string, lang: Lang = defaultLang): CatalogHand {
   const query = requested.trim();
   if (!query) throw new Error(text[lang].memberRequired);

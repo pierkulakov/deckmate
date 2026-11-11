@@ -8,27 +8,32 @@ import { defineText, locale, useLang, useText } from '../i18n.ts';
 
 const text = defineText({
   heading: 'Tags', selectByTags: 'Display and select by tags', match: 'Tag match',
-  empty: 'No tags on these cards yet. Add #tags in card text.',
+  empty: 'No tags on these cards yet. Assign tags in card properties.',
   noVisibleCards: 'No cards are shown, so there are no tags to pick.',
   allTags: 'Cards with all selected tags', anyTag: 'Cards with any selected tag',
   selectUntagged: 'Select cards without tags', notTagged: 'Not tagged',
   selectTag: (name: string) => `Select cards tagged #${name}`,
+  purpose: 'Tag action', show: 'Show', select: 'Select', all: 'All', any: 'Any', reset: 'Reset',
+  showUntagged: 'Show cards without tags', showTag: (name: string) => `Show cards tagged #${name}`,
+  shown: (shown: string, total: string) => `Showing ${shown} of ${total}`,
+  selected: (selected: string, total: string) => `Selected ${selected} · visible ${total}`,
 }, {
   heading: 'Теги', selectByTags: 'Показ и выбор по тегам', match: 'Совпадение тегов',
-  empty: 'Тегов на этих карточках пока нет. Добавляйте #теги в тексте карточек.',
+  empty: 'Тегов на этих карточках пока нет. Назначайте теги в свойствах карточки.',
   noVisibleCards: 'Карточки не показаны, поэтому выбирать теги не из чего.',
   allTags: 'Карточки со всеми выбранными тегами', anyTag: 'Карточки с любым из выбранных тегов',
   selectUntagged: 'Выбрать карточки без тегов', notTagged: 'Без тегов',
   selectTag: (name: string) => `Выбрать карточки с тегом #${name}`,
+  purpose: 'Действие с тегами', show: 'Показать', select: 'Выделить', all: 'Все', any: 'Любой', reset: 'Сбросить',
+  showUntagged: 'Показать карточки без тегов', showTag: (name: string) => `Показать карточки с тегом #${name}`,
+  shown: (shown: string, total: string) => `Показано ${shown} из ${total}`,
+  selected: (selected: string, total: string) => `Выделено ${selected} · видно ${total}`,
 });
 
-/**
- * List tags of the shown cards with counts. Tag buttons select matching cards, combining tags with "and" or "or".
- * Selection keeps the whole deck visible so the bulk toolbar can act on the selected cards.
- */
-export interface TagPick { tags: string[]; notTagged: boolean; mode: 'and' | 'or' }
+/** Showing filters the deck; selection keeps the deck visible for bulk actions. */
+export interface TagPick { tags: string[]; notTagged: boolean; mode: 'and' | 'or'; purpose?: 'show' | 'select' }
 
-export const emptyTagPick: TagPick = { tags: [], notTagged: false, mode: 'and' };
+export const emptyTagPick: TagPick = { tags: [], notTagged: false, mode: 'and', purpose: 'show' };
 
 function cardTags(card: CatalogCard): string[] {
   return (card.tags ?? []).filter(tag => tag.trim());
@@ -48,12 +53,13 @@ export function cardsMatchingTagPick(cards: readonly CatalogCard[], pick: TagPic
   }).map(card => card.id);
 }
 
-export function DeckTagsPanel({ cards, projectTags = [], pick, active, disabled = false, onPick }: {
+export function DeckTagsPanel({ cards, projectTags = [], pick, active, selectedCount, disabled = false, onPick }: {
   cards: readonly CatalogCard[];
   projectTags?: readonly ProjectTag[];
   pick: TagPick;
   /** The pick is still the current selection; any other selection change ends it. */
   active: boolean;
+  selectedCount?: number;
   disabled?: boolean;
   onPick: (pick: TagPick) => void;
 }) {
@@ -61,9 +67,10 @@ export function DeckTagsPanel({ cards, projectTags = [], pick, active, disabled 
   const lang = useLang();
   const numberFormat = new Intl.NumberFormat(locale(lang));
   const headingId = useId();
-  const current = active ? pick : { ...emptyTagPick, mode: pick.mode };
+  const purpose = pick.purpose ?? 'show';
+  const current = active ? pick : { ...emptyTagPick, mode: pick.mode, purpose };
   const projectByName = useMemo(() => new Map(projectTags.map(tag => [tag.name, tag])), [projectTags]);
-  // Sort project tags first, then personal tags, alphabetically within each group.
+  // Registry tags lead; unregistered assignments stay available to the whole team.
   const rows = useMemo(() => {
     const tagCollator = new Intl.Collator(locale(lang), { numeric: true, sensitivity: 'base' });
     const counts = new Map<string, number>();
@@ -78,6 +85,10 @@ export function DeckTagsPanel({ cards, projectTags = [], pick, active, disabled 
     return { notTagged, tags };
   }, [cards, projectByName, lang]);
   const combinable = tagPickSize(current) >= 2;
+  const matchingCount = cardsMatchingTagPick(cards, current).length;
+  const shownCount = tagPickSize(current) > 0 ? matchingCount : cards.length;
+  const selectionCount = selectedCount ?? matchingCount;
+  const canReset = tagPickSize(current) > 0 || (purpose === 'select' && selectionCount > 0);
 
   function toggleTag(name: string) {
     const tags = current.tags.includes(name) ? current.tags.filter(tag => tag !== name) : [...current.tags, name];
@@ -88,22 +99,33 @@ export function DeckTagsPanel({ cards, projectTags = [], pick, active, disabled 
     <header className="panel-head"><h3 className="panel-title" id={headingId}>{t.heading}</h3><span className="panel-count page-number">{numberFormat.format(rows.tags.length)}</span></header>
     <fieldset className="deck-tags-body" disabled={disabled}>
       <legend className="visually-hidden">{t.selectByTags}</legend>
+      <div className="deck-tags-purpose control-segmented" role="group" aria-label={t.purpose}>
+        {(['show', 'select'] as const).map(value => <button key={value} type="button" aria-pressed={purpose === value}
+          onClick={() => onPick({ ...current, purpose: value })}>{t[value]}</button>)}
+      </div>
       <div className="deck-tags-modes" role="group" aria-label={t.match}>
+        <span>{t.match}</span>
         {(['and', 'or'] as const).map(mode => <button key={mode} type="button" className="deck-panel-button control" disabled={!combinable}
-          aria-pressed={combinable && current.mode === mode} title={mode === 'and' ? t.allTags : t.anyTag}
-          onClick={() => onPick({ ...current, mode })}>{mode}</button>)}
+          aria-pressed={current.mode === mode} title={mode === 'and' ? t.allTags : t.anyTag}
+          onClick={() => onPick({ ...current, mode })}>{mode === 'and' ? t.all : t.any}</button>)}
       </div>
       <div className="deck-tags-list">
         {rows.tags.length === 0 && <EmptyState message={cards.length === 0 ? t.noVisibleCards : t.empty} />}
         <button type="button" className="deck-panel-button control is-wide deck-tag-row" aria-pressed={current.notTagged} disabled={rows.notTagged === 0}
-          title={t.selectUntagged} onClick={() => onPick({ ...current, notTagged: !current.notTagged })}>
+          title={purpose === 'show' ? t.showUntagged : t.selectUntagged} onClick={() => onPick({ ...current, notTagged: !current.notTagged })}>
           <span className="deck-tag-name">{t.notTagged}</span><span className="deck-tag-count page-number">{numberFormat.format(rows.notTagged)}</span>
         </button>
         {rows.tags.map(tag => <button key={tag.name} type="button" className={'deck-panel-button control is-wide deck-tag-row' + (tag.project ? ' is-project' : '')}
-          aria-pressed={current.tags.includes(tag.name)} title={t.selectTag(tag.name)} onClick={() => toggleTag(tag.name)}>
+          aria-pressed={current.tags.includes(tag.name)} title={purpose === 'show' ? t.showTag(tag.name) : t.selectTag(tag.name)} onClick={() => toggleTag(tag.name)}>
           <TagBadge name={tag.name} definition={tag.project} />
           <span className="deck-tag-count page-number">{numberFormat.format(tag.count)}</span>
         </button>)}
+      </div>
+      <div className="deck-tags-summary">
+        <p role="status">{purpose === 'show' ? t.shown(numberFormat.format(shownCount), numberFormat.format(cards.length))
+          : t.selected(numberFormat.format(selectionCount), numberFormat.format(cards.length))}</p>
+        {canReset && <button type="button" className="deck-tags-reset deck-panel-button control control-ghost"
+          onClick={() => onPick({ ...emptyTagPick, mode: current.mode, purpose })}>{t.reset}</button>}
       </div>
     </fieldset>
   </section>;

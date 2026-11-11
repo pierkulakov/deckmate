@@ -16,6 +16,7 @@
 :is(.deck-gallery, .card-scope-view) .catalog-nav-section > div { display: flex; gap: 4px; }
 :is(.deck-gallery, .card-scope-view) .catalog-nav-section > .catalog-nav-label { display: none; }
 :is(.deck-gallery, .card-scope-view) .catalog-nav-section button { min-height: 30px; padding: 4px 9px; font-size: 13px; }
+:is(.deck-gallery, .card-scope-view) .catalog-nav-section button[aria-current="page"] { background: linear-gradient(var(--mark-tint), var(--mark-tint)), var(--canvas); color: var(--ink); }
 :is(.deck-gallery, .card-scope-view) .catalog-track-picker { display: flex; align-items: center; gap: 6px; margin-left: 8px; }
 :is(.deck-gallery, .card-scope-view) .catalog-track-picker .catalog-nav-label { display: none; }
 :is(.deck-gallery, .card-scope-view) .catalog-track-picker > div { display: flex; align-items: center; gap: 4px; min-width: 150px; max-width: 220px; }
@@ -30,4 +31,13 @@
 @media (max-width: 420px) {
   :is(.deck-gallery, .card-scope-view) .deck-gallery-search { flex-basis: 100%; }
   :is(.deck-gallery, .card-scope-view) .catalog-track-picker { margin-left: 0; }
+}
+@media (pointer: coarse) {
+  :is(.deck-gallery, .card-scope-view) .deck-gallery-search .catalog-search,
+  :is(.deck-gallery, .card-scope-view) .deck-gallery-search input,
+  :is(.deck-gallery, .card-scope-view) .catalog-nav-section button,
+  :is(.deck-gallery, .card-scope-view) .catalog-track-picker select { min-height: var(--control-target-touch); }
+  :is(.deck-gallery, .card-scope-view) .deck-gallery-search button,
+  :is(.deck-gallery, .card-scope-view) .catalog-track-picker .ui-button { flex-basis: var(--control-target-touch); min-width: var(--control-target-touch); min-height: var(--control-target-touch); }
+  :is(.deck-gallery, .card-scope-view) :is(.catalog-browser-navigation, .catalog-nav-section, .catalog-nav-section > div, .catalog-track-picker > div) { gap: var(--space-2); }
 }

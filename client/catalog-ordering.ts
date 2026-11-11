@@ -88,10 +88,10 @@ function compareIdentifiers(first: string, second: string): number {
 }
 
 /** The first tag in the chosen scope is the sort/lane key; a card appears in only one tag lane. */
-export function firstCardTag(card: CatalogCard, scope: TagScope = 'both', projectTagNames?: ReadonlySet<string>): string | null {
+function firstCardTag(card: CatalogCard, scope: TagScope = 'both', projectTagNames?: ReadonlySet<string>): string | null {
   const tags = (card.tags ?? []).filter(tag => tag.trim() && (scope === 'both' || (projectTagNames?.has(tag) ?? false) === (scope === 'project')));
   if (tags.length === 0) return null;
-  return tags.slice().sort(titleCollator.compare)[0];
+  return tags.slice().sort((first, second) => titleCollator.compare(first, second) || compareIdentifiers(first, second))[0];
 }
 
 function dateValue(value: string | null | undefined): number | null {

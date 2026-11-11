@@ -33,5 +33,5 @@ export const browserFixtures = {
 };
 
 export type BrowserFixture = keyof typeof browserFixtures;
-// 2026-11-10: the full-app/API integration owns its proxy, but must share the serial browser budget.
-export const browserFiles = [...Object.values(browserFixtures), 'tests/agent-collaboration-ux.test.ts'];
+// 2026-11-11: standalone browser tests need no fixture entry but still share the serial browser budget.
+export const browserFiles = [...Object.values(browserFixtures), 'tests/card-selection.test.tsx', 'tests/agent-collaboration-ux.test.ts'];

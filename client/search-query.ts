@@ -3,11 +3,12 @@
 // property filters effort:/priority:/run:/milestone:/hand:/due:, content scopes t:/sub:, and navigation tokens $ID / gd: / gc:.
 // Pure matching lives here; overlay UI, filter pills and keyboard handling stay in GlobalSearch.tsx.
 import { resolveReference } from '../src/references.ts';
-import { localIsoDate } from '../src/catalog-hand.ts';
+import { isOwnedByMember, localIsoDate } from '../src/catalog-hand.ts';
 import { boardColumns, type CardKind, type CardPriority, type CatalogCard, type CatalogDeck, type CatalogMember, type CatalogView, type MilestoneRecord, type RunRecord } from '../src/catalog-contracts.ts';
 import type { SliceStatus } from '../src/workspace-contracts.ts';
 import { defineText, textNow } from './i18n.ts';
 import { cardStateWords, readCardState } from '../src/format-vocabulary.ts';
+import { collectProjectTags, matchesTagName } from '../src/project-tags.ts';
 
 const text = defineText({
   ambiguousReference: 'The short reference is ambiguous. Use the full ID.',
@@ -59,11 +60,14 @@ function plusDays(iso: string, days: number): string {
 }
 
 /** Match an owner by the stored label or by a member ID/alias that resolves to that label. */
-function ownerMatches(owner: string | null, term: string, members: CatalogMember[]): boolean {
-  if (!owner) return false;
-  if (owner.toLocaleLowerCase('ru').includes(term)) return true;
-  return members.some(member => member.label === owner
-    && [member.id, member.label, ...member.aliases].some(alias => alias.toLocaleLowerCase('ru').includes(term)));
+function ownerMatcher(term: string, members: CatalogMember[]): (owner: string | null) => boolean {
+  const normalized = (value: string) => value.trim().toLocaleLowerCase('ru');
+  // 2026-11-11: IDs identify one member even when another label or alias contains the same text.
+  const id = members.find(member => normalized(member.id) === term);
+  const exact = id ? [id] : members.filter(member => [member.label, ...member.aliases].some(name => normalized(name) === term));
+  if (exact.length) return owner => exact.length === 1 && isOwnedByMember(owner, exact[0]);
+  return owner => Boolean(owner && (normalized(owner).includes(term) || members.some(member => isOwnedByMember(owner, member)
+    && [member.id, member.label, ...member.aliases].some(alias => normalized(alias).includes(term)))));
 }
 
 /** Search navigation target: an exact card, a deck title prefix, or an ambiguous short reference. */
@@ -72,7 +76,7 @@ export type NavigationTarget =
   | { kind: 'deck'; deck: CatalogDeck }
   | { kind: 'ambiguous'; message: string };
 
-export interface SearchOutcome {
+interface SearchOutcome {
   navigation: NavigationTarget[];
   cards: CatalogCard[];
   total: number;
@@ -89,13 +93,13 @@ interface TokenSpan {
   raw: string;
 }
 
-export interface NavToken extends TokenSpan {
+interface NavToken extends TokenSpan {
   kind: 'nav';
   navKind: NavKind;
   term: string;
 }
 
-/** One query filter; `value` is the lowercase text after its prefix. */
+/** One query filter; `value` is lowercase except for canonical references in `sub:`. */
 export interface FilterToken extends TokenSpan {
   kind: FilterKind;
   value: string;
@@ -107,12 +111,81 @@ export interface FilterToken extends TokenSpan {
   negated: boolean;
 }
 
-export type SearchToken = NavToken | FilterToken;
+type SearchToken = NavToken | FilterToken;
 
 const valueFilters = new Map<string, FilterKind>([
   ['deck', 'deck'], ['kind', 'kind'], ['state', 'state'], ['effort', 'effort'], ['priority', 'priority'],
   ['run', 'run'], ['milestone', 'milestone'], ['hand', 'hand'], ['due', 'due'], ['sub', 'sub'], ['t', 'title'],
 ]);
+
+function tagAlternatives(raw: string): TokenSpan[] {
+  return [...raw.matchAll(/(?:[^|"]|"(?:\\.|[^"\\])*(?:"|$))+/gu)].map(match => ({
+    raw: match[0], start: match.index, end: match.index + match[0].length,
+  }));
+}
+
+function decodeTagName(raw: string): string {
+  const name = raw.replace(/^#/u, '');
+  if (!name.startsWith('"')) return name;
+  try { return JSON.parse(name) as string; }
+  catch { return name.slice(1); }
+}
+
+/** Preserve spelling and quoted separators when displaying or combining exact tag filters. */
+export function searchTagNames(token: FilterToken): string[] {
+  return tagAlternatives(token.raw.replace(/^!/u, '')).map(part => decodeTagName(part.raw)).filter(Boolean);
+}
+
+function exactTagFilter(name: string): string {
+  return '#' + (/[\s|"\\]/u.test(name) ? JSON.stringify(name) : name);
+}
+
+export interface TagFilterSuggestion {
+  name: string;
+  count: number;
+  start: number;
+  end: number;
+}
+
+/** Only the token/OR alternative at the caret is completed; the rest of the query remains byte-for-byte. */
+export function suggestTagFilters(catalog: CatalogView, raw: string, caret = raw.length): TagFilterSuggestion[] {
+  const token = parseSearch(raw).find(part => caret > part.start && caret <= part.end);
+  if (!token || token.kind === 'nav' || (token.kind !== 'tag' && token.kind !== 'word')) return [];
+  const body = token.raw.replace(/^!/u, '');
+  if (token.kind === 'word' && /[:@$|]/u.test(body)) return [];
+  const offset = token.start + Number(token.raw.startsWith('!'));
+  const parts = tagAlternatives(body);
+  if (body.endsWith('|')) parts.push({ raw: '', start: body.length, end: body.length });
+  const part = parts.find(entry => caret >= offset + entry.start && caret <= offset + entry.end);
+  if (!part) return [];
+  const prefix = decodeTagName(part.raw.slice(0, caret - offset - part.start));
+  const cards = catalog.cards.filter(card => !card.archived && !card.deleted);
+  // 2026-11-11: one pass over the cards counts every suggestion's tag; a per-tag filter walked the catalog again on each keystroke.
+  const counts = new Map<string, number>();
+  for (const card of cards) {
+    const names = new Set((card.tags ?? []).map(name => name.toLocaleLowerCase('ru')));
+    for (const name of names) counts.set(name, (counts.get(name) ?? 0) + 1);
+  }
+  return collectProjectTags(cards, catalog.projectTags).filter(tag => matchesTagName(tag.name, prefix, 'prefix')
+    && (token.kind !== 'tag' || !matchesTagName(tag.name, prefix)))
+    .slice(0, 8).map(tag => ({ name: tag.name,
+      count: counts.get(tag.name.toLocaleLowerCase('ru')) ?? 0,
+      start: offset + part.start, end: offset + part.end }));
+}
+
+export function completeTagFilter(raw: string, suggestion: TagFilterSuggestion): string {
+  return raw.slice(0, suggestion.start) + exactTagFilter(suggestion.name) + raw.slice(suggestion.end)
+    + (suggestion.end === raw.length ? ' ' : '');
+}
+
+/** The tag that explained a match must not disappear behind the compact badge limit. */
+export function matchedTagsFirst(tags: readonly string[] = [], raw: string): string[] {
+  const tokens = parseSearch(raw).filter((token): token is FilterToken => token.kind !== 'nav' && !token.negated && (token.kind === 'tag' || token.kind === 'word'));
+  const matches = (name: string) => tokens.some(token => token.kind === 'word'
+    ? matchesTagName(name, token.value, 'prefix')
+    : (token.alternatives ?? [token.value]).some(value => matchesTagName(name, value)));
+  return [...tags.filter(matches), ...tags.filter(name => !matches(name))];
+}
 
 /**
  * Parse tokens with source positions. `$`, `gd:`, and `gc:` navigate; `#`, `@`, `t:`, and `<filter>:` filter.
@@ -120,7 +193,7 @@ const valueFilters = new Map<string, FilterKind>([
  */
 export function parseSearch(raw: string): SearchToken[] {
   const tokens: SearchToken[] = [];
-  for (const match of raw.matchAll(/\S+/gu)) {
+  for (const match of raw.matchAll(/(?:[^\s"]|"(?:\\.|[^"\\])*(?:"|$))+/gu)) {
     const rawToken = match[0];
     const start = match.index;
     const span: TokenSpan = { start, end: start + rawToken.length, raw: rawToken };
@@ -129,7 +202,8 @@ export function parseSearch(raw: string): SearchToken[] {
     const body = negated ? value.slice(1) : value;
     if (!body) continue;
     if (!negated && body.length > 1 && body.startsWith('$')) {
-      tokens.push({ ...span, kind: 'nav', navKind: 'card-ref', term: body.slice(1) });
+      const reference = rawToken.slice(1);
+      tokens.push({ ...span, kind: 'nav', navKind: 'card-ref', term: reference.includes(':') ? reference : body.slice(1) });
       continue;
     }
     if (!negated && body.startsWith('gd:') && body.length > 3) {
@@ -142,9 +216,9 @@ export function parseSearch(raw: string): SearchToken[] {
     }
     if (body.startsWith('#') && body.length > 1) {
       // Each alternative after '|' can have its own '#'; strip it consistently.
-      const alternatives = body.slice(1).split('|').map(part => part.replace(/^#/u, '')).filter(Boolean);
+      const alternatives = tagAlternatives(rawToken.slice(Number(negated))).map(part => decodeTagName(part.raw).toLocaleLowerCase('ru')).filter(Boolean);
       if (!alternatives.length) continue;
-      tokens.push({ ...span, kind: 'tag', value: body.slice(1), ...(alternatives.length > 1 ? { alternatives } : {}), negated });
+      tokens.push({ ...span, kind: 'tag', value: alternatives.join('|'), ...(alternatives.length > 1 ? { alternatives } : {}), negated });
       continue;
     }
     if (body.startsWith('@') && body.length > 1) {
@@ -155,7 +229,9 @@ export function parseSearch(raw: string): SearchToken[] {
     const prefix = body.slice(0, body.indexOf(':') + 1);
     const filterKind = prefix ? valueFilters.get(prefix.slice(0, -1)) : undefined;
     if (filterKind && body.length > prefix.length) {
-      tokens.push({ ...span, kind: filterKind, value: body.slice(prefix.length), negated });
+      let filterValue = body.slice(prefix.length);
+      if (filterKind === 'sub' && filterValue.includes(':')) filterValue = rawToken.slice(prefix.length + Number(negated));
+      tokens.push({ ...span, kind: filterKind, value: filterValue, negated });
       continue;
     }
     tokens.push({ ...span, kind: 'word', value: body, negated });
@@ -176,7 +252,7 @@ export function toggleTagOr(raw: string): string {
   const tokens = parseSearch(raw);
   const tagTokens = tokens.filter((token): token is FilterToken => token.kind === 'tag' && !token.negated);
   // Keep tag spelling without '!' or the leading '#'; toggling must preserve query case.
-  const rawParts = (token: FilterToken) => token.raw.replace(/^!?#/u, '').split('|').map(part => part.replace(/^#/u, '')).filter(Boolean);
+  const rawParts = (token: FilterToken) => searchTagNames(token).map(name => exactTagFilter(name).slice(1));
   const values = tagTokens.flatMap(rawParts);
   if (values.length < 2) return raw;
   const orActive = tagTokens.some(token => (token.alternatives?.length ?? 0) > 1);
@@ -197,13 +273,14 @@ function subParents(reachable: CatalogCard[], term: string): Set<string> {
     if (resolved) return new Set([resolved.id]);
   } catch { /* An ambiguous short reference matches nothing, just like an unknown deck. */ }
   const parents = new Set<string>();
-  for (const card of reachable) if (card.title.toLocaleLowerCase('ru').startsWith(term)) parents.add(card.id);
+  const titlePrefix = term.toLocaleLowerCase('ru');
+  for (const card of reachable) if (card.title.toLocaleLowerCase('ru').startsWith(titlePrefix)) parents.add(card.id);
   return parents;
 }
 
 /** Match CardIndicators: an ended Run is past, one not yet started is future, and all others are current. */
 function runPhase(run: RunRecord, today: string): 'past' | 'current' | 'future' {
-  if (run.end < today) return 'past';
+  if (run.finishedAt || run.end < today) return 'past';
   if (run.start > today) return 'future';
   return 'current';
 }
@@ -240,15 +317,14 @@ function matcherFor(token: FilterToken, context: SearchContext): ((card: Catalog
       // Separate # tokens use AND (the card has every tag); #a|#b uses OR.
       const alternatives = token.alternatives ?? [token.value];
       const has = (card: CatalogCard) => {
-        const tags = (card.tags ?? []).map(tag => tag.toLocaleLowerCase('ru'));
-        return alternatives.some(tag => tags.includes(tag));
+        return alternatives.some(term => card.tags?.some(tag => matchesTagName(tag, term)));
       };
       return (card) => has(card) !== token.negated;
     }
     case 'owner': {
       if (token.none) return (card) => (card.owner == null) !== token.negated;
-      const has = (card: CatalogCard) => ownerMatches(card.owner, token.value, context.members);
-      return (card) => has(card) !== token.negated;
+      const matches = ownerMatcher(token.value, context.members);
+      return (card) => matches(card.owner) !== token.negated;
     }
     case 'deck': {
       const deckIds = new Set(context.decks.filter(deck => deck.title.toLocaleLowerCase('ru').startsWith(token.value)).map(deck => deck.id));
@@ -270,9 +346,9 @@ function matcherFor(token: FilterToken, context: SearchContext): ((card: Catalog
     }
     case 'effort': {
       // effort:3 is exact; effort:3+ means at least 3; effort:3- means at most 3.
-      const match = /^(\d+)([+-]?)$/u.exec(token.value);
+      const match = /^(\d+(?:\.\d+)?|\.\d+)([+-]?)$/u.exec(token.value);
       // Unknown values match nothing in a positive filter and everything in a negated filter.
-      if (!match) return token.negated ? () => true : () => false;
+      if (!match || !Number.isFinite(Number(match[1]))) return () => token.negated;
       const target = Number(match[1]);
       const pass = (card: CatalogCard) => {
         if (card.effort == null) return false;

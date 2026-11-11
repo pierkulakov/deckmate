@@ -48,12 +48,13 @@ pub fn is_server_url(shell: &Shell, url: &Url) -> bool {
         .is_some_and(|server| server.origin() == url.origin())
 }
 
+fn opens_in_browser(url: &Url) -> bool {
+    // 2026-11-11: same-origin document and reference links also request a new window.
+    matches!(url.scheme(), "http" | "https") && url.origin() != launcher_url().origin()
+}
+
 pub fn open_external(app: &AppHandle, url: &Url) {
-    if matches!(url.scheme(), "http" | "https")
-        && url.origin() != launcher_url().origin()
-        && !is_server_url(&app::state(app), url)
-        && !record_external(url)
-    {
+    if opens_in_browser(url) && !record_external(url) {
         let _ = app.opener().open_url(url.as_str(), None::<&str>);
     }
 }
@@ -240,6 +241,8 @@ pub fn create(app: &AppHandle) -> tauri::Result<()> {
         .min_inner_size(960.0, 600.0)
         .visible(false)
         .background_color(tauri::window::Color(23, 24, 27, 255))
+        // 2026-11-11: the native drop handler replaces WebView2's HTML file drops on Windows.
+        .disable_drag_drop_handler()
         .zoom_hotkeys_enabled(false)
         .on_document_title_changed(|window, _| {
             let _ = window.set_title(&title(window.app_handle()));
@@ -257,6 +260,10 @@ pub fn create(app: &AppHandle) -> tauri::Result<()> {
                 shell.first_show.show(&window, false);
             }
         });
+    let builder = match paths::debug_webview_dir() {
+        Some(directory) => builder.data_directory(directory),
+        None => builder,
+    };
     // 2026-11-09: a first-document sample lets smoke verify hidden-until-load without a CDP attach race.
     #[cfg(debug_assertions)]
     let builder = builder.initialization_script(
@@ -336,7 +343,8 @@ pub fn visible_on(bounds: Bounds, area: Bounds) -> bool {
     let overlap_width = (i64::from(bounds.x) + i64::from(bounds.width))
         .min(i64::from(area.x) + i64::from(area.width))
         - i64::from(bounds.x.max(area.x));
-    let overlap_height = (i64::from(bounds.y) + i64::from(bounds.height))
+    // 2026-11-11: a visible bottom edge cannot make an off-screen title bar draggable.
+    let overlap_height = (i64::from(bounds.y) + i64::from(bounds.height.min(60)))
         .min(i64::from(area.y) + i64::from(area.height))
         - i64::from(bounds.y.max(area.y));
     overlap_width >= 120 && overlap_height >= 60
@@ -510,6 +518,57 @@ pub async fn navigate_board(window: &WebviewWindow, url: &str) -> Result<(), Str
 mod tests {
     use super::*;
     #[test]
+    fn bundled_pages_keep_the_configured_ipc_connect_policy() {
+        fn connect_policy(policy: &str) -> Option<&str> {
+            policy
+                .split(';')
+                .map(str::trim)
+                .find(|directive| directive.starts_with("connect-src "))
+        }
+        let config: serde_json::Value =
+            serde_json::from_str(include_str!("../tauri.conf.json")).unwrap();
+        let expected = connect_policy(config["app"]["security"]["csp"].as_str().unwrap());
+        assert_eq!(
+            expected,
+            Some("connect-src 'self' ipc: http://ipc.localhost")
+        );
+        for html in [
+            include_str!("../../launcher/index.html"),
+            include_str!("../../launcher/whats-new.html"),
+        ] {
+            let policy = html
+                .split("http-equiv=\"Content-Security-Policy\" content=\"")
+                .nth(1)
+                .unwrap()
+                .split('"')
+                .next()
+                .unwrap();
+            assert_eq!(connect_policy(policy), expected);
+        }
+    }
+
+    #[test]
+    fn browser_links_include_local_documents_but_never_bundled_pages_or_other_schemes() {
+        for url in [
+            "https://example.com/guide",
+            "http://127.0.0.1:4318/api/file?source=live&path=guide.pdf",
+            "http://127.0.0.1:4318/r/c-1234567890?source=live",
+        ] {
+            assert!(opens_in_browser(&url.parse().unwrap()), "{url}");
+        }
+        for url in [
+            "http://tauri.localhost/",
+            "http://tauri.localhost/index.html?project#start",
+            "file:///C:/Windows/win.ini",
+            "javascript:alert(1)",
+            "data:text/html,test",
+            "mailto:test@example.com",
+        ] {
+            assert!(!opens_in_browser(&url.parse().unwrap()), "{url}");
+        }
+    }
+
+    #[test]
     fn launcher_failure_preserves_the_original_project_error() {
         let original = serde_json::json!({
             "phase": "error", "code": "start-failed", "path": "C:\\demo",
@@ -612,6 +671,33 @@ mod tests {
                 height: 820
             },
             area
+        ));
+    }
+    #[test]
+    fn restore_rejects_a_visible_bottom_edge_when_the_title_bar_is_offscreen() {
+        let area = Bounds {
+            x: 0,
+            y: 0,
+            width: 1920,
+            height: 1080,
+        };
+        assert!(!visible_on(
+            Bounds {
+                x: 0,
+                y: -700,
+                width: 1280,
+                height: 820,
+            },
+            area,
+        ));
+        assert!(visible_on(
+            Bounds {
+                x: 0,
+                y: -1080,
+                width: 1280,
+                height: 820,
+            },
+            Bounds { y: -1080, ..area },
         ));
     }
     #[test]

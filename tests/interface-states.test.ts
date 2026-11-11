@@ -2,6 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { openHeadlessBrowser, type HeadlessPage } from '../tools/layout-capture.ts';
 import { browserFixtureUrl } from './browser-fixture.ts';
 import { requireBrowser } from './browser-environment.ts';
+import { waitForLayout } from './browser-layout.ts';
 
 const browserPath = requireBrowser();
 describe.skipIf(!browserPath)('shared interface states and recovery (browser)', () => {
@@ -241,6 +242,191 @@ describe.skipIf(!browserPath)('shared interface states and recovery (browser)', 
     expect(await page.evaluate(`document.querySelector('.planning-cards').textContent`)).toContain('Recovered card');
   });
 
+  it('planning: opens a card, selects a visual Shift range, clears with Escape and prunes hidden selection', async () => {
+    await reset('planning-probe');
+    await until(`Boolean(document.querySelector('.planning-card-grid .deck-card-open'))`);
+    await page.evaluate(`document.querySelector('.planning-card-grid .deck-card-open').click()`);
+    expect(await page.evaluate('planningTest.state.opened')).toEqual(['card:0']);
+    await page.evaluate(`document.querySelectorAll('.planning-card-grid .deck-card-open')[0].dispatchEvent(new MouseEvent('click',{bubbles:true,shiftKey:true}));document.querySelectorAll('.planning-card-grid .deck-card-open')[3].dispatchEvent(new MouseEvent('click',{bubbles:true,shiftKey:true}))`);
+    await until(`document.querySelectorAll('.planning-card-grid .is-multi-selected').length === 4`);
+    await page.evaluate(`window.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',code:'Escape',bubbles:true,cancelable:true}))`);
+    await until(`document.querySelectorAll('.planning-card-grid .is-multi-selected').length === 0`);
+    await page.evaluate(`document.querySelector('.planning-card-grid .deck-card-open').dispatchEvent(new MouseEvent('click',{bubbles:true,shiftKey:true}))`);
+    await until(`document.querySelectorAll('.planning-card-grid .is-multi-selected').length === 1`);
+    await page.evaluate(`statesTest.input('.planning-search input','absent')`);
+    await until(`Boolean(document.querySelector('.planning-cards .ui-empty-filtered'))`);
+    await page.evaluate(`statesTest.input('.planning-search input','')`);
+    await until(`document.querySelectorAll('.planning-card-grid .deck-card-open').length === 6`);
+    expect(await page.evaluate(`document.querySelectorAll('.planning-card-grid .is-multi-selected').length`)).toBe(0);
+  });
+
+  it('planning: a Milestone conflict keeps the draft and blocks a second write until saved fields and hash are loaded together', async () => {
+    await reset('planning-probe');
+    await page.evaluate(`planningTest.setMode('form');planningTest.state.conflict=true`);
+    await until(`Boolean(document.querySelector('.planning-popover-form'))`);
+    await page.evaluate(`statesTest.input('.planning-popover-form input[maxlength="120"]','Local draft')`);
+    await page.evaluate(`document.querySelector('.planning-popover-form').requestSubmit()`);
+    await until(`planningTest.state.saves.length === 1`);
+    expect(await page.evaluate(`document.querySelector('.planning-popover-form button[type="submit"]').disabled`)).toBe(true);
+    expect(await page.evaluate(`document.querySelector('.planning-popover-form input[maxlength="120"]').value`)).toBe('Local draft');
+    expect(await page.evaluate(`document.querySelector('.planning-popover-form [role="alert"]').innerText`)).toContain('File changed');
+    await page.evaluate(`document.querySelector('.planning-popover-form').requestSubmit()`);
+    expect(await page.evaluate('planningTest.state.saves.length')).toBe(1);
+    await page.evaluate(`Array.from(document.querySelectorAll('.planning-popover-form button')).find(b=>b.textContent.includes('Load saved')).click()`);
+    await until(`document.querySelector('.planning-popover-form input[maxlength="120"]').value === 'External'`);
+    await page.evaluate(`statesTest.input('.planning-popover-form input[maxlength="120"]','Reviewed edit')`);
+    await page.evaluate(`document.querySelector('.planning-popover-form').requestSubmit()`);
+    await until(`planningTest.state.saves.length === 2`);
+    expect(await page.evaluate('planningTest.state.saves[1]')).toMatchObject({ milestonesHash: 'external', milestone: { title: 'Reviewed edit', description: 'External description' } });
+  });
+
+  it('planning: a network failure is visible inside the Milestone form and retry keeps the draft', async () => {
+    await reset('planning-probe');
+    await page.send('Emulation.setDeviceMetricsOverride', { width: 375, height: 600, deviceScaleFactor: 1, mobile: false });
+    await page.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 1 });
+    try {
+      await page.evaluate(`planningTest.setCatalog({...planningTest.catalog,milestones:[planningTest.catalog.milestones[0]]});planningTest.setMode('calendar');planningTest.state.fail=true`);
+      await until(`Boolean(document.querySelector('.planning-calendar-milestone'))`);
+      await page.evaluate(`document.querySelector('.planning-calendar-milestone').click()`);
+      await until(`Boolean(document.querySelector('.planning-popover-form'))`);
+      await page.evaluate(`statesTest.input('.planning-popover-form input[maxlength="120"]','Retry draft')`);
+      await page.evaluate(`document.querySelector('.planning-popover-form').requestSubmit()`);
+      await until(`planningTest.state.saves.length === 1`);
+      expect(await page.evaluate(`document.querySelector('.planning-popover-form [role="alert"]')?.textContent`)).toContain('Offline');
+      expect(await page.evaluate(`(()=>{const alert=document.querySelector('.planning-popover-form [role="alert"]').getBoundingClientRect();const footer=document.querySelector('.planning-popover-form footer').getBoundingClientRect();return alert.top>=0&&alert.bottom<=footer.top&&footer.bottom<=innerHeight})()`)).toBe(true);
+      await page.evaluate(`planningTest.state.fail=false;document.querySelector('.planning-popover-form').requestSubmit()`);
+      await until(`planningTest.state.saves.length === 2`);
+      expect(await page.evaluate('planningTest.state.saved.title')).toBe('Retry draft');
+    } finally {
+      await page.send('Emulation.setTouchEmulationEnabled', { enabled: false });
+      await page.send('Emulation.setDeviceMetricsOverride', { width: 1280, height: 1000, deviceScaleFactor: 1, mobile: false });
+    }
+  });
+
+  it('planning: the calendar starts at today with one date Tab stop and exposes every Milestone of a day', async () => {
+    await reset('planning-probe');
+    await page.evaluate(`planningTest.setMode('calendar')`);
+    await until(`Boolean(document.querySelector('.planning-calendar-panel'))`);
+    expect(await page.evaluate(`document.activeElement.closest('[data-date]')?.dataset.date`)).toBe('2026-11-23');
+    expect(await page.evaluate(`Array.from(document.querySelectorAll('[data-date] button')).filter(b=>b.tabIndex===0).length`)).toBe(1);
+    for (const [key, date] of [['PageDown', '2026-12-23'], ['End', '2026-12-27'], ['PageUp', '2026-11-27'], ['Home', '2026-11-23']]) {
+      await page.evaluate(`document.activeElement.dispatchEvent(new KeyboardEvent('keydown',{key:'${key}',bubbles:true,cancelable:true}))`);
+      await until(`document.activeElement.closest('[data-date]')?.dataset.date === '${date}'`);
+    }
+    await page.evaluate(`document.activeElement.dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowRight',bubbles:true,cancelable:true}))`);
+    await until(`document.activeElement.closest('[data-date]')?.dataset.date === '2026-11-24'`);
+    await page.evaluate(`document.activeElement.dispatchEvent(new KeyboardEvent('keydown',{key:'Home',bubbles:true,cancelable:true}))`);
+    await until(`document.activeElement.closest('[data-date]')?.dataset.date === '2026-11-23'`);
+    await page.send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13 });
+    await page.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13 });
+    await until(`document.querySelectorAll('.timeline-cluster-menu [role="menuitem"]').length === 4`);
+    await page.evaluate(`document.querySelectorAll('.timeline-cluster-menu [role="menuitem"]')[2].click()`);
+    await until(`Boolean(document.querySelector('.planning-popover-form'))`);
+    expect(await page.evaluate(`document.querySelector('.planning-popover-form input[maxlength="120"]').value`)).toBe('Milestone 3');
+    await page.send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 });
+    await page.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 });
+    await until(`!document.querySelector('.planning-popover')`);
+    expect(await page.evaluate(`document.activeElement.closest('[data-date]')?.dataset.date`)).toBe('2026-11-23');
+  });
+
+  it('planning: calendar colors retain 4.5:1 contrast in both themes and touch targets fit a phone', async () => {
+    await reset('planning-probe');
+    await page.evaluate(`planningTest.setCatalog({...planningTest.catalog,milestones:['#7b7b7b','#777777',...planningTest.planningColors].map((color,index)=>({id:String(index),title:color,date:'2026-11-'+String(index+10),color}))});planningTest.setMode('calendar')`);
+    await until(`document.querySelectorAll('.planning-calendar-milestone').length === 9`);
+    for (const theme of ['light', 'dark']) {
+      await page.evaluate(`document.documentElement.classList.toggle('dark','${theme}'==='dark')`);
+      const ratios = await page.evaluate(`Array.from(document.querySelectorAll('.planning-calendar-milestone')).map(button=>{
+        const context=document.createElement('canvas').getContext('2d');
+        const luminance=color=>{context.fillStyle=color;context.fillRect(0,0,1,1);const channels=Array.from(context.getImageData(0,0,1,1).data).slice(0,3).map(v=>v/255).map(v=>v<=.04045?v/12.92:((v+.055)/1.055)**2.4);return channels[0]*.2126+channels[1]*.7152+channels[2]*.0722};
+        const style=getComputedStyle(button);const a=luminance(style.color);const b=luminance(style.backgroundColor);return (Math.max(a,b)+.05)/(Math.min(a,b)+.05);
+      })`);
+      expect(Math.min(...ratios)).toBeGreaterThanOrEqual(4.5);
+    }
+    await page.send('Emulation.setDeviceMetricsOverride', { width: 375, height: 600, deviceScaleFactor: 1, mobile: false });
+    await page.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 1 });
+    try {
+      await waitForLayout(page.evaluate, '.planning-calendar-panel, .planning-calendar-day, .planning-calendar-milestone');
+      expect(await page.evaluate(`Array.from(document.querySelectorAll('.planning-calendar-day,.planning-calendar-milestone')).every(button=>{const r=button.getBoundingClientRect();return r.width>=44&&r.height>=44&&r.left>=0&&r.right<=innerWidth})`)).toBe(true);
+    } finally {
+      await page.send('Emulation.setTouchEmulationEnabled', { enabled: false });
+      await page.send('Emulation.setDeviceMetricsOverride', { width: 1280, height: 1000, deviceScaleFactor: 1, mobile: false });
+    }
+  });
+
+  it('planning: the calendar returns focus to the surviving create-menu opener', async () => {
+    await reset('timeline');
+    await until(`Boolean(document.querySelector('.timeline-create'))`);
+    await page.evaluate(`document.querySelector('.timeline-create').focus()`);
+    await page.send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13 });
+    await page.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13 });
+    await until(`Boolean(document.querySelector('.planning-create-menu [role="menuitem"]'))`);
+    await page.evaluate(`document.querySelector('.planning-create-menu [role="menuitem"]').click()`);
+    await until(`Boolean(document.querySelector('.planning-popover'))`);
+    await page.evaluate(`document.querySelector('.planning-popover-close').click()`);
+    await until(`!document.querySelector('.planning-popover')`);
+    await page.evaluate(`document.querySelector('.planning-calendar-close').click()`);
+    await until(`!document.querySelector('.planning-calendar-panel')`);
+    expect(await page.evaluate(`document.activeElement===document.querySelector('.timeline-create')`)).toBe(true);
+  });
+
+  it('planning: switches observed burndown units, including fractions, zero and gaps, without substituting live cards', async () => {
+    await reset('planning-probe');
+    await page.evaluate(`planningTest.setMode('stats')`);
+    await until(`Boolean(document.querySelector('.planning-burndown'))`);
+    expect(await page.evaluate(`document.querySelectorAll('.planning-burndown circle').length`)).toBe(3);
+    await page.evaluate(`document.querySelector('button[aria-label="Known Effort"]').click()`);
+    await until(`document.querySelector('.planning-burndown svg').getAttribute('aria-label').includes('Effort')`);
+    expect(await page.evaluate(`Array.from(document.querySelectorAll('.planning-history-table tbody tr')).map(tr=>Array.from(tr.cells).map(td=>td.textContent))`)).toEqual([
+      ['2026-11-02', '3', '3'], ['2026-11-05', '2.5', '3'], ['2026-11-09', '0', '3'],
+    ]);
+    expect(await page.evaluate(`document.querySelector('.planning-burndown').textContent`)).toContain('without estimates');
+    await page.evaluate(`planningTest.setCatalog({...planningTest.catalog,cards:[],runs:[{...planningTest.run,finishedAt:'2026-11-09T12:00:00Z',history:[planningTest.run.history[2]],statistics:{date:'2026-11-09',capturedAt:'2026-11-09T12:00:00Z',tasks:4,done:4,effort:3,doneEffort:3,unestimated:1,states:[],owners:[],decks:[],priorities:[],completedEffort:[]}}]})`);
+    await until(`document.querySelectorAll('.planning-burndown circle').length === 1`);
+    expect(await page.evaluate(`document.querySelector('.planning-history-table tbody').textContent`)).toBe('2026-11-0903');
+    expect(await page.evaluate(`document.querySelector('.planning-stats-summary').textContent`)).toContain('4 / 4');
+  });
+
+  it('planning: remembers grouping per project/source/kind/id and handles corrupt or denied storage', async () => {
+    await reset('planning-probe');
+    const showGrouping = async () => {
+      await page.evaluate(`document.querySelector('button[aria-label="Grouping"]').click()`);
+      await until(`Boolean(document.querySelector('[aria-label="Group cards in plan"]'))`);
+    };
+    await showGrouping();
+    await page.evaluate(`let select=document.querySelector('[aria-label="Group cards in plan"]');select.value='milestone';select.dispatchEvent(new Event('change',{bubbles:true}))`);
+    await until(`document.querySelector('[aria-label="Group cards in plan"]').value === 'milestone'`);
+    await page.evaluate(`planningTest.setTarget({kind:'run',id:'other'})`);
+    await until(`document.querySelector('[aria-label="Group cards in plan"]').value === 'manual'`);
+    await page.evaluate(`planningTest.setTarget({kind:'run',id:'same'})`);
+    await until(`document.querySelector('[aria-label="Group cards in plan"]').value === 'milestone'`);
+    await page.evaluate(`statesTest.input('.planning-search input','absent')`);
+    await until(`Boolean(document.querySelector('.planning-cards .ui-empty-filtered'))`);
+    expect(await page.evaluate(`document.querySelectorAll('.planning-card-group').length`)).toBe(0);
+    for (const change of [
+      `planningTest.setTarget({kind:'milestone',id:'same'})`,
+      `planningTest.setSource('live')`,
+      `planningTest.setCatalog({...planningTest.catalog,rootIdentity:'another-project'})`,
+    ]) {
+      await page.evaluate(change);
+      await until(`document.querySelector('[aria-label="Group cards in plan"]').value === 'manual'`);
+    }
+    await page.evaluate(`localStorage.setItem('deckmate-planning:'+JSON.stringify(['planning-probe','sandbox','run','same'])+':grouping','invalid')`);
+    await reset('planning-probe'); await showGrouping();
+    expect(await page.evaluate(`document.querySelector('[aria-label="Group cards in plan"]').value`)).toBe('manual');
+    await page.evaluate(`Storage.prototype.getItem=()=>{throw new Error('denied')};Storage.prototype.setItem=()=>{throw new Error('denied')};planningTest.setTarget({kind:'run',id:'other'})`);
+    await until(`document.querySelector('[aria-label="Group cards in plan"]').value === 'manual'`);
+    expect(page.consoleErrors).toEqual([]);
+  });
+
+  it('planning: visible group Effort counts only estimated tasks and retains zero and fractional values', async () => {
+    await reset('planning-probe');
+    await until(`Boolean(document.querySelector('.planning-group-effort'))`);
+    expect(await page.evaluate(`document.querySelector('.planning-group-effort').getAttribute('aria-label')`)).toContain('0.5 / 3; Without estimates: 1');
+    await page.evaluate(`statesTest.input('.planning-search input','One')`);
+    await until(`document.querySelectorAll('.planning-card-grid .deck-card-open').length === 1`);
+    expect(await page.evaluate(`document.querySelector('.planning-group-effort').getAttribute('aria-label')`)).toContain('0 / 0; Without estimates: 0');
+  });
+
   it.each(['en', 'ru'])('keeps Timeline controls and empty state usable on a phone in %s', async lang => {
     await page.send('Emulation.setDeviceMetricsOverride', { width: 375, height: 812, deviceScaleFactor: 1, mobile: false });
     try {
@@ -258,11 +444,13 @@ describe.skipIf(!browserPath)('shared interface states and recovery (browser)', 
 
   it('distinguishes notification loading from empty and really retries', async () => {
     await reset('notifications', [], ['/api/notifications']);
-    await until(`Boolean(document.querySelector('.notifications-corner [role=status]'))`);
-    expect(await page.evaluate(`document.querySelector('.notifications-corner').innerText`)).toContain('Loading notifications');
+    await until(`Boolean(document.querySelector('.notifications-trigger'))`);
+    await page.evaluate(`document.querySelector('.notifications-trigger').click()`);
+    await until(`Boolean(document.querySelector('.notifications-panel [role=status]'))`);
+    expect(await page.evaluate(`document.querySelector('.notifications-panel').innerText`)).toContain('Loading notifications');
     await page.evaluate(`statesTest.state.fail=['/api/notifications'];statesTest.state.releases['/api/notifications']()`);
-    await until(`Boolean(document.querySelector('.notifications-corner [role=alert]'))`);
-    await page.evaluate(`statesTest.state.fail=[];statesTest.state.hold=[];document.querySelector('.notifications-corner .ui-error button').focus();document.querySelector('.notifications-corner .ui-error button').click()`);
+    await until(`Boolean(document.querySelector('.notifications-panel [role=alert]'))`);
+    await page.evaluate(`statesTest.state.fail=[];statesTest.state.hold=[];document.querySelector('.notifications-panel .ui-error button').focus();document.querySelector('.notifications-panel .ui-error button').click()`);
     await until(`Boolean(document.querySelector('.notification-card'))`);
     expect(await page.evaluate(`statesTest.state.reads['/api/notifications']`)).toBe(2);
     expect(await page.evaluate('document.activeElement !== document.body')).toBe(true);
@@ -325,6 +513,65 @@ describe.skipIf(!browserPath)('shared interface states and recovery (browser)', 
       expect(await page.evaluate(`document.querySelector('.global-search input').dispatchEvent(new KeyboardEvent('keydown',{key:'й',code:'KeyQ',bubbles:true,cancelable:true}))`)).toBe(true);
       expect(await page.evaluate(`document.querySelector('.global-search input').value`)).toBe(query);
     }
+    await page.evaluate(`statesTest.input('.global-search input','');document.querySelector('.global-search input').blur();window.dispatchEvent(new CustomEvent('deckmate:current-member',{detail:'missing-member'}))`);
+    await delay(30);
+    await page.evaluate(`document.body.dispatchEvent(new KeyboardEvent('keydown',{key:'q',code:'KeyQ',bubbles:true,cancelable:true}))`);
+    expect(await page.evaluate(`document.querySelector('.global-search input').value`)).toBe('');
+  });
+
+  it('R23 removes one trailing filter with Backspace and preserves free text, selection and IME', async () => {
+    await reset('search');
+    await until(`Boolean(document.querySelector('.global-search input'))`);
+    for (const [query, expected] of [['words !kind:task', 'words'], ['#tag @builder', '#tag'], ['kind:task ', ''], ['kind:task', '']]) {
+      await page.evaluate(`statesTest.input('.global-search input',${JSON.stringify(query)})`);
+      await until(`document.querySelector('.global-search input').value === ${JSON.stringify(query)}`);
+      await page.evaluate(`(()=>{const input=document.querySelector('.global-search input');input.focus();input.setSelectionRange(input.value.length,input.value.length)})()`);
+      for (const type of ['keyDown', 'keyUp']) await page.send('Input.dispatchKeyEvent', { type, key: 'Backspace', code: 'Backspace', windowsVirtualKeyCode: 8 });
+      expect(await page.evaluate(`document.querySelector('.global-search input').value`)).toBe(expected);
+    }
+    for (const [query, start, end, composing] of [['kind:task words', 15, 15, false], ['kind:task', 3, 3, false], ['kind:task', 0, 9, false], ['kind:task', 9, 9, true], ['', 0, 0, false]] as const) {
+      await page.evaluate(`statesTest.input('.global-search input',${JSON.stringify(query)})`);
+      await until(`document.querySelector('.global-search input').value === ${JSON.stringify(query)}`);
+      expect(await page.evaluate(`(()=>{const input=document.querySelector('.global-search input');input.setSelectionRange(${start},${end});return input.dispatchEvent(new KeyboardEvent('keydown',{key:'Backspace',code:'Backspace',bubbles:true,cancelable:true,isComposing:${composing}}))})()`)).toBe(true);
+      expect(await page.evaluate(`document.querySelector('.global-search input').value`)).toBe(query);
+    }
+  });
+
+  it.each(['en', 'ru'])('R25 explains read-only notifications accurately in %s for direct and sandbox projects', async lang => {
+    for (const editMode of ['direct', 'sandbox']) {
+      await reset('notifications');
+      await page.evaluate(`statesTest.setLang('${lang}');statesTest.state.notificationAccess={source:'live',writable:false,editMode:'${editMode}',projectName:'Read only'};statesTest.render('notifications')`);
+      await until(`Boolean(document.querySelector('.notifications-trigger'))`);
+      await page.evaluate(`document.querySelector('.notifications-trigger').click()`);
+      await until(`Boolean(document.querySelector('.notification-stack-owned'))`);
+      const copy = await page.evaluate(`document.querySelector('.notifications-panel').textContent`);
+      const expected = editMode === 'sandbox'
+        ? (lang === 'ru' ? 'Оригинал открыт только для чтения.' : 'The original is open for reading only.')
+        : (lang === 'ru' ? 'Проект открыт только для чтения.' : 'This project is open for reading only.');
+      expect(copy).toContain(expected);
+      expect(copy).toContain(lang === 'ru' ? 'источнике с разрешённой записью' : 'source with write access');
+      expect(await page.evaluate(`document.querySelector('.notification-hold').disabled && !document.querySelector('.notification-stack-due .notification-hold')`)).toBe(true);
+    }
+  });
+
+  it('A10 reveals offline recovery instructions on a touch tap with a 44px target', async () => {
+    await page.send('Emulation.setDeviceMetricsOverride', { width: 375, height: 812, deviceScaleFactor: 1, mobile: false });
+    await page.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 1 });
+    try {
+      await reset('status-offline');
+      await until(`Boolean(document.querySelector('.server-status.is-offline'))`);
+      const point = await page.evaluate(`(()=>{const r=document.querySelector('.server-status').getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2,width:r.width,height:r.height}})()`);
+      expect(point.width).toBeGreaterThanOrEqual(44); expect(point.height).toBeGreaterThanOrEqual(44);
+      await page.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: point.x, y: point.y }] });
+      await page.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+      await until(`Boolean(document.querySelector('.server-status-card'))`);
+      expect(await page.evaluate(`document.querySelector('.server-status-detail').textContent`)).toContain('npx deckmate');
+      expect(await page.evaluate(`document.querySelector('.server-status').getAttribute('aria-expanded')`)).toBe('true');
+      expect(await page.evaluate(`getComputedStyle(document.querySelector('.server-status-labels')).display`)).toBe('grid');
+    } finally {
+      await page.send('Emulation.setTouchEmulationEnabled', { enabled: false });
+      await page.send('Emulation.setDeviceMetricsOverride', { width: 1280, height: 1000, deviceScaleFactor: 1, mobile: false });
+    }
   });
 
   it('does not mistake an unstarted tag-card search for an empty project', async () => {
@@ -341,6 +588,38 @@ describe.skipIf(!browserPath)('shared interface states and recovery (browser)', 
     await until(`!document.querySelector('.tag-card-link .ui-empty')`);
   });
 
+  it.each(['dark', 'light'])('submits the tag editor from its visible touch footer and restores focus (%s)', async theme => {
+    await page.send('Emulation.setDeviceMetricsOverride', { width: 375, height: 600, deviceScaleFactor: 1, mobile: false });
+    await page.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 1 });
+    try {
+      await reset('tag-editor');
+      await until(`Boolean(document.querySelector('.card-tag-open'))`);
+      await page.evaluate(`statesTest.setLang('ru');document.documentElement.classList.toggle('dark', ${theme === 'dark'});document.querySelector('.card-tag-open').click()`);
+      await until(`Boolean(document.querySelector('.tag-create'))`);
+      await page.evaluate(`document.querySelector('.tag-create').click()`);
+      await until(`Boolean(document.querySelector('.tag-editor'))`);
+      await page.evaluate(`statesTest.input('.tag-editor fieldset > label input','Проверка тега');document.querySelectorAll('.tag-icon-tabs [role="radio"]')[2].click()`);
+      await until(`Boolean(document.querySelector('.tag-symbol-choice'))`);
+      await page.evaluate(`document.querySelector('.tag-symbol-choice').click()`);
+      const controls = await page.evaluate(`(() => {
+        const panel = document.querySelector('.tag-picker-dialog'), body = panel.querySelector('.dialog-body');
+        const save = panel.querySelector('button[type="submit"]'), r = save.getBoundingClientRect();
+        return { scrolls:body.scrollHeight > body.clientHeight, overflow:panel.scrollWidth > panel.clientWidth,
+          visible:r.top >= 0 && r.bottom <= innerHeight, height:r.height, width:r.width, form:save.form === panel.querySelector('form'), x:r.x+r.width/2, y:r.y+r.height/2 };
+      })()`);
+      expect(controls).toMatchObject({ scrolls: true, overflow: false, visible: true, form: true });
+      expect(controls.height).toBeGreaterThanOrEqual(44);
+      expect(controls.width).toBeGreaterThanOrEqual(44);
+      for (const type of ['mousePressed', 'mouseReleased']) await page.send('Input.dispatchMouseEvent', { type, x: controls.x, y: controls.y, button: 'left', clickCount: 1 });
+      await until(`!document.querySelector('.tag-editor') && document.querySelector('.tag-feedback')?.textContent.includes('Тег создан')`);
+      await page.evaluate(`document.querySelector('.tag-picker-heading button').click()`);
+      await until(`!document.querySelector('.tag-picker-dialog') && document.activeElement === document.querySelector('.card-tag-open')`);
+    } finally {
+      await page.send('Emulation.setTouchEmulationEnabled', { enabled: false });
+      await page.send('Emulation.clearDeviceMetricsOverride', {});
+    }
+  });
+
   it('shows failed quest refresh without losing progress and recovers on retry', async () => {
     await reset('quests', ['/api/onboarding-facts']);
     await until(`Boolean(document.querySelector('.level-badge'))`);
@@ -353,14 +632,48 @@ describe.skipIf(!browserPath)('shared interface states and recovery (browser)', 
     expect(await page.evaluate(`document.querySelectorAll('.level-quest').length`)).toBeGreaterThan(0);
   });
 
+  it('starts with one recommended quest and lets the person open other chapters', async () => {
+    await reset('quests');
+    await until(`Boolean(document.querySelector('.level-badge'))`);
+    await page.evaluate(`document.querySelector('.level-badge').click()`);
+    await until(`Boolean(document.querySelector('.level-panel'))`);
+    expect(await page.evaluate(`document.querySelectorAll('.level-chapter-head[aria-expanded="true"]').length`)).toBe(1);
+    expect(await page.evaluate(`document.querySelectorAll('.level-quest-row[aria-expanded="true"]').length`)).toBe(1);
+    expect(await page.evaluate(`document.querySelectorAll('.level-chapter-progress').length`)).toBeGreaterThan(1);
+    await page.evaluate(`document.querySelectorAll('.level-chapter-head')[1].click()`);
+    expect(await page.evaluate(`document.querySelectorAll('.level-chapter-head[aria-expanded="true"]').length`)).toBe(2);
+  });
+
+  // 2026-11-11: a project with no decks has no cover to click; the first quest names an action that exists there,
+  // and «Show me» rings that action instead of searching for a missing cover. The components screen loads no
+  // catalog, so the flag is set before the quests screen makes the badge's first catalog read.
+  it('points the first quest at creating a deck when the project has no decks', async () => {
+    await reset('components');
+    await page.evaluate(`statesTest.state.catalogEmpty=true;statesTest.render('quests')`);
+    await until(`Boolean(document.querySelector('.level-badge'))`);
+    await page.evaluate(`document.querySelector('.level-badge').click()`);
+    await until(`Boolean(document.querySelector('.level-panel'))`);
+    expect(await page.evaluate(`document.querySelector('.level-quest-hint p').textContent`)).toContain('Create space');
+    await page.evaluate(`window.action=document.createElement('button');action.type='button';action.className='deck-gallery-add';action.textContent='Create space';document.body.append(action)`);
+    await page.evaluate(`document.querySelector('.level-quest-hint .ui-button').click()`);
+    await until(`Boolean(document.querySelector('.deck-gallery-add.show-me-ring'))`);
+    await page.evaluate(`action.remove()`);
+    await page.evaluate(`statesTest.setLang('ru')`);
+    await until(`document.documentElement.lang === 'ru'`);
+    expect(await page.evaluate(`document.querySelector('.level-quest-hint p').textContent`)).toContain('Создать пространство');
+  });
+
   it('retains the notification focus surface when a retry returns no notifications', async () => {
     await reset('notifications', ['/api/notifications']);
-    await until(`Boolean(document.querySelector('.notifications-corner .ui-error[role=alert]'))`);
+    await until(`Boolean(document.querySelector('.notifications-trigger'))`);
+    await page.evaluate(`document.querySelector('.notifications-trigger').click()`);
+    await until(`Boolean(document.querySelector('.notifications-panel .ui-error[role=alert]'))`);
     await page.evaluate(`statesTest.state.fail=[];statesTest.state.notificationsEmpty=true;document.querySelector('.ui-error button').focus();document.querySelector('.ui-error button').click()`);
     await until(`Boolean(document.querySelector('.notifications-note[role=status]'))`);
-    expect(await page.evaluate(`document.activeElement.classList.contains('notifications-corner')`)).toBe(true);
-    await page.evaluate(`document.activeElement.blur()`);
-    await until(`!document.querySelector('.notifications-corner')`);
+    expect(await page.evaluate(`document.activeElement.classList.contains('notifications-body')`)).toBe(true);
+    await page.evaluate(`document.querySelector('.notifications-close').click()`);
+    await until(`!document.querySelector('.notifications-panel')`);
+    expect(await page.evaluate(`document.activeElement.classList.contains('notifications-trigger')`)).toBe(true);
   });
 
   it('never reports successful card creation as failure when recent-deck storage is unavailable', async () => {

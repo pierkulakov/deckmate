@@ -1,27 +1,24 @@
 import { moveFocus } from '../focus.ts';
-import { useId, useMemo, useRef, useState } from 'react';
+import { useId, useLayoutEffect, useMemo, useRef, useState, type RefObject } from 'react';
 import * as Dialog from '@radix-ui/react-dialog';
-import { ChevronDown, ChevronRight, FolderOpen, Layers, LoaderCircle, Plus, Search, Triangle, X } from 'lucide-react';
+import { ChevronDown, ChevronLeft, ChevronRight, FolderOpen, Layers, LoaderCircle, Plus, Search, Triangle, X } from 'lucide-react';
 import type { CatalogDeck, CatalogJourney, CatalogJourneyStep, CatalogJourneyTemplate, CatalogJourneyTemplateStep, CatalogJourneyZone, CatalogView, JourneyRoleTarget } from '../../src/catalog-contracts.ts';
 import type { DataSource } from '../../src/workspace-contracts.ts';
 import { JourneyMiniCard, JourneyWaves } from './JourneyMiniCard.tsx';
 import { JourneyStepPanel } from './JourneyStepPanel.tsx';
 import { Button } from './ui/button.tsx';
 import { TagBadge } from './CardTags.tsx';
-import { defineText, locale, textNow, useLang, useText, type Lang } from '../i18n.ts';
+import { defineText, formatNumber, locale, textNow, useLang, useText, type Lang } from '../i18n.ts';
 import { templateText } from '../../src/template-text.ts';
 import { failureMessage } from '../failure-message.ts';
 import type { CatalogAction } from '../useCatalog.ts';
 import { JourneyOperationBadge, JourneyOperationNotice } from './JourneyOperationNotice.tsx';
 import { EmptyState } from './EmptyState.tsx';
+import { ConfirmStrip } from './ConfirmStrip.tsx';
 import '../journey-catalog.css';
 
-function numberValue(value: number, lang: Lang): string {
-  return new Intl.NumberFormat(locale(lang)).format(value);
-}
-
 const text = defineText({
-  count: (count: number) => numberValue(count, 'en'),
+  count: (count: number) => formatNumber(count, 3, 'en'),
   by: 'by ',
   templates: 'Journey templates',
   search: 'Search',
@@ -30,10 +27,10 @@ const text = defineText({
   createDeck: 'Create new Deck',
   mappingDescription: 'By default new decks will be created. Pick existing decks to override.',
   mapping: 'Deck mapping',
-  creatingDecks: (count: number) => `Creating ${numberValue(count, 'en')} new ${new Intl.PluralRules(locale('en')).select(count) === 'one' ? 'Deck' : 'Decks'}`,
+  creatingDecks: (count: number) => `${formatNumber(count, 3, 'en')} new ${new Intl.PluralRules(locale('en')).select(count) === 'one' ? 'deck will' : 'decks will'} be created`,
   existingDecks: 'Using existing Decks',
-  replaceSteps: (count: number) => `Replace with ${numberValue(count, 'en')} ${new Intl.PluralRules(locale('en')).select(count) === 'one' ? 'step' : 'steps'}`,
-  addSteps: (count: number) => `Add ${numberValue(count, 'en')} ${new Intl.PluralRules(locale('en')).select(count) === 'one' ? 'step' : 'steps'}`,
+  replaceSteps: (count: number) => `Replace with ${formatNumber(count, 3, 'en')} ${new Intl.PluralRules(locale('en')).select(count) === 'one' ? 'step' : 'steps'}`,
+  addSteps: (count: number) => `Add ${formatNumber(count, 3, 'en')} ${new Intl.PluralRules(locale('en')).select(count) === 'one' ? 'step' : 'steps'}`,
   saveAsTemplate: 'Save as template',
   defaultZone: 'Default steps',
   project: 'Project',
@@ -45,14 +42,19 @@ const text = defineText({
   emptyCatalog: 'The catalog has no templates',
   noTemplatesDescription: 'Change the query or choose another category.',
   emptyCatalogDescription: 'Save a Journey as a template to use it in other decks.',
-  resetSearch: 'Reset search',
-  importUnconfirmed: 'The server did not confirm the template import. The deck mapping is preserved; check the data and try again.',
-  importFailed: 'Could not import the template. The deck mapping is preserved.',
+  importUnconfirmed: 'The server did not confirm the template import. The mapping is preserved. Check the Journey and decks before trying again.',
+  importFailed: 'Could not import the template.',
+  checkImport: 'The mapping is preserved. Check the Journey and decks before trying again.',
   roleUnavailable: 'Role unavailable',
   roleDecks: 'Decks for template roles',
   deckForRole: (role: string) => `Deck for role ${role}`,
   invalidMapping: 'A new deck needs a project space, and the selected deck must be Task or Mixed.',
   replaceTitle: 'The deck Journey’s steps will be replaced by the template steps',
+  replaceConfirmation: (title: string, oldSteps: number, oldZones: number, newSteps: number, newZones: number, decks: number) => `Replace steps in “${title}”? Removed: ${formatNumber(oldSteps, 3, 'en')} steps and ${formatNumber(oldZones, 3, 'en')} zones. Added: ${formatNumber(newSteps, 3, 'en')} steps and ${formatNumber(newZones, 3, 'en')} zones. New decks: ${formatNumber(decks, 3, 'en')}. Existing Sub Cards will not change.`,
+  back: 'Go back',
+  backToJourney: 'Back to Journey',
+  backToTemplates: 'Back to templates',
+  confirmReplace: 'Replace steps',
   saveUnconfirmed: 'The server did not confirm the template save. The fields are preserved; try again.',
   saveFailed: 'Could not save the template. The fields are preserved.',
   closeSave: 'Close template save',
@@ -66,7 +68,7 @@ const text = defineText({
   cancel: 'Cancel',
   saveTemplate: 'Save template',
 }, {
-  count: (count: number) => numberValue(count, 'ru'),
+  count: (count: number) => formatNumber(count, 3, 'ru'),
   by: 'от ',
   templates: 'Шаблоны Journey',
   search: 'Поиск',
@@ -76,17 +78,19 @@ const text = defineText({
   mappingDescription: 'По умолчанию создаются новые колоды. Выберите существующие, чтобы переопределить.',
   mapping: 'Сопоставление колод',
   creatingDecks: (count: number) => {
-    const noun = { one: 'новая колода', few: 'новые колоды', many: 'новых колод', zero: 'новых колод', two: 'новые колоды', other: 'новые колоды' }[new Intl.PluralRules(locale('ru')).select(count)]!;
-    return `Создаём ${numberValue(count, 'ru')} ${noun}`;
+    const rule = new Intl.PluralRules(locale('ru')).select(count);
+    const noun = { one: 'колода', few: 'колоды', many: 'колод', zero: 'колод', two: 'колоды', other: 'колоды' }[rule]!;
+    const phrase = { one: 'Будет создана', few: 'Будут созданы', many: 'Будет создано', zero: 'Будет создано', two: 'Будут созданы', other: 'Будет создано' }[rule]!;
+    return `${phrase} ${formatNumber(count, 3, 'ru')} ${noun}`;
   },
   existingDecks: 'Используются существующие колоды',
   replaceSteps: (count: number) => {
     const noun = { one: 'шаг', few: 'шага', many: 'шагов', zero: 'шагов', two: 'шага', other: 'шага' }[new Intl.PluralRules(locale('ru')).select(count)]!;
-    return `Заменить на ${numberValue(count, 'ru')} ${noun}`;
+    return `Заменить на ${formatNumber(count, 3, 'ru')} ${noun}`;
   },
   addSteps: (count: number) => {
     const noun = { one: 'шаг', few: 'шага', many: 'шагов', zero: 'шагов', two: 'шага', other: 'шага' }[new Intl.PluralRules(locale('ru')).select(count)]!;
-    return `Добавить ${numberValue(count, 'ru')} ${noun}`;
+    return `Добавить ${formatNumber(count, 3, 'ru')} ${noun}`;
   },
   saveAsTemplate: 'Сохранить как шаблон',
   defaultZone: 'Основные шаги',
@@ -99,14 +103,19 @@ const text = defineText({
   emptyCatalog: 'В каталоге нет шаблонов',
   noTemplatesDescription: 'Измените запрос или выберите другую категорию.',
   emptyCatalogDescription: 'Сохраните Journey как шаблон, чтобы использовать его в других колодах.',
-  resetSearch: 'Сбросить поиск',
-  importUnconfirmed: 'Сервер не подтвердил импорт шаблона. Сопоставление колод сохранено в форме; проверьте данные и повторите действие.',
-  importFailed: 'Не удалось импортировать шаблон. Сопоставление колод сохранено в форме.',
+  importUnconfirmed: 'Сервер не подтвердил импорт шаблона. Сопоставление колод сохранено. Перед повтором проверьте Journey и колоды.',
+  importFailed: 'Не удалось импортировать шаблон.',
+  checkImport: 'Сопоставление сохранено. Перед повтором проверьте Journey и колоды.',
   roleUnavailable: 'Роль недоступна',
   roleDecks: 'Колоды для ролей шаблона',
   deckForRole: (role: string) => `Колода для роли ${role}`,
   invalidMapping: 'Для новой колоды нужно пространство проекта, а выбранная колода должна быть Task или Mixed.',
   replaceTitle: 'Шаги Journey колоды заменятся шагами шаблона',
+  replaceConfirmation: (title: string, oldSteps: number, oldZones: number, newSteps: number, newZones: number, decks: number) => `Заменить шаги Journey «${title}»? Будет удалено шагов: ${formatNumber(oldSteps, 3, 'ru')}, зон: ${formatNumber(oldZones, 3, 'ru')}; добавлено шагов: ${formatNumber(newSteps, 3, 'ru')}, зон: ${formatNumber(newZones, 3, 'ru')}. Будет создано колод: ${formatNumber(decks, 3, 'ru')}. Существующие Sub Cards не изменятся.`,
+  back: 'Вернуться',
+  backToJourney: 'Назад к Journey',
+  backToTemplates: 'Назад к шаблонам',
+  confirmReplace: 'Заменить шаги',
   saveUnconfirmed: 'Сервер не подтвердил сохранение шаблона. Заполненные поля сохранены; повторите действие.',
   saveFailed: 'Не удалось сохранить шаблон. Заполненные поля сохранены.',
   closeSave: 'Закрыть сохранение шаблона',
@@ -164,7 +173,7 @@ function updatedLabel(value: string, lang: Lang) {
 function TemplateTile({ template, onSelect }: { template: CatalogJourneyTemplate; onSelect: () => void }) {
   const t = useText(text);
   const localized = templateText(template, useLang());
-  return <button type="button" className="journey-catalog-tile" onClick={onSelect}>
+  return <button type="button" className="journey-catalog-tile" data-template-key={templateKey(template)} onClick={onSelect}>
     <span className="journey-catalog-preview" aria-hidden="true">
       {template.steps.slice(0, 3).map(step => <JourneyMiniCard key={step.id} title={step.title} effort={step.effort} priority={step.priority} />)}
       {template.source === 'project' && <span className="journey-catalog-badge"><FolderOpen size={11} />{t.project}</span>}
@@ -179,7 +188,7 @@ function TemplateTile({ template, onSelect }: { template: CatalogJourneyTemplate
   </button>;
 }
 
-export function JourneyCatalog({ catalog, deck, journey, disabled, source = 'sandbox', onEdit, onOperationBusyChange, onImport, onBack }: {
+export function JourneyCatalog({ catalog, deck, journey, disabled, source = 'sandbox', onEdit, onOperationBusyChange, onImport, onBack, backRef }: {
   catalog: CatalogView;
   deck: CatalogDeck;
   journey: CatalogJourney | null;
@@ -189,6 +198,7 @@ export function JourneyCatalog({ catalog, deck, journey, disabled, source = 'san
   onOperationBusyChange?: (busy: boolean) => void;
   onImport: ImportTemplate;
   onBack: () => void;
+  backRef?: RefObject<(() => void) | null>;
 }) {
   const templates = catalog.journeyTemplates ?? [];
   const t = useText(text);
@@ -197,6 +207,9 @@ export function JourneyCatalog({ catalog, deck, journey, disabled, source = 'san
   const [category, setCategory] = useState('');
   const [search, setSearch] = useState('');
   const [importing, setImporting] = useState(false);
+  const results = useRef<HTMLDivElement>(null);
+  const searchInput = useRef<HTMLInputElement>(null);
+  const returningTo = useRef<string | null>(null);
   const selected = templates.find(template => templateKey(template) === selectedKey);
   const selectedText = selected && templateText(selected, lang);
   const categories = useMemo(() => {
@@ -211,18 +224,32 @@ export function JourneyCatalog({ catalog, deck, journey, disabled, source = 'san
       && (!query || [template.title, template.description, localized.title, localized.description, template.category, template.author, ...template.tags]
         .join(' ').toLocaleLowerCase().includes(query));
   });
+  function backToTemplates() {
+    returningTo.current = selectedKey;
+    setSelectedKey(null);
+  }
+  useLayoutEffect(() => {
+    if (selectedKey || !returningTo.current) return;
+    const key = returningTo.current;
+    returningTo.current = null;
+    const opener = [...(results.current?.querySelectorAll<HTMLButtonElement>('.journey-catalog-tile') ?? [])].find(button => button.dataset.templateKey === key);
+    moveFocus(opener ?? searchInput.current);
+  }, [selectedKey]);
+  useLayoutEffect(() => {
+    if (!backRef) return;
+    backRef.current = () => { if (!importing) { if (selectedKey) backToTemplates(); else onBack(); } };
+    return () => { backRef.current = null; };
+  }, [backRef, selectedKey, importing, onBack]);
 
   return <section className="journey-catalog" aria-label={t.templates}>
     <header className="journey-catalog-header">
       <nav className="journey-catalog-breadcrumbs" aria-label={t.templateNavigation}>
-        {/* 2026-11-06: crumbs truncate with an ellipsis; the title attribute keeps the full name one hover away. */}
-        <button type="button" className="control control-ghost" disabled={importing} title={deck.title} onClick={onBack}><span className="journey-deck-icon" aria-hidden="true"><Layers size={11} /></span><span>{deck.title}</span></button>
+        <button type="button" className="control control-ghost" disabled={importing} aria-label={selected ? t.backToTemplates : t.backToJourney} onClick={selected ? backToTemplates : onBack}><ChevronLeft size={14} aria-hidden="true" />{selected ? t.templates : <><span className="journey-deck-icon" aria-hidden="true"><Layers size={11} /></span><span title={deck.title}>{deck.title}</span></>}</button>
         <ChevronRight size={14} aria-hidden="true" />
-        <button type="button" className="control control-ghost" disabled={importing} aria-current={selected ? undefined : 'page'} onClick={() => setSelectedKey(null)}>{t.templates}</button>
-        {selected && selectedText && <><ChevronRight size={14} aria-hidden="true" /><span aria-current="page" title={selectedText.title}>{selectedText.title}</span></>}
+        <span aria-current="page" title={selectedText?.title ?? t.templates}>{selectedText?.title ?? t.templates}</span>
       </nav>
       {journey && <JourneyOperationBadge journey={journey} />}
-      {!selected && <label className="journey-catalog-search control-field"><input aria-label={t.templateSearch} type="search" value={search} placeholder={t.search} onChange={event => setSearch(event.target.value)} /><Search size={14} aria-hidden="true" /></label>}
+      {!selected && <label className="journey-catalog-search control-field"><input ref={searchInput} aria-label={t.templateSearch} type="search" value={search} placeholder={t.search} onChange={event => setSearch(event.target.value)} /><Search size={14} aria-hidden="true" /></label>}
     </header>
     {journey && <JourneyOperationNotice key={journey.id} journey={journey} catalog={catalog} source={source} writable={source === 'sandbox'} disabled={disabled || importing} onEdit={onEdit} onBusyChange={onOperationBusyChange} />}
     {selected ? <JourneyTemplateDetail key={templateKey(selected)} catalog={catalog} deck={deck} journey={journey} template={selected} disabled={disabled} source={source} onImport={onImport} onBusyChange={setImporting} /> : <div className="journey-catalog-browser">
@@ -230,7 +257,7 @@ export function JourneyCatalog({ catalog, deck, journey, disabled, source = 'san
         <h3 className="panel-title">{t.categories}</h3>
         {categories.map(([name, count]) => <button key={name} type="button" className="control control-ghost" aria-pressed={category === name} title={category === name ? t.showAll : undefined} onClick={() => setCategory(previous => previous === name ? '' : name)}><span>{name}</span><span className="panel-count">{t.count(count)}</span></button>)}
       </aside>
-      <div className="journey-catalog-results">
+      <div ref={results} className="journey-catalog-results">
         {matching.length > 0 && <div className="journey-catalog-grid">{matching.map(template => <TemplateTile key={templateKey(template)} template={template} onSelect={() => setSelectedKey(templateKey(template))} />)}</div>}
         {matching.length === 0 && templates.length > 0 && <EmptyState variant="filtered" className="journey-catalog-empty" art="no-results" title={t.noTemplatesFound} message={t.noTemplatesDescription} onReset={() => { setSearch(''); setCategory(''); }} />}
         {templates.length === 0 && <EmptyState variant="first-run" className="journey-catalog-empty" art="journey" title={t.emptyCatalog} message={t.emptyCatalogDescription} />}
@@ -254,6 +281,7 @@ function JourneyTemplateDetail({ catalog, deck, journey, template, disabled, sou
   const [inspectedId, setInspectedId] = useState<string | null>(null);
   const [error, setError] = useState('');
   const [saving, setSaving] = useState<'add' | 'replace' | null>(null);
+  const [confirmReplace, setConfirmReplace] = useState<string | null>(null);
   const mappingId = useId();
   const savingRef = useRef(false);
   const busy = disabled || saving !== null || !!journey?.pendingOperation;
@@ -271,6 +299,8 @@ function JourneyTemplateDetail({ catalog, deck, journey, template, disabled, sou
   const newDeckCount = Object.values(roleMapping).filter(target => 'createDeck' in target).length;
   const mappingValid = Object.values(roleMapping).every(target => 'deckId' in target ? targets.some(candidate => candidate.id === target.deckId) : Boolean(target.createDeck.title && target.createDeck.spaceId));
   const stepCount = template.steps.length;
+  const oldZoneCount = journey ? new Set([...(journey.zones ?? []).map(zone => zone.id), ...journey.steps.map(step => step.zoneId ?? 'default')]).size : 0;
+  const confirmationKey = journey ? JSON.stringify([journey.fileHash, template.fileHash, roleMapping]) : '';
 
   async function importTemplate(mode: 'add' | 'replace') {
     if (busy || savingRef.current || !mappingValid || stepCount === 0 || (mode === 'replace' && !journey)) return;
@@ -282,7 +312,7 @@ function JourneyTemplateDetail({ catalog, deck, journey, template, disabled, sou
       const saved = await onImport(template, mode, roleMapping);
       if (!saved) setError(t.importUnconfirmed);
     } catch (failure) {
-      setError(failureMessage(failure, t.importFailed));
+      setError(`${failureMessage(failure, t.importFailed)} ${t.checkImport}`);
     } finally {
       savingRef.current = false;
       setSaving(null);
@@ -293,7 +323,7 @@ function JourneyTemplateDetail({ catalog, deck, journey, template, disabled, sou
   return <div className="journey-catalog-detail" aria-busy={saving !== null}>
     <div className="journey-catalog-detail-scroll">
       <header className="journey-catalog-detail-heading">
-        <div><h2>{localized.title}</h2><TemplateTags tags={template.tags} />{template.source === 'project' && <span className="journey-catalog-badge is-inline"><FolderOpen size={11} />{t.project}</span>}</div>
+        <div><h2>{localized.title}</h2><TemplateTags tags={template.tags} />{template.source === 'project' && <span className="journey-catalog-badge"><FolderOpen size={11} />{t.project}</span>}</div>
         <p><TemplateAuthor author={template.author} /><span>{t.lastUpdated}<time dateTime={template.updated}>{updatedLabel(template.updated, lang)}</time></span></p>
       </header>
       <p className="journey-catalog-description">{localized.description}</p>
@@ -319,26 +349,32 @@ function JourneyTemplateDetail({ catalog, deck, journey, template, disabled, sou
         onRemove={() => {}} />}
     </div>
     <footer className="journey-catalog-import">
-      {mappingOpen && <fieldset className="journey-catalog-mapping" id={mappingId} disabled={busy}>
-        <legend className="visually-hidden">{t.roleDecks}</legend>
-        <div className="journey-catalog-roles">{template.roles.map(role => {
-          const deckId = mapping[role.id] ?? '';
-          return <label className="journey-catalog-role" key={role.id}><span>{role.title}</span>
-            <span className={'journey-catalog-role-select control-field' + (deckId ? ' is-existing' : '')}>{!deckId && <Plus size={14} aria-hidden="true" />}
-              <select aria-label={t.deckForRole(role.title)} value={deckId} onChange={event => { setMapping(previous => ({ ...previous, [role.id]: event.target.value })); setError(''); }}>
-                <option value="">{t.createDeck}</option>
-                {targets.map(target => <option key={target.id} value={target.id}>{target.title}</option>)}
-              </select><ChevronDown size={14} aria-hidden="true" /></span>
-          </label>;
-        })}</div>
-        <p>{t.mappingDescription}</p>
-      </fieldset>}
-      {error && <p className="journey-catalog-error" role="alert">{error}</p>}
-      {!mappingValid && <p className="journey-catalog-error" role="alert">{t.invalidMapping}</p>}
+      <div className="journey-catalog-import-details">
+        {mappingOpen && <fieldset className="journey-catalog-mapping" id={mappingId} disabled={busy}>
+          <legend className="visually-hidden">{t.roleDecks}</legend>
+          <div className="journey-catalog-roles" role="region" aria-label={t.roleDecks} tabIndex={template.roles.length ? 0 : undefined}>{template.roles.map(role => {
+            const deckId = mapping[role.id] ?? '';
+            return <label className="journey-catalog-role" key={role.id}><span>{role.title}</span>
+              <span className="journey-catalog-role-select control-field">{!deckId && <Plus size={14} aria-hidden="true" />}
+                <select aria-label={t.deckForRole(role.title)} value={deckId} onChange={event => { setMapping(previous => ({ ...previous, [role.id]: event.target.value })); setConfirmReplace(null); setError(''); }}>
+                  <option value="">{t.createDeck}</option>
+                  {targets.map(target => <option key={target.id} value={target.id}>{target.title}</option>)}
+                </select><ChevronDown size={14} aria-hidden="true" /></span>
+            </label>;
+          })}</div>
+          <p>{t.mappingDescription}</p>
+        </fieldset>}
+        {error && <p className="journey-catalog-error" role="alert">{error}</p>}
+        {!mappingValid && <p className="journey-catalog-error" role="alert">{t.invalidMapping}</p>}
+        {journey && confirmReplace === confirmationKey && !busy && <ConfirmStrip
+          question={t.replaceConfirmation(journey.title, journey.steps.length, oldZoneCount, stepCount, zones.length, newDeckCount)}
+          keepLabel={t.back} confirmLabel={t.confirmReplace} danger onKeep={() => setConfirmReplace(null)}
+          onEscape={() => setConfirmReplace(null)} onConfirm={() => { setConfirmReplace(null); void importTemplate('replace'); }} />}
+      </div>
       <div className="journey-catalog-import-actions">
         <button type="button" className="journey-catalog-mapping-toggle control" aria-expanded={mappingOpen} aria-controls={mappingId} onClick={() => setMappingOpen(previous => !previous)}>{t.mapping}<ChevronDown size={14} /></button>
         <span>{newDeckCount ? t.creatingDecks(newDeckCount) : t.existingDecks}</span>
-        {journey && <button type="button" className="journey-catalog-replace control destructive" disabled={busy || !mappingValid || !stepCount} title={t.replaceTitle} onClick={() => void importTemplate('replace')}>{saving === 'replace' && <LoaderCircle size={14} className="spin" />}{t.replaceSteps(stepCount)}</button>}
+        {journey && <button type="button" className="journey-catalog-replace control control-ghost" disabled={busy || !mappingValid || !stepCount} title={t.replaceTitle} onClick={() => setConfirmReplace(confirmationKey)}>{saving === 'replace' && <LoaderCircle size={14} className="spin" />}{t.replaceSteps(stepCount)}</button>}
         <button type="button" className="journey-catalog-add action-mint" disabled={busy || !mappingValid || !stepCount} onClick={() => void importTemplate('add')}>{saving === 'add' && <LoaderCircle size={14} className="spin" />}{t.addSteps(stepCount)}</button>
       </div>
     </footer>

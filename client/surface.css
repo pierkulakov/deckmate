@@ -5,18 +5,20 @@
 /* A tab page sits under the same soft page light as the Decks home. */
 .page-light { background: var(--gallery-light) no-repeat fixed; }
 
-/* Title row: a 26/700 name with a quiet caption under it, one primary action beside it, tools on the right. */
-.page-head { display: flex; flex-wrap: wrap; align-items: flex-start; gap: var(--space-3) var(--space-4); min-height: 52px; margin: 0 0 20px; padding-inline-start: var(--shelf-inset, var(--space-6)); }
+/* 2026-11-11: named type roles keep shared controls and help legible without enlarging card metadata. */
+:root { --text-ui-size: 13px; --text-ui-leading: 18px; --text-help-size: 12px; --text-help-leading: 16px; }
+/* Title row: a 26/600 name with a quiet caption under it, one primary action beside it, tools on the right. */
+.page-head { display: flex; flex-wrap: wrap; align-items: flex-start; gap: var(--space-3) var(--space-4); min-height: 52px; margin: 0 0 var(--space-4); padding-inline-start: var(--shelf-inset, var(--space-6)); }
 .page-head-main { display: flex; align-items: flex-start; gap: var(--space-3); min-width: 0; flex: 0 1 auto; }
-.page-title-block { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.page-title-block { display: flex; flex-direction: column; gap: var(--space-1); min-width: 0; }
 .page-title { margin: 0; color: var(--ink); font-size: 26px; font-weight: 600; line-height: 30px; letter-spacing: -.015em; overflow-wrap: anywhere; text-wrap: balance; }
-.page-caption { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 6px; margin: 0; color: var(--muted); font-size: 12px; line-height: 16px; }
+.page-caption { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--space-1) var(--space-2); margin: 0; color: var(--muted); font-size: var(--text-help-size); line-height: var(--text-help-leading); }
 /* 2026-11-10: the tools take the rest of the row and sit at its end, so a child with a flex basis (the 260px search)
    keeps it instead of the group shrinking to its content and wrapping early. */
 .page-tools { display: flex; flex: 1 1 auto; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: var(--space-2) var(--space-3); margin-inline-start: auto; }
 
 /* Numbers and counters are Geist Mono, as in the gallery caption and the pulse. */
-.page-number { color: var(--ink); font: 500 11px/16px 'Geist Mono', monospace; font-variant-numeric: tabular-nums; }
+.page-number { display: inline; color: var(--muted); font: 500 11px/16px 'Geist Mono', monospace; font-variant-numeric: tabular-nums; }
 
 /* 2026-11-10, the Foil Rule (DESIGN.md «Controls»): one language for every button, toggle, chip, rail button and field.
    The Foil shape is a 2px rectangle drawn by one quiet .67px hairline (one device pixel at 150%), with a 500 label; the
@@ -26,44 +28,46 @@
    30px tools, 32px rail and reading actions. The Button variants in styles.css (.button-outline/-ghost/-default) are the
    same rules. */
 :root {
-  --control-radius: 2px; --control-hairline: .67px; --control-field: var(--surface); --control-field-line: var(--line);
-  /* The quiet edge at rest: today's violet button line, 38% into the page (about 2:1 against the ground; the label names
+  --control-radius: 2px; --control-hairline: .67px; --control-field: var(--surface); --control-field-line: #85718f;
+  --control-target-touch: 44px;
+  /* 2026-11-11: the quiet edge is the violet button line, 38% into the page (the label names
      the control, the line only draws its shape). Hover brings back the full --button-line. */
   --control-line: color-mix(in srgb, var(--button-line) 62%, var(--ground));
   /* The mark of a chosen control: the accent, its tint behind the label, a stronger tint on hover. */
   --mark: var(--accent); --mark-tint: color-mix(in srgb, var(--accent) 9%, transparent); --mark-tint-strong: color-mix(in srgb, var(--accent) 16%, transparent);
 }
-:root.dark { --control-field: var(--ground); --control-field-line: #5b5572; --mark: #d4b4ff; --mark-tint: color-mix(in srgb, var(--accent) 16%, transparent); --mark-tint-strong: color-mix(in srgb, var(--accent) 26%, transparent); }
+:root.dark { --control-field: var(--ground); --control-field-line: #8a91ab; --mark: #dfcaf2; --mark-tint: color-mix(in srgb, var(--accent) 16%, transparent); --mark-tint-strong: color-mix(in srgb, var(--accent) 26%, transparent); }
 
 /* A control's size and type: a 30px tool with a 13/500 label (components set 24px or 32px where they need it). */
-.control { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 30px; padding: 0 9px; font-size: 13px; font-weight: 500; letter-spacing: .01em; line-height: 16px; }
+.control { display: inline-flex; align-items: center; justify-content: center; gap: var(--space-2); min-height: 30px; max-width: 100%; padding: var(--space-1) var(--space-2); font-size: var(--text-ui-size); font-weight: 500; letter-spacing: .01em; line-height: var(--text-ui-leading); white-space: normal; overflow-wrap: anywhere; }
+.control > svg { flex-shrink: 0; }
 /* Outline: the secondary button and the off state of a toggle or chip. */
 :is(.control, .button-outline) { border: var(--control-hairline) solid var(--control-line); border-radius: var(--control-radius); background: transparent; color: var(--button-ink); }
 /* Ghost: icon buttons and quiet actions in heads and footers; the hairline is reserved so a ghost and an outline line up. */
 .control.control-ghost { border-color: transparent; color: var(--muted); }
 .button-ghost { border-color: transparent; background: transparent; color: inherit; }
-/* Pointer press moves a control 1px, as .ui-button does (styles.css). */
-.control { transition: background-color var(--motion-feedback), color var(--motion-feedback), border-color var(--motion-feedback), transform var(--motion-feedback) var(--ease-out); }
-.control:active:not(:disabled) { transform: translateY(1px); }
+/* 2026-11-11: every shared action presses by one pixel; pending actions keep their position and focus. */
+:is(.ui-button, .control, .action-mint):active:not(:disabled, [aria-disabled="true"]) { transform: translateY(1px); }
 /* Chosen: an aria-pressed toggle, a chip that filters, a rail button whose panel is open. The mark's hairline and label
    over its tint — never a filled pill, never a second ring. */
-:is(.control, .button-outline, .button-ghost):is([aria-pressed="true"], .is-on) { border-color: var(--mark); background: var(--mark-tint); color: var(--mark); }
+:is(.control, .button-outline, .button-ghost):is([aria-pressed="true"], [aria-current="page"], .is-on) { border-color: var(--mark); background: var(--mark-tint); color: var(--mark); }
 @media (hover: hover) {
-  :is(.control, .button-outline, .button-ghost):hover:not(:disabled) { border-color: var(--button-line); background: var(--hover); color: var(--ink); }
-  :is(.control-ghost, .button-ghost):hover:not(:disabled) { border-color: transparent; }
-  :is(.control, .button-outline, .button-ghost):is([aria-pressed="true"], .is-on):hover:not(:disabled) { border-color: var(--mark); background: var(--mark-tint-strong); color: var(--mark); }
+  :is(.control, .button-outline, .button-ghost):hover:not(:disabled, [aria-disabled="true"]) { border-color: var(--button-line); background: var(--hover); color: var(--ink); }
+  :is(.control-ghost, .button-ghost):hover:not(:disabled, [aria-disabled="true"]) { border-color: transparent; }
+  :is(.control, .button-outline, .button-ghost):is([aria-pressed="true"], [aria-current="page"], .is-on):hover:not(:disabled, [aria-disabled="true"]) { border-color: var(--mark); background: var(--mark-tint-strong); color: var(--mark); }
 }
 /* Destructive: danger ink and a danger hairline; the confirming button in a dialog is the solid --danger-fill. */
 :is(.control, .button-outline).destructive { border-color: color-mix(in srgb, var(--danger) 60%, transparent); color: var(--danger); }
 .button-default.destructive { background: var(--danger-fill); color: var(--danger-fill-ink); }
 @media (hover: hover) {
-  :is(.control, .button-outline, .button-ghost).destructive:hover:not(:disabled) { background: color-mix(in srgb, var(--danger) 13%, transparent); color: var(--danger); }
-  .button-default.destructive:hover:not(:disabled) { background: color-mix(in srgb, var(--danger-fill) 88%, white); color: var(--danger-fill-ink); }
+  :is(.control, .button-outline, .button-ghost).destructive:hover:not(:disabled, [aria-disabled="true"]) { background: color-mix(in srgb, var(--danger) 13%, transparent); color: var(--danger); }
+  .button-default.destructive:hover:not(:disabled, [aria-disabled="true"]) { background: color-mix(in srgb, var(--danger-fill) 88%, white); color: var(--danger-fill-ink); opacity: 1; }
 }
 
 /* Field: text inputs, search boxes and the closed part of a select. A recessed well with a quiet edge; hover brings the
    violet hairline, focus the focus colour on the edge itself (the caret shows where typing goes), no ring round it. */
-.control-field { min-height: 30px; border: var(--control-hairline) solid var(--control-field-line); border-radius: var(--control-radius); background-color: var(--control-field); color: var(--ink); font-size: 13px; transition: border-color var(--motion-feedback), box-shadow var(--motion-feedback); }
+.control-field { min-height: 30px; border: var(--control-hairline) solid var(--control-field-line); border-radius: var(--control-radius); background-color: var(--control-field); color: var(--ink); font-size: var(--text-ui-size); line-height: var(--text-ui-leading); transition: border-color var(--motion-feedback), box-shadow var(--motion-feedback); }
+.control-field::placeholder, .control-field :is(input, textarea)::placeholder { color: var(--muted); opacity: 1; }
 @media (hover: hover) { .control-field:hover:not(:disabled, :focus, :focus-within) { border-color: var(--button-line); } }
 .control-field:is(:focus, :focus-within) { border-color: var(--focus); box-shadow: inset 0 0 0 1px var(--focus); }
 .control-field:is(:focus, :focus-within, :focus-visible) { outline: none; }
@@ -81,8 +85,8 @@
 
 /* Tabs that switch a page section: label only, 14/600 (one weight in every state, so choosing a tab never shifts its
    neighbours), a 2px underline in the mark on the chosen one, over a 1px rule. */
-.control-tabs { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 4px 24px; border-bottom: 1px solid var(--line); }
-.control-tab { display: inline-flex; flex-shrink: 0; align-items: center; gap: 12px; height: 38px; padding: 8px 0; border: 0; border-radius: 0; background: none; box-shadow: inset 0 -2px 0 transparent; color: var(--muted); font-size: 14px; font-weight: 600; line-height: 16px; transition: color var(--motion-feedback), box-shadow var(--motion-feedback); }
+.control-tabs { display: flex; flex-wrap: wrap; align-items: flex-end; gap: var(--space-1) var(--space-6); border-bottom: 1px solid var(--line); }
+.control-tab { display: inline-flex; flex-shrink: 0; align-items: center; gap: var(--space-2); min-height: 38px; padding: var(--space-2) 0; border: 0; border-radius: 0; background: none; box-shadow: inset 0 -2px 0 transparent; color: var(--muted); font-size: 14px; font-weight: 600; line-height: 20px; }
 .control-tab[aria-selected="true"] { color: var(--ink); box-shadow: inset 0 -2px 0 var(--mark); }
 @media (hover: hover) { .control-tab:hover:not([aria-selected="true"], :disabled) { color: var(--ink); } }
 
@@ -90,10 +94,9 @@
    label (the Foil Rule: colour marks it by a line, not by a face). */
 :root { --action-mint-ink: var(--mint-ink); --action-mint-line: #3fae96; --action-mint-hover: color-mix(in srgb, var(--mint) 35%, transparent); }
 :root.dark { --action-mint-ink: var(--mint); --action-mint-line: var(--mint-edge); --action-mint-hover: color-mix(in srgb, var(--mint) 12%, transparent); }
-.action-mint { display: inline-flex; align-items: center; gap: 6px; flex: 0 0 auto; height: 30px; min-height: 30px; padding: 0 12px 0 9px; border: var(--control-hairline) solid var(--action-mint-line); border-radius: var(--control-radius); background: transparent; color: var(--action-mint-ink); font-size: 14px; font-weight: 600; letter-spacing: .01em; line-height: 1; white-space: nowrap; transition: background-color var(--motion-feedback), transform var(--motion-feedback) var(--ease-out); }
-.action-mint:active:not(:disabled) { transform: translateY(1px); }
+.action-mint { display: inline-flex; align-items: center; gap: var(--space-2); flex: 0 0 auto; min-height: 30px; padding: var(--space-1) var(--space-3); border: var(--control-hairline) solid var(--action-mint-line); border-radius: var(--control-radius); background: transparent; color: var(--action-mint-ink); font-size: 14px; font-weight: 600; letter-spacing: .01em; line-height: 20px; white-space: nowrap; }
 /* The line is restated on hover: the Journey button is also a ghost Button, and the ghost hover clears its edge. */
-@media (hover: hover) { .action-mint:hover:not(:disabled) { border-color: var(--action-mint-line); background: var(--action-mint-hover); color: var(--action-mint-ink); } }
+@media (hover: hover) { .action-mint:hover:not(:disabled, [aria-disabled="true"]) { border-color: var(--action-mint-line); background: var(--action-mint-hover); color: var(--action-mint-ink); } }
 
 /* Sections are flat panels (the --glass-* tokens keep their 2026-11-09 names): a 4px corner, one face and a crisp 1px
    edge on one layer, no blur and no lift — the edge is what keeps a panel readable against the page. */
@@ -112,18 +115,29 @@
 /* A section's label row: 15/600 title, a muted count, quiet actions. */
 .panel-head { display: flex; align-items: center; gap: var(--space-2); min-height: 32px; margin: 0 0 var(--space-3); }
 .panel-title { margin: 0; color: var(--ink); font-size: 15px; font-weight: 600; line-height: 24px; overflow-wrap: anywhere; }
-.panel-count { flex-shrink: 0; color: var(--muted); font-size: 12px; line-height: 16px; font-variant-numeric: tabular-nums; }
-.panel-actions { display: flex; align-items: center; gap: 4px; margin-inline-start: auto; opacity: .8; transition: opacity var(--motion-feedback) var(--ease-out); }
+.panel-count { flex-shrink: 0; color: var(--muted); font-size: var(--text-help-size); line-height: var(--text-help-leading); font-variant-numeric: tabular-nums; }
+.panel-actions { display: flex; align-items: center; gap: var(--space-2); margin-inline-start: auto; opacity: .8; transition: opacity var(--motion-feedback) var(--ease-out); }
 .panel-head:hover .panel-actions, .panel-actions:focus-within { opacity: 1; }
 
 /* Dialogs and popovers share one frame: the surface, a hairline, the panel's 4px corner and the app shadow; a header row
    with an 18/600 title and a 32px ghost close button over a hairline; actions at the end of a footer row, the primary
    one last. */
-.dialog-panel { border: 1px solid var(--line); border-radius: var(--glass-radius); background: var(--surface); color: var(--ink); box-shadow: var(--shadow); }
+.dialog-panel { max-width: calc(100vw - 2 * var(--space-2)); border: 1px solid var(--line); border-radius: var(--glass-radius); background: var(--surface); color: var(--ink); box-shadow: var(--shadow); }
+/* 2026-11-11: anchored panels reserve their top offset with a local cap, independent of stylesheet order. */
+:where(.dialog-panel) { max-height: calc(100dvh - 2 * var(--space-4)); }
+/* 2026-11-11: only content dialogs need flex layout; menus and tooltips also reuse the visual frame. */
+:where(.dialog-panel:has(> .dialog-body)) { display: flex; flex-direction: column; overflow: hidden; }
+/* 2026-11-11: structural headers/footers also cover license and stacked-action footers without local shrink fixes. */
+.dialog-head, .dialog-foot, .dialog-panel > :is(header, footer) { flex: 0 0 auto; }
 .dialog-head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); min-height: 32px; padding: var(--space-3) var(--space-4); border-bottom: 1px solid var(--line); }
 .dialog-title { margin: 0; color: var(--ink); font-size: 18px; font-weight: 600; line-height: 24px; overflow-wrap: anywhere; }
-.dialog-body { padding: var(--space-4); }
+.dialog-body { flex: 1; min-width: 0; min-height: 0; overflow: auto; overscroll-behavior: contain; padding: var(--space-4); }
 .dialog-foot { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: var(--space-2); padding: var(--space-3) var(--space-4); border-top: 1px solid var(--line); }
+
+@media (max-width: 600px) {
+  :where(.dialog-panel) { max-height: calc(100dvh - 2 * var(--space-3)); }
+  .dialog-head, .dialog-body, .dialog-foot { padding-inline: var(--space-3); }
+}
 
 @media (max-width: 420px) {
   .page-head { padding-inline-start: var(--shelf-inset, var(--space-2)); }
@@ -132,6 +146,13 @@
   .action-mint > span { display: none; }
 }
 @media (hover: none) { .panel-actions { opacity: 1; } }
+/* 2026-11-11: only the minimum target grows; extra padding or fixed widths would make dense toolbars wrap early.
+   Local toolbars reserve the target and the gap in their layout; glyphs keep their desktop scale. */
+@media (pointer: coarse) {
+  :is(.ui-button, .control, .action-mint, .control-tab, .control-field, .dropdown-item),
+  .control-segmented > :is(button, [role="tab"], [role="radio"]) { min-width: var(--control-target-touch); min-height: var(--control-target-touch); }
+  .control-tabs { row-gap: var(--space-2); }
+}
 
 /* 2026-11-10: rows inside menus, listboxes and comboboxes show keyboard focus by their highlight, not by the global
    ring: a ring inside a framed popup read as a second frame. Text inputs keep their own border focus. */

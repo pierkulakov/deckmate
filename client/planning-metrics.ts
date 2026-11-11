@@ -79,12 +79,16 @@ export function runVelocityEffort(catalog: Pick<ProjectCatalog, 'runs' | 'cards'
 /** First day of the month that contains `iso`, shifted by `offset` months. */
 export function monthStart(iso: string, offset = 0): string {
   const date = new Date(dayTimestamp(iso));
-  return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + offset, 1)).toISOString().slice(0, 10);
+  date.setUTCDate(1);
+  date.setUTCMonth(date.getUTCMonth() + offset);
+  return date.toISOString().slice(0, 10);
 }
 
 /** ISO 8601 week number: weeks start on Monday, week 1 holds the year's first Thursday. */
 export function isoWeek(iso: string): number {
   const date = new Date(dayTimestamp(iso));
   date.setUTCDate(date.getUTCDate() + 4 - (date.getUTCDay() || 7));
-  return Math.ceil(((date.getTime() - Date.UTC(date.getUTCFullYear(), 0, 1)) / millisecondsPerDay + 1) / 7);
+  const yearStart = new Date(date);
+  yearStart.setUTCMonth(0, 1);
+  return Math.ceil(((date.getTime() - yearStart.getTime()) / millisecondsPerDay + 1) / 7);
 }

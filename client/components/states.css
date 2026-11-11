@@ -1,15 +1,18 @@
-.ui-empty { min-width: 0; overflow-wrap: anywhere; }
+.ui-empty { min-width: 0; color: var(--muted); font-size: 14px; line-height: 20px; overflow-wrap: anywhere; }
 .ui-empty p { margin: 0; }
 .ui-empty.ui-empty-first-run { padding: var(--space-6) var(--space-4); gap: var(--space-3); }
 .ui-empty-filtered { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3); }
-.ui-empty-quiet { padding: var(--space-3) 0; }
+.ui-empty-quiet { padding: var(--space-3) 0; font-size: var(--text-help-size); line-height: var(--text-help-leading); }
 /* 2026-11-10: a large empty area shows its gray pixel scene (EmptyArt), a 17/600 title, one line and at most one action,
    centered in the upper part of the area; small nested lists stay quiet. */
-.ui-empty.ui-empty-scene { display: flex; flex-direction: column; align-items: center; gap: var(--space-2); max-width: 420px; min-height: 0; margin: 0 auto; padding: clamp(32px, 10vh, 120px) var(--space-4) var(--space-6); color: var(--muted); font-size: 14px; line-height: 20px; text-align: center; }
+.ui-empty.ui-empty-scene { display: flex; flex-direction: column; align-items: center; gap: var(--space-2); max-width: 420px; min-height: 0; margin: 0 auto; padding: var(--space-10) var(--space-4) var(--space-6); text-align: center; }
 .ui-empty.ui-empty-scene > .empty-art { margin-bottom: var(--space-2); }
 .ui-empty.ui-empty-scene > h2 { margin: 0; color: var(--ink); font-size: 17px; font-weight: 600; line-height: 24px; text-wrap: balance; }
 .ui-empty.ui-empty-scene > p { max-width: 42ch; margin: 0; text-align: center; text-wrap: pretty; }
 .ui-empty.ui-empty-scene > .ui-button { margin-top: var(--space-2); }
+@media (max-width: 600px) {
+  .ui-empty.ui-empty-scene, .ui-empty.ui-empty-first-run { padding: var(--space-6) var(--space-3); }
+}
 .ui-loading { min-width: 0; color: var(--muted); }
 .ui-loading-keep-data { display: contents; }
 .ui-loading .loading-state { padding: var(--space-6) var(--space-4); gap: var(--space-3); }
@@ -24,8 +27,5 @@
 .ui-error > button { flex-shrink: 0; }
 /* 2026-11-10: a busy Retry is dimmed like a disabled control (after --busy-dim-delay, so short retries do not flicker)
    and carries a spinner; the button itself stays in place and keeps focus, the handler stays guarded. */
-.ui-error > .ui-button[aria-disabled="true"] { opacity: .55; cursor: default; transition: opacity var(--motion-feedback) var(--busy-dim-delay), background-color var(--motion-feedback), color var(--motion-feedback), border-color var(--motion-feedback), filter var(--motion-feedback); }
-.ui-error > .ui-button[aria-disabled="true"] .spin { margin-right: 6px; vertical-align: -2px; }
-.ui-error-inline, .ui-error-saved-input { color: var(--danger); font-size: 13px; line-height: 1.6; padding-block: var(--space-2); }
+.ui-error-inline, .ui-error-saved-input { color: var(--danger); font-size: var(--text-ui-size); line-height: var(--text-ui-leading); padding-block: var(--space-2); }
 .ui-error.ui-error-quiet { color: var(--muted); }
-.notifications-corner .ui-loading-indicator { padding: var(--space-2); border-radius: var(--tag-radius); background: var(--surface); box-shadow: var(--shadow); }

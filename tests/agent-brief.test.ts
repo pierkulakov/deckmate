@@ -66,12 +66,12 @@ it('ranks garden watering and plant reaction evidence ahead of the three harvest
   for (const line of [...decisions, ...questions]) expect(line.text).toBe(combatEvidence[line.line]);
 });
 
-it('maps UTF-8 bytes to real lines and reads CRLF/BOM ranges without inventing a line after the final newline', async () => {
+it.each(['\r\n', '\n', '\r'])('maps UTF-8 bytes to real lines with %j and BOM without inventing a final line', async eol => {
   const root = await fixtureRoot();
-  const first = '\uFEFFПервая строка\r\n';
-  const second = 'Вторая строка\r\n';
+  const first = '\uFEFFПервая строка' + eol;
+  const second = 'Вторая строка' + eol;
   const third = 'Последняя строка';
-  for (const ending of ['', '\r\n']) {
+  for (const ending of ['', eol]) {
     const bytes = Buffer.from(first + second + third + ending);
     await writeFile(path.join(root, 'features/ranges.md'), bytes);
     const lines = sourceLines(bytes);

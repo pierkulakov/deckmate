@@ -8,7 +8,7 @@ const prefix = 'deckmate-onboarding:';
 const changeEvent = 'deckmate:onboarding-progress';
 
 /** Quest id → ISO time of completion. */
-export type QuestProgress = Readonly<Record<string, string>>;
+type QuestProgress = Readonly<Record<string, string>>;
 
 const empty: QuestProgress = Object.freeze({});
 const cache = new Map<string, QuestProgress>();

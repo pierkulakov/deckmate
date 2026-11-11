@@ -13,7 +13,7 @@ function creationValue(card: CatalogCard): number | null {
   return Number.isFinite(value) ? value : null;
 }
 
-function effortValue(card: CatalogCard): number | null {
+export function effortValue(card: CatalogCard): number | null {
   return typeof card.effort === 'number' && Number.isFinite(card.effort) && card.effort >= 0 ? card.effort : null;
 }
 

@@ -4,7 +4,6 @@ import { requireBrowser } from './browser-environment.ts';
 import { expectPageStateDuring, waitForLayout } from './browser-layout.ts';
 
 const browserPath = requireBrowser();
-const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
 describe.skipIf(!browserPath)('client audit regressions (browser)', () => {
   const session = createBrowserSession({ attempts: 200, intervalMs: 25 });
@@ -18,40 +17,19 @@ describe.skipIf(!browserPath)('client audit regressions (browser)', () => {
   beforeAll(async () => {
     await session.open(browserPath!);
     errors = session.errors;
-    await session.navigate('client-audit-regressions', `Boolean(window.audit) && document.querySelectorAll('.card-attachment-indicator').length === 2`);
+    await session.navigate('client-audit-regressions', `Boolean(window.audit) && document.querySelectorAll('.deck-card').length === 2`);
   }, 90000);
   afterAll(async () => {
     await session.close();
   }, 20000);
 
-  it('refreshes only its card registry or reconnect, ignores indexedAt, and retains confirmed counts on failure', async () => {
-    const initial = await evaluate('({...audit.state.reads})');
+  it('leaves attachment reads to the open card, including registry changes and reconnects', async () => {
+    expect(await evaluate('audit.state.reads')).toEqual({});
     await evaluate(`audit.state.revision='updated';audit.render();audit.change(0,'deckmate','live')`);
-    await expectPageStateDuring(evaluate, `JSON.stringify(audit.state.reads) === ${JSON.stringify(JSON.stringify(initial))}`, 150);
-    expect(await evaluate('audit.state.reads')).toEqual(initial);
-    await evaluate(`audit.state.counts[0]=3;audit.change(0,'freetion')`);
-    await until(`document.querySelector('.card-attachment-indicator strong')?.textContent === '3'`);
-    const changed = await evaluate('({...audit.state.reads})');
-    const ids = await evaluate('audit.cards.map(card=>card.id)');
-    expect(changed[ids[0]]).toBe(initial[ids[0]] + 1);
-    expect(changed[ids[1]]).toBe(initial[ids[1]]);
-    await evaluate('audit.state.fail=true;audit.change(0)');
-    await until(`audit.state.reads[audit.cards[0].id] === ${changed[ids[0]] + 1}`);
-    await expectPageStateDuring(evaluate, `document.querySelector('.card-attachment-indicator strong').textContent === '3'`, 100);
-    expect(await evaluate(`document.querySelector('.card-attachment-indicator strong').textContent`)).toBe('3');
-    await evaluate('audit.state.fail=false;audit.change()');
-    await until(`audit.state.reads[audit.cards[1].id] === ${changed[ids[1]] + 1}`);
-  });
-
-  it('does not overwrite a newer confirmed count with a delayed read', async () => {
-    const reads = await evaluate('audit.state.reads[audit.cards[0].id]');
-    await evaluate('audit.state.hold=true;audit.state.counts[0]=4;audit.change(0)');
-    await until(`audit.state.reads[audit.cards[0].id] === ${reads + 1}`);
-    await evaluate('audit.state.hold=false;audit.state.counts[0]=5;audit.change(0)');
-    await until(`document.querySelector('.card-attachment-indicator strong')?.textContent === '5'`);
-    await evaluate('audit.state.release()');
-    await expectPageStateDuring(evaluate, `document.querySelector('.card-attachment-indicator strong').textContent === '5'`, 100);
-    expect(await evaluate(`document.querySelector('.card-attachment-indicator strong').textContent`)).toBe('5');
+    await evaluate(`audit.change(0,'freetion');audit.change(1);audit.change()`);
+    await expectPageStateDuring(evaluate, `Object.keys(audit.state.reads).length === 0 && document.querySelectorAll('.deck-card').length === 2`, 150);
+    expect(await evaluate('audit.state.reads')).toEqual({});
+    expect(await evaluate(`document.querySelectorAll('.card-attachment-indicator').length`)).toBe(0);
   });
 
   it('gives Hand a separate Tab-accessible drag handle, leaving face Space native and pointer dragging intact', async () => {
@@ -64,10 +42,17 @@ describe.skipIf(!browserPath)('client audit regressions (browser)', () => {
     await key(' ', 'Space');
     await until('audit.state.opened === 1');
     expect(await evaluate(`Boolean(document.querySelector('.hand-slot.is-drag-source'))`)).toBe(false);
+    expect(await evaluate(`Boolean(document.querySelector('.hand-slot .deck-card-settings, .hand-slot .deck-card-owner-medallion'))`)).toBe(false);
+    // 2026-11-11: editable band metrics precede the separate drag handle in the native Tab order.
+    for (const property of ['effort', 'priority']) {
+      await key('Tab');
+      expect(await evaluate(`document.activeElement.getAttribute('data-shortcut-property')`)).toBe(property);
+      expect(await evaluate(`Boolean(document.querySelector('.hand-slot.is-drag-source'))`)).toBe(false);
+    }
     await key('Tab');
     expect(await evaluate(`document.activeElement.classList.contains('hand-slot-handle')`)).toBe(true);
     await until(`getComputedStyle(document.activeElement).opacity === '1'`);
-    expect(await evaluate(`getComputedStyle(document.activeElement).touchAction`)).toBe('auto');
+    expect(await evaluate(`getComputedStyle(document.activeElement).touchAction`)).toBe('none');
     await key(' ', 'Space');
     await until(`Boolean(document.querySelector('.hand-slot.is-drag-source'))`);
     await until(`Array.from(document.querySelectorAll('[role="status"]')).some(node=>node.textContent.includes('Card 1'))`);

@@ -20,7 +20,6 @@ import { run as ask } from '../tools/commands/ask.ts';
 const roots: string[] = [];
 const apps: Array<{ app: FastifyInstance; closed: Promise<void>; port: number }> = [];
 const port = 4396;
-const headers = { host: `127.0.0.1:${port}` };
 const taskId = 'task:features/example.md#1.1';
 const docId = 'doc:features/example.md';
 vi.setConfig({ testTimeout: 30000 });
@@ -121,11 +120,13 @@ it('asks a legacy rule, adds exactly one decision to the first human hand, and r
   expect(questions).toHaveLength(1);
   expect(questions[0].taskRef).toBe(shortReference('c', decisions[0].id));
   expect(result.link).toContain(questions[0].taskRef);
+  expect(result.warnings).toEqual([expect.stringContaining('does not block the source Task')]);
   expect('\uFEFF' + withoutBom.replace(withoutBom.slice(questions[0].start, questions[0].end) + '\r\n', '')
     .replace('## Открыто\r\n\r\n\r\n', '## Открыто\r\n\r\n')).toBe(before);
   const snapshot = await files(root);
   fetch.mockClear();
-  expect(await askQuestion(config, taskId, 'Choose colour?')).toMatchObject({ existing: true, writes: 0, link: result.link });
+  expect(await askQuestion(config, taskId, 'Choose colour?')).toMatchObject({ existing: true, writes: 0, link: result.link,
+    warnings: result.warnings });
   expect(fetch).not.toHaveBeenCalled();
   expect(await files(root)).toEqual(snapshot);
 });
@@ -151,11 +152,16 @@ it('keeps a native question without a rule on that card and preserves literal Ma
   const { root, config } = await fixture();
   offline();
   const cardId = await native(root, 'Body.\r\n');
-  for (const text of ['- [ ] status', 'Use &lt;tag&gt;?', '1) *bold* [link](/r/c-1234567890)']) {
+  for (const [index, text] of ['- [ ] status', 'Use &lt;tag&gt;?', '1) *bold* [link](/r/c-1234567890)'].entries()) {
+    const to = index === 0 ? 'second' : undefined;
     // 2026-11-06: nobody receives a Decision task here, so the command says so instead of implying one.
-    expect((await askQuestion(config, cardId, text)).warnings.join(' ')).toContain('no Decision task was created');
+    const first = await askQuestion(config, cardId, text, to);
+    expect(first.warnings.join(' ')).toContain('no Decision task was created');
+    expect(first.warnings.join(' ')).toContain('does not block the source Task');
+    if (to) expect(first.warnings.join(' ')).toContain('--to was not used');
     const snapshot = await files(root);
-    expect(await askQuestion(config, cardId, text)).toMatchObject({ writes: 0 });
+    const repeated = await askQuestion(config, cardId, text, to);
+    expect(repeated).toMatchObject({ writes: 0, warnings: first.warnings });
     expect(await files(root)).toEqual(snapshot);
   }
   const content = await readCardContent(root, cardId);
@@ -258,6 +264,26 @@ it('includes reports on legacy Docs without pulling the complete document into t
   expect(result.markdown).toContain('## Report\n');
   expect(result.markdown).toContain('Doc result.');
   expect(result.markdown).toContain('(a document: read the full ranges');
+});
+
+it.each(['Open questions', 'Открыто'])('keeps reports outside %s selections and source ranges after ask and report', async title => {
+  const { root, config } = await fixture();
+  offline();
+  const cardId = await native(root, `Stable colour build.\n\n## ${title}\n\n`);
+  await askQuestion(config, cardId, 'Which stable colour build?');
+  const catalog = await readProjectCatalog(root);
+  const content = await readCardContent(root, cardId);
+  await writeCatalog(config, 'sandbox', { action: 'add-card-report', cardId, sourceHash: content.sourceHash,
+    manifestHash: catalog.manifestHash, markdown: '- Stable colour build verified.\n', state: 'review' }, 'codex');
+  const result = await brief(root, cardId, 5000);
+  expect(result.markdown).toContain('Stable colour build verified.');
+  expect(result.markdown).not.toMatch(new RegExp(`${title} · [^\\n]*Stable colour build verified`, 'u'));
+  const bytes = await readFile(path.join(root, `cards/${cardId.slice(5)}.md`), 'utf8');
+  const reportLine = bytes.slice(0, bytes.indexOf('#### Report ')).split(/\r?\n/u).length;
+  const references = result.readNext.filter(reference => reference.title === title);
+  expect(references).not.toHaveLength(0);
+  expect(references.every(reference => reference.to < reportLine)).toBe(true);
+  expect(result.markdown.split('## Agent questions\n')[1].split('\n\n## ')[0]).not.toContain('verified.');
 });
 
 it('shows open questions and recorded answers after resolution without inventing a pairing', async () => {

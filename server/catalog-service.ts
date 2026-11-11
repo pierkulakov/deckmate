@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { execFile } from 'node:child_process';
-import { promisify } from 'node:util';
+import { isDeepStrictEqual, promisify } from 'node:util';
 import { mkdir, unlink } from 'node:fs/promises';
 import path from 'node:path';
 import { homedir } from 'node:os';
@@ -385,9 +385,9 @@ export class CatalogService {
   }
 
   /** Deck settings produce one journal event with a readable status summary (2026-11-04). */
-  private async journalDeckSettings(after: CatalogView, edit: DeckSettingsEdit): Promise<void> {
+  private async journalDeckSettings(before: CatalogView, after: CatalogView, edit: DeckSettingsEdit, actorMemberId: string | null): Promise<void> {
     const deck = after.decks.find(candidate => candidate.id === edit.deckId);
-    if (!deck) return;
+    if (!deck || isDeepStrictEqual(before.decks.find(candidate => candidate.id === edit.deckId), deck)) return;
     // 2026-11-06: journal records are project files and speak the project's format language.
     const text = serviceText[after.formatLanguage];
     const labels = (ids: string[] | undefined) => (ids ?? []).map(id => after.members?.find(member => member.id === id)?.label ?? id);
@@ -411,7 +411,7 @@ export class CatalogService {
       }
     }
     const event: DeckActivityEvent = { schema: 1, id: randomUUID(), at: new Date().toISOString(), action: edit.action,
-      actor: 'Deckmate', summary, cards: [], deckIds: [deck.id], details };
+      actor: 'Deckmate', actorMemberId, summary, cards: [], deckIds: [deck.id], details };
     await appendActivity(this.root('sandbox'), event, after.formatLanguage);
   }
 
@@ -591,7 +591,7 @@ export class CatalogService {
             if (warning) savedWarning = [savedWarning, warning].filter(Boolean).join(' ');
             // 2026-11-04: watching, guardian, and automation changes need events that describeActivity cannot distinguish.
             if (edit.action === 'set-deck-watchers' || edit.action === 'set-deck-guardians' || edit.action === 'set-deck-automation') {
-              await this.journalDeckSettings(after, edit);
+              await this.journalDeckSettings(before, after, edit, actorMemberId);
             }
           } catch { savedWarning = [savedWarning, serverText(serviceText).journalUpdateFailed].filter(Boolean).join(' '); }
           try {

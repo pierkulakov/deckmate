@@ -15,6 +15,10 @@ export interface Quest<Key extends string = string> {
   view?: AppView;
   /** Selector list of the action element, then the first steps when it needs an open card or deck (show-me.ts). */
   target?: string;
+  /** Body key while the project has no decks: the default body assumes a cover exists to click (2026-11-11). */
+  bodyWithoutDecks?: Key;
+  /** Selector list while the project has no decks: actions that create the first deck or come from a template. */
+  targetWithoutDecks?: string;
   /** True when the signal is the action this quest teaches. Pure and cheap: it reads the signal only. */
   done(signal: OnboardingSignal): boolean;
 }
@@ -29,7 +33,7 @@ export interface Chapter<Key extends string = string> {
 export type ChapterStatus = 'done' | 'open' | 'locked';
 
 /** Finished chapters stay open, and so do the first three unfinished ones; each finished chapter opens the next. */
-export const openChapterLimit = 3;
+const openChapterLimit = 3;
 
 export function chapterStatuses(chapters: readonly Chapter[], done: ReadonlySet<string>): ChapterStatus[] {
   let unfinished = 0;
@@ -40,12 +44,13 @@ export function chapterStatuses(chapters: readonly Chapter[], done: ReadonlySet<
   });
 }
 
-/** Quests this signal completes. Quests of locked chapters wait: they count only after their chapter opens. */
+/** Record real actions independently of chapter visibility; a pre-existing fact is not an action. */
 export function questsCompletedBy(signal: OnboardingSignal, chapters: readonly Chapter[], done: ReadonlySet<string>): Quest[] {
-  const statuses = chapterStatuses(chapters, done);
-  return chapters.flatMap((chapter, index) => statuses[index] === 'open'
-    ? chapter.quests.filter(quest => !done.has(quest.id) && quest.done(signal))
-    : []);
+  const statuses = signal.type === 'facts' ? chapterStatuses(chapters, done) : null;
+  return chapters.flatMap((chapter, index) => {
+    if (statuses && statuses[index] !== 'open') return [];
+    return chapter.quests.filter(quest => !done.has(quest.id) && quest.done(signal));
+  });
 }
 
 export function totalXp(chapters: readonly Chapter[]): number {
@@ -56,7 +61,7 @@ export function earnedXp(chapters: readonly Chapter[], done: ReadonlySet<string>
   return chapters.reduce((sum, chapter) => sum + chapter.quests.reduce((part, quest) => part + (done.has(quest.id) ? quest.xp : 0), 0), 0);
 }
 
-export interface LevelProgress {
+interface LevelProgress {
   /** 1-based level. */
   level: number;
   xp: number;
@@ -70,7 +75,7 @@ export interface LevelProgress {
 const levelShares = [0, 0.06, 0.16, 0.32, 0.52, 0.75, 1];
 
 /** Thresholds rounded to 10 XP; the last one is exactly the total, so the top level means «all quests done». */
-export function levelThresholds(total: number): number[] {
+function levelThresholds(total: number): number[] {
   return levelShares.map((share, index) => index === levelShares.length - 1 ? total : Math.round(total * share / 10) * 10);
 }
 

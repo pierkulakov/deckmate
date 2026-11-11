@@ -1,33 +1,19 @@
-# Project profile — 2026-11-05
-Create `<project>/tasks/deckmate-project.md` to guide `analyze` and `audit`: where to find references, which player communities to consult, and how to reject unsuitable options.
+# Write the project profile
 
-## Step 1 — gather existing information (self)
-- If `tasks/deckmate-project.md` exists, read its header; ask only about empty or outdated fields.
-- Find `PRODUCT.md`, `README.md`, `DESIGN.md`, and documents about goals, style, and principles in the project. Read headings and the first 40 lines; search the rest.
-- Extract candidates for `genre`, `description` (game concept and core decision, or the problem the software solves), `platform`, `references` (reference games, or comparable products for software), `players` (communities), `principles` (design principles document path), and `goal` (goal document path), each with a `file:line` anchor.
-- Treat a value without an anchor as a question for the user, not a fact.
+**When:** `tasks/deckmate-project.md` is missing, empty, or stale. **Not this:** planning cards → `workflows/plan.md`; researching one area → `workflows/analyze.md`.
+**Person:** answers the questions and approves the file.
+**Agent:** gathers anchors from project documents, asks only for what is missing, writes after approval.
 
-## Step 2 — ask for missing information (self)
-First determine the project kind from its documents and templates: a game (uses the questions below and the game fields) or a software project (uses the software branch). Ask in one message only for information missing from the documents.
+**Used by:** `analyze` and `audit` read the profile for research assignments (`{profile}`), the router suggests this workflow before them, and the profile's `genre` key selects the genre guide for `{genre}`. Without it, research assignments start from questions instead of sources.
 
-Game projects:
-- genre, concept, and scale (player count, session length);
-- platform and controls;
-- 3–6 reference games and what to borrow from each, one line per game; “the whole game” is insufficient;
-- player communities: Steam, Reddit, Discord, and forums, with links;
-- principles and goal documents, if you could not find them.
+## Steps
+1. Check the existing profile — if `tasks/deckmate-project.md` exists, read its header and ask only about empty or outdated fields.
+2. Gather from documents — scan `PRODUCT.md`, `README.md`, `DESIGN.md`, and goal or style documents (headings plus the first 40 lines, then search). Extract candidates for the profile fields, each with a `file:line` anchor. A fresh starter board has none of these files: skip to step 3, and take only the genre key from the starter.
+3. Ask for the rest — one message, game or software branch (below), only fields without an anchor. Treat a value without an anchor as a question, not a fact; leave a field empty when the answer is "I don't know".
+4. Show the complete file, write it after approval — in an existing file change only the affected header fields; then give the person the path and list the empty fields.
 
-Software projects (no game fields; use `description` for the problem the tool solves, and `references` for comparable products):
-- who the users are and the task they solve with the project;
-- platform and constraints (where it runs, integrations, performance);
-- 3–6 comparable products and what to borrow from each, one line per product; “everything” is insufficient;
-- where users discuss such tools (forums, communities, issue trackers), with links;
-- principles and goal documents, if you could not find them.
-
-Leave a field empty if the answer is “I don't know”; do not invent a value.
-
-## Step 3 — write (self)
-Show the complete file and write it only after user approval. In an existing file, change only the affected header fields:
+**Game projects:** genre, concept, and scale (players, session length) · platform and controls · 3–6 reference games with one specific behavior to borrow from each ("the whole game" is not an answer) · player communities (links) · paths to principles and goal documents.
+**Software projects:** no game fields — `description` states the problem the tool solves, `references` lists comparable products with one behavior each · users and their task · platform and constraints · communities with links · principles and goal paths.
 
 ```markdown
 ---
@@ -42,9 +28,19 @@ principles: "<project-relative design principles document path, or empty>"
 goal: "<project-relative goal document path, or empty>"
 ---
 
-For readers: give each field's source as an anchor or “provided by <name>, <date>.”
+For readers: give each field's source as an anchor or "provided by <name>, <date>."
 ```
 
-- Use a lowercase genre key matching a file in `<project>/tasks/deckmate-genres/` or this skill's `genres/`; digits are allowed (`4x`). A software project with no matching genre guide leaves `genre` empty. Tell the user if no guide exists; do not invent a path.
-- Keep `players` as a text field containing links and research questions, not a required YAML list. Quote YAML strings and escape embedded quotes/backslashes as needed. Use `""` for unknown text fields and `[]` for no references.
-- Before writing, check that every reference has `game` and `take`, supplied community links are explicit, and nonempty `principles` and `goal` paths exist relative to the project. Leave missing paths empty. Give the user the file path and list empty fields. The complete schema above needs no files from the Deckmate repository.
+## Done when
+- `tasks/deckmate-project.md` exists with the header above; the person has the path and the list of empty fields.
+
+## Rules
+- Keep the field list exactly — `genre`, `description`, `platform`, `references` (`game` + `take`), `players`, `principles`, `goal`; `players` stays one text field with links and questions, not a YAML list.
+- Use a lowercase `genre` key matching `genres/<key>.md` (project `tasks/deckmate-genres/` overrides built-in; digits allowed, e.g. `4x`); software without a guide leaves `genre` empty — say so instead of inventing a path.
+- Quote YAML strings; escape embedded quotes and backslashes; use `""` for unknown text fields and `[]` for no references.
+- Verify before writing — every reference has `game` and `take`, community links are explicit, nonempty `principles`/`goal` paths exist relative to the project; leave missing paths empty.
+- Never invent a value — an empty field is a visible question, a made-up one is silent damage.
+
+## Pitfalls
+- A `genre` key with no guide breaks `{genre}` — check the key against the genre files before writing.
+- Unquoted YAML strings swallow colons and quotes silently — quote every free-text field.

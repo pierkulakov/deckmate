@@ -148,7 +148,7 @@ const text = defineText({
 });
 
 /** Dialog group; open-card also routes shortcuts to the open card instead of the deck. */
-export type ShortcutGroupId = 'general' | 'search' | 'deck' | 'mini-card' | 'bulk' | 'open-card';
+type ShortcutGroupId = 'general' | 'search' | 'deck' | 'mini-card' | 'bulk' | 'open-card';
 export type CardQuickSettingsTab = 'deck' | 'owner' | 'run' | 'milestone' | 'priority' | 'effort';
 
 /**
@@ -182,7 +182,7 @@ export interface ShortcutDefinition {
   stateTrigger?: CardStateTrigger;
 }
 
-export interface ShortcutGroup {
+interface ShortcutGroup {
   id: ShortcutGroupId;
   title: string;
   items: readonly ShortcutDefinition[];
@@ -192,7 +192,7 @@ const digitCodes = ['Digit0', 'Digit1', 'Digit2', 'Digit3', 'Digit4', 'Digit5', 
 
 // Group order is General, screen-specific groups, then Search. Labels describe Deckmate behavior;
 // key combinations and contexts follow common board-tool shortcuts (2026-11-05).
-export const SHORTCUT_GROUPS: readonly ShortcutGroup[] = [
+const SHORTCUT_GROUPS: readonly ShortcutGroup[] = [
   {
     id: 'general',
     get title() { return textNow(text).general; },
@@ -279,6 +279,7 @@ export const SHORTCUT_GROUPS: readonly ShortcutGroup[] = [
     items: [
       { id: 'open-card-work', get label() { return textNow(text).toggleWork; }, get keys() { return textNow(text).space; }, code: 'Space', group: 'open-card', screen: 'card', edits: true, stateTrigger: 'space' },
       { id: 'open-card-owner', get label() { return textNow(text).quickOwner; }, keys: 'O', code: 'KeyO', group: 'open-card', screen: 'card', edits: true, quickTab: 'owner' },
+      { id: 'open-card-hand', get label() { return textNow(text).toggleHand; }, keys: 'H', code: 'KeyH', group: 'open-card', screen: 'card', edits: true },
       { id: 'open-card-effort', get label() { return textNow(text).quickEffort; }, keys: 'E', code: 'KeyE', group: 'open-card', screen: 'card', edits: true, quickTab: 'effort' },
       { id: 'open-card-priority', get label() { return textNow(text).quickPriority; }, keys: 'P', code: 'KeyP', group: 'open-card', screen: 'card', edits: true, quickTab: 'priority' },
       { id: 'open-card-run', get label() { return textNow(text).quickRun; }, keys: ',', code: 'Comma', group: 'open-card', screen: 'card', edits: true, quickTab: 'run' },
@@ -368,10 +369,14 @@ export function shortcutTargetBlocked(event: KeyboardEvent, scope?: 'open-card' 
     if (scope === 'open-card') return true;
     if (!scope && (hoveredShortcut.id !== 'hover-work' || [...hoverShortcutRoots].some(root => root.contains(hoveredCard)))) return true;
   }
-  return [...document.querySelectorAll<HTMLElement>(floatingLayerSelector)].some(layer => layer.getClientRects().length > 0);
+  return [...document.querySelectorAll<HTMLElement>(floatingLayerSelector)].some(layer => {
+    // 2026-11-11: the phone's full-screen card owns open-card keys; its nested dialogs still block them.
+    if (scope === 'open-card' && layer.matches('.card-focus-mode') && layer.querySelector('.card-preview')) return false;
+    return layer.getClientRects().length > 0;
+  });
 }
 
-export type HoveredCardAction = 'work' | 'tags' | 'hand' | 'hero' | 'archive' | 'delete' | 'done' | 'bookmark' | 'select';
+type HoveredCardAction = 'work' | 'tags' | 'hand' | 'hero' | 'archive' | 'delete' | 'done' | 'bookmark' | 'select';
 interface HoveredShortcutBase { cardId: string; anchor: HTMLElement; shortcut: ShortcutDefinition }
 export type HoveredCardShortcut = HoveredShortcutBase & (
   | { kind: 'quick-settings'; tab: CardQuickSettingsTab }
@@ -444,7 +449,7 @@ export function resolveHoveredCardShortcut(event: KeyboardEvent, root: ParentNod
  * The callback checks card availability/pending state and returns true only after accepting the action.
  * Mutations still use the existing catalog API with hashes and its confirmation flows.
  */
-export function dispatchHoveredCardShortcut(event: KeyboardEvent, options: {
+function dispatchHoveredCardShortcut(event: KeyboardEvent, options: {
   root: ParentNode; writable: boolean; onShortcut: (shortcut: HoveredCardShortcut) => boolean;
 }): boolean {
   const shortcut = resolveHoveredCardShortcut(event, options.root);

@@ -1,14 +1,19 @@
 import { readStoredValue } from '../storage.ts';
 import { storedMemberId } from '../current-member.ts';
-import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
 import * as Dialog from '@radix-ui/react-dialog';
 import { AlertCircle, Check, ListChecks, LoaderCircle, Send, UserRound, X } from 'lucide-react';
 import { deckAcceptsCard, type CatalogCard, type CatalogOpenQuestion, type CatalogView } from '../../src/catalog-contracts.ts';
 import { resolveReference, shortReference } from '../../src/references.ts';
 import type { CatalogAction } from '../useCatalog.ts';
 import { Button } from './ui/button.tsx';
-import { defineText, textNow, useText } from '../i18n.ts';
+import { defineText, textNow, useLang, useText } from '../i18n.ts';
+import { kindLabel } from '../locales/common.ts';
 import { moveFocus } from '../focus.ts';
+import type { Root, RootContent } from 'mdast';
+import { openQuestionsOf } from '../../src/open-questions.ts';
+import { parseEditorMarkdown } from '../editor-checklists.ts';
+import { Markdown } from './Markdown.tsx';
 import '../open-questions.css';
 
 const text = defineText({
@@ -25,7 +30,6 @@ const text = defineText({
   recordUnconfirmed: 'Could not confirm the entry. The answer text is preserved; try again.',
   section: (count: number) => `Open · ${count}`,
   open: 'Open',
-  empty: 'No open questions.',
   emptyQuestion: 'Empty question — text is required in Markdown.',
   openTask: (title: string) => `Open task: ${title}`,
   decision: 'Decision',
@@ -44,6 +48,7 @@ const text = defineText({
   noPeople: 'No people in the registry',
   deck: 'Deck',
   noDecks: 'No decks for Task',
+  mixedDeck: 'Mixed',
   raiseNote: 'A Task called “Decision” will be created: the selected person becomes its owner, the task appears in their Hand, and the link appears in the question item.',
   retryId: 'Retry ID is preserved',
   retryAction: 'Retry',
@@ -61,7 +66,6 @@ const text = defineText({
   recordUnconfirmed: 'Не удалось подтвердить запись. Текст ответа сохранён; повторите действие.',
   section: (count: number) => `Открыто · ${count}`,
   open: 'Открыто',
-  empty: 'Открытых вопросов нет.',
   emptyQuestion: 'Пустой вопрос — нужен текст в Markdown.',
   openTask: (title: string) => `Открыть задачу: ${title}`,
   decision: 'Решение',
@@ -80,6 +84,7 @@ const text = defineText({
   noPeople: 'Нет людей в реестре',
   deck: 'Колода',
   noDecks: 'Нет колод для Task',
+  mixedDeck: 'Mixed',
   raiseNote: 'Создастся Task «Решение»: исполнитель — выбранный человек, задача появится в его Hand, а ссылка — в пункте вопроса.',
   retryId: 'ID повтора сохраняется',
   retryAction: 'Повторить',
@@ -110,6 +115,23 @@ interface OpenQuestionsProps {
   onEdit: (action: CatalogAction) => Promise<boolean>;
   onSelect: (card: CatalogCard) => void;
   onActiveChange: (active: boolean) => void;
+  source?: 'live' | 'sandbox';
+}
+
+// 2026-11-11: move recognized items in the presentation tree only; original offsets keep unrelated checkboxes writable.
+export function questionReadingTree(tree: Root): Root {
+  const questions = openQuestionsOf(tree).questions;
+  if (!questions) return tree;
+  const starts = new Set(questions.map(question => question.start));
+  const children = tree.children.flatMap<RootContent>(node => {
+    if (node.type !== 'list') return [node];
+    const remaining = node.children.filter(item => !starts.has(item.position?.start.offset ?? -1));
+    return remaining.length ? [{ ...node, children: remaining }] : [];
+  });
+  const heading = children.findIndex(node => node.type === 'heading' && openQuestionsOf({ type: 'root', children: [node] }).questions !== null);
+  const next = children[heading + 1];
+  if (heading >= 0 && (!next || (next.type === 'heading' && next.depth <= 2))) children.splice(heading, 1);
+  return { ...tree, children };
 }
 
 function decisionDecks(catalog: CatalogView) {
@@ -135,8 +157,9 @@ function taskForReference(catalog: CatalogView, reference: string | null): Catal
   catch { return null; }
 }
 
-export function OpenQuestions({ card, catalog, writable, disabled, onEdit, onSelect, onActiveChange }: OpenQuestionsProps) {
+export function OpenQuestions({ card, catalog, writable, disabled, onEdit, onSelect, onActiveChange, source = 'sandbox' }: OpenQuestionsProps) {
   const t = useText(text);
+  const lang = useLang();
   const [raiseDraft, setRaiseDraft] = useState<RaiseDraft | null>(null);
   const [raiseSaving, setRaiseSaving] = useState(false);
   const [raiseChecking, setRaiseChecking] = useState(false);
@@ -152,7 +175,12 @@ export function OpenQuestions({ card, catalog, writable, disabled, onEdit, onSel
   const humans = (catalog.members ?? []).filter(member => member.kind === 'human');
   const availableDecks = decisionDecks(catalog);
   const locked = disabled || raiseSaving || answerSaving;
-  const active = Boolean(answerDraft?.answer) || raiseSaving || raiseChecking || answerSaving;
+  const active = Boolean(answerDraft || raiseDraft) || raiseSaving || raiseChecking || answerSaving;
+  const [expanded, setExpanded] = useState(true);
+  const { parsed, items } = useMemo(() => {
+    const tree = parseEditorMarkdown(card.markdown);
+    return { parsed: openQuestionsOf(tree).questions, items: tree.children.flatMap(node => node.type === 'list' ? node.children : []) };
+  }, [card.markdown]);
 
   useEffect(() => {
     onActiveChange(active);
@@ -180,7 +208,7 @@ export function OpenQuestions({ card, catalog, writable, disabled, onEdit, onSel
     setRaiseChecking(false);
   }, [card.openQuestions, catalog.warnings, raiseChecking, raiseDraft]);
 
-  if (questions === null || questions === undefined) return null;
+  if (!questions || (!questions.length && !card.openQuestionWarnings?.length)) return null;
 
   function openRaise(question: CatalogOpenQuestion, questionIndex: number) {
     if (locked || !writable) return;
@@ -296,17 +324,21 @@ export function OpenQuestions({ card, catalog, writable, disabled, onEdit, onSel
     && raiseQuestion.taskRef !== shortReference('c', raiseDraft.taskCardId));
 
   return <section className="open-questions" aria-label={t.section(questions.length)}>
-    <header className="open-questions-heading"><h3>{t.open}</h3><span className="open-questions-count" aria-hidden="true">{questions.length}</span></header>
+    <button type="button" className="open-questions-heading" aria-expanded={expanded || active} disabled={active} onClick={() => setExpanded(value => !value)}><span>{t.open}</span><span className="open-questions-count">{questions.length}</span></button>
     {(card.openQuestionWarnings?.length ?? 0) > 0 && <ul className="open-question-warnings">
       {card.openQuestionWarnings!.map((warning, warningIndex) => <li key={warningIndex}><AlertCircle size={13} aria-hidden="true" /><span>{warning}</span></li>)}
     </ul>}
-    {questions.length === 0 ? <p className="open-questions-empty">{t.empty}</p> : <ul className="open-questions-list">
+    <div hidden={!expanded && !active}>
+    {questions.length > 0 && <ul className="open-questions-list">
       {questions.map((question, questionIndex) => {
         const task = taskForReference(catalog, question.taskRef);
+        const item = items.find(item => item.position?.start.offset === parsed?.[questionIndex]?.start);
         const answering = answerDraft?.questionIndex === questionIndex && answerDraft.questionText === question.text;
         return <li className="open-question" key={questionIndex}>
           <div className="open-question-row">
-            <p className="open-question-text">{question.text || t.emptyQuestion}</p>
+            <div className="open-question-text">{item
+              ? <Markdown tree={{ type: 'root', children: [{ type: 'list', ordered: false, spread: false, children: [item] }] }} rawMarkdown={card.markdown} projectTags={catalog.projectTags} source={source} path={card.path} members={catalog.members} cards={catalog.cards} onOpenCard={onSelect} />
+              : question.text || t.emptyQuestion}</div>
             <div className="open-question-actions">
               {task && <Button type="button" variant="ghost" size="sm" className="open-question-task" disabled={locked}
                 title={task.title} aria-label={t.openTask(task.title)} onClick={() => onSelect(task)}><ListChecks size={14} /><span>{t.decision}</span></Button>}
@@ -343,6 +375,7 @@ export function OpenQuestions({ card, catalog, writable, disabled, onEdit, onSel
       })}
     </ul>}
     {!writable && <p className="open-questions-readonly">{t.readOnly}</p>}
+    </div>
 
     {raiseDraft && <Dialog.Root open onOpenChange={open => { if (!open) closeRaise(); }}><Dialog.Portal>
       <Dialog.Overlay className="open-questions-overlay" />
@@ -364,7 +397,7 @@ export function OpenQuestions({ card, catalog, writable, disabled, onEdit, onSel
             <label><span>{t.deck}</span><select value={raiseDraft.deckId} disabled={locked || raiseChecking}
               onChange={event => changeRaise({ deckId: event.target.value })}>
               {availableDecks.length === 0 && <option value="">{t.noDecks}</option>}
-              {availableDecks.map(deck => <option key={deck.id} value={deck.id}>{deck.title} · {deck.kind === 'task' ? 'Task' : 'Mixed'}</option>)}
+              {availableDecks.map(deck => <option key={deck.id} value={deck.id}>{deck.title} · {deck.kind === 'task' ? kindLabel('task', lang) : t.mixedDeck}</option>)}
             </select></label>
           </div>
           <p className="open-questions-dialog-note">{t.raiseNote}</p>

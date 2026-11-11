@@ -20,11 +20,10 @@
 .journey-editor-settings label { display: flex; flex-direction: column; gap: 6px; color: var(--muted); font-size: 12px; }
 .journey-editor-settings input, .journey-editor-settings textarea, .journey-editor-settings select, .journey-zone-heading input { padding: 6px 9px; border-radius: var(--control-radius); font-size: 14px; resize: vertical; }
 .journey-editor-settings input, .journey-editor-settings textarea, .journey-editor-settings select { width: 100%; }
-/* Step zone: 36 px heading row, then the sea box — 16 px padding and gap, 115×146 cards, waves under the cards. */
 .journey-zone + .journey-zone { margin-top: 4px; }
-.journey-zone-heading { display: flex; align-items: center; gap: 6px; height: 36px; padding: 0 4px; color: var(--ink); }
-.journey-zone-heading > svg { flex-shrink: 0; }
-.journey-zone-heading h3 { margin: 0; font-size: 15px; font-weight: 600; line-height: 17px; color: var(--ink); overflow-wrap: anywhere; }
+.journey-zone-heading { display: flex; align-items: flex-start; gap: 6px; min-height: 36px; padding: 8px 4px; color: var(--ink); }
+.journey-zone-heading > svg { flex-shrink: 0; margin-top: 2px; }
+.journey-zone-heading h3 { min-width: 0; margin: 0; font-size: 15px; font-weight: 600; line-height: 20px; color: var(--ink); overflow-wrap: anywhere; }
 .journey-zone-heading input { max-width: min(360px, 45vw); height: 28px; }
 .journey-zone-tools { display: flex; gap: 2px; margin-left: 6px; opacity: 0; transition: opacity var(--motion-feedback); }
 .journey-zone:hover .journey-zone-tools, .journey-zone-tools:focus-within { opacity: 1; }
@@ -36,7 +35,7 @@
 .journey-wave-mid { fill: var(--journey-wave-mid, color-mix(in srgb, var(--muted) 26%, transparent)); }
 .journey-wave-front { fill: var(--journey-wave-front, color-mix(in srgb, var(--muted) 38%, transparent)); }
 .journey-wave-ground { fill: var(--journey-wave-ground, var(--line)); }
-.journey-sortable-step { position: relative; flex: 0 0 115px; width: 115px; z-index: 1; touch-action: none; }
+.journey-sortable-step { position: relative; flex: 0 0 115px; width: 115px; z-index: 1; }
 .journey-sortable-step.is-dragging { z-index: 4; opacity: .8; }
 .journey-sortable-step.is-dragging .journey-mini { box-shadow: var(--card-hover-shadow); }
 /* Step cards share one layout across editor, catalog and template: 120px body, 26px band, 14/17 title and 12/8 padding. */
@@ -64,6 +63,7 @@ button.journey-mini:focus-visible { outline: 2px solid var(--focus); outline-off
 .journey-editor-body > .journey-editor-error, .journey-editor-body > .journey-editor-notice { margin: 12px 0 0; border-radius: var(--glass-radius); padding: 10px 12px; }
 .journey-editor-error { color: var(--warning-ink); background: var(--warning-bg); }
 .journey-editor-notice { color: var(--muted); background: color-mix(in srgb, var(--ink) 6%, transparent); }
+.journey-editor-intro { max-width: 70ch; margin: 12px 0; color: var(--muted); font-size: 14px; line-height: 20px; }
 .journey-editor-error > button { margin-left: 10px; }
 .journey-editor-menu { z-index: 130; min-width: 220px; max-width: min(400px, 90vw); max-height: var(--radix-dropdown-menu-content-available-height); overflow: auto; padding: 5px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--glass-radius); box-shadow: var(--shadow); font-size: 14px; animation: overlay-pop var(--motion-spring-quick) var(--ease-spring-quick); }
 .journey-editor-menu-label { padding: 6px 9px 4px; color: var(--muted); font-size: 12px; font-weight: 500; }
@@ -94,9 +94,22 @@ button.journey-mini:focus-visible { outline: 2px solid var(--focus); outline-off
 /* Radix data-disabled marks unavailable duplication targets. */
 .journey-editor-menu [role="menuitem"][data-disabled] { opacity: .5; }
 /* Step checkboxes appear on hover or focus, like deck card checkboxes; checked boxes stay visible. */
-.journey-step-select { position: absolute; z-index: 5; top: -5px; left: -5px; opacity: 0; transition: opacity var(--motion-feedback); }
-.journey-sortable-step:hover .journey-step-select, .journey-step-select:focus-visible, .journey-step-select:checked { opacity: 1; }
-@media (hover: none) { .journey-step-select { opacity: 1; } }
+.journey-step-select { position: absolute; z-index: 5; top: -5px; left: -5px; display: grid; place-items: center; opacity: 0; transition: opacity var(--motion-feedback); }
+.journey-step-select input { margin: 0; }
+.journey-sortable-step:hover .journey-step-select, .journey-step-select:focus-within, .journey-step-select:has(input:checked) { opacity: 1; }
+@media (hover: none) {
+  .journey-zone-tools, .journey-drag-handle, .journey-step-select { opacity: 1; }
+  .journey-zone-tools { gap: 8px; }
+  .journey-zone-tools .ui-button, .journey-drag-handle, .journey-step-select { width: var(--control-target-touch, 44px); height: var(--control-target-touch, 44px); min-height: var(--control-target-touch, 44px); }
+  .journey-step-select { top: 0; left: 0; }
+  .journey-drag-handle { top: 0; right: 0; }
+  .journey-sortable-step .journey-mini > strong { padding-top: 48px; }
+}
+@media (max-width: 540px) {
+  .journey-zone-heading { display: grid; grid-template-columns: 14px minmax(0, 1fr); }
+  .journey-zone-tools { grid-column: 2; margin-left: 0; flex-wrap: wrap; }
+  .journey-zone-heading input { max-width: 100%; }
+}
 @media (max-width: 900px) { .journey-bulk-heading { height: auto; min-height: 48px; flex-wrap: wrap; padding: 10px 12px; } .journey-bulk-buttons { order: 3; width: 100%; margin-left: 0; flex-wrap: wrap; } }
 @media (prefers-reduced-motion: reduce) { .journey-step-select { transition: none !important; } }
 
@@ -113,4 +126,9 @@ button.journey-mini:focus-visible { outline: 2px solid var(--focus); outline-off
 @media (max-width: 900px) {
   .journey-editor-heading h2.dialog-title { flex-wrap: wrap; white-space: normal; }
   .journey-editor-actions .ui-button { white-space: normal; text-align: left; }
+}
+@media (hover: none) {
+  .journey-editor-heading .journey-editor-info, .journey-editor-heading .journey-editor-close, .journey-editor-shell > .journey-catalog-close { width: var(--control-target-touch, 44px); height: var(--control-target-touch, 44px); min-height: var(--control-target-touch, 44px); }
+  .journey-editor-actions .ui-button, .journey-add-zone { min-height: var(--control-target-touch, 44px); }
+  .journey-editor-shell > .journey-catalog-close { top: 4px; right: 8px; }
 }

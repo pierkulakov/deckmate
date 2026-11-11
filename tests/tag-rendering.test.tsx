@@ -2,10 +2,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 import type { ProjectTag } from '../src/project-tags.ts';
 import { markdownParser } from '../src/markdown-model.ts';
-import { CardTags, TagBadge, TagColorIndicator, TagTitlePrefix } from '../client/components/CardTags.tsx';
+import { CardTags, TagBadge, TagTitlePrefix, TagColorIndicator } from '../client/components/CardTags.tsx';
+import { findTagEmojis, tagEmojis } from '../client/tag-emoji.ts';
+import { TagSelectionList } from '../client/components/TagPicker.tsx';
 import { Markdown } from '../client/components/Markdown.tsx';
 import { splitMarkdownTags } from '../client/markdown-tags.ts';
 import { setLang } from '../client/i18n.ts';
+import { getEditorOptions, insertEditorCommand } from '../client/editor-commands.ts';
+import type { CatalogView } from '../src/catalog-contracts.ts';
 
 vi.hoisted(() => {
   vi.stubGlobal('document', { documentElement: { lang: '' }, cookie: '' });
@@ -33,13 +37,78 @@ function renderMarkdown(markdown: string): string {
 }
 
 describe('shared tag presentation', () => {
+  it('keeps a color marker legible and lets a glyph replace it', () => {
+    const render = (color: string, emoji?: string) => renderToStaticMarkup(<TagBadge name="test" definition={{ name: 'test', color, emoji }} />);
+    expect(render('#123456')).toContain('--tag-glyph-background:#123456');
+    expect(render('#123456')).toContain('--tag-color-ink:var(--tag-foreground)');
+    expect(render('#ffffff')).toContain('--tag-color-ink:var(--tag-color-dark-ink)');
+    expect(render('#123456', '🐞')).not.toContain('is-color');
+    expect(render('#687e9c')).not.toContain('tag-badge-glyph');
+  });
+
+  it('offers a keyboard and touch trigger for the remaining tag links', () => {
+    const html = renderToStaticMarkup(<CardTags tags={['engine', 'звук', 'ui', 'engine']} definitions={projectTags} maxVisible={2} />);
+    expect(html).toMatch(/<button[^>]*class="tag-overflow"[^>]*>/u);
+    expect(html).toContain('aria-haspopup="menu"');
+    expect(html).toContain('aria-expanded="false"');
+    expect(html).toContain('>+1</button>');
+  });
+
+  it('groups choices by registry membership and puts selected names first', () => {
+    const tags = [...projectTags, { name: 'later', color: '#687e9c' }];
+    const html = renderToStaticMarkup(<TagSelectionList tags={tags} definitions={projectTags} selected={['ui', 'later']}
+      query="" onQueryChange={() => {}} onToggle={() => {}} />);
+    expect(html).toContain('aria-label="Project tags"');
+    expect(html).toContain('aria-label="Outside registry"');
+    expect(html.indexOf('>ui</span>')).toBeLessThan(html.indexOf('>engine</span>'));
+    expect(html).toContain('>#later</span>');
+  });
+
+  it('shows coverage separately from the explicitly selected bulk action', () => {
+    const html = renderToStaticMarkup(<TagSelectionList tags={projectTags} definitions={projectTags} selected={[]}
+      assignedCards={[{ tags: ['engine', 'engine'] }, { tags: ['engine'] }, {}, {}]} query="engine" onQueryChange={() => {}} onToggle={() => {}} />);
+    expect(html).toContain('On 2 of 4 cards');
+    expect(html).toContain('aria-checked="false"');
+    expect(html).not.toContain('aria-checked="mixed"');
+  });
+
+  it('offers configuration without assignment checkboxes', () => {
+    const html = renderToStaticMarkup(<TagSelectionList tags={projectTags} definitions={projectTags} selected={[]}
+      query="engine" onQueryChange={() => {}} onToggle={() => {}} onConfigure={() => {}} />);
+    expect(html).toContain('aria-label="Configure tag: engine"');
+    expect(html).not.toContain('role="checkbox"');
+  });
+
+  it.each(['🐞', '💀'])('finds the pasted emoji %s without a keyword', emoji => {
+    expect(findTagEmojis(' ' + emoji + ' ').map(item => item.emoji)).toContain(emoji);
+  });
+
+  it('finds emoji using either language and has an honest empty result', () => {
+    for (const query of ['ladybug', 'БАГ']) expect(findTagEmojis(query).some(item => item.emoji === '🐞')).toBe(true);
+    for (const query of ['skull', 'ЧЕРЕП']) expect(findTagEmojis(query).some(item => item.emoji === '💀')).toBe(true);
+    expect(findTagEmojis('no-such-emoji')).toEqual([]);
+  });
+
+  it('names text insertion separately from assignments and identifies unregistered names', () => {
+    setLang('ru');
+    const catalog = { cards: [{ tags: ['later'] }], projectTags, decks: [] } as unknown as CatalogView;
+    const trigger = { kind: 'command' as const, start: 0, end: 4, query: 'тег' };
+    const command = getEditorOptions(trigger, catalog).find(option => option.id === 'tag')!;
+    expect(command.label).toBe('Вставить # в текст');
+    expect(insertEditorCommand('/тег', trigger, command).value).toBe('#');
+    const options = getEditorOptions({ ...trigger, kind: 'tag', query: '' }, catalog);
+    expect(options.find(option => option.id === 'later')?.detail).toBe('Вне реестра');
+    expect(options.find(option => option.id === 'engine')?.detail).toBe('Тег проекта');
+  });
+
   it('uses registry membership to distinguish project tags from personal hashtags', () => {
     const html = renderToStaticMarkup(<CardTags tags={['engine', 'personal']} definitions={projectTags} />);
     expect(html).toContain('tag-badge is-project');
     expect(html).toContain('tag-badge is-personal');
     expect(html).toContain('>engine</span>');
     expect(html).toContain('>#personal</span>');
-    expect(html).not.toContain('tag-badge-glyph');
+    expect(html).toContain('tag-badge-glyph is-color');
+    expect(html).toContain('>#</span>');
     expect(html).not.toContain('card-tag-dot');
   });
 
@@ -55,6 +124,25 @@ describe('shared tag presentation', () => {
     const html = renderToStaticMarkup(<TagBadge name="flag" definition={{ name: 'flag', color: '#123456', emoji: '🇩🇪' }} />);
     expect(html).toContain('tag-badge-glyph');
     expect(html).toContain('🇩🇪');
+  });
+
+  it('shows every registered emoji in card order without duplicating names or personal hashtags', () => {
+    const emoji = ['🐞', '💀', '🎮', '🌊', '✨'];
+    const definitions = emoji.map((emoji, index) => ({ name: String(index), emoji, color: '#687e9c' }));
+    const html = renderToStaticMarkup(<TagTitlePrefix tags={['4', '2', '0', '3', '1', '2', 'personal']} definitions={definitions} />);
+    expect([...html.matchAll(/class="card-tag-emoji"[^>]*>(.*?)<\/span>/gu)].map(match => match[1])).toEqual(['✨', '🎮', '🐞', '🌊', '💀']);
+    expect(html).not.toContain('personal');
+    for (const glyph of ['🐞', '💀']) expect(tagEmojis.some(item => item.emoji === glyph)).toBe(true);
+  });
+
+  it('combines only color decorations into one dot and names all project tags for its focus tooltip', () => {
+    const html = renderToStaticMarkup(<TagColorIndicator tags={['ui', 'звук', 'engine', 'ui', 'plain', 'personal']} definitions={projectTags} />);
+    expect(html).toContain('conic-gradient(#3c8caa 0% 50%, #123456 50% 100%)');
+    expect(html).toContain('aria-label="Tags: ui, звук, engine, plain"');
+    expect(html).toContain('tabindex="0"');
+    expect(html).not.toContain('personal');
+    expect(renderToStaticMarkup(<TagColorIndicator tags={['звук', 'plain', 'personal']} definitions={projectTags} />)).toBe('');
+    expect(renderToStaticMarkup(<TagColorIndicator tags={['engine']} definitions={projectTags} disabled />)).toContain('tabindex="-1"');
   });
 
   it('uses badge plaques and makes every preview tag a button, including personal hashtags', () => {
@@ -79,34 +167,15 @@ describe('shared tag presentation', () => {
     expect(html.match(/disabled=""/gu)).toHaveLength(3);
   });
 
-  // 2026-11-05: colored tags get a dot; emoji tags show their glyph, and the default color adds no decoration.
-  it('renders no dot for personal-only tags, one exact color for one project tag, and a project-only pie', () => {
-    expect(renderToStaticMarkup(<TagColorIndicator tags={['personal']} definitions={projectTags} />)).toBe('');
-    const single = renderToStaticMarkup(<TagColorIndicator tags={['engine', 'personal']} definitions={projectTags} />);
-    expect(single).toContain('background:#123456');
-    expect(single).not.toContain('conic-gradient');
-    expect(single).not.toContain('personal');
-    const multiple = renderToStaticMarkup(<TagColorIndicator tags={['engine', 'звук', 'ui', 'engine', 'plain', 'personal']} definitions={projectTags} />);
-    expect(multiple).toContain('conic-gradient(#123456 0% 50%, #3c8caa 50% 100%)');
-    expect(multiple).not.toContain('personal');
-    expect(renderToStaticMarkup(<TagColorIndicator tags={['звук', 'plain']} definitions={projectTags} />)).toBe('');
-  });
-
   it('does not add nested buttons or focus stops inside a card button', () => {
     const html = renderToStaticMarkup(<button type="button">
       <TagTitlePrefix tags={['engine', 'звук']} definitions={projectTags} />
       <CardTags tags={['engine', 'звук']} definitions={projectTags} compact />
-      <TagColorIndicator tags={['engine', 'звук']} definitions={projectTags} />
     </button>);
     expect(html.match(/<button\b/gu)).toHaveLength(1);
     expect(html).not.toContain('tabindex');
   });
 
-  it('translates the indicator accessible name without changing tag names', () => {
-    setLang('ru');
-    const html = renderToStaticMarkup(<TagColorIndicator tags={['engine', 'ui']} definitions={projectTags} />);
-    expect(html).toContain('aria-label="Теги: engine, ui"');
-  });
 });
 
 describe('Markdown hashtags', () => {

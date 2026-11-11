@@ -134,6 +134,21 @@ npx deckmate project changes <c-ref> --since 2026-11-01T00:00:00Z
 
 To keep pre-existing CLI JSON byte-compatible, `find`, `show` and `summary` expose token counts only with the new `--fields brief` option. `find --fields brief` returns compact `{ cards, tokens }`, retaining old non-Markdown properties and adding `hits`; `show --fields brief` and `summary --fields brief` add `tokens` to their original object. These estimates describe the compact JSON before adding the `tokens` field. `show --lines` returns `{ path, from, to, totalLines, markdown, sourceHash, tokens }` and preserves the exact source line endings inside `markdown`. Old calls without new parameters keep their original shapes and bodies.
 
+### Agent queue and questions — 2026-11-11
+
+These are CLI commands, not additional HTTP endpoints:
+
+```sh
+npx deckmate project next <member> --stale-hours 24
+npx deckmate project ask <c-ref> "Which behavior should this Task implement?" --member <agent-id> --to <human-id>
+```
+
+`next` follows the member's explicit Hand order, independently of Owner. It selects only active Tasks, excluding `review`, `done`, `wont-do`, Tasks with open dependencies, and stale `started` Tasks. Hero and Doc cards are never returned. Archived, deleted and missing prerequisites do not block; see [dependency blocking](catalog.md#hand--2026-11-03). The stale threshold defaults to 24 hours and must be a positive finite number; it checks source-file age and activity, not the hash alone. The default JSON is `{ source, member, card }`, where `member` is the member ID and `card` is `{ ref, title, state, path, sourceHash, link }` or `null`. `--brief` prints the chosen Task's brief instead; an empty queue still returns JSON with `card: null`.
+
+`ask` returns `{ question, link, existing: false, warnings: string[] }` after saving or finishing an incomplete question. An already saved question with its Decision link returns `{ question, link, existing: true, writes: 0, warnings: string[] }`; the no-rule fallback also uses this retry shape. Inspect `warnings` on every successful response. They always explain that saving a question does not block the source Task or remove it from `next`; coordinate taking the Task out of execution separately.
+
+With a rule Doc, `ask` saves the question there and creates or resumes a Decision Task for a human recipient (`--to`, otherwise the first human). Without a rule Doc, a supported native card stores the question in its own `Open questions` section, creates no Decision Task and ignores `--to`; that limitation is reported on both creation and retry. A non-native card without a rule Doc is rejected. A missing persisted Decision link or missing linked Task is also reported as a warning after a write. Existing byte-preservation and structure guards still apply. The `link` points to the persisted Decision reference when present, otherwise to the question's card.
+
 ## Write endpoints
 
 ### POST /api/catalog
@@ -200,10 +215,21 @@ Field notes:
 - `create-card.deckId: null` means automatic placement: Inbox if it accepts `kind`, otherwise Unassigned (`deckId: null`), including Sub Cards. An explicit deck must exist and accept the card kind. `set-inbox-deck` allows only Task or Mixed decks; null clears it. Legacy Inbox kinds remain readable. Changing the Inbox to a kind that cannot take Tasks clears it with a warning.
 - `bulk-edit-cards.change`: `kind` one of `properties, state, parent, create-parent, promote-parent, options, hand, tags, convert, duplicate, track` — each kind brings its own fields (see `src/bulk-contracts.ts`).
   For `kind: state`, `change.returnReason` is required if any selected card leaves review without acceptance; the common reason is journaled for each returned card. Acceptance, unchanged states and other non-return transitions do not require a reason.
-- `state`: English ids `not-started`, `discussing`, `in-iteration`, `started`, `review`, `done`, `wont-do`; the Russian words from the table above are accepted as input too. Responses always use ids. `priority`: `high|medium|low` or null. `effort`: number ≥ 0 or null.
+- `state`: English ids `not-started`, `discussing`, `in-iteration`, `started`, `review`, `done`, `wont-do`; the Russian words from the table above are accepted as input too. Responses always use ids. Entering `done` also checks [acceptance rules](#acceptance-and-agent-reports--2026-11-11). `priority`: `high|medium|low` or null. `effort`: number ≥ 0 or null.
 - Card `title` ≤ 1000 chars, no line breaks; `markdown` ≤ 200000 chars. Titles of spaces/decks/tracks/journeys/templates ≤ 120 chars. `description`, `questionText`, `answer` ≤ 2000 chars.
 - Attachment actions run through the attachment module; with `x-deckmate-actor` the uploader is the actor, not `addedBy` from the body.
 - Card covers were removed on 2026-11-09. Uploads and removals replace only the registry's `files` block; legacy `cover` entries remain byte-for-byte unchanged and are not shown. New registries have no `cover` field. Deck, Run and Milestone covers and Vision images are unaffected.
+
+### Acceptance and agent reports — 2026-11-11
+
+On a transition into `done`, `set-card-state`, bulk state changes and `add-card-report` with `state: done` reject self-acceptance by a known registry member with `kind: agent` (HTTP 422, `code: "CATALOG"`):
+
+- The acting agent is the card's Owner, resolved through the member registry or an exact member ID; or
+- The acting agent authored an earlier top-level `#### Report YYYY-MM-DD · <member>` heading in the card's Markdown. Headings inside code blocks or blockquotes do not establish report authorship.
+
+`add-card-report` with `state: done` additionally requires evidence of another member's work before appending the new report: a nonempty Owner other than the acting agent, or an earlier report by someone else. An independent agent can therefore accept another member's work through either state or report; an agent cannot create the first report on an unowned card and accept it in that same request.
+
+`x-deckmate-actor` takes precedence over `acceptedBy`. Without an actor, state acceptance resolves `acceptedBy` by the exact trimmed member label. Humans are not subject to the self-acceptance restriction; an absent or unrecognized accepter is not inferred from Owner. Deck Guardians are checked separately and still apply. These acceptance checks run only when entering `done`, not when repeating an already accepted state. Reports always require a known actor. This is a local workflow rule, not authentication of the supplied identity.
 
 ### Other writes
 
@@ -216,6 +242,8 @@ Field notes:
 | `POST /api/notifications/watch` | `{ source, memberId, cardId, watching, watchHash }` watches or unwatches one card in the same file. |
 | `POST /api/shutdown` | Stops the server. |
 
+`finish-run` and scheduled Run completion use the same carry-over predicate. Only active unfinished Tasks can move: `review` follows the review choice, other blocked Tasks follow the blocked choice, and the rest follow the other choice. Legacy standalone Runs additionally limit eligible states to `discussing`, `started` and `review`. `wont-do` is excluded before those choices, even if a cancelled Task has open dependencies. It keeps its previous Run assignment and state; finishing a Run does not turn cancellation into acceptance.
+
 ## Errors and limits
 
 Response shape: `{ code, message }`, codes `CATALOG`, `CONTENT`, `IMPORT`, `MODEL`, `BOARD`, `READ_ONLY`, `SERVER` (a few 403/404 and `/api/planning` errors carry only `message`); `saved: true` marks a partially completed write.
@@ -226,7 +254,7 @@ Response shape: `{ code, message }`, codes `CATALOG`, `CONTENT`, `IMPORT`, `MODE
 | 403 | Missing/wrong token, foreign `Host`/`Origin`, write to `live`, read-only mode or a sandbox branch that does not permit writes. |
 | 404 | Unknown card, board, file, or short reference. |
 | 409 | Stale hash of any guarded file, a `cardId` taken by different content, a changed board file, or Journey recovery. The body carries a localized `message` (with `code: "CATALOG"` outside `/api/planning`), not an internal conflict name. `saved: true` means recovery partially saved an earlier operation: re-read, keep drafts and resolve the named file conflict instead of blindly repeating. A completed recovery can also return 409 with `saved: false` and an explanatory message. |
-| 422 | Invalid value or domain failure (bad state, title limits, edit that breaks mechanic structure, undecodable data URL). |
+| 422 | Invalid value or domain failure (bad state, agent self-acceptance or Guardian refusal, title limits, edit that breaks mechanic structure, undecodable data URL). |
 | 503 | Write landed, follow-up failed (`saved: true`) — re-read instead of repeating. |
 | 500 | Unexpected server error. |
 

@@ -2,28 +2,32 @@
    are dialog-panel/dialog-head/dialog-body/dialog-foot; only the position, the member grid and the field specifics
    stay here. Fields use the shared recessed well. */
 .members-editor { position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%); z-index: 80;
-  display: flex; flex-direction: column; width: min(880px, calc(100vw - 32px)); max-height: min(82vh, 780px);
+  display: flex; flex-direction: column; width: min(880px, calc(100vw - 32px)); max-height: min(calc(100dvh - 24px), 780px);
   animation: dialog-drop var(--motion-spring-firm) var(--ease-spring-firm); }
+.members-editor-header, .members-editor-footer { flex: 0 0 auto; }
 .members-editor-heading { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
 /* The description is the page-caption grammar: muted 12/16 under the title, so the head reads like the Decks home. */
 .members-editor-description { margin: 0; max-width: 62ch; color: var(--muted); font-size: 12px; line-height: 16px; }
 .members-editor-close.ui-button { flex-shrink: 0; width: 32px; height: 32px; }
 /* The body scrolls inside the dialog; dialog-body supplies the 16px padding. */
-.members-editor-body { display: flex; flex-direction: column; gap: var(--space-3); min-height: 0;
+.members-editor-body { display: flex; flex: 1 1 auto; flex-direction: column; gap: var(--space-3); min-height: 0;
   overflow-y: auto; scrollbar-width: thin; }
 .members-editor-list { display: flex; flex-direction: column; gap: var(--space-2); margin: 0; padding: 0; list-style: none; }
 .members-editor-row { display: grid; grid-template-columns: auto minmax(140px, 1.1fr) minmax(110px, .8fr) minmax(110px, .7fr) minmax(160px, 1.2fr) auto;
-  align-items: end; gap: var(--space-2) 10px; padding: 10px 11px; border: 1px solid var(--line); border-radius: var(--glass-radius); background: var(--ground); }
-/* Rows align to the bottom of the 30px fields, so the 30px avatar and remove button share their centre line. */
+  align-items: start; gap: var(--space-2) 10px; padding: 10px 11px; border: 1px solid var(--line); border-radius: var(--glass-radius); background: var(--ground); }
+/* Keep the controls aligned when field errors add lines underneath. */
+.members-editor-row .card-owner-avatar, .members-editor-remove, .members-editor-id-static { margin-top: calc(16px + var(--space-1)); }
 .members-editor-row .card-owner-avatar { width: 30px; height: 30px; }
-.members-editor-field { display: flex; flex-direction: column; gap: 5px; min-width: 0; color: var(--muted);
-  font-size: 10px; font-weight: 600; letter-spacing: .3px; text-transform: uppercase; }
+.members-editor-field { display: flex; flex-direction: column; gap: var(--space-1); min-width: 0; color: var(--muted);
+  font-size: 12px; line-height: 16px; font-weight: 500; }
 .members-editor-field input, .members-editor-field select { width: 100%; min-width: 0; padding: 0 9px; font: inherit; font-size: 12px; }
 .members-editor-field :is(input, select)::placeholder { color: var(--muted); }
 .members-editor-field :is(input, select):disabled { opacity: .55; }
+.members-editor-field-errors { display: flex; flex-direction: column; gap: var(--space-1); color: var(--warning-ink); font-size: 12px; font-weight: 400; line-height: 16px; overflow-wrap: anywhere; }
 .members-editor-id input { font-family: 'Geist Mono', monospace; font-size: 11px; }
 .members-editor-id-static { overflow-wrap: anywhere; color: var(--muted);
-  font-family: 'Geist Mono', monospace; font-size: 11px; line-height: 30px; white-space: nowrap; }
+  font-family: 'Geist Mono', monospace; font-size: 11px; line-height: 30px; }
+.members-editor-id-static > span { font: 500 12px/16px var(--font-sans); }
 .members-editor-remove { color: var(--muted); }
 .members-editor-remove:hover:not(:disabled) { color: var(--danger); background: var(--hover); }
 /* The body is a scrolling flex column: without flex-shrink: 0 the button was the only child that shrank (18.5 of 30 px). */
@@ -34,14 +38,21 @@
 .members-editor-notice p { margin: 0 0 8px; }
 .members-editor-notice .ui-button { max-width: 100%; height: auto; min-height: 30px; white-space: normal; }
 .members-editor .ui-button[aria-disabled="true"] { opacity: .55; cursor: default; }
-.members-editor-errors { padding: 10px 12px; border-radius: var(--glass-radius); color: var(--warning-ink); background: var(--warning-bg); font-size: 11px; line-height: 1.6; }
+.members-editor-errors { padding: 10px 12px; border-radius: var(--glass-radius); color: var(--warning-ink); background: var(--warning-bg); font-size: 12px; line-height: 16px; }
 .members-editor-errors p { margin: 0 0 5px; font-weight: 600; }
 .members-editor-errors ul { margin: 0; padding-left: 17px; }
+.members-editor-errors button { padding: 0; border: 0; background: transparent; color: inherit; text-align: left; text-decoration: underline; text-underline-offset: 2px; }
 /* dialog-foot pushes actions to the end; the counter keeps its place at the start of the row. */
 .members-editor-hint { display: inline-flex; align-items: baseline; gap: 4px; margin-inline-end: auto;
   color: var(--muted); font-size: 12px; line-height: 16px; }
 @media (prefers-reduced-motion: reduce) { .members-editor { animation: none; } }
-@media (max-width: 860px) { .members-editor-row { grid-template-columns: auto minmax(0, 1fr) auto; }
-  .members-editor-name { grid-column: 2; } .members-editor-remove { grid-row: 1; grid-column: 3; }
-  .members-editor-id, .members-editor-id-static, .members-editor-kind, .members-editor-aliases { grid-column: 2 / -1; }
-  .members-editor-id-static { line-height: 1.4; white-space: normal; } }
+@media (max-width: 860px) { .members-editor-row { grid-template-columns: auto minmax(0, 1fr) minmax(90px, .7fr) auto; }
+  .members-editor-name { grid-row: 1; grid-column: 2; } .members-editor-kind { grid-row: 1; grid-column: 3; }
+  .members-editor-remove { grid-row: 1; grid-column: 4; }
+  .members-editor-id, .members-editor-id-static { grid-row: 2; grid-column: 2; }
+  .members-editor-aliases { grid-row: 2; grid-column: 3 / -1; }
+  .members-editor-id-static { margin-top: 0; line-height: 1.4; white-space: normal; } }
+@media (pointer: coarse) {
+  .members-editor-remove { min-width: var(--control-target-touch, 44px); min-height: var(--control-target-touch, 44px); }
+  .members-editor-errors button { min-height: var(--control-target-touch, 44px); }
+}

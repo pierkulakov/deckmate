@@ -28,9 +28,9 @@ describe.skipIf(!browserPath)('deck transition continuity (browser)', () => {
   beforeAll(async () => { page = await openHeadlessBrowser({ width: 1280, height: 800, scale: 1 }); });
   afterAll(async () => { await page?.close(); });
 
-  async function load(deck?: string) {
+  async function load(deck?: string, pulseTest = false) {
     const url = new URL(browserFixtureUrl('deck-transition'));
-    url.search = new URLSearchParams({ view: 'deck', catalogSource: 'sandbox', ...(deck ? { deck } : {}) }).toString();
+    url.search = new URLSearchParams({ view: 'deck', catalogSource: 'sandbox', ...(deck ? { deck } : {}), ...(pulseTest ? { pulseTest: '1' } : {}) }).toString();
     await page.send('Page.navigate', { url: url.href });
     await page.evaluate(`new Promise((resolve, reject) => {
       const deadline = performance.now() + 10000;
@@ -185,6 +185,27 @@ describe.skipIf(!browserPath)('deck transition continuity (browser)', () => {
       }
     }
   }
+
+  it.each([1440, 375])('prepares a delayed nonzero pulse before the first return from a direct deck link at %s px', async width => {
+    await page.send('Emulation.setDeviceMetricsOverride', { width, height: 900, deviceScaleFactor: 1, mobile: false });
+    await load('top', true);
+    expect(await page.evaluate('window.pulseRequests.count')).toBe(1);
+    expect(await page.evaluate(`document.querySelector('.project-pulse').getBoundingClientRect().height`)).toBe(0);
+    await page.evaluate(`window.pulseRequests.release(); new Promise(resolve => { function check() { if (document.querySelector('.project-pulse-grid')) resolve(true); else requestAnimationFrame(check); } check(); })`);
+    expectContinuous(await transition('close', 'top'), 'close');
+    expect(await page.evaluate(`document.querySelector('[data-pulse=started] .project-pulse-value').textContent`)).toContain('3');
+    expect(await page.evaluate('window.pulseRequests.count')).toBe(1);
+  });
+
+  it('returns immediately while the initial pulse is pending without freezing an obsolete loading layout', async () => {
+    await page.send('Emulation.setDeviceMetricsOverride', { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false });
+    await load('top', true);
+    const frames = await transition('close', 'top');
+    expect(frames.some(frame => frame.stage)).toBe(false);
+    expect(await page.evaluate(`!document.querySelector('.deck-view').inert && document.activeElement.matches('[data-deck-cover="top"]')`)).toBe(true);
+    await page.evaluate('window.pulseRequests.release()');
+    await waitForLayout(page.evaluate, '.project-pulse');
+  });
 
   it.each([{ width: 1700, height: 1000, rate: 1 }, { width: 1700, height: 1000, rate: 4 },
     { width: 760, height: 1000, rate: 1 }, { width: 760, height: 1000, rate: 4 },

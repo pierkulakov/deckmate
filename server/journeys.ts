@@ -342,7 +342,7 @@ export async function assertManifestHash(root: string, catalog: CatalogView): Pr
 }
 
 /** Omit null/undefined step-header fields so existing files retain their format. */
-export function stepFileMetadata(step: CatalogJourneyStep): Record<string, unknown> {
+function stepFileMetadata(step: CatalogJourneyStep): Record<string, unknown> {
   const metadata: Record<string, unknown> = { id: step.id, title: step.title, deckId: step.deckId, owner: step.owner, dependsOn: step.dependsOn };
   if (step.effort !== null && step.effort !== undefined) metadata.effort = step.effort;
   if (step.priority !== null && step.priority !== undefined) metadata.priority = step.priority;

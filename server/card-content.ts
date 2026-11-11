@@ -112,14 +112,17 @@ function byteOffsetOf(document: ParsedDocument, characterOffset: number): number
 }
 
 function lineBounds(text: string, lineStart: number): { contentEnd: number; end: number } {
-  const newlineIndex = text.indexOf('\n', lineStart);
-  if (newlineIndex === -1) return { contentEnd: text.length, end: text.length };
-  const contentEnd = text.charAt(newlineIndex - 1) === '\r' ? newlineIndex - 1 : newlineIndex;
-  return { contentEnd, end: newlineIndex + 1 };
+  let contentEnd = lineStart;
+  while (contentEnd < text.length && text[contentEnd] !== '\r' && text[contentEnd] !== '\n') contentEnd += 1;
+  let end = contentEnd;
+  if (text[end] === '\r') end += 1;
+  if (text[end] === '\n') end += 1;
+  return { contentEnd, end };
 }
 
 function fileNewline(text: string): string {
-  return text.includes('\r\n') ? '\r\n' : '\n';
+  if (text.includes('\r\n')) return '\r\n';
+  return text.match(/\r|\n/u)?.[0] ?? '\n';
 }
 
 /** Epics follow readCards grammar: numbered H2 headings containing at least one slice. */
@@ -155,7 +158,7 @@ export function readHeroSections(document: ParsedDocument): HeroSection[] {
 }
 
 /** Parse a slice's version, clean title, and H3/body byte ranges using parseDocument grammar. */
-export function readTaskSections(document: ParsedDocument): TaskSection[] {
+function readTaskSections(document: ParsedDocument): TaskSection[] {
   const sections: TaskSection[] = [];
   const sliceEnds = new Map(document.slices.map(slice => [slice.ver, slice.range.end] as const));
   for (const node of document.tree.children) {
@@ -351,12 +354,12 @@ function assertStructureUnchanged(relative: string, before: Buffer, after: Buffe
   }
 }
 
-function patchHero(relative: string, bytes: Buffer, key: string, title: string, markdown: string): Buffer {
+function patchHero(relative: string, bytes: Buffer, key: string, title: string, markdown: string, preserveBodyNewlines: boolean): Buffer {
   const mechanic = parseMechanic(relative, bytes);
   const section = mechanic.heroes.find(candidate => candidate.number === key);
   if (!section) throw new CardContentError(404, serverText(messages).heroNotFound);
   const newline = fileNewline(mechanic.document.text);
-  const intro = replacementBody(bytes, section.introRange, markdown, newline);
+  const intro = replacementBody(bytes, section.introRange, markdown, newline, preserveBodyNewlines);
   return Buffer.concat([
     bytes.subarray(0, section.titleRange.start), Buffer.from(title),
     bytes.subarray(section.titleRange.end, section.introRange.start), intro,
@@ -364,14 +367,14 @@ function patchHero(relative: string, bytes: Buffer, key: string, title: string, 
   ]);
 }
 
-function patchTask(relative: string, bytes: Buffer, key: string, title: string, markdown: string): Buffer {
+function patchTask(relative: string, bytes: Buffer, key: string, title: string, markdown: string, preserveBodyNewlines: boolean): Buffer {
   const mechanic = parseMechanic(relative, bytes);
   const section = mechanic.tasks.find(candidate => candidate.version === key);
   const slice = mechanic.document.slices.find(candidate => candidate.ver === key);
   if (!section || !slice) throw new CardContentError(404, serverText(messages).sliceNotFoundInFile);
   rejectStatusTitle(title);
   const newline = fileNewline(mechanic.document.text);
-  const body = replacementBody(bytes, section.bodyRange, markdown, newline);
+  const body = replacementBody(bytes, section.bodyRange, markdown, newline, preserveBodyNewlines);
   const headingSeparator = bodySeparator(bytes, section.bodyRange.start, body, newline);
   return Buffer.concat([
     bytes.subarray(0, section.titleRange.start), Buffer.from(title),
@@ -380,10 +383,10 @@ function patchTask(relative: string, bytes: Buffer, key: string, title: string, 
   ]);
 }
 
-function patchDocument(relative: string, bytes: Buffer, title: string, markdown: string): Buffer {
+function patchDocument(relative: string, bytes: Buffer, title: string, markdown: string, preserveBodyNewlines: boolean): Buffer {
   const layout = readDocLayout(relative, bytes);
   const newline = fileNewline(parseBomText(bytes));
-  const body = replacementBody(bytes, layout.bodyRange, markdown, newline);
+  const body = replacementBody(bytes, layout.bodyRange, markdown, newline, preserveBodyNewlines);
   if (title === layout.title && markdown === bytes.subarray(layout.bodyRange.start).toString('utf8')) return bytes;
   if (layout.titleRange) {
     const separator = bodySeparator(bytes, layout.bodyRange.start, body, newline);
@@ -401,12 +404,26 @@ function patchDocument(relative: string, bytes: Buffer, title: string, markdown:
   return Buffer.concat([prefix, Buffer.from(frontmatterSeparator + heading), body]);
 }
 
-function replacementBody(bytes: Buffer, range: ByteRange, markdown: string, newline: string): Buffer {
+function replacementBody(bytes: Buffer, range: ByteRange, markdown: string, newline: string, preserveBodyNewlines: boolean): Buffer {
   const original = bytes.subarray(range.start, range.end);
-  if (markdown === original.toString('utf8')) return original;
-  let body = markdown.replace(/\r\n|\r|\n/gu, newline);
+  const previous = original.toString('utf8');
+  if (markdown === previous) return original;
+  let body = markdown;
+  if (!preserveBodyNewlines) {
+    let start = 0;
+    while (start < previous.length && start < markdown.length && previous[start] === markdown[start]) start += 1;
+    let suffix = 0;
+    while (suffix < previous.length - start && suffix < markdown.length - start
+      && previous[previous.length - suffix - 1] === markdown[markdown.length - suffix - 1]) suffix += 1;
+    // 2026-11-11: a shared CR or LF alone is not an unchanged CRLF pair.
+    if (start > 0 && (previous.slice(start - 1, start + 1) === '\r\n' || markdown.slice(start - 1, start + 1) === '\r\n')) start -= 1;
+    if (suffix > 0 && (previous.slice(previous.length - suffix - 1, previous.length - suffix + 1) === '\r\n'
+      || markdown.slice(markdown.length - suffix - 1, markdown.length - suffix + 1) === '\r\n')) suffix -= 1;
+    const end = markdown.length - suffix;
+    body = markdown.slice(0, start) + markdown.slice(start, end).replace(/\r\n|\r|\n/gu, newline) + markdown.slice(end);
+  }
   // A following heading belongs to another card and must always start on its own line.
-  if (range.end < bytes.length && body && !body.endsWith(newline)) body += newline;
+  if (range.end < bytes.length && body && !/[\r\n]$/u.test(body)) body += newline;
   return Buffer.from(body);
 }
 
@@ -483,17 +500,18 @@ export async function appendCardReport(root: string, relative: string,
   return { paths, sourceHash: digest(candidate), previousBytes };
 }
 
-function patchLegacyContent(reference: LegacyRef, bytes: Buffer, title: string, markdown: string): Buffer {
-  if (reference.kind === 'hero') return patchHero(reference.path, bytes, reference.key!, title, markdown);
-  if (reference.kind === 'task') return patchTask(reference.path, bytes, reference.key!, title, markdown);
-  return patchDocument(reference.path, bytes, title, markdown);
+function patchLegacyContent(reference: LegacyRef, bytes: Buffer, title: string, markdown: string, preserveBodyNewlines = false): Buffer {
+  if (reference.kind === 'hero') return patchHero(reference.path, bytes, reference.key!, title, markdown, preserveBodyNewlines);
+  if (reference.kind === 'task') return patchTask(reference.path, bytes, reference.key!, title, markdown, preserveBodyNewlines);
+  return patchDocument(reference.path, bytes, title, markdown, preserveBodyNewlines);
 }
 
 /**
  * Derive editable ranges from current file bytes on the server.
  * Return rewritten files, or an empty list for a no-op.
+ * Parser-prepared local edits retain their EOLs without bypassing structure or publication guards.
  */
-export async function updateCardContent(root: string, edit: UpdateEdit, beforePublish?: () => Promise<void>): Promise<string[]> {
+export async function updateCardContent(root: string, edit: UpdateEdit, beforePublish?: () => Promise<void>, preserveBodyNewlines = false): Promise<string[]> {
   const title = validatedTitle(edit.title);
   const markdown = validatedBody(edit.markdown);
   if (edit.cardId.startsWith('card:')) {
@@ -506,7 +524,7 @@ export async function updateCardContent(root: string, edit: UpdateEdit, beforePu
   try { bytes = await readProjectMarkdown(root, reference.path); }
   catch (error) { if (missing(error)) throw new CardContentError(404, serverText(messages).cardFileNotFound); throw error; }
   if (digest(bytes) !== edit.sourceHash) throw new Error('CARD_CONFLICT');
-  const candidate = patchLegacyContent(reference, bytes, title, markdown);
+  const candidate = patchLegacyContent(reference, bytes, title, markdown, preserveBodyNewlines);
   if (candidate.equals(bytes)) return [];
   if (isMechanicPath(reference.path)) assertStructureUnchanged(reference.path, bytes, candidate);
   else parseBomText(candidate); // Documents outside mechanics have no slices; only validate UTF-8 readability.

@@ -1,9 +1,11 @@
-import * as Tooltip from '@radix-ui/react-tooltip';
+import * as Dialog from '@radix-ui/react-dialog';
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { WorkspaceSnapshot } from '../../src/workspace-contracts.ts';
 import { defineText, locale, useLang, useText } from '../i18n.ts';
 import { useSaveActivity } from '../save-activity.ts';
 import type { ConnectionState } from '../useWorkspace.ts';
+import { X } from 'lucide-react';
+import { Button } from './ui/button.tsx';
 import '../server-status.css';
 
 const text = defineText({
@@ -30,6 +32,7 @@ const text = defineText({
   direct: 'In the project folder',
   sandbox: 'Test copy',
   readOnly: 'Read only',
+  close: 'Close connection details',
 }, {
   chipLive: 'На связи',
   chipSaving: 'Сохраняю…',
@@ -54,6 +57,7 @@ const text = defineText({
   direct: 'Прямо в папке проекта',
   sandbox: 'Тестовая копия',
   readOnly: 'Только чтение',
+  close: 'Закрыть сведения о соединении',
 });
 
 type ShownState = 'live' | 'saving' | 'saved' | 'reconnecting' | 'offline';
@@ -63,7 +67,7 @@ const savedForMs = 1600;
 /**
  * Server connection and saving beside the logo (2026-11-05): one chip says Live, Saving…, Saved,
  * Connecting… or Offline. The slot keeps the width of the longest label, so the tabs never move; the pill inside hugs
- * the active label with a scaled face, without relaying out the chrome during the transition. Details on hover or focus.
+ * the active label with a scaled face, without relaying out the chrome during the transition.
  */
 export function ServerStatus({ connection, snapshot, updatedAt }: { connection: ConnectionState; snapshot: WorkspaceSnapshot | null; updatedAt: number }) {
   const t = useText(text);
@@ -79,32 +83,34 @@ export function ServerStatus({ connection, snapshot, updatedAt }: { connection: 
   const detail: Record<ShownState, string> = { live: t.liveDetail, saving: t.savingDetail, saved: t.savedDetail, reconnecting: t.reconnectingDetail, offline: t.offlineDetail };
   const editing = !snapshot ? '—' : snapshot.editMode === 'direct' ? t.direct : snapshot.editMode === 'sandbox' ? t.sandbox : t.readOnly;
   const lastChange = updatedAt > 0 ? new Intl.DateTimeFormat(locale(lang), { hour: '2-digit', minute: '2-digit', second: '2-digit' }).format(updatedAt) : t.noChangeYet;
-  return <Tooltip.Provider delayDuration={250}><span className="server-status-slot">
+  return <span className="server-status-slot">
+    <span className="visually-hidden" role="status">{title[state]}</span>
     <span className="server-status-sizer" aria-hidden="true"><span className="server-status-dot" /><span className="server-status-stack">
       {shownStates.map(option => <span key={option}>{chip[option]}</span>)}</span></span>
-    <Tooltip.Root>
-      <Tooltip.Trigger asChild>
-        <span className={`server-status is-${state}${pinged ? ' is-pinged' : ''}`} tabIndex={0} role="status" aria-label={title[state]}>
+    <Dialog.Root modal={false}>
+      <Dialog.Trigger asChild>
+        <button type="button" className={`server-status is-${state}${pinged ? ' is-pinged' : ''}`} aria-label={title[state]}>
           <span className="server-status-dot" aria-hidden="true" />
           <span ref={labelsRef} className="server-status-labels" aria-hidden="true">
             {shownStates.map(option => <span key={option} className={option === state ? 'is-active' : undefined}>{chip[option]}</span>)}
           </span>
-        </span>
-      </Tooltip.Trigger>
-      <Tooltip.Portal>
-        <Tooltip.Content className={`server-status-card dialog-panel is-${state}`} side="bottom" align="start" sideOffset={8}>
-          <p className="server-status-title"><span className="server-status-dot" aria-hidden="true" />{title[state]}</p>
-          <p className="server-status-detail">{detail[state]}</p>
+        </button>
+      </Dialog.Trigger>
+      <Dialog.Portal>
+        <Dialog.Content className={`server-status-card dialog-panel is-${state}`}>
+          <div className="server-status-heading"><Dialog.Title className="server-status-title"><span className="server-status-dot" aria-hidden="true" />{title[state]}</Dialog.Title>
+            <Dialog.Close asChild><Button variant="ghost" size="icon" aria-label={t.close}><X size={16} /></Button></Dialog.Close></div>
+          <Dialog.Description className="server-status-detail">{detail[state]}</Dialog.Description>
           <dl className="server-status-facts">
             <dt>{t.project}</dt><dd title={snapshot?.projectName || undefined}>{snapshot?.projectName || '—'}</dd>
             <dt>{t.editing}</dt><dd>{editing}</dd>
             <dt>{t.lastChange}</dt><dd className="is-number page-number">{lastChange}</dd>
             <dt>{t.server}</dt><dd className="is-number">{location.host}</dd>
           </dl>
-        </Tooltip.Content>
-      </Tooltip.Portal>
-    </Tooltip.Root>
-  </span></Tooltip.Provider>;
+        </Dialog.Content>
+      </Dialog.Portal>
+    </Dialog.Root>
+  </span>;
 }
 
 /** 2026-11-10: the label stack keeps its widest width; only the face scales, avoiding a layout on every saving frame. */

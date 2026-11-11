@@ -31,7 +31,7 @@ export function captureCardTransfer(
   };
 }
 
-export type CardTransferTargetIssue = 'same-deck' | 'incompatible' | 'confirm-promotion' | null;
+type CardTransferTargetIssue = 'same-deck' | 'incompatible' | 'confirm-promotion' | null;
 
 export function cardTransferTargetIssue(
   baseline: CardTransferBaseline,

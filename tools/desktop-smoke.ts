@@ -12,10 +12,10 @@
 // guard, server lifetime). The native menu, dialogs and the installer stay human-checked.
 import { execFileSync, spawn, spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
-import { createServer, type AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { freePort } from './free-port.ts';
 import { connectToHeadlessBrowser, type HeadlessPage } from './layout-capture.ts';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -53,17 +53,6 @@ async function poll(condition: () => Promise<boolean>, what: string, timeoutMs: 
 async function launcherLoaded(): Promise<boolean> {
   // 2026-11-09: WebView2 changes the URL before the new document's bridge is ready.
   return (await page!.evaluate(`document.readyState === 'complete' && !!document.getElementById('launcher') && typeof window.deckmateDesktop === 'object'`)) === true;
-}
-
-function freePort(): Promise<number> {
-  return new Promise((resolve, reject) => {
-    const probe = createServer();
-    probe.once('error', reject);
-    probe.listen(0, '127.0.0.1', () => {
-      const { port } = probe.address() as AddressInfo;
-      probe.close(() => resolve(port));
-    });
-  });
 }
 
 /** node.exe processes whose command line mentions the demo projects or the server entry. */
@@ -208,7 +197,8 @@ async function pasteInEditors(boardOrigin: string): Promise<void> {
   await shortcut('z', 'KeyZ', 90);
   await poll(async () => (await page!.evaluate(`document.querySelector('.card-edit-text').value === window.__smokeCardBeforePaste`)) === true,
     'Undo to restore the card before closing its editor', 5000);
-  await page!.evaluate(`document.querySelector('.card-edit .is-cancel').click()`);
+  // 2026-11-11: the editor footer is portaled outside its form, so Cancel belongs to the footer, not .card-edit.
+  await page!.evaluate(`document.querySelector('.card-edit-footer .is-cancel:not(:disabled)').click()`);
   await poll(async () => (await page!.evaluate(`!document.querySelector('.card-edit-text') && !document.querySelector('.global-tabs button:last-child').disabled`)) === true,
     'the unchanged card editor to close', 5000);
   pass('b-card-paste', 'CDP Ctrl+V reached the real card editor; Undo restored its text without saving');
@@ -246,10 +236,12 @@ async function pasteInEditors(boardOrigin: string): Promise<void> {
 
 function switchProjectShortcut(pid: number): void {
   // 2026-11-09: CDP input reaches only the renderer, so native AcceleratorKeyPressed needs Win32 virtual-key input.
+  // 2026-11-11: raising a background debug window needs both the foreground and target input queues attached.
   execFileSync('powershell', ['-NoProfile', '-NonInteractive', '-Command', `
     Add-Type -TypeDefinition 'using System; using System.Runtime.InteropServices; public class DeckmateKeys {
       [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
       [DllImport("user32.dll")] static extern bool SetForegroundWindow(IntPtr hwnd);
+      [DllImport("user32.dll")] static extern bool BringWindowToTop(IntPtr hwnd);
       [DllImport("user32.dll")] static extern bool ShowWindowAsync(IntPtr hwnd, int command);
       [DllImport("user32.dll")] static extern uint GetWindowThreadProcessId(IntPtr hwnd, IntPtr process);
       [DllImport("user32.dll")] static extern bool AttachThreadInput(uint from, uint to, bool attach);
@@ -259,16 +251,23 @@ function switchProjectShortcut(pid: number): void {
         ShowWindowAsync(hwnd, 9);
         uint foreground = GetWindowThreadProcessId(GetForegroundWindow(), IntPtr.Zero);
         uint current = GetCurrentThreadId();
+        uint target = GetWindowThreadProcessId(hwnd, IntPtr.Zero);
         bool attached = foreground != current && AttachThreadInput(current, foreground, true);
-        SetForegroundWindow(hwnd);
-        if (attached) AttachThreadInput(current, foreground, false);
+        bool targetAttached = target != current && target != foreground && AttachThreadInput(current, target, true);
+        try {
+          BringWindowToTop(hwnd);
+          SetForegroundWindow(hwnd);
+        } finally {
+          if (targetAttached) AttachThreadInput(current, target, false);
+          if (attached) AttachThreadInput(current, foreground, false);
+        }
       }
     }';
     $window = (Get-Process -Id ${pid}).MainWindowHandle;
     if ($window -eq 0) { throw 'Main window not found'; }
     [DeckmateKeys]::Focus($window);
     Start-Sleep -Milliseconds 200;
-    if ([DeckmateKeys]::GetForegroundWindow() -ne $window) { throw 'Could not focus the debug window'; }
+    if ([DeckmateKeys]::GetForegroundWindow() -ne $window) { throw "Could not focus the debug window: expected=$window; actual=$([DeckmateKeys]::GetForegroundWindow())"; }
     [DeckmateKeys]::keybd_event(0x11, 0, 0, [UIntPtr]::Zero);
     [DeckmateKeys]::keybd_event(0x10, 0, 0, [UIntPtr]::Zero);
     [DeckmateKeys]::keybd_event(0x50, 0, 0, [UIntPtr]::Zero);
@@ -422,18 +421,23 @@ async function main(): Promise<number> {
     // 2026-11-09: writeText needs a focused document; when another window owns the desktop focus the
     // check failed with "Document is not focused", so the page is told it has focus for this step.
     await page!.send('Emulation.setFocusEmulationEnabled', { enabled: true });
-    const clipboard = await page!.callFunction(`async () => {
-      try {
-        await navigator.clipboard.writeText('deckmate-smoke');
-        let readDenied = false;
-        try { await navigator.clipboard.readText(); } catch { readDenied = true; }
-        return { written: true, readDenied };
-      } catch (error) { return { written: false, error: String(error) }; }
-    }`);
-    if (!clipboard.written || !clipboard.readDenied) {
+    // 2026-11-11: focus alone is not user activation; CDP supplies the gesture context without granting clipboard permissions.
+    const clipboardResponse = await page!.send('Runtime.evaluate', {
+      expression: `(async () => {
+        try {
+          await navigator.clipboard.writeText('deckmate-smoke');
+          let readDenied = false;
+          try { await navigator.clipboard.readText(); } catch { readDenied = true; }
+          return { written: true, readDenied };
+        } catch (error) { return { written: false, error: String(error) }; }
+      })()`,
+      userGesture: true, returnByValue: true, awaitPromise: true,
+    });
+    const clipboard = clipboardResponse.result?.result?.value;
+    if (!clipboard?.written || !clipboard.readDenied) {
       throw new SmokeFailure(`clipboard write/read policy failed: ${JSON.stringify(clipboard)}`);
     }
-    pass('b-clipboard', 'clipboard.writeText resolved; clipboard.readText was denied');
+    pass('b-clipboard', 'clipboard.writeText resolved with a user gesture; clipboard.readText was denied');
     const notification = await page!.callFunction(`() => Notification.requestPermission()`);
     if (notification !== 'denied') throw new SmokeFailure(`notifications were not denied: ${notification}`);
     pass('b-notifications', 'Notification.requestPermission resolved denied without a prompt');
@@ -622,8 +626,9 @@ async function main(): Promise<number> {
       }
       await page!.callFunction(`() => removeRecent('C:\\\\missing-smoke-project')`);
       if ((await page!.evaluate(`document.getElementById('status').dataset.phase`)) !== 'error') throw new SmokeFailure('removeRecent UI hid a failed save');
-      await page!.evaluate(`document.querySelector('[data-lang="en"]').click()`);
-      await poll(async () => (await page!.evaluate(`document.getElementById('status').dataset.phase === 'error' && document.getElementById('status-text').textContent.includes('Could not save settings')`)) === true,
+      // 2026-11-11: a failed language save keeps the existing UI locale; clear the earlier error to verify this click reports its own.
+      await page!.evaluate(`setStatus(null); document.querySelector('[data-lang="en"]').click()`);
+      await poll(async () => (await page!.evaluate(`document.getElementById('status').dataset.phase === 'error' && document.getElementById('status-text').textContent.startsWith(document.documentElement.lang === 'ru' ? 'Не удалось сохранить настройки.' : 'Settings could not be saved.')`)) === true,
         'language save error to reach the status line', 5000);
     } finally {
       rmSync(settingsFile, { recursive: true, force: true });
@@ -937,11 +942,19 @@ async function main(): Promise<number> {
         `failed auto-open ${attempt} to return to a loaded launcher with an error`, 30000);
         // Let late NavigationCompleted events arrive before checking that the cause stayed intact.
         await sleep(1000);
-        const message = String(await page!.evaluate(`document.getElementById('status-text').textContent`));
+        // 2026-11-11: the status gives recovery advice; the original server refusal is shown under Technical details.
+        await page!.evaluate(`document.querySelector('#status-details > summary').click()`);
+        const failure = await page!.callFunction(`() => ({
+          message: document.getElementById('status-text').textContent,
+          technical: document.getElementById('status-technical').textContent,
+          detailsVisible: !document.getElementById('status-details').hidden && document.getElementById('status-details').open,
+        })`);
         const failureLog = readFileSync(path.join(settings, 'server.log'), 'utf8').slice(beforeFailureLog.length);
-        if (!message.includes('The path is outside the project.') || message.includes('WebView2')
+        if (!failure.detailsVisible || !failure.message.startsWith('The local server could not start.')
+          || !failure.technical.includes('The path is outside the project.')
+          || failure.message.includes('WebView2') || failure.technical.includes('WebView2')
           || !failureLog.includes('project launch failed:') || !failureLog.includes('The path is outside the project.')) {
-          throw new SmokeFailure(`failed auto-open ${attempt} lost the server refusal: ${message}`);
+          throw new SmokeFailure(`failed auto-open ${attempt} lost the server refusal: ${JSON.stringify(failure)}`);
         }
       } catch (error) {
         throw new SmokeFailure(`${(error as Error).message} (${await diagnose(settings)})`);
@@ -952,7 +965,7 @@ async function main(): Promise<number> {
       await poll(async () => serverProcesses(needles).length === 0,
         `failed auto-open ${attempt} to leave no server`, 10000);
     }
-    pass('startup-failure', 'three consecutive lastProject launches kept the real server refusal on the loaded launcher and in server.log, not a WebView2 error');
+    pass('startup-failure', 'three consecutive lastProject launches kept the real server refusal in the launcher technical details and server.log, not a WebView2 error');
 
     pass('smoke', 'all steps passed');
     return 0;
@@ -966,7 +979,8 @@ async function main(): Promise<number> {
       if (page) await page.close();
     } catch { /* the shell is already gone */ }
     await sleep(500);
-    rmSync(temp, { recursive: true, force: true });
+    // 2026-11-11: WebView2 can briefly retain profile handles after taskkill; retry only this run's temporary folder.
+    rmSync(temp, { recursive: true, force: true, maxRetries: 15, retryDelay: 100 });
   }
 }
 

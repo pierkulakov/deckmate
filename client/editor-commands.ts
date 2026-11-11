@@ -6,7 +6,7 @@ import { defineText, textNow } from './i18n.ts';
 import { markdownParser } from '../src/markdown-model.ts';
 import type { RootContent } from 'mdast';
 
-export interface EditorTrigger {
+interface EditorTrigger {
   kind: 'command' | 'card' | 'member' | 'tag' | 'emoji' | 'media';
   start: number;
   end: number;
@@ -36,12 +36,13 @@ const text = defineText({
   mentionDetail: '@name',
   tagDetail: '#tag',
   projectTag: 'Project tag',
+  outsideRegistry: 'Outside registry',
   noDeck: 'No deck',
   image: 'Image',
   video: 'Video',
   heading1: 'Heading 1', heading2: 'Heading 2', heading3: 'Heading 3', bullet: 'Bulleted list', numbered: 'Numbered list',
   checkbox: 'Checkbox', quote: 'Quote', code: 'Code block', divider: 'Divider', table: 'Table 2×2', link: 'Link',
-  mention: 'Mention member', tag: 'Tag', emoji: 'Emoji', media: 'Image or video', human: 'Human', agent: 'Agent',
+  mention: 'Mention member', tag: 'Insert # in text', emoji: 'Emoji', media: 'Image or video', human: 'Human', agent: 'Agent',
 }, {
   bulletDetail: '- пункт',
   numberedDetail: '1. пункт',
@@ -52,12 +53,13 @@ const text = defineText({
   mentionDetail: '@имя',
   tagDetail: '#тег',
   projectTag: 'Тег проекта',
+  outsideRegistry: 'Вне реестра',
   noDeck: 'Без колоды',
   image: 'Изображение',
   video: 'Видео',
   heading1: 'Заголовок 1', heading2: 'Заголовок 2', heading3: 'Заголовок 3', bullet: 'Маркированный список', numbered: 'Нумерованный список',
   checkbox: 'Флажок', quote: 'Цитата', code: 'Блок кода', divider: 'Разделитель', table: 'Таблица 2×2', link: 'Ссылка',
-  mention: 'Упомянуть участника', tag: 'Тег', emoji: 'Эмодзи', media: 'Изображение или видео', human: 'Человек', agent: 'Агент',
+  mention: 'Упомянуть участника', tag: 'Вставить # в текст', emoji: 'Эмодзи', media: 'Изображение или видео', human: 'Человек', agent: 'Агент',
 });
 
 function commands(): EditorCommand[] {
@@ -109,7 +111,7 @@ export function getEditorOptions(trigger: EditorTrigger, catalog: CatalogView, m
     .map(member => ({ id: member.id, memberId: member.id, label: member.label, detail: member.kind === 'human' ? t.human : t.agent, icon: 'member', insert: `@${member.label} ` }));
   if (trigger.kind === 'tag') return collectProjectTags(catalog.cards, catalog.projectTags)
     .filter(tag => !/\s/u.test(tag.name) && matchesQuery(tag.name, trigger.query))
-    .map(tag => ({ id: tag.name, label: `#${tag.name}`, detail: t.projectTag, icon: 'tag', insert: `#${tag.name} ` }));
+    .map(tag => ({ id: tag.name, label: `#${tag.name}`, detail: catalog.projectTags?.some(definition => definition.name === tag.name) ? t.projectTag : t.outsideRegistry, icon: 'tag', insert: `#${tag.name} ` }));
   if (trigger.kind === 'emoji') return editorEmojis.filter(entry => matchesQuery(`${entry.name} ${entry.keywords}`, trigger.query))
     .map(entry => ({ id: entry.name, label: `:${entry.name}:`, detail: '', icon: 'emoji', emoji: entry.emoji, insert: entry.emoji }));
   if (trigger.kind === 'media') return editorMediaOptions(markdown, t).filter(option => matchesQuery(`${option.label} ${option.detail}`, trigger.query));

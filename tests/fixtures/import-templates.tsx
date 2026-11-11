@@ -1,9 +1,9 @@
+import { useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import type { CatalogView, ProjectTemplate, ProjectTemplatePlan } from '../../src/catalog-contracts.ts';
 import type { WorkspaceSnapshot } from '../../src/workspace-contracts.ts';
 import { CsvImport } from '../../client/components/CsvImport.tsx';
 import { ProjectTemplates } from '../../client/components/ProjectTemplates.tsx';
-import { catalogStore } from '../../client/catalog-store.ts';
 import { setLang } from '../../client/i18n.ts';
 import '../../client/styles.css';
 import '../../client/motion.css';
@@ -60,15 +60,27 @@ const plans: Record<string, ProjectTemplatePlan> = {
 const snapshot: WorkspaceSnapshot & { token: string } = { source: 'sandbox', token: 'test-token',
   projectName: 'Import templates', writable: true, editMode: 'direct', iteration: { number: 1, goal: '', start: '' } };
 
+function TemplateProbe({ focusTest, keepOpener, readOnly }: { focusTest: boolean; keepOpener: boolean; readOnly: boolean }) {
+  const [open, setOpen] = useState(!focusTest);
+  const [menuVisible, setMenuVisible] = useState(focusTest);
+  return <>
+    {focusTest && <button type="button" className="mission-control-trigger">Menu</button>}
+    {menuVisible && <button type="button" className="template-menu-item" onClick={() => { if (!keepOpener) setMenuVisible(false); setOpen(true); }}>Templates</button>}
+    {open && <ProjectTemplates snapshot={readOnly ? { ...snapshot, writable: false } : snapshot} refreshKey={0} onClose={() => setOpen(false)} onApplied={() => setOpen(false)}
+      testCopy={{ notice: 'read only', action: 'Open test copy', open: noop }} />}
+  </>;
+}
+
 const realFetch = window.fetch.bind(window);
-function stubFetch(failures: { list?: boolean; plan?: boolean } = {}) {
+function stubFetch(failures: { list?: boolean; plan?: boolean } = {}, existingPlan = false) {
   window.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
     if (url.startsWith('/api/catalog?')) return Response.json(structuredClone(catalog));
     if (url.startsWith('/api/project-templates/') && url.includes('/plan')) {
       if (failures.plan) return Response.json({ message: 'plan unavailable' }, { status: 500 });
       const id = decodeURIComponent(new URL(url, location.origin).pathname.split('/')[3] ?? '');
-      return Response.json(plans[id] ?? plans['demo-rpg']);
+      const plan = plans[id] ?? plans['demo-rpg'];
+      return Response.json(existingPlan ? { ...plan, items: plan.items.map(item => ({ ...item, status: 'reuse' })) } : plan);
     }
     if (url.startsWith('/api/project-templates')) {
       // 2026-11-10: no server message, so the picker's own localized fallback text reaches the error state.
@@ -92,15 +104,14 @@ function chooseCsv(name: string, content: string) {
 
 function render(scene: 'csv' | 'templates', options: Record<string, unknown> = {}) {
   setLang(options.lang === 'ru' ? 'ru' : 'en');
-  stubFetch(options.failures as { list?: boolean; plan?: boolean } | undefined);
+  stubFetch(options.failures as { list?: boolean; plan?: boolean } | undefined, options.existingPlan === true);
   const key = ++instance;
   if (scene === 'csv') {
     root.render(<CsvImport key={key} snapshot={snapshot} refreshKey={0} open initialDeckId={null}
       onOpenChange={noop} />);
     return;
   }
-  root.render(<ProjectTemplates key={key} snapshot={snapshot} refreshKey={0} onClose={noop} onApplied={noop}
-    testCopy={{ notice: 'read only', action: 'Open test copy', open: noop }} />);
+  root.render(<TemplateProbe key={key} focusTest={options.focusTest === true} keepOpener={options.keepOpener === true} readOnly={options.readOnly === true} />);
 }
 
 Object.assign(window, { importTemplatesTest: { render, chooseCsv, actions: [] } });

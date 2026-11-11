@@ -4,8 +4,51 @@ Notable changes are grouped by version using [Keep a Changelog](https://keepacha
 
 ## [Unreleased]
 
-### Changed
+## [0.7.0] - 2026-11-11
 
+### Interface
+
+- **Card tiles.** The row of small icons in the tile body is gone. The bottom band keeps one height on every tile — 24 px for a Task, 29 px for a Hero with its step strip — and the owner's medallion no longer grows it: Effort sits on the left as a kettlebell mark with a bold number (a Hero counts its Sub Cards), Priority on the right as chevrons by level, now on Hero too, and a click on either opens Quick Settings at its own tab. The face names no workflow state — the band and the accessible name do; only blockers and a Doc's open questions keep a quiet line, dates stay in the open card and the Overdue word in the tile's accessible name — and a Hand slot keeps its fan of three cards with the slot number. A started Task turns its band to steel blue and a Task in review to amethyst — on the tile, in Hand, in Vision and on the open card; on the tile the review band also wears a holographic foil of small eyes that lights up under the pointer — a Doc's text fades out instead of being cut, people wear initials in their avatar, and the small selection checkbox appears on hover, dimmed on the other tiles while a selection runs. A Sub Card still carries its Hero's name on a gold strip; glare, the holographic finish of an accepted Hero and the done medallion are unchanged.
+- **Open cards.** The card id chip answers "Copied", and Journey and Edit sit in one row with it beside the text. The material band shows Effort, the owner and Priority — Sub Card progress for a Hero, the word count for a Doc — and a Hero's header carries its Sub Cards chip. The Hand button names who holds the card and in which slot: a click opens that Hand, Ctrl+click or H adds the card to your Hand or removes it. The Connections section is gone: tags lie on the card as they are, and their editing — together with Run, Milestone, the due date and Hand slots — lives in Properties, while dependencies and links to the card keep their panels. Open questions appear once as a quiet list, and on narrow screens the card and editor take priority over the deck shelf.
+- **Hero and Sub Cards panel.** The Hero and its Sub Cards use one row design with the material stripe on the left and state, blockers and due dates on the right; the rows now carry their tags, and a Sub Card bound by a Journey no longer shows an inactive detach button. Search and list actions sit beside the heading.
+- **Tags.** One marker travels with a tag: its emoji or icon stands before the card title, its colors share a single dot beside the tile face with a tooltip naming every tag, and the "+N" chip opens the remaining tags as a menu. Properties pick tags from one search — selected names first, each with its card count — and Configure tags edits the look. Search suggests tags as you type and lifts the ones that matched; the deck tags panel pairs Show with Select, keeps the All/Any modes and per-tag counters, adds a reset and lists the pick among the deck's removable filters; the tag order in Ordering is named "By first tag"; and deck automation picks its auto-tag from the same list, or takes a new name, with the draft kept when the window closes.
+- **Light theme.** Softer tinted backgrounds, clearer text and more consistent panels and fields make the board easier to read.
+- **Hover feedback.** Moving quickly between buttons, tabs and action rails no longer leaves flashing or lingering highlights; controls keep their size.
+- **Notifications.** A bell opens notifications on demand, with a member selector and a scrollable list, instead of stacks permanently covering the board.
+- **Quick capture.** New Tasks go to the configured Inbox regardless of the deck's name. If none is assigned, choose an existing Task or Mixed deck in the capture form.
+- **Hand.** Section tabs sit above the cards. The Done pile expands into a list and shows the current week's count and effort; cards can be removed from focus slots or the reserve directly.
+- **Timeline.** A compact header and expandable details and statistics leave more room for cards; the calendar opens from the local toolbar.
+- **Vision.** Explicit 100% and fit-selection controls make navigation clearer, and the canvas follows the interface language when first opened and reopened.
+- **Shared marks.** The kettlebell of Effort and the chevrons of Priority are one pair on every screen — tiles, the open card, the new-card form, Hand, search, Vision, Quick Settings and bulk actions — and the divider that widens the card column keeps its place beside the panel while the deck scrolls.
+
+### People and agents
+
+- **Agent queue.** `project next` selects only executable Tasks from the member's Hand, skipping review, accepted, cancelled, blocked and stale work as well as Hero and Doc cards. It returns `card: null` when none qualify.
+- **Independent acceptance.** The server rejects a known agent accepting its own card or work it previously reported. An independent reviewer can accept another member's work; people can still accept their own cards, subject to the deck's Guardian rules.
+- **Questions.** `project ask` returns warnings even on an unchanged retry: a question does not automatically block the source Task. Without a rule Doc, a supported native card keeps the question in its own text, with an explicit warning that no Decision Task was created and that `--to`, if supplied, was not used.
+
+### Agent skill
+
+- **Cases first.** The skill routes from a situation to one short scenario: starting a project for a genre and engine, cutting a feature into cards, planning a milestone and Run, taking a card through work and review, asking a blocking question, keeping a design document in cards, running a Journey, and handling playtest feedback and bugs.
+- **One reference per fact.** `references/cli.md` lists every `deckmate project` command with its output fields and errors, `references/cards.md` describes Task, Hero and Doc files, and `references/api.md` keeps only what the CLI cannot do.
+- **Genres and engines.** Each genre names a first playable and the cheapest test for it; each engine explains how to verify a card before review.
+- **Checked structure.** A test keeps links, anchors and command names in the skill in step with the CLI.
+
+### Data reliability
+
+- **Text edits.** Editing legacy cards handles CR-only files and preserves BOM and untouched line endings, including unchanged prefixes and suffixes in mixed-line-ending bodies. Title-only edits in the card editor also keep leading body blank lines and original CRLF line endings.
+- **Recorded decisions.** Question links and answers preserve surrounding text in files with BOM, CR or mixed line endings; report headings remain boundaries of question sections.
+- **Run carry-over.** Cancelled Tasks (`wont-do`) stay out of the next Run when finishing manually or advancing a schedule; they are not marked accepted.
+
+### Windows desktop
+
+- **File drops.** Files dragged from Windows reach the board's file-drop controls again.
+- **Links.** HTTP(S) links that request a new window open in the browser, including local document and card-reference links.
+- **Window recovery.** Restoring the window checks that its title bar is on a connected monitor, so an off-screen title bar no longer leaves the window out of reach.
+
+### Cleanup
+
+- **Launch scripts.** Removed the old PowerShell/VBS launch and shortcut-installation scripts; Desktop and the `deckmate` CLI remain the entry points.
 - **Release checks.** Browser tests run on Windows with Edge, the engine of the desktop app, and a fixture gets a longer first load on slow runners; unit tests still run on Ubuntu and Windows.
 
 ## [0.6.0] - 2026-11-10
@@ -193,7 +236,8 @@ First public release.
 - Third-party notices: `dist/client/third-party-licenses.md` now carries full license texts for bundled packages that ship no license file and for code embedded in prebuilt packages (Chevrotain, Langium, the vscode-languageserver libraries and lodash-es inside `@mermaid-js/parser`, js-yaml inside `mermaid`); the build fails on an empty section or on undeclared embedded code.
 - Source-checkout instructions also open the demo, and the `/deckmate` analyze and audit workflows move new cards to `discussing` after creating them.
 
-[Unreleased]: https://github.com/pierkulakov/deckmate/compare/v0.6.0...HEAD
+[Unreleased]: https://github.com/pierkulakov/deckmate/compare/v0.7.0...HEAD
+[0.7.0]: https://github.com/pierkulakov/deckmate/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/pierkulakov/deckmate/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/pierkulakov/deckmate/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/pierkulakov/deckmate/compare/v0.3.0...v0.4.0

@@ -297,8 +297,10 @@ describe.skipIf(!browserPath)('Journey navigation (headless CDP)', () => {
       .toEqual(['1. Design', '2. Build', '3. Review', '4. Polish', '5. Integrate']);
     expect(await evaluate(`[...document.querySelectorAll('.journey-track-menu-step-state')].map(item => item.textContent)`))
       .toEqual(['Done', 'Started', 'Review', 'Not started', 'Waiting: Build']);
-    expect(await evaluate(`[...document.querySelectorAll('.journey-track-menu-step-meta')].map(item => item.textContent)`))
+    expect(await evaluate(`[...document.querySelectorAll('.journey-track-menu-step-meta')].map(item => [...item.children].filter(node => !node.classList.contains('card-owner-avatar')).map(node => node.textContent).join(''))`))
       .toEqual(['Maya Chen', 'Build Agent · after Design', 'No owner · after Design', 'No owner', 'No owner · after Build']);
+    expect(await evaluate(`(() => { const avatar = document.querySelector('.journey-track-menu-step-meta .card-owner-avatar'); return { initials: avatar.textContent, hidden: avatar.getAttribute('aria-hidden') }; })()`))
+      .toEqual({ initials: 'MC', hidden: 'true' });
     expect(await evaluate(`document.querySelectorAll('.journey-track-menu-step').length`)).toBe(5);
     expect(await evaluate(`document.querySelector('.journey-track-menu-open').textContent`)).toBe('Open Journey');
   });

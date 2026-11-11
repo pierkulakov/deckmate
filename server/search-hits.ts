@@ -71,7 +71,7 @@ function cardRanges(card: CatalogCard, bytes: Buffer): { title: ByteRange; body:
   return { title: range, body: range };
 }
 
-export function sourceSearchHits(card: CatalogCard, bytes: Buffer, snippets: SearchSnippets): SearchHit[] {
+function sourceSearchHits(card: CatalogCard, bytes: Buffer, snippets: SearchSnippets): SearchHit[] {
   if (createHash('sha256').update(bytes).digest('hex') !== card.sourceHash) {
     throw new SearchSourceChangedError('The source changed while searching. Refresh the search.');
   }

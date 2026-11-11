@@ -56,7 +56,7 @@ const text = defineText({
 });
 
 export type CreateFamilyCardAction = Extract<CatalogEdit, { action: 'create-card' }>;
-export interface CardFamilyComposerProps {
+interface CardFamilyComposerProps {
   parent: CatalogCard;
   catalog: CatalogView;
   initialDeckId?: string;

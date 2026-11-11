@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest';
 import type { Root } from 'mdast';
 import { markerWords } from '../src/format-vocabulary.ts';
 import { markdownParser } from '../src/markdown-model.ts';
-import { appendSectionLine, openQuestionsOf, parseOpenQuestions, recordDecision } from '../src/open-questions.ts';
+import { appendSectionLine, linkDecisionTask, openQuestionsOf, parseOpenQuestions, recordDecision } from '../src/open-questions.ts';
+import { shortReference } from '../src/references.ts';
 
 // 2026-11-05 write path: a new decided section is written in the project's format language, and an existing
 // section under either language's marker is reused instead of adding a second one.
@@ -25,7 +26,28 @@ describe('recorded decision section', () => {
     const result = recordDecision(doc, 0, question, answer, 'Ася', '2026-11-06', 'ru', 'en');
     expect(result).toBe(`# Полив ростка\n\n## Решено\n\n- Полив вечером — Ася, 2026-11-01\n- ${answer} — Ася, 2026-11-06\n\n## Открыто\n\n`);
   });
+
+  it('keeps the BOM at the beginning when Open questions is the first section', () => {
+    const markdown = `\uFEFF## Open questions\r\n\r\n- ${question}\r\n`;
+    expect(recordDecision(markdown, 0, question, answer, 'Ася', '2026-11-11', 'en', 'en'))
+      .toBe(`\uFEFF## Decided\r\n\r\n- ${answer} — Ася, 2026-11-11\r\n\r\n## Open questions\r\n\r\n`);
+  });
 });
+
+for (const eol of ['\n', '\r\n', '\r']) for (const bom of ['', '\uFEFF']) {
+  it(`preserves surrounding bytes when recording and linking questions (EOL=${JSON.stringify(eol)}, BOM=${!!bom})`, () => {
+    const prefix = bom + ['# Правило  ', '', 'Сохранить 👣.  ', '', ''].join(eol);
+    const open = ['## Open questions', '', '- First?', '  - Option A  ', '- Second?', '', '## Notes', 'Keep the final line  '].join(eol);
+    const markdown = prefix + open;
+    const expected = prefix + ['## Decided', '', '- Answer — Ася, 2026-11-11', '', '## Open questions', '', '- Second?', '', '## Notes', 'Keep the final line  '].join(eol);
+    expect(Buffer.from(recordDecision(markdown, 0, 'First?', 'Answer', 'Ася', '2026-11-11', 'en', 'en'))).toEqual(Buffer.from(expected));
+    const taskId = 'card:11111111-1111-4111-8111-111111111111';
+    const link = ` — [Decision](/r/${shortReference('c', taskId)})`;
+    expect(linkDecisionTask(markdown, 0, 'First?', taskId, 'en', 'en')).toBe(markdown.replace('- First?', '- First?' + link));
+    expect(appendSectionLine(markdown, markdownParser.parse(markdown), markerWords('openQuestions'), '- Third?' + eol))
+      .toBe(markdown.replace('- Second?' + eol, '- Second?' + eol + '- Third?' + eol));
+  });
+}
 
 // 2026-11-06: a question asked on a card without a rule Doc ends its body, so a later `report` lands right after the
 // section; the report's lists are not questions, and the next question goes above the report.
@@ -63,6 +85,7 @@ describe('open-questions shortcut', () => {
       const parts = Array.from({ length: 1 + random(12) }, () => fragments[random(fragments.length)]);
       const markdown = (random(5) === 0 ? '\uFEFF' : '') + parts.map(part => part + breaks[random(breaks.length)]).join('');
       const expected = openQuestionsOf(markdownParser.parse(markdown), 'en');
+      if (markdown.startsWith('\uFEFF')) expected.questions = expected.questions?.map(question => ({ ...question, start: question.start + 1, end: question.end + 1 })) ?? null;
       if (expected.questions) sections += 1;
       expect(parseOpenQuestions(markdown, 'en'), JSON.stringify(markdown)).toEqual(expected);
     }

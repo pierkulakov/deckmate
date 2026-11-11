@@ -3,17 +3,9 @@
 .card-indicators:empty { display: none; }
 .card-indicator { position: relative; display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto; min-width: 13px; min-height: 14px; color: inherit; }
 .card-indicator > svg { display: block; width: 13px; height: 13px; flex: 0 0 auto; }
-.card-indicator-button { padding: 0; border: 0; border-radius: 3px; background: transparent; cursor: pointer; }
-.card-indicator-button:hover { background: var(--hover); }
-.card-indicator-button:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
-/* 2026-11-08 (NW-04): tile Run/Milestone buttons keep the 13px glyph and carry a transparent 24×24 target (::after),
-   centered by default. When both planning buttons sit on a tile the targets grow outward (Run left, Milestone right)
-   and meet between them, so the two targets never overlap; passive icons (due, gate) have no target and keep their look. */
-.card-indicators.is-tile .card-indicator-button::after { content: ''; position: absolute; inset: -5px -5.5px; }
-/* The outward targets reach under passive sibling icons, which are positioned and would otherwise paint above them. */
-.card-indicators.is-tile .card-indicator-button { z-index: 1; }
-.card-indicators.is-tile:has(.card-milestone-indicator) .card-run-indicator.card-indicator-button::after { left: -11px; right: -2px; }
-.card-indicators.is-tile:has(.card-run-indicator) .card-milestone-indicator.card-indicator-button::after { left: 0; right: -11px; }
+.card-indicator-button { padding: 0; border: 0; border-radius: var(--control-radius); background: transparent; cursor: pointer; }
+@media (hover: hover) { .card-indicator-button:hover { background: var(--hover); } }
+.card-indicator-button:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 .card-due-indicator.is-urgent { color: var(--danger); }
 .card-due-indicator.is-soon { color: var(--warning-ink); }
 .card-trash-indicator { color: var(--danger); }
@@ -26,11 +18,6 @@
 .card-run-indicator.is-future .card-run-body { stroke-dasharray: 2 2; fill-opacity: .35; }
 .card-run-indicator.is-unknown { opacity: .65; }
 .card-milestone-indicator.is-past { opacity: .75; }
-.card-hand-indicator { gap: 1px; }
-.card-hand-indicator > strong { min-width: 7px; font: 700 9px/12px var(--font-sans); text-align: center; }
-.card-hand-indicator.is-mine { color: var(--mint-edge, var(--card-highlight)); }
-:root:not(.dark) .card-hand-indicator.is-mine > strong { color: #1f7a61; }
-.card-hand-indicator.is-foreign > svg { fill-opacity: 0; }
 .card-gate-indicator { flex-direction: column; min-width: 35px; gap: 1px; }
 .card-gate-indicator.is-blocked { color: var(--danger); }
 .card-gate-numbers { display: inline-flex; align-items: center; justify-content: center; gap: 2px; font: 700 9px/11px var(--font-sans); font-variant-numeric: tabular-nums; }
@@ -39,25 +26,31 @@
 .card-gate-tracks > span { position: relative; flex: 1; height: 2px; overflow: hidden; border-radius: 1px; background: var(--line); }
 .card-gate-tracks i { position: absolute; inset: 0 auto 0 0; display: block; background: var(--accepted-metal); }
 .card-gate-indicator.is-blocked .card-gate-tracks > span:first-child { background: var(--danger); }
-.card-indicators.is-tile { width: 100%; gap: 2px; color: var(--card-muted); }
-/* 2026-11-06: with an attachment, keep Priority beside it at the right edge instead of under the centered Owner medallion. */
-.deck-card-band > .deck-card-task-metrics:has(> .card-attachment-indicator) { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; }
 /* 2026-11-05: the face hit area stays behind its sibling property buttons, preserving click and drag on empty space. */
 .deck-card-face { position: relative; z-index: 2; display: flex; flex-direction: column; flex: 1; min-height: 0; padding: 8px 7px 5px; }
 .deck-card .deck-card-face > button.deck-card-open { position: static; padding: 0; }
 .deck-card-face > .deck-card-open::after { content: ''; position: absolute; inset: 0; }
 .deck-card:has(> .card-family-trigger) .deck-card-face { padding-top: 25px; }
-.deck-card-face > .card-indicators.is-tile { position: relative; z-index: 3; margin-top: auto; padding-top: 3px; pointer-events: none; }
-.deck-card-face .card-indicator { pointer-events: auto; }
-.deck-card-face > .deck-card-hints { pointer-events: none; }
-.deck-card-face > .card-indicators.is-tile + .deck-card-hints { min-height: 16px; margin-top: 1px; padding-top: 0; }
-/* 2026-11-08: the preview variant lives in the meta row (card-preview.css): one 16px icon size, one 8px step like the
-   tags beside it; the row's own 16px insets carry the shared axis. Only semantic tones (due, gate, milestone) differ. */
-.card-indicators.is-preview { display: flex; gap: 8px; }
-.card-indicators.is-preview .card-indicator { min-width: 24px; min-height: 24px; }
-.card-indicators.is-preview .card-indicator > svg { width: 16px; height: 16px; }
+.deck-card-face-meta { display: flex; flex-direction: column; flex: 0 0 auto; gap: 3px; min-width: 0; margin-top: auto; padding-top: 3px; color: var(--card-muted); }
+.deck-card-face-meta:empty { display: none; }
+/* 2026-11-11: a separate Hand row leaves the centered medallion clear without squeezing the status line. */
+.deck-card-hand-row { display: flex; align-items: center; min-height: 14px; }
+.hand-slot .deck-card-hand-row > .card-hand-indicator { display: none; }
+.card-face-status { display: flex; align-items: baseline; gap: 3px; min-width: 0; font-size: 10px; line-height: 14px; font-weight: 400; }
+.card-face-state { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.card-face-due { flex: 0 0 auto; white-space: nowrap; }
+.card-face-state + .card-face-due::before { content: '·'; margin-right: 3px; }
+.card-face-due.is-urgent { color: var(--danger); }
 .card-indicators.is-table { flex: 0 0 auto; gap: 4px; }
 .card-indicators.is-table .card-indicator > svg { width: 12px; height: 12px; }
 .card-indicators.is-table .card-gate-indicator { min-width: 34px; }
 
-/* Play appears only over a hovered/focused Task; it does not consume title space at rest. */
+.hand-icon { flex: 0 0 auto; color: var(--card-muted); }
+.card-indicator.card-hand-indicator { gap: 2px; white-space: nowrap; }
+.card-indicator.card-hand-indicator.is-foreign { color: var(--card-muted); }
+.card-indicator.card-hand-indicator.is-mine, .hand-icon.is-mine { color: var(--mint-edge, var(--card-highlight)); }
+:root:not(.dark) .card-indicator.card-hand-indicator.is-mine, :root:not(.dark) .hand-icon.is-mine { color: var(--action-mint-ink); }
+/* 2026-11-11: Hand keeps its readable icon and slot size in compact tables and Sub Cards too. */
+.card-indicator.card-hand-indicator > svg.hand-icon { width: 16px; height: 16px; }
+.card-indicator.card-hand-indicator > .card-hand-number { flex: 0 0 auto; min-width: 1ch; font: 600 11px/16px 'Geist Mono', monospace; font-variant-numeric: tabular-nums; text-align: center; }
+.card-hand-tooltip > header > strong { display: inline-flex; align-items: center; gap: var(--space-2); }

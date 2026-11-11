@@ -101,6 +101,30 @@ describe('card ordering', () => {
     expect(groups([])).toEqual([]);
   });
 
+  it('uses the same tag lane for equal tag sets regardless of assignment order', () => {
+    const cards = [card('first', { tags: ['Audio', 'audio'] }), card('second', { tags: ['audio', 'Audio'] })];
+    const before = structuredClone(cards);
+    const lanes = groups(cards, { order: 'tags', direction: 'asc' });
+    expect(lanes).toHaveLength(1);
+    expect(lanes[0].cards.map(entry => entry.id)).toEqual(['first', 'second']);
+    expect(cards).toEqual(before);
+  });
+
+  it('groups each card once by its first alphabetical tag in the chosen registry scope', () => {
+    const cards = [card('mixed', { tags: ['playtest', 'bug', 'audio'] }), card('free', { tags: ['later'] }), card('none')];
+    const before = structuredClone(cards);
+    const context = { projectTagNames: new Set(['playtest', 'bug']) };
+    const lookup = new Map(cards.map(entry => [entry.id, entry]));
+    for (const [tagScope, titles] of [
+      ['both', ['audio', 'later', 'Not tagged']], ['project', ['bug', 'Not tagged']], ['personal', ['audio', 'later', 'Not tagged']],
+    ] as const) {
+      const result = groupAndSortCards(cards, lookup, { ...defaultCardOrdering, order: 'tags', direction: 'asc', tagScope }, context);
+      expect(result.map(group => group.title)).toEqual(titles);
+      expect(result.flatMap(group => group.cards.map(entry => entry.id)).sort()).toEqual(['free', 'mixed', 'none']);
+    }
+    expect(cards).toEqual(before);
+  });
+
   it('rejects invalid URL values and round-trips ordering while preserving unrelated query and original query object', () => {
     expect(readOrdering(new URLSearchParams('order=invalid&then=date.up&direction=sideways'))).toEqual(defaultCardOrdering);
     const query = new URLSearchParams('deck=audio&card=card%3Aexample&q=voice&order=state&direction=desc&then=effort.asc');

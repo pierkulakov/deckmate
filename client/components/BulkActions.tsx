@@ -1,24 +1,27 @@
 import { defineText, locale, textNow, useLang, useText } from '../i18n.ts';
-import { priorityLabel, stateLabel } from '../locales/common.ts';
+import { kindLabel, priorityLabel, stateLabel } from '../locales/common.ts';
 import { collectProjectTags, validTagName } from '../../src/project-tags.ts';
 import { TagSelectionList } from './TagPicker.tsx';
 import { CardTags } from './CardTags.tsx';
-import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import * as Dialog from '@radix-ui/react-dialog';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
-import { Archive, ArchiveRestore, Bookmark, CalendarDays, Check, CopyPlus, Crown, Download, FileText, Flag, Gauge, Hand, IterationCw, Layers, LoaderCircle, MoreHorizontal, NotebookText, RotateCcw, Search, Tags, Trash2, UserRound, X } from 'lucide-react';
+import { Archive, ArchiveRestore, Bookmark, CalendarDays, Check, CopyPlus, Crown, Download, FileText, Flag, Hand, IterationCw, LoaderCircle, MoreHorizontal, NotebookText, RotateCcw, Route, Search, Tags, Trash2, UserRound, X } from 'lucide-react';
 import type { BulkChange, CopyProperty } from '../../src/bulk-contracts.ts';
 import { deckAcceptsCard, type CardContent, type CardPriority, type CatalogCard, type CatalogView } from '../../src/catalog-contracts.ts';
 import { cardExportColumns, defaultCardExportColumns, exportCardsCsv, type CardExportColumnId } from '../../src/card-export.ts';
 import type { DataSource } from '../../src/workspace-contracts.ts';
 import { shortReference } from '../../src/references.ts';
 import { CardOwnerAvatar } from './CardQuickSettings.tsx';
+import { PriorityIcon } from './PriorityIcon.tsx';
+import { EffortIcon } from './EffortIcon.tsx';
 import { DependencyStateWarning, dependencyConflicts, type DependencyConflict } from './DependencyWarning.tsx';
 import { Button } from './ui/button.tsx';
 import { BULK_SHORTCUTS, matchShortcut, shortcutTargetBlocked } from '../keyboard-shortcuts.ts';
 import { currentMember } from '../current-member.ts';
 import { orderedRunChoices, runChoiceLabel } from '../run-label.ts';
 import { failureMessage } from '../failure-message.ts';
+import { catalogStore } from '../catalog-store.ts';
 import { moveFocus } from '../focus.ts';
 import { AgentQueueHint } from './AgentQueueHint.tsx';
 import '../bulk-actions.css';
@@ -40,6 +43,7 @@ const text = defineText({
   separateTask: "Create a separate Task Card for a project document",
   unconfirmed: "Not all changes were confirmed. Check the catalog message and remaining selection.",
   saveFailed: "Could not save changes.",
+  requestedCards: "Cards in this request:",
   markdownFailed: (title: string) => `Could not load Markdown: ${title}`,
   exportChanged: (title: string) => `Card changed during export: ${title}. Refresh the selection.`,
   markdownMissing: (title: string) => `The server did not return complete Markdown: ${title}`,
@@ -63,7 +67,6 @@ const text = defineText({
   deleteHeroHint: "The Hero’s Sub Cards also move to Trash.",
   restoreHeroHint: "The selected Hero’s Sub Cards are also restored.",
   actions: "Bulk actions",
-  effortTitle: (sum: string) => `Effort · total ${sum}`,
   close: "Close bulk action",
   conflict: "The selected cards or catalog changed. Your form values were kept.",
   useCurrent: "Use current data",
@@ -118,13 +121,19 @@ const text = defineText({
   uiRemoveTags: "Remove tags",
   uiType: "Type",
   uiDocCard: "Doc Card",
-  uiTask: "Task",
   uiCopyProperties: "Copy properties",
   uiColumns: "Columns",
   uiDefaultColumns: "Default columns",
   uiMarkAsDone: "Mark as Done",
   uiCreateHero: "Create Hero",
   uiMoreActions: "More actions",
+  organization: "Organization",
+  properties: "Properties",
+  export: "Export",
+  lifecycle: "Lifecycle",
+  addToTrack: "Add to Track",
+  noTracks: "No Tracks in this project yet",
+  trackHint: "Adds the Track without removing existing links.",
   uiCancel: "Cancel"
 }, {
   selectFirst: "Сначала выберите карточки",
@@ -143,6 +152,7 @@ const text = defineText({
   separateTask: "Для документа проекта создайте отдельную Task Card",
   unconfirmed: "Не все изменения подтверждены. Проверьте сообщение каталога и оставшийся выбор.",
   saveFailed: "Не удалось сохранить изменения.",
+  requestedCards: "Карточки в этом запросе:",
   markdownFailed: (title: string) => `Не удалось загрузить Markdown: ${title}`,
   exportChanged: (title: string) => `Карточка изменилась во время экспорта: ${title}. Обновите выбор.`,
   markdownMissing: (title: string) => `Сервер не вернул полный Markdown: ${title}`,
@@ -166,7 +176,6 @@ const text = defineText({
   deleteHeroHint: "Вместе с Hero в корзину попадут её Sub Cards.",
   restoreHeroHint: "Sub Cards выбранной Hero также будут восстановлены.",
   actions: "Массовые действия",
-  effortTitle: (sum: string) => `Оценка · сумма ${sum}`,
   close: "Закрыть массовое действие",
   conflict: "Выбранные карточки или каталог изменились. Значения формы сохранены.",
   useCurrent: "Использовать актуальные данные",
@@ -233,13 +242,19 @@ const text = defineText({
   uiRemoveTags: "Убрать теги",
   uiType: "Тип",
   uiDocCard: "Doc Card",
-  uiTask: "Task",
   uiCopyProperties: "Копируемые свойства",
   uiColumns: "Столбцы",
   uiDefaultColumns: "Столбцы по умолчанию",
   uiMarkAsDone: "Принять",
   uiCreateHero: "Создать Hero",
   uiMoreActions: "Ещё действия",
+  organization: "Организация",
+  properties: "Свойства",
+  export: "Экспорт",
+  lifecycle: "Жизненный цикл",
+  addToTrack: "Добавить в трек",
+  noTracks: "В проекте ещё нет треков",
+  trackHint: "Добавляет трек, сохраняя существующие связи.",
   uiCancel: "Отмена"
 });
 
@@ -250,19 +265,24 @@ class LocalizedExportError extends Error {
   }
 }
 
-type ActionId = 'hand' | 'bookmark' | 'run' | 'milestone' | 'dueDate' | 'parent' | 'effort' | 'priority' | 'owner' | 'tags' | 'convert' | 'duplicate' | 'export' | 'done' | 'archive' | 'delete' | 'restore' | 'unarchive';
+type ActionId = 'hand' | 'bookmark' | 'run' | 'milestone' | 'dueDate' | 'parent' | 'track' | 'effort' | 'priority' | 'owner' | 'tags' | 'convert' | 'duplicate' | 'export' | 'done' | 'archive' | 'delete' | 'restore' | 'unarchive';
 const actions = [
   { id: 'hand', get label() { return textNow(text).uiHand; }, Icon: Hand }, { id: 'bookmark', get label() { return textNow(text).uiBookmark; }, Icon: Bookmark },
   { id: 'run', get label() { return textNow(text).uiRun; }, Icon: IterationCw }, { id: 'milestone', get label() { return textNow(text).uiMilestone; }, Icon: Flag },
   { id: 'dueDate', get label() { return textNow(text).uiDueDate; }, Icon: CalendarDays }, { id: 'parent', get label() { return textNow(text).uiHeroCard; }, Icon: Crown },
-  { id: 'effort', get label() { return textNow(text).uiEffort; }, Icon: Gauge }, { id: 'priority', get label() { return textNow(text).uiPriority; }, Icon: Layers },
+  { id: 'track', get label() { return textNow(text).addToTrack; }, Icon: Route },
+  { id: 'effort', get label() { return textNow(text).uiEffort; }, Icon: EffortIcon }, { id: 'priority', get label() { return textNow(text).uiPriority; }, Icon: null },
   { id: 'owner', get label() { return textNow(text).uiOwner; }, Icon: UserRound }, { id: 'tags', get label() { return textNow(text).uiTags; }, Icon: Tags },
   { id: 'convert', get label() { return textNow(text).uiDocCardTask; }, Icon: FileText },
   { id: 'duplicate', get label() { return textNow(text).uiCopyCards; }, Icon: CopyPlus }, { id: 'export', get label() { return textNow(text).uiExportCSV; }, Icon: Download },
   { id: 'done', get label() { return textNow(text).uiDone; }, Icon: Check }, { id: 'archive', get label() { return textNow(text).uiArchive; }, Icon: Archive },
 ] as const;
-const secondaryActions = new Set<ActionId>(['duplicate', 'export', 'done', 'archive']);
-const narrowActions = new Set<ActionId>(['bookmark', 'run', 'milestone', 'dueDate', 'hand', 'parent', 'tags', 'convert']);
+const actionGroups: { key: 'organization' | 'properties' | 'export' | 'lifecycle'; ids: ActionId[] }[] = [
+  { key: 'organization', ids: ['hand', 'track', 'parent', 'run', 'milestone', 'bookmark', 'duplicate'] },
+  { key: 'properties', ids: ['owner', 'tags', 'effort', 'priority', 'dueDate'] },
+  { key: 'export', ids: ['export'] },
+  { key: 'lifecycle', ids: ['done', 'convert', 'archive', 'unarchive', 'delete', 'restore'] },
+];
 const copyProperties: { id: CopyProperty; label: string }[] = [
   { id: 'owner', get label() { return textNow(text).uiOwner; } }, { id: 'effort', get label() { return textNow(text).uiEffort; } }, { id: 'priority', get label() { return textNow(text).uiPriority; } },
   { id: 'tags', get label() { return textNow(text).uiTags; } }, { id: 'run', get label() { return textNow(text).uiRun; } }, { id: 'milestone', get label() { return textNow(text).uiMilestone; } },
@@ -304,26 +324,30 @@ function isDate(value: string) {
   return /^\d{4}-\d{2}-\d{2}$/u.test(value) && Number.isFinite(Date.parse(value)) && new Date(value).toISOString().slice(0, 10) === value;
 }
 
-export interface BulkActionsProps {
+interface BulkActionsProps {
   cards: CatalogCard[];
   catalog: CatalogView;
   pending: boolean;
   onAction: (change: BulkChange) => Promise<boolean>;
   onOpenDeck?: () => void;
+  overflowOrganization?: ReactNode;
+  overflowExport?: ReactNode;
   source: DataSource;
   writable?: boolean;
 }
 
-export function BulkActions({ cards, catalog, pending, onAction, onOpenDeck, source, writable = source === 'sandbox' }: BulkActionsProps) {
+export function BulkActions({ cards, catalog, pending, onAction, onOpenDeck, overflowOrganization, overflowExport, source, writable = source === 'sandbox' }: BulkActionsProps) {
   const t = useText(text);
   const lang = useLang();
   const amount = (value: number) => new Intl.NumberFormat(locale(lang), { maximumFractionDigits: 2 }).format(value);
   const selected = useMemo(() => [...new Map(cards.map(card => [card.id, card])).values()], [cards]);
+  const commonPriority = selected.every(card => card.priority === selected[0]?.priority) ? selected[0]?.priority ?? null : null;
   const [menu, setMenu] = useState<ActionId | 'more' | null>(null);
   const [draft, setDraft] = useState<Draft>(() => initialDraft(selected, 'owner'));
   const [baseSignature, setBaseSignature] = useState('');
   const [running, setRunning] = useState(false);
   const [errorMessage, setError] = useState<string | (() => string)>('');
+  const [failedStateCards, setFailedStateCards] = useState<CatalogCard[]>([]);
   const error = typeof errorMessage === 'function' ? errorMessage() : errorMessage;
   const [noticeMessage, setNotice] = useState<string | (() => string)>('');
   const notice = typeof noticeMessage === 'function' ? noticeMessage() : noticeMessage;
@@ -336,6 +360,8 @@ export function BulkActions({ cards, catalog, pending, onAction, onOpenDeck, sou
   const exportRequest = useRef<AbortController | null>(null);
   const opener = useRef<HTMLElement | null>(null);
   const moreButton = useRef<HTMLButtonElement | null>(null);
+  const actionBar = useRef<HTMLDivElement | null>(null);
+  const [compact, setCompact] = useState(false);
   const openingDialogFromMenu = useRef(false);
   const dialog = useRef<HTMLDivElement | null>(null);
   const currentSelection = useRef('');
@@ -366,10 +392,25 @@ export function BulkActions({ cards, catalog, pending, onAction, onOpenDeck, sou
   const doneConflicts: DependencyConflict[] = useMemo(() => menu === 'done' && draft.mode === 'add'
     ? dependencyConflicts(selected, cardsById, 'done')
     : [], [menu, draft.mode, selected, cardsById]);
+  const directActions: ActionId[] = compact ? [] : ['owner', 'tags'];
+
+  useLayoutEffect(() => {
+    const bar = actionBar.current?.closest('.card-selection-bar, .planning-selection') ?? actionBar.current?.parentElement;
+    if (!bar) return;
+    const measure = () => {
+      const style = getComputedStyle(bar);
+      const width = bar.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
+      setCompact(width <= 520);
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(bar);
+    return () => observer.disconnect();
+  }, []);
 
   useEffect(() => {
     exportRequest.current?.abort();
-    if (!inFlight.current) { setMenu(null); setError(''); setConfirmingDependencies(false); setDependenciesConfirmed(false); }
+    if (!inFlight.current) { setMenu(null); setError(''); setFailedStateCards([]); setConfirmingDependencies(false); setDependenciesConfirmed(false); }
   }, [selectionKey]);
   useEffect(() => { duplicateIds.current.clear(); newHeroId.current = null; }, [source]);
   useEffect(() => () => exportRequest.current?.abort(), []);
@@ -410,6 +451,7 @@ export function BulkActions({ cards, catalog, pending, onAction, onOpenDeck, sou
     if (action !== 'export' && (!writable || source !== 'sandbox')) return t.sandbox;
     if (action !== 'export' && action !== 'restore' && selected.some(card => card.deleted)) return t.restoreFirst;
     if (action === 'done' && !taskOnly) return t.tasksOnly;
+    if (action === 'track' && !catalog.tracks.length) return t.noTracks;
     if (action === 'parent' && selected.some(card => card.kind !== 'task' && card.kind !== 'doc')) return t.tasksDocs;
     if (action === 'parent' && selected.some(card => parentsWithChildren.has(card.id))) return t.noNested;
     if (action === 'parent' && selected.some(card => card.archived)) return t.unarchiveFirst;
@@ -423,9 +465,11 @@ export function BulkActions({ cards, catalog, pending, onAction, onOpenDeck, sou
     if (reason(action)) return;
     const nextDraft = initialDraft(selected, action);
     if (action === 'convert') nextDraft.deckId = '';
+    if (action === 'track') nextDraft.name = '';
     if (action === 'parent') nextDraft.heroDeckId = catalog.decks.find(deck => deckAcceptsCard(deck.kind, 'hero'))?.id ?? '';
     if (target) opener.current = target;
     setDraft(nextDraft); setBaseSignature(signature); setError(''); setNotice(''); setMenu(action);
+    setFailedStateCards([]);
     setConfirmingDependencies(false); setDependenciesConfirmed(false);
   }
   function closeMenu() {
@@ -435,12 +479,23 @@ export function BulkActions({ cards, catalog, pending, onAction, onOpenDeck, sou
   }
   async function mutate(change: BulkChange) {
     if (inFlight.current || mutationDisabled || conflict) return;
-    inFlight.current = true; setRunning(true); setError('');
+    const store = catalogStore(source);
+    const previousResult = store.getSnapshot();
+    inFlight.current = true; setRunning(true); setError(''); setFailedStateCards([]);
     try {
       const saved = await onAction(change);
       if (saved) { duplicateIds.current.clear(); newHeroId.current = null; setMenu(null); }
-      else setError(() => () => textNow(text).unconfirmed);
-    } catch (failure) { setError(() => failureMessage(failure, textNow(text).saveFailed)); }
+      else {
+        // 2026-11-11: edit returns false rather than throwing on HTTP refusal; keep its reason beside the unchanged form.
+        const result = store.getSnapshot();
+        const message = result !== previousResult ? result.error || result.warning : null;
+        setError(() => message || (() => textNow(text).unconfirmed));
+        if (change.kind === 'state') setFailedStateCards(selected);
+      }
+    } catch (failure) {
+      setError(() => failureMessage(failure, textNow(text).saveFailed));
+      if (change.kind === 'state') setFailedStateCards(selected);
+    }
     finally { inFlight.current = false; setRunning(false); }
   }
   async function downloadCsv() {
@@ -489,6 +544,7 @@ export function BulkActions({ cards, catalog, pending, onAction, onOpenDeck, sou
     if (!menu || menu === 'more' || menu === 'export') return null;
     switch (menu) {
       case 'hand': return draft.memberId ? { kind: 'hand', memberId: draft.memberId, mode: draft.mode } : null;
+      case 'track': return catalog.tracks.some(track => track.id === draft.name) ? { kind: 'track', trackId: draft.name, mode: 'add' } : null;
       case 'bookmark': return { kind: 'options', patch: { bookmarked: draft.mode === 'add' } };
       case 'run': case 'milestone': return { kind: 'options', patch: { [menu]: draft.name.trim() || null } };
       case 'dueDate': return !draft.date || isDate(draft.date) ? { kind: 'options', patch: { dueDate: draft.date || null } } : null;
@@ -559,10 +615,15 @@ export function BulkActions({ cards, catalog, pending, onAction, onOpenDeck, sou
           {!members.length && <p className="bulk-help">{t.noMembers}</p>}
         </div>
         {menu === 'hand' && <p className="bulk-help">{t.handHint}</p>}
-        {menu === 'owner' && members.some(member => member.kind === 'agent') && <AgentQueueHint />}
-        {menu === 'hand' && draft.mode === 'add' && members.find(member => member.id === draft.memberId)?.kind === 'agent' && <AgentQueueHint assignment="hand" />}
+        {menu === 'owner' && members.some(member => member.kind === 'agent') && <div className="bulk-agent-hint"><AgentQueueHint /></div>}
+        {menu === 'hand' && draft.mode === 'add' && members.find(member => member.id === draft.memberId)?.kind === 'agent' && <div className="bulk-agent-hint"><AgentQueueHint assignment="hand" /></div>}
       </>;
       case 'bookmark': return <>{currentValues(card => card.bookmarked ? t.uiBookmarked : t.uiNotBookmarked)}{modeControl(t.uiBookmarkAll, t.uiClearBookmarks)}</>;
+      case 'track': return <><p className="bulk-help">{t.trackHint}</p><div className="bulk-pick-list">{catalog.tracks.map(track => {
+        const included = selected.every(card => card.trackIds.includes(track.id));
+        return <button key={track.id} type="button" className="bulk-pick-option" aria-pressed={draft.name === track.id} disabled={included}
+          onClick={() => update('name', track.id)}><Route size={16} /><span>{track.title}</span>{included && <Check size={15} />}</button>;
+      })}</div></>;
       case 'run': case 'milestone': {
         const choices = menu === 'run'
           ? orderedRunChoices(catalog.runs ?? []).map(run => ({ id: run.id, label: runChoiceLabel(run, lang) }))
@@ -574,7 +635,7 @@ export function BulkActions({ cards, catalog, pending, onAction, onOpenDeck, sou
       }
       case 'dueDate': return <>{currentValues(card => card.dueDate ? new Intl.DateTimeFormat(locale(lang), { timeZone: 'UTC' }).format(new Date(`${card.dueDate}T00:00:00Z`)) : t.uiNone)}<label className="bulk-field">{t.uiDueDate}<input data-autofocus type="date" value={draft.date} onChange={event => update('date', event.target.value)} /></label><Button type="button" variant="ghost" size="sm" onClick={() => update('date', '')}>{t.uiClearDueDate}</Button></>;
       case 'effort': return <>{currentValues(card => card.effort == null ? t.uiNone : new Intl.NumberFormat(locale(lang), { maximumFractionDigits: 20 }).format(card.effort))}<p className="bulk-help">{t.effortHint(effortLabel)}</p><label className="bulk-field">{t.uiEffort}<input data-autofocus type="number" min="0" step="any" value={draft.effort} placeholder={t.uiNone} onChange={event => update('effort', event.target.value)} /></label><Button type="button" variant="ghost" size="sm" onClick={() => update('effort', '')}>{t.uiClearEffort}</Button></>;
-      case 'priority': return <>{currentValues(card => card.priority ? priorityLabel(card.priority, lang) : t.uiNone)}<div className="bulk-pick-list">{([{ value: 'high', label: priorityLabel('high', lang) }, { value: 'medium', label: priorityLabel('medium', lang) }, { value: 'low', label: priorityLabel('low', lang) }, { value: '', get label() { return textNow(text).uiNone; } }] as const).map(priority => <button key={priority.value} type="button" className="bulk-pick-option" aria-pressed={draft.priority === priority.value} onClick={() => update('priority', priority.value)}><Layers size={16} /><span>{priority.label}</span>{draft.priority === priority.value && <Check size={15} />}</button>)}</div></>;
+      case 'priority': return <>{currentValues(card => card.priority ? priorityLabel(card.priority, lang) : t.uiNone)}<div className="bulk-pick-list">{([{ value: 'high', label: priorityLabel('high', lang) }, { value: 'medium', label: priorityLabel('medium', lang) }, { value: 'low', label: priorityLabel('low', lang) }, { value: '', get label() { return textNow(text).uiNone; } }] as const).map(priority => <button key={priority.value} type="button" className="bulk-pick-option" aria-pressed={draft.priority === priority.value} onClick={() => update('priority', priority.value)}><span aria-hidden="true" style={{ flex: '0 0 auto', display: 'inline-flex' }}><PriorityIcon priority={priority.value || null} size={16} /></span><span>{priority.label}</span>{draft.priority === priority.value && <Check size={15} />}</button>)}</div></>;
       case 'parent': return <>
         <div className="bulk-tabs" role="group" aria-label={t.uiHeroCard}><Button type="button" variant="ghost" size="sm" aria-pressed={draft.heroMode === 'existing'} onClick={() => update('heroMode', 'existing')}>{t.uiFindExisting}</Button><Button type="button" variant="ghost" size="sm" aria-pressed={draft.heroMode === 'new'} onClick={() => update('heroMode', 'new')}>{t.uiCreateNew}</Button></div>
         {draft.heroMode === 'new' ? <><label className="bulk-field">{t.uiHeroTitle}<input data-autofocus value={draft.heroTitle} maxLength={1000} onChange={event => update('heroTitle', event.target.value)} /></label><label className="bulk-field">{t.uiCreateCardInDeck}<select value={draft.heroDeckId} onChange={event => update('heroDeckId', event.target.value)}><option value="">{t.uiChooseDeck}</option>{catalog.decks.filter(deck => deckAcceptsCard(deck.kind, 'hero')).map(deck => <option key={deck.id} value={deck.id}>{deck.title}</option>)}</select></label><p className="bulk-help">{t.heroHint}</p></> : <>
@@ -589,8 +650,9 @@ export function BulkActions({ cards, catalog, pending, onAction, onOpenDeck, sou
           </div>
         </>}
       </>;
-      case 'tags': return <>{modeControl(t.uiAddTags, t.uiRemoveTags)}<CardTags tags={draft.tags} definitions={catalog.projectTags} /><TagSelectionList tags={knownTags} definitions={catalog.projectTags} selected={draft.tags} query={draft.query} onQueryChange={value => update('query', value)} onToggle={name => { const tags = draft.tags; update('tags', tags.includes(name) ? tags.filter(value => value !== name) : [...tags, name]); }} disabled={busy} />{validTagName(draft.query.trim()) && !knownTags.some(tag => tag.name === draft.query.trim()) && <Button type="button" variant="ghost" size="sm" disabled={busy} onClick={() => { update('tags', [...new Set([...draft.tags, draft.query.trim()])]); update('query', ''); }}>{t.addTag(draft.query.trim())}</Button>}</>;
-      case 'convert': return <><p className="bulk-help">{t.convertHint}</p><label className="bulk-field">{t.uiType}<select value={draft.cardKind} onChange={event => { update('cardKind', event.target.value as 'task' | 'doc'); update('deckId', ''); }}><option value="doc">{t.uiDocCard}</option><option value="task">{t.uiTask}</option></select></label>{deckPicker()}</>;
+      case 'tags': return <>{modeControl(t.uiAddTags, t.uiRemoveTags)}<CardTags tags={draft.tags} definitions={catalog.projectTags} /><TagSelectionList tags={knownTags} definitions={catalog.projectTags} selected={draft.tags} query={draft.query} onQueryChange={value => update('query', value)} onToggle={name => { const tags = draft.tags; update('tags', tags.includes(name) ? tags.filter(value => value !== name) : [...tags, name]); }}
+        assignedCards={selected} disabled={busy} />{validTagName(draft.query.trim()) && !knownTags.some(tag => tag.name === draft.query.trim()) && <Button type="button" variant="ghost" size="sm" disabled={busy} onClick={() => { update('tags', [...new Set([...draft.tags, draft.query.trim()])]); update('query', ''); }}>{t.addTag(draft.query.trim())}</Button>}</>;
+      case 'convert': return <><p className="bulk-help">{t.convertHint}</p><label className="bulk-field">{t.uiType}<select value={draft.cardKind} onChange={event => { update('cardKind', event.target.value as 'task' | 'doc'); update('deckId', ''); }}><option value="doc">{t.uiDocCard}</option><option value="task">{kindLabel('task', lang)}</option></select></label>{deckPicker()}</>;
       case 'duplicate': return <>{deckPicker()}<p className="bulk-help">{t.copyHint}</p><fieldset className="bulk-checkboxes"><legend>{t.uiCopyProperties}</legend>{copyProperties.map(property => <label key={property.id}><input type="checkbox" checked={draft.properties.includes(property.id)} onChange={event => update('properties', event.target.checked ? [...draft.properties, property.id] : draft.properties.filter(value => value !== property.id))} />{property.label}</label>)}</fieldset></>;
       case 'export': return <><p className="bulk-help">{t.exportHint}</p><fieldset className="bulk-checkboxes"><legend>{t.uiColumns}</legend>{cardExportColumns.map(column => <label key={column.id}><input type="checkbox" checked={draft.columns.includes(column.id)} onChange={event => update('columns', event.target.checked ? [...draft.columns, column.id] : draft.columns.filter(value => value !== column.id))} />{column.label}</label>)}</fieldset><Button type="button" variant="ghost" size="sm" onClick={() => update('columns', [...defaultCardExportColumns])}>{t.uiDefaultColumns}</Button></>;
       case 'done': return <>{currentValues(card => stateLabel(card.state ?? 'not-started', lang))}{modeControl(t.uiMarkAsDone, t.reopen(stateLabel('not-started', lang)), selected.some(card => card.state === 'review'))}{selected.some(card => card.state === 'review') && <p className="bulk-help">{t.individualReturn}</p>}</>;
@@ -606,27 +668,30 @@ export function BulkActions({ cards, catalog, pending, onAction, onOpenDeck, sou
   if (menu === 'parent' && draft.heroMode === 'new') submitLabel = t.uiCreateHero;
   if (menu === 'duplicate') submitLabel = t.copyCount(selected.length);
 
-  return <div className="bulk-actions" role="group" aria-label={t.actions} aria-busy={busy}>
-    {actions.map(action => {
+  return <div ref={actionBar} className="bulk-actions" role="group" aria-label={t.actions} aria-busy={busy}>
+    {actions.filter(action => directActions.includes(action.id)).map(action => {
       const disabled = reason(action.id);
       const shortcut = shortcutForBulkAction(action.id);
-      const actionTitle = action.id === 'effort' ? t.effortTitle(effortLabel) : action.label;
-      let className = 'bulk-action-button';
-      if (secondaryActions.has(action.id)) className += ' bulk-action-secondary';
-      if (narrowActions.has(action.id)) className += ' bulk-action-narrow';
-      if (action.id === 'effort') className += ' bulk-action-effort';
-      return <Button key={action.id} type="button" variant="ghost" size="icon" className={className} disabled={Boolean(disabled)} aria-label={action.label} aria-keyshortcuts={shortcut?.keys} aria-haspopup="dialog" aria-expanded={menu === action.id} aria-controls={menu === action.id ? id + '-dialog' : undefined} title={disabled ?? (actionTitle + (shortcut ? ' · ' + shortcut.keys : ''))} data-active={action.id === 'bookmark' && selected.every(card => card.bookmarked) || action.id === 'done' && taskOnly && selected.every(card => card.state === 'done') || undefined} onClick={event => openAction(action.id, event.currentTarget)}><action.Icon size={16} />{action.id === 'effort' && <small>{effortLabel}</small>}</Button>;
+      return <Button key={action.id} type="button" variant="ghost" size="icon" className="bulk-action-button" disabled={Boolean(disabled)} aria-label={action.label} aria-keyshortcuts={shortcut?.keys} aria-haspopup="dialog" aria-expanded={menu === action.id} aria-controls={menu === action.id ? id + '-dialog' : undefined} title={disabled ?? (action.label + (shortcut ? ' · ' + shortcut.keys : ''))} onClick={event => openAction(action.id, event.currentTarget)}>{action.Icon ? <action.Icon size={16} /> : <span aria-hidden="true"><PriorityIcon priority={commonPriority} size={16} /></span>}</Button>;
     })}
-    <DropdownMenu.Root modal={false} open={menu === 'more'} onOpenChange={open => { if (open) { openingDialogFromMenu.current = false; setMenu('more'); setError(''); } else if (menu === 'more') setMenu(null); }}>
+    <DropdownMenu.Root modal={false} open={menu === 'more'} onOpenChange={open => {
+      if (open) { openingDialogFromMenu.current = false; setMenu('more'); setError(''); }
+      else setMenu(current => current === 'more' ? null : current);
+    }}>
       <DropdownMenu.Trigger asChild><Button ref={moreButton} type="button" variant="ghost" size="icon" disabled={busy || !selected.length} aria-label={t.uiMoreActions} title={t.uiMoreActions}><MoreHorizontal size={17} /></Button></DropdownMenu.Trigger>
-      <DropdownMenu.Portal><DropdownMenu.Content className="bulk-more-menu" align="end" sideOffset={7} collisionPadding={10} onEscapeKeyDown={event => { event.preventDefault(); closeMenu(); }} onCloseAutoFocus={event => { if (openingDialogFromMenu.current) event.preventDefault(); }}>
-        {actions.map(action => <DropdownMenu.Item key={action.id} className="bulk-more-item" disabled={Boolean(reason(action.id))} onSelect={event => { event.preventDefault(); openingDialogFromMenu.current = true; openAction(action.id, moreButton.current ?? undefined); }}><action.Icon size={16} /><span>{action.label}</span></DropdownMenu.Item>)}
-        <DropdownMenu.Separator className="bulk-more-separator" />
-        {extraActions.map(action => <DropdownMenu.Item key={action.id} className="bulk-more-item" disabled={Boolean(reason(action.id))} onSelect={event => { event.preventDefault(); openingDialogFromMenu.current = true; openAction(action.id, moreButton.current ?? undefined); }}><action.Icon size={16} /><span>{action.label}</span></DropdownMenu.Item>)}
+      <DropdownMenu.Portal><DropdownMenu.Content className="bulk-more-menu dialog-panel" align="end" sideOffset={7} collisionPadding={10} onEscapeKeyDown={event => { event.preventDefault(); closeMenu(); }} onCloseAutoFocus={event => { if (openingDialogFromMenu.current) event.preventDefault(); }}>
+        {actionGroups.map(group => <DropdownMenu.Group key={group.key}>
+          <DropdownMenu.Label className="bulk-more-heading">{t[group.key]}</DropdownMenu.Label>
+          {compact && group.key === 'organization' && overflowOrganization}
+          {compact && group.key === 'export' && overflowExport}
+          {[...actions, ...extraActions].filter(action => group.ids.includes(action.id) && !directActions.includes(action.id)).map(action =>
+            <DropdownMenu.Item key={action.id} className="bulk-more-item" disabled={Boolean(reason(action.id))} title={reason(action.id) ?? undefined}
+              onSelect={event => { event.preventDefault(); openingDialogFromMenu.current = true; openAction(action.id, moreButton.current ?? undefined); }}>{action.Icon ? <action.Icon size={16} /> : <span aria-hidden="true"><PriorityIcon priority={commonPriority} size={16} /></span>}<span>{action.label}</span></DropdownMenu.Item>)}
+        </DropdownMenu.Group>)}
       </DropdownMenu.Content></DropdownMenu.Portal>
     </DropdownMenu.Root>
     {(notice || error && !dialogOpen) && <span className="bulk-action-feedback" role={error ? 'alert' : 'status'} title={error || notice}>{error || notice}</span>}
-    <Dialog.Root modal={false} open={dialogOpen} onOpenChange={open => { if (!open) closeMenu(); }}><Dialog.Portal><Dialog.Content ref={dialog} id={id + '-dialog'} className="bulk-actions-dialog" aria-busy={busy}
+    <Dialog.Root modal={false} open={dialogOpen} onOpenChange={open => { if (!open) closeMenu(); }}><Dialog.Portal><Dialog.Content ref={dialog} id={id + '-dialog'} className="bulk-actions-dialog dialog-panel" aria-busy={busy}
       onOpenAutoFocus={event => {
         event.preventDefault();
         const target = dialog.current?.querySelector<HTMLElement>('[data-autofocus]')
@@ -634,10 +699,13 @@ export function BulkActions({ cards, catalog, pending, onAction, onOpenDeck, sou
           ?? dialog.current?.querySelector<HTMLElement>('.bulk-dialog-footer button:not(:disabled)');
         moveFocus(target);
       }}
-      onCloseAutoFocus={event => { event.preventDefault(); if (opener.current?.isConnected) moveFocus(opener.current, { preventScroll: true }); }}
+      onCloseAutoFocus={event => {
+        event.preventDefault();
+        const target = opener.current?.isConnected && opener.current.getClientRects().length ? opener.current : moreButton.current;
+        if (target?.isConnected) moveFocus(target, { preventScroll: true });
+      }}
       onEscapeKeyDown={event => { event.preventDefault(); closeMenu(); }}>
-      <header className="bulk-dialog-header"><div><Dialog.Title>{actionLabel}</Dialog.Title><Dialog.Description>{t.selectedCount(selected.length)}</Dialog.Description></div><Button type="button" variant="ghost" size="icon" aria-label={t.close} onClick={closeMenu}><X size={17} /></Button></header>
-      {conflict && <div className="bulk-action-warning" role="alert">{t.conflict}<Button type="button" variant="outline" size="sm" disabled={busy} onClick={() => { setBaseSignature(signature); setError(''); }}>{t.useCurrent}</Button></div>}
+      <header className="bulk-dialog-header dialog-head"><div><Dialog.Title className="dialog-title">{actionLabel}</Dialog.Title><Dialog.Description className="page-caption">{t.selectedCount(selected.length)}</Dialog.Description></div><Button type="button" variant="ghost" size="icon" aria-label={t.close} onClick={closeMenu}><X size={17} /></Button></header>
       <form onSubmit={event => { event.preventDefault(); if (menu === 'export') void downloadCsv(); else {
         const change = changeForAction();
         if (!change) { setError(() => () => textNow(text).invalid); return; }
@@ -645,12 +713,17 @@ export function BulkActions({ cards, catalog, pending, onAction, onOpenDeck, sou
         if (doneConflicts.length > 0 && !dependenciesConfirmed) { setConfirmingDependencies(true); return; }
         void mutate(change);
       } }}>
-        <fieldset className="bulk-dialog-body" disabled={busy}>{panelContent()}</fieldset>
+        <div className="bulk-dialog-body dialog-body">
+        {conflict && <div className="bulk-action-warning" role="alert">{t.conflict}<Button type="button" variant="outline" size="sm" disabled={busy} onClick={() => { setBaseSignature(signature); setError(''); }}>{t.useCurrent}</Button></div>}
+        <fieldset disabled={busy}>{panelContent()}</fieldset>
         {confirmingDependencies && doneConflicts.length > 0 && <DependencyStateWarning conflicts={doneConflicts} busy={busy}
           onConfirm={() => { setDependenciesConfirmed(true); setConfirmingDependencies(false); const change = changeForAction(); if (change) void mutate(change); }}
           onCancel={() => setConfirmingDependencies(false)} />}
-        {error && <p className="bulk-action-warning" role="alert">{error}</p>}
-        <footer className="bulk-dialog-footer"><Button type="button" variant="ghost" size="sm" onClick={closeMenu}>{t.uiCancel}</Button><Button type="submit" size="sm" disabled={busy || conflict || overLimit || !selected.length || menu !== 'export' && source !== 'sandbox' || menu === 'export' && draft.columns.length === 0}>{running && <LoaderCircle size={14} className="spin" />}{submitLabel}</Button></footer>
+        {error && <div className="bulk-action-warning" role="alert"><p>{error}</p>
+          {failedStateCards.length > 0 && <><p>{t.requestedCards}</p><ul>{failedStateCards.map(card => <li key={card.id}>{card.title}</li>)}</ul></>}
+        </div>}
+        </div>
+        <footer className="bulk-dialog-footer dialog-foot"><Button type="button" variant="ghost" size="sm" onClick={closeMenu}>{t.uiCancel}</Button><Button type="submit" size="sm" disabled={busy || conflict || overLimit || !selected.length || menu !== 'export' && source !== 'sandbox' || menu === 'export' && draft.columns.length === 0}>{running && <LoaderCircle size={14} className="spin" />}{submitLabel}</Button></footer>
       </form>
     </Dialog.Content></Dialog.Portal></Dialog.Root>
   </div>;

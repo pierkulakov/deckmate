@@ -10,13 +10,13 @@ import '../deck-panels.css';
 
 const text = defineText({
   directionLabel: (label: string, descending: boolean) => `${label}: ${descending ? 'descending' : 'ascending'} order`,
-  tagLabel: (label: string) => `Tags: ${label}`,
+  tagLabel: (label: string) => `By first tag: ${label}`,
   moreLess: "More → less",
   lessMore: "Less → more",
   laterEarlier: "Later → earlier",
   earlierLater: "Earlier → later",
   learnMore: "Learn more",
-  tagsHint: (label: string) => `Tags · ${label}. Cannot be a secondary order or use Compact.`,
+  tagsHint: (label: string) => `By first alphabetical tag · ${label}. Each card appears once. Cannot be a secondary order or use Compact.`,
   manualHint: "Manual · drag order and Deck zones, shared by everyone",
   ascending: "ascending",
   descending: "descending",
@@ -37,8 +37,8 @@ const text = defineText({
   uiRun: "Run",
   uiMilestone: "Milestone",
   uiProjectTags: "Project Tags",
-  uiProjectPersonalTags: "Project & Personal Tags",
-  uiPersonalTags: "Personal Tags",
+  uiProjectPersonalTags: "All tags",
+  uiPersonalTags: "Outside registry",
   uiManual: "Manual",
   uiOwner: "Owner",
   uiLastUpdated: "Last updated",
@@ -48,23 +48,25 @@ const text = defineText({
   uiHeroCard: "Hero Card",
   uiDeck: "Deck",
   uiOrdering: "Ordering",
-  uiTags: "Tags",
+  uiTags: "By first tag",
   uiMultiSort: "Multi Sort",
   uiCompact: "Compact",
   uiHideEmpty: "Hide empty",
   uiTable: "Table",
+  uiCards: "Cards",
+  uiView: "View",
   uiDefaultView: "Default view",
   uiReset: "Reset",
   uiSave: "Save"
 }, {
   directionLabel: (label: string, descending: boolean) => `${label}: ${descending ? 'по убыванию' : 'по возрастанию'}`,
-  tagLabel: (label: string) => `Теги: ${label}`,
+  tagLabel: (label: string) => `По первому тегу: ${label}`,
   moreLess: "Больше → меньше",
   lessMore: "Меньше → больше",
   laterEarlier: "Поздние → ранние",
   earlierLater: "Ранние → поздние",
   learnMore: "Подробнее",
-  tagsHint: (label: string) => `Теги · ${label}. Не бывают вторичным порядком и не сворачиваются в компактный вид.`,
+  tagsHint: (label: string) => `По первому тегу по алфавиту · ${label}. Каждая карточка показана один раз. Не бывает вторичным порядком и не сворачивается в компактный вид.`,
   manualHint: "Вручную · порядок перетаскиванием и зоны колоды, общий для всех",
   ascending: "по возрастанию",
   descending: "по убыванию",
@@ -85,8 +87,8 @@ const text = defineText({
   uiRun: "Run",
   uiMilestone: "Milestone",
   uiProjectTags: "Теги проекта",
-  uiProjectPersonalTags: "Теги проекта и личные",
-  uiPersonalTags: "Личные теги",
+  uiProjectPersonalTags: "Все теги",
+  uiPersonalTags: "Вне реестра",
   uiManual: "Вручную",
   uiOwner: "Исполнитель",
   /* 2026-11-08: the one-tap button shows the short label to fit the 120 px column (audit DW-06); the full wording stays in its title. */
@@ -97,19 +99,17 @@ const text = defineText({
   uiHeroCard: "Hero Card",
   uiDeck: "Колода",
   uiOrdering: "Порядок",
-  uiTags: "Теги",
+  uiTags: "По первому тегу",
   uiMultiSort: "Мультисортировка",
   uiCompact: "Компактно",
   uiHideEmpty: "Скрыть пустые",
   uiTable: "Таблица",
+  uiCards: "Карточки",
+  uiView: "Представление",
   uiDefaultView: "Вид по умолчанию",
   uiReset: "Сбросить",
   uiSave: "Сохранить"
 });
-
-
-// Ordering panel:
-// rows with two direction buttons, the Tags row, one-tap orders, switches, then the deck's Default View.
 
 
 const tagScopes = [
@@ -131,7 +131,7 @@ const oneTapOrders: readonly { key: CardOrderKey; label: string; hintLabel?: str
   { key: 'deck', get label() { return textNow(text).uiDeck; }, natural: 'asc', flips: false },
 ];
 
-export interface DefaultViewControls { canReset: boolean; canSave: boolean; onReset: () => void; onSave: () => void }
+interface DefaultViewControls { canReset: boolean; canSave: boolean; onReset: () => void; onSave: () => void }
 
 // Shared 28×12 toggle for Ordering and New Card's "Create another card after this one".
 export function Switch({ label, checked, disabled, hint, onChange }: { label: string; checked: boolean; disabled?: boolean; hint?: string; onChange: (checked: boolean) => void }) {
@@ -218,6 +218,10 @@ export function CardOrdering({ value, onChange, disabled = false, inDeck = false
     </div>
     <fieldset className="card-ordering-body" disabled={disabled}>
       <legend className="visually-hidden">{t.uiOrdering}</legend>
+      {view && onViewChange && <div className="control-segmented" role="group" aria-label={t.uiView}>
+        {([{ id: 'cards', label: t.uiCards }, { id: 'table', label: t.uiTable }] as const).map(layout =>
+          <button key={layout.id} type="button" style={{ flex: 1 }} aria-pressed={view === layout.id} onClick={() => onViewChange(layout.id)}>{layout.label}</button>)}
+      </div>}
       <div className="card-ordering-blocks">
         <div className="card-ordering-rows">
           {directionRows.map(row => <div key={row.key} className="card-ordering-row">
@@ -270,7 +274,6 @@ export function CardOrdering({ value, onChange, disabled = false, inDeck = false
           <Switch label={t.uiCompact} checked={value.compact && canCompact(value.order)} disabled={!canCompact(value.order)} hint={t.compactHint}
             onChange={checked => onChange({ ...value, compact: checked })} />
           {inDeck && onHideEmpty && <Switch label={t.uiHideEmpty} checked={hideEmpty} disabled={!manual} hint={t.hideEmptyHint} onChange={onHideEmpty} />}
-          {view && onViewChange && <Switch label={t.uiTable} checked={view === 'table'} onChange={checked => onViewChange(checked ? 'table' : 'cards')} />}
         </div>
       </div>
       {defaultView && <div className="card-ordering-default" role="group" aria-label={t.uiDefaultView}>

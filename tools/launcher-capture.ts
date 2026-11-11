@@ -15,17 +15,22 @@ const output = process.env.DECKMATE_LAUNCHER_CAPTURE_OUTPUT || path.join(here, '
 
 interface Frame {
   name: string; theme: 'dark' | 'light'; lang: 'en' | 'ru'; size: [number, number]; page?: 'whats-new';
-  state?: 'empty' | 'error' | 'hover-row' | 'focus-open' | 'focus-row' | 'focus-workspace';
+  state?: 'empty' | 'one' | 'error' | 'hover-row' | 'focus-open' | 'focus-row' | 'focus-workspace';
   scenario?: 'empty' | 'many' | 'missing' | 'opening' | 'error' | 'create';
   error?: string; zoom?: number; reducedMotion?: boolean;
   expand?: 'templates' | 'details';
+  covers?: 'visible' | 'hidden';
 }
 
 const frames: Frame[] = [
-  { name: 'dark-en-1280', theme: 'dark', lang: 'en', size: [1280, 820] },
-  { name: 'light-ru-1280', theme: 'light', lang: 'ru', size: [1280, 820] },
-  { name: 'dark-en-960', theme: 'dark', lang: 'en', size: [960, 600] },
-  { name: 'light-ru-960', theme: 'light', lang: 'ru', size: [960, 600] },
+  { name: 'dark-en-1280', theme: 'dark', lang: 'en', size: [1280, 820], covers: 'visible' },
+  { name: 'light-ru-1280', theme: 'light', lang: 'ru', size: [1280, 820], covers: 'visible' },
+  { name: 'dark-en-960-tall', theme: 'dark', lang: 'en', size: [960, 900], covers: 'visible' },
+  { name: 'light-ru-960-tall', theme: 'light', lang: 'ru', size: [960, 900], covers: 'visible' },
+  { name: 'dark-en-1440', theme: 'dark', lang: 'en', size: [1440, 900], covers: 'visible' },
+  { name: 'light-ru-1440', theme: 'light', lang: 'ru', size: [1440, 900], covers: 'visible' },
+  { name: 'dark-en-960', theme: 'dark', lang: 'en', size: [960, 600], covers: 'hidden' },
+  { name: 'light-ru-960', theme: 'light', lang: 'ru', size: [960, 600], covers: 'hidden' },
   { name: 'dark-en-empty', theme: 'dark', lang: 'en', size: [1280, 820], state: 'empty' },
   { name: 'light-ru-empty', theme: 'light', lang: 'ru', size: [1280, 820], state: 'empty' },
   { name: 'dark-en-error', theme: 'dark', lang: 'en', size: [1280, 820], state: 'error' },
@@ -45,6 +50,10 @@ const errorCodes = ['invalid-path', 'missing', 'not-empty', 'create-failed', 'st
 for (const theme of ['dark', 'light'] as const) {
   for (const lang of ['en', 'ru'] as const) {
     for (const size of [[960, 600], [1280, 820]] as [number, number][]) {
+      if ((theme === 'dark' && lang === 'ru') || (theme === 'light' && lang === 'en')) {
+        frames.push({ name: `${theme}-${lang}-${size[0]}`, theme, lang, size, covers: size[1] > 680 ? 'visible' : 'hidden' });
+      }
+      frames.push({ name: `${theme}-${lang}-one-${size[0]}`, theme, lang, size, state: 'one' });
       for (const scenario of ['empty', 'many', 'missing', 'opening', 'create'] as const) {
         frames.push({ name: `${theme}-${lang}-${scenario}-${size[0]}`, theme, lang, size, scenario });
       }
@@ -77,6 +86,7 @@ const STATE_SCRIPTS: Record<string, string> = {
   empty: `document.getAnimations().forEach(a => a.finish());
     state.recent = []; state.workspace = []; renderWorkspace(); renderRecent();
     document.getElementById('open-folder').focus();`,
+  one: `state.recent = [state.recent[0]]; state.workspace = []; renderWorkspace(); renderRecent();`,
   error: `document.getAnimations().forEach(a => a.finish()); document.getElementById('open-folder').click();`,
   'hover-row': `document.getAnimations().forEach(a => a.finish()); document.querySelectorAll('.recent-item')[1].classList.add('is-hover-demo');`,
   'focus-open': `document.getAnimations().forEach(a => a.finish())`,
@@ -84,9 +94,9 @@ const STATE_SCRIPTS: Record<string, string> = {
   'focus-workspace': `document.getAnimations().forEach(a => a.finish())`,
 };
 const FOCUS_CHECKS: Record<string, string> = {
-  'focus-open': `document.activeElement === document.getElementById('open-folder')`,
-  'focus-row': `document.activeElement === document.querySelector('#recent-list .recent-open')`,
-  'focus-workspace': `document.activeElement === document.querySelector('#workspace-list .recent-open')`,
+  'focus-open': `document.getElementById('open-folder').matches(':focus-visible')`,
+  'focus-row': `document.querySelector('#recent-list .recent-open').matches(':focus-visible')`,
+  'focus-workspace': `document.querySelector('#workspace-list .recent-open').matches(':focus-visible')`,
 };
 const MAX_TAB_PRESSES = 48;
 
@@ -177,7 +187,106 @@ async function verifyLauncherInteractions(page: HeadlessPage): Promise<void> {
   console.log('keyboard: Enter, arrows, superseding launch, translated recovery, Escape and Delete passed');
 }
 
+async function verifyControlStates(page: HeadlessPage): Promise<void> {
+  await navigateAndWait(page, 'pointer checks');
+  await waitForPageReady(page, 'pointer checks');
+  const point = async (selector: string) => page.callFunction(`selector => {
+    const box = document.querySelector(selector).getBoundingClientRect();
+    return { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+  }`, selector);
+  const move = async (coordinates: { x: number; y: number }, buttons = 0) => page.send('Input.dispatchMouseEvent', { type: 'mouseMoved', ...coordinates, buttons });
+  const appearance = `(() => { const style = getComputedStyle(document.getElementById('open-folder')); return [style.backgroundColor, style.color, style.opacity].join('|'); })()`;
+  await move({ x: 0, y: 0 });
+  const idle = await page.evaluate(appearance);
+  const open = await point('#open-folder');
+  await move(open);
+  await sleep(150);
+  if (await page.evaluate(appearance) === idle) throw new Error('Pointer: the primary button has no hover feedback');
+  await page.send('Input.dispatchMouseEvent', { type: 'mousePressed', ...open, button: 'left', buttons: 1, clickCount: 1 });
+  await sleep(150);
+  const press = await page.evaluate(`new DOMMatrixReadOnly(getComputedStyle(document.getElementById('open-folder')).transform).m42`);
+  if (Math.abs(press - 1) > .05) throw new Error(`Pointer: expected a 1px press, got ${press}`);
+  await move({ x: 0, y: 0 }, 1);
+  await page.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: 0, y: 0, button: 'left', buttons: 0, clickCount: 1 });
+  await sleep(50);
+  if (await page.evaluate(appearance) !== idle) throw new Error('Pointer: the button hover did not clear immediately');
+  const row = `getComputedStyle(document.querySelector('#last-list .recent-open')).backgroundColor`;
+  const rowIdle = await page.evaluate(row);
+  await move(await point('#last-list .recent-open'));
+  await sleep(150);
+  if (await page.evaluate(row) === rowIdle) throw new Error('Pointer: the project row has no hover feedback');
+  await move(await point('#recent-list .recent-open'));
+  await sleep(50);
+  if (await page.evaluate(row) !== rowIdle) throw new Error('Pointer: the project row hover did not clear immediately');
+  await move({ x: 0, y: 0 });
+  console.log('pointer: hover, immediate exit and press passed');
+}
+
 interface Shot { name: string; width: number; height: number; bytes: number; sha256: string; zoom?: number }
+
+async function verifyCovers(page: HeadlessPage, frame: Frame): Promise<void> {
+  const problem = await page.callFunction(`async expected => {
+    const isVisible = node => {
+      for (let element = node; element; element = element.parentElement) {
+        const style = getComputedStyle(element);
+        if (style.display === 'none' || style.visibility !== 'visible' || Number(style.opacity) === 0) return false;
+      }
+      return true;
+    };
+    const intro = document.querySelector('.intro').getBoundingClientRect();
+    const actionsElement = document.querySelector('.actions');
+    const actions = actionsElement.getBoundingClientRect();
+    const table = document.querySelector('.table');
+    if (!isVisible(actionsElement) || actions.left < intro.left || actions.right > intro.right ||
+        actions.top < intro.top || actions.bottom > intro.bottom) return 'project actions are clipped';
+    const visible = isVisible(table);
+    if (!visible) return expected === 'hidden' ? '' : 'cover table is hidden';
+    if (expected === 'hidden') return 'cover table should give the actions room';
+    const bounds = table.getBoundingClientRect();
+    const covers = [...table.querySelectorAll('.cover')];
+    if (covers.length !== 2) return 'expected two deck covers';
+    const overlaps = (a, b) => a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom;
+    for (const cover of covers) {
+      const box = cover.getBoundingClientRect();
+      if (!isVisible(cover) || !box.width || !box.height || box.left < bounds.left || box.right > bounds.right ||
+          box.top < bounds.top || box.bottom > bounds.bottom || box.top < intro.top || box.bottom > intro.bottom) {
+        return 'a cover is hidden or clipped';
+      }
+      if (overlaps(box, actions)) return 'a cover overlaps the project actions';
+      if ([...table.querySelectorAll('.fan-card')].some(card => overlaps(box, card.getBoundingClientRect()))) {
+        return 'the card fan obscures a cover';
+      }
+      const backdrop = cover.querySelector('.cover-backdrop');
+      const face = getComputedStyle(backdrop, '::after');
+      if (!isVisible(backdrop) || face.content === 'none' || face.backgroundColor === 'rgba(0, 0, 0, 0)') return 'a cover face is hidden';
+      for (const part of cover.querySelectorAll('.cover-art, .cover-title, .cover-count')) {
+        const partBox = part.getBoundingClientRect();
+        if (!isVisible(part) || !partBox.width || !partBox.height || partBox.left < box.left || partBox.right > box.right ||
+            partBox.top < box.top || partBox.bottom > box.bottom) return 'cover art, title or count is clipped';
+      }
+      const background = getComputedStyle(cover.querySelector('.cover-art')).backgroundImage;
+      if (!background.startsWith('url("') || !background.endsWith('")')) return 'cover art is missing';
+      const image = new Image();
+      image.src = background.slice(5, -2);
+      try { await image.decode(); } catch { return 'cover art did not load'; }
+      if (!image.naturalWidth || !image.naturalHeight) return 'cover art is empty';
+    }
+    const fan = [...table.querySelectorAll('.fan-card')];
+    if (fan.length !== 3) return 'expected three cards in the fan';
+    for (const card of fan) {
+      const background = getComputedStyle(card).backgroundImage;
+      if (!background.startsWith('url("') || !background.endsWith('")')) return 'card art is missing';
+      const source = background.slice(5, -2);
+      const expectedFile = document.documentElement.classList.contains('dark') ? 'cards.png' : 'cards-light.png';
+      if (!new URL(source).pathname.endsWith('/' + expectedFile)) return 'card art does not match the theme';
+      const image = new Image(); image.src = source;
+      try { await image.decode(); } catch { return 'card art did not load'; }
+      if (image.naturalWidth !== 1310 || image.naturalHeight !== 326) return 'card art has unexpected dimensions';
+    }
+    return '';
+  }`, frame.covers);
+  if (problem) throw new Error(`${frame.name}: ${problem}`);
+}
 
 async function captureFrame(page: HeadlessPage, frame: Frame, destination: string): Promise<Shot> {
   const [width, height] = frame.size;
@@ -193,6 +302,8 @@ async function captureFrame(page: HeadlessPage, frame: Frame, destination: strin
   await navigateAndWait(page, frame.name, url.href);
   await page.callFunction(INJECT_STYLE, NO_MOTION);
   await waitForPageReady(page, frame.name, frame.page === 'whats-new' ? 'whats-new' : 'launcher');
+  const themeMatches = await page.callFunction('theme => document.documentElement.classList.contains("dark") === (theme === "dark")', frame.theme);
+  if (!themeMatches) throw new Error(`${frame.name}: expected ${frame.theme} theme`);
 
   const state = frame.state ?? 'list';
   if (frame.page !== 'whats-new') await page.evaluate(scriptFor(STATE_SCRIPTS, state, 'state'));
@@ -215,6 +326,7 @@ async function captureFrame(page: HeadlessPage, frame: Frame, destination: strin
   if (frame.page !== 'whats-new') {
     const overflow = await page.evaluate(`document.documentElement.scrollWidth > innerWidth`);
     if (overflow) throw new Error(`${frame.name}: horizontal overflow`);
+    if (frame.covers) await verifyCovers(page, frame);
     if (frame.scenario === 'opening' && await page.evaluate(`document.getElementById('open-folder').disabled`)) {
       throw new Error(`${frame.name}: choosing another project is blocked`);
     }
@@ -232,8 +344,12 @@ async function captureFrame(page: HeadlessPage, frame: Frame, destination: strin
   return { name: frame.name, width: pngWidth, height: pngHeight, bytes: png.length, sha256: createHash('sha256').update(png).digest('hex'), zoom };
 }
 
+export function launcherReadmeFrame(theme: 'dark' | 'light' = 'dark'): Frame {
+  return { name: `readme-${theme}-en-1280`, theme, lang: 'en', size: [1280, 820], covers: 'visible' };
+}
+
 // 2026-11-09: README captures must follow release versions without changing the launcher's standalone browser mock.
-export async function captureLauncherReadme(destination: string): Promise<Shot> {
+export async function captureLauncherReadme(destination: string, theme: 'dark' | 'light' = 'dark'): Promise<Shot> {
   const root = path.join(here, '..');
   const [deckmate, desktop] = await Promise.all(['package.json', 'desktop/package.json'].map(async file =>
     JSON.parse(await readFile(path.join(root, file), 'utf8')) as { version: string }));
@@ -242,14 +358,12 @@ export async function captureLauncherReadme(destination: string): Promise<Shot> 
     const source = String.raw`(() => {
       const now = Date.now();
       const recent = [
-        { path: 'D:\\Projects\\Hollow Signal', name: 'Hollow Signal', lastOpened: new Date(now - 90e3).toISOString() },
-        { path: 'D:\\Projects\\demo', name: 'demo', lastOpened: new Date(now - 5 * 3600e3).toISOString() },
-        { path: 'C:\\Users\\Someone\\Documents\\Долгий путь к релизу', name: 'Долгий путь к релизу', lastOpened: new Date(now - 3 * 86400e3).toISOString() },
+        { path: 'D:\\Projects\\Moonwake Studio', name: 'Moonwake Studio', lastOpened: new Date(now - 90e3).toISOString() },
+        { path: 'D:\\Projects\\Hollow Signal', name: 'Hollow Signal', lastOpened: new Date(now - 5 * 3600e3).toISOString() },
+        { path: 'D:\\Projects\\Harbor Tools', name: 'Harbor Tools', lastOpened: new Date(now - 3 * 86400e3).toISOString() },
       ];
       const workspace = [
-        { path: recent[0].path, name: recent[0].name, missing: false },
         { path: recent[2].path, name: recent[2].name, missing: false },
-        { path: 'D:\\Projects\\Old project', name: 'Old project', missing: true },
       ];
       window.deckmateDesktop = {
         async getState() { return { recent, workspace, lastProject: recent[0].path, version: ${JSON.stringify(desktop.version)}, deckmateVersion: ${JSON.stringify(deckmate.version)}, locale: 'en-US' }; },
@@ -268,7 +382,16 @@ export async function captureLauncherReadme(destination: string): Promise<Shot> 
       throw new Error(`Cannot register launcher bridge: ${error instanceof Error ? error.message : String(error)}`);
     }
     await navigateAndWait(page, 'initial load');
-    const shot = await captureFrame(page, frames[0], destination);
+    // A full-size CSS viewport keeps the decorative covers above the compact-height breakpoint.
+    const shot = await captureFrame(page, launcherReadmeFrame(theme), destination);
+    const projectsFit = await page.evaluate(`(() => {
+      const sections = document.querySelector('.project-sections').getBoundingClientRect();
+      return [...document.querySelectorAll('.recent-open')].every(row => {
+        const bounds = row.getBoundingClientRect();
+        return bounds.top >= sections.top && bounds.bottom <= sections.bottom;
+      });
+    })()`);
+    if (!projectsFit) throw new Error('README launcher cuts off a project row.');
     const footer = await page.evaluate('document.getElementById("version").textContent');
     const expected = deckmate.version === desktop.version ? `Deckmate ${deckmate.version}` : `Deckmate ${deckmate.version} · Desktop ${desktop.version}`;
     if (footer !== expected) throw new Error(`Unexpected launcher version: ${footer}`);
@@ -289,6 +412,7 @@ async function main(): Promise<void> {
     await mkdir(output, { recursive: true });
     await navigateAndWait(page, 'initial load');
     await verifyLauncherInteractions(page);
+    await verifyControlStates(page);
     const shots: Shot[] = [];
     for (const frame of frames) shots.push(await captureFrame(page, frame, path.join(output, `${frame.name}.png`)));
     await sleep(300);

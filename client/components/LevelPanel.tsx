@@ -3,7 +3,7 @@ import { moveFocus } from '../focus.ts';
 // It is not modal — the page keeps working — and closes with the cross, Escape (focus inside) or the badge itself.
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Check, ChevronDown, ChevronRight, Lock, X } from 'lucide-react';
-import { defineText, locale, useLang, useText, type Lang } from '../i18n.ts';
+import { defineText, locale, useLang, useText } from '../i18n.ts';
 import { chapterStatuses, earnedXp, levelOf, totalXp, type Chapter, type ChapterStatus, type Quest } from '../onboarding/model.ts';
 import { useQuestProgress } from '../onboarding/progress.ts';
 import { chapters, questText, type QuestTextKey } from '../onboarding/quests.ts';
@@ -41,7 +41,9 @@ interface LevelPanelProps {
   factsLoading?: boolean;
   onRefreshFacts?: () => Promise<void>;
   projectKey: string;
-  onClose: () => void;
+  /** True when the loaded catalog has no decks: quests swap their «click a deck» wording for an action that exists (2026-11-11). */
+  withoutDecks?: boolean;
+  onClose: (restoreFocus?: boolean) => void;
   /** Switch the top-bar tab, for «Show me» in a quest; the panel stays open. */
   onNavigate: (view: AppView) => void;
 }
@@ -52,65 +54,63 @@ export function levelShare(xp: number, floor: number, next: number | null): numb
   return Math.min(100, Math.max(0, ((xp - floor) / (next - floor)) * 100));
 }
 
-function xpText(xp: number, lang: Lang): string {
-  return `${new Intl.NumberFormat(locale(lang)).format(xp)} XP`;
-}
-
 /** Quest texts mark interface names with backticks; those become code spans. */
 function questBody(body: string): ReactNode {
   return body.split(/(`[^`]+`)/g).map((part, index) =>
     part.length > 2 && part.startsWith('`') && part.endsWith('`') ? <code key={index}>{part.slice(1, -1)}</code> : part);
 }
 
-function QuestRow({ quest, isDone, hintOpen, onToggleHint, onNavigate, onClose }: {
+function QuestRow({ quest, isDone, withoutDecks, hintOpen, onToggleHint, onNavigate, onClose }: {
   quest: Quest<QuestTextKey>;
   isDone: boolean;
+  withoutDecks: boolean;
   hintOpen: boolean;
   onToggleHint: () => void;
   onNavigate: (view: AppView) => void;
-  onClose: () => void;
+  onClose: (restoreFocus?: boolean) => void;
 }) {
   const t = useText(text);
   const strings = useText(questText);
-  const lang = useLang();
   if (isDone) return <div className="level-quest is-done">
     <Check size={13} aria-hidden="true" />
     <span className="level-quest-title">{strings[quest.title]}</span>
-    <span className="level-quest-xp">{xpText(quest.xp, lang)}</span>
   </div>;
   const view = quest.view;
-  const target = quest.target;
+  // An empty project has no deck cover: the quest's no-decks wording points at creating one instead (2026-11-11).
+  const body = withoutDecks && quest.bodyWithoutDecks ? quest.bodyWithoutDecks : quest.body;
+  const target = withoutDecks && quest.targetWithoutDecks ? quest.targetWithoutDecks : quest.target;
   function showMe() {
     // Switch the tab only when the person is elsewhere: navigating remounts the view, which would close their open
     // card and deck — on the quest's own tab the ring alone is the answer (2026-11-05).
     if (view && new URLSearchParams(location.search).get('view') !== view) onNavigate(view);
     // 2026-11-08: the overlay covers the target on narrow screens, so reveal the page before ringing it.
-    if (window.matchMedia('(max-width: 899px)').matches) onClose();
+    if (window.matchMedia('(max-width: 899px)').matches) onClose(false);
     if (target) showQuestTarget(target);
   }
   return <div className="level-quest is-open">
     <button type="button" className="level-quest-row" aria-expanded={hintOpen} aria-controls={`level-hint-${quest.id}`} onClick={onToggleHint}>
       <ChevronRight size={13} aria-hidden="true" />
       <span className="level-quest-title">{strings[quest.title]}</span>
-      <span className="level-quest-chip">{xpText(quest.xp, lang)}</span>
     </button>
     {hintOpen && <div id={`level-hint-${quest.id}`} className="level-quest-hint">
-      <p>{questBody(strings[quest.body])}</p>
+      <p>{questBody(strings[body])}</p>
       {(view || target) && <Button variant="outline" size="sm" onClick={showMe}>{t.showMe}</Button>}
     </div>}
   </div>;
 }
 
-function ChapterSection({ chapter, status, done, folded, onToggleFold, openHints, onToggleHint, onNavigate, onClose }: {
+function ChapterSection({ chapter, status, done, folded, withoutDecks, onToggleFold, openHints, recommendedQuest, onToggleHint, onNavigate, onClose }: {
   chapter: Chapter<QuestTextKey>;
   status: ChapterStatus;
   done: ReadonlySet<string>;
   folded: boolean;
+  withoutDecks: boolean;
   onToggleFold: (fold: boolean) => void;
-  openHints: ReadonlySet<string>;
+  openHints: Readonly<Record<string, boolean>>;
+  recommendedQuest: string | undefined;
   onToggleHint: (questId: string) => void;
   onNavigate: (view: AppView) => void;
-  onClose: () => void;
+  onClose: (restoreFocus?: boolean) => void;
 }) {
   const t = useText(text);
   const strings = useText(questText);
@@ -123,12 +123,13 @@ function ChapterSection({ chapter, status, done, folded, onToggleFold, openHints
         ? <Check size={13} className="level-chapter-check" aria-hidden="true" />
         : <span className="level-chapter-bar" aria-hidden="true"><i style={{ width: `${(questsDone / chapter.quests.length) * 100}%` }} /></span>}
       <span className="level-chapter-title" title={strings[chapter.title]}>{strings[chapter.title]}</span>
+      <span className="level-chapter-progress" aria-hidden="true">{questsDone} / {chapter.quests.length}</span>
       <ChevronDown size={14} className="level-chapter-chevron" aria-hidden="true" />
       <span className="visually-hidden">{t.chapterProgress(questsDone, chapter.quests.length)}</span>
     </button>
     {!folded && <div className="level-chapter-quests">
-      {chapter.quests.map(quest => <QuestRow key={quest.id} quest={quest} isDone={done.has(quest.id)}
-        hintOpen={openHints.has(quest.id)} onToggleHint={() => onToggleHint(quest.id)} onNavigate={onNavigate} onClose={onClose} />)}
+      {chapter.quests.map(quest => <QuestRow key={quest.id} quest={quest} isDone={done.has(quest.id)} withoutDecks={withoutDecks}
+        hintOpen={openHints[quest.id] ?? quest.id === recommendedQuest} onToggleHint={() => onToggleHint(quest.id)} onNavigate={onNavigate} onClose={onClose} />)}
     </div>}
   </section>;
 }
@@ -143,19 +144,20 @@ function LockedChapter({ chapter }: { chapter: Chapter<QuestTextKey> }) {
   </div>;
 }
 
-export function LevelPanel({ projectKey, onClose, onNavigate, factsFailed, factsLoading, onRefreshFacts }: LevelPanelProps) {
+export function LevelPanel({ projectKey, withoutDecks = false, onClose, onNavigate, factsFailed, factsLoading, onRefreshFacts }: LevelPanelProps) {
   const lang = useLang();
   const t = useText(text);
   const titleRef = useRef<HTMLHeadingElement>(null);
-  // Fold state lives only while the panel is open: open chapters start expanded, done ones collapsed.
   const [folds, setFolds] = useState<Readonly<Record<string, boolean>>>({});
-  const [openHints, setOpenHints] = useState<ReadonlySet<string>>(new Set());
+  const [openHints, setOpenHints] = useState<Readonly<Record<string, boolean>>>({});
   const progress = useQuestProgress(projectKey);
   const done = useMemo(() => new Set(Object.keys(progress)), [progress]);
   const statuses = useMemo(() => chapterStatuses(chapters, done), [done]);
   const total = useMemo(() => totalXp(chapters), []);
   const level = useMemo(() => levelOf(earnedXp(chapters, done), total), [done, total]);
-  const locked = chapters.filter((chapter, index) => statuses[index] === 'locked');
+  const locked = chapters.filter((_, index) => statuses[index] === 'locked');
+  const recommendedChapter = chapters.find((_, index) => statuses[index] === 'open');
+  const recommendedQuest = recommendedChapter?.quests.find(quest => !done.has(quest.id))?.id;
 
   useEffect(() => { moveFocus(titleRef.current); }, []);
   // 2026-11-09: the page narrows by a root attribute instead of .global-shell:has(.level-panel). That :has() anchor sat
@@ -166,11 +168,7 @@ export function LevelPanel({ projectKey, onClose, onNavigate, factsFailed, facts
   }, []);
 
   function toggleHint(questId: string) {
-    setOpenHints(current => {
-      const next = new Set(current);
-      if (next.has(questId)) next.delete(questId); else next.add(questId);
-      return next;
-    });
+    setOpenHints(current => ({ ...current, [questId]: !(current[questId] ?? questId === recommendedQuest) }));
   }
   const format = (value: number) => new Intl.NumberFormat(locale(lang)).format(value);
 
@@ -182,7 +180,7 @@ export function LevelPanel({ projectKey, onClose, onNavigate, factsFailed, facts
         <h2 ref={titleRef} tabIndex={-1}>{t.levelTitle(level.level)}</h2>
         <span className={level.next === null ? 'level-panel-xp is-done' : 'level-panel-xp'}>{level.next === null ? t.allDone : t.xpRange(format(level.xp), format(level.next))}</span>
       </div>
-      <Button variant="ghost" size="icon" aria-label={t.close} onClick={onClose}><X size={17} aria-hidden="true" /></Button>
+      <Button variant="ghost" size="icon" aria-label={t.close} onClick={() => onClose()}><X size={17} aria-hidden="true" /></Button>
     </header>
     <div className="level-panel-xpbar" aria-hidden="true"><i style={{ width: `${levelShare(level.xp, level.floor, level.next)}%` }} /></div>
     <div className="level-panel-body">
@@ -190,10 +188,10 @@ export function LevelPanel({ projectKey, onClose, onNavigate, factsFailed, facts
         pending={factsLoading} onRetry={() => onRefreshFacts?.()} />
       <LoadingState variant="keep-data" active={factsLoading ?? false} />
       {chapters.map((chapter, index) => statuses[index] === 'locked' ? null
-        : <ChapterSection key={chapter.id} chapter={chapter} status={statuses[index]} done={done}
-          folded={folds[chapter.id] ?? statuses[index] === 'done'}
+        : <ChapterSection key={chapter.id} chapter={chapter} status={statuses[index]} done={done} withoutDecks={withoutDecks}
+          folded={folds[chapter.id] ?? chapter.id !== recommendedChapter?.id}
           onToggleFold={fold => setFolds(current => ({ ...current, [chapter.id]: fold }))}
-          openHints={openHints} onToggleHint={toggleHint} onNavigate={onNavigate} onClose={onClose} />)}
+          openHints={openHints} recommendedQuest={recommendedQuest} onToggleHint={toggleHint} onNavigate={onNavigate} onClose={onClose} />)}
       {locked.length > 0 && <>
         <p className="level-divider">{t.unlockHint}</p>
         {locked.map(chapter => <LockedChapter key={chapter.id} chapter={chapter} />)}

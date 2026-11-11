@@ -1,7 +1,7 @@
 import { Bot, Feather, Gem, Moon, Network, Sparkles, UserRound } from 'lucide-react';
 import type { CatalogMember } from '../../src/catalog-contracts.ts';
 import type { ChecklistProgress } from '../catalog-lookups.ts';
-import { currentLang, defineText, formatNumber, useLang, type Lang } from '../i18n.ts';
+import { currentLang, defineText, formatNumber, locale, useLang, type Lang } from '../i18n.ts';
 import '../card-quick-settings.css';
 
 // 2026-11-10: checklist progress stays in the owner's name and tooltip;
@@ -35,16 +35,21 @@ export function memberForOwner(owner: string | null, members: CatalogMember[]) {
   return key ? members.find(member => [member.label, member.id, ...member.aliases].some(alias => alias.trim().toLocaleLowerCase('ru') === key)) : undefined;
 }
 
+export function ownerInitials(owner: string | null, lang: Lang = currentLang()): string {
+  return owner?.trim().split(/\s+/u).slice(0, 2).map(part => Array.from(part)[0]).join('').toLocaleUpperCase(locale(lang)) ?? '';
+}
+
 export function OwnerAvatar({ owner, kind, agentSymbol, progress }: { owner: string | null; kind?: 'agent' | 'human'; agentSymbol?: AgentSymbol; progress?: ChecklistProgress }) {
   const lang = useLang();
   const label = progress ? ownerProgressLabel(owner, progress, lang) : undefined;
-  const initials = owner?.trim().split(/\s+/u).slice(0, 2).map(part => Array.from(part)[0]).join('').toLocaleUpperCase('ru');
+  const initials = ownerInitials(owner, lang);
   const symbol = kind === 'human' ? undefined : agentSymbol ?? agentSymbolFor([owner]);
   const isAgent = kind === 'agent' || Boolean(symbol);
   let Icon = null;
   if (symbol) Icon = agentSymbols[symbol];
   else if (isAgent) Icon = Bot;
-  else if (kind === 'human' || !initials) Icon = UserRound;
+  // 2026-11-11: a person shows initials — one shared silhouette told people apart no better than an empty slot did.
+  else if (!initials) Icon = UserRound;
   return <span className={'card-owner-avatar' + (isAgent ? ' is-agent' : '')} data-agent={symbol} aria-hidden={progress ? undefined : true} role={progress ? 'img' : undefined} title={label} aria-label={label}>
     {Icon ? <Icon size={16} strokeWidth={1.9} className="card-owner-symbol" /> : initials}
   </span>;

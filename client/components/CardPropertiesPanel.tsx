@@ -1,17 +1,17 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { ChevronDown, Info, Layers, LoaderCircle, Settings, X } from 'lucide-react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { ChevronDown, Info, X } from 'lucide-react';
 import * as Tooltip from '@radix-ui/react-tooltip';
 import type { BulkChange } from '../../src/bulk-contracts.ts';
-import type { CardPriority, CatalogCard, CatalogView } from '../../src/catalog-contracts.ts';
+import type { CatalogCard, CatalogView } from '../../src/catalog-contracts.ts';
 import type { CatalogAction } from '../useCatalog.ts';
-import { CardOwnerAvatar, cardEffortPresets, type CardQuickSettingsTab } from './CardQuickSettings.tsx';
-import { TagGlyph } from './CardTags.tsx';
+import { CardOwnerAvatar, cardEffortPresets, cardHeroEffort, cardPriorityOptions, type CardQuickSettingsTab } from './CardQuickSettings.tsx';
+import { PriorityIcon } from './PriorityIcon.tsx';
+import { memberForOwner } from './CardOwnerAvatar.tsx';
 import { TagPicker } from './TagPicker.tsx';
 import { Button } from './ui/button.tsx';
 import { defineText, locale, useLang, useText } from '../i18n.ts';
 import { priorityLabel } from '../locales/common.ts';
 import { orderedRunChoices, runChoiceLabel } from '../run-label.ts';
-import { subCardWeight } from '../sub-card-state.ts';
 import { moveFocus } from '../focus.ts';
 import '../card-properties.css';
 
@@ -31,10 +31,12 @@ const text = defineText({
   save: 'Save',
   clearDue: 'Clear Due Date',
   dueConflict: 'The properties changed. Discard the due date draft and edit again with current data.',
-  projectTags: 'Project Tags',
-  projectTagsInfo: 'Project tags are shared by everyone in the project. Click a tag to add it to the card or to remove it. Personal tags: type # in the card text.',
-  noProjectTags: 'No project tags yet — create one with the gear.',
-  addTag: (name: string) => 'Add tag ' + name, removeTag: (name: string) => 'Remove tag ' + name,
+  projectTags: 'Tags',
+  projectTagsInfo: 'Select tags to add or remove them immediately. All tags are shared with the team, including names outside the registry. A #name in the text does not assign a tag.',
+  hand: 'Hand',
+  handSlot: (slot: number) => `Slot ${slot}`,
+  noHandSlot: 'No slot',
+  version: 'Version',
   pick: (label: string) => `Pick ${label}`,
   pickButton: 'Pick',
   noRuns: 'No upcoming Runs',
@@ -66,14 +68,16 @@ const text = defineText({
   save: 'Сохранить',
   clearDue: 'Снять срок',
   dueConflict: 'Свойства изменились. Отмените черновик срока и повторите правку с актуальными данными.',
-  projectTags: 'Теги проекта',
-  projectTagsInfo: 'Теги проекта общие для всех в проекте. Щелчок по тегу добавляет его к карточке или снимает. Личные теги — через # в тексте карточки.',
-  noProjectTags: 'Тегов проекта пока нет — создайте шестерёнкой.',
-  addTag: (name: string) => 'Добавить тег ' + name, removeTag: (name: string) => 'Снять тег ' + name,
+  projectTags: 'Теги',
+  projectTagsInfo: 'Выбор сразу добавляет или снимает тег. Все теги видны команде, включая имена вне реестра. Запись #имя в тексте не назначает тег карточке.',
+  hand: 'Hand',
+  handSlot: (slot: number) => `Слот ${slot}`,
+  noHandSlot: 'Без слота',
+  version: 'Версия',
   pick: (label: string) => `Выбрать: ${label}`,
   pickButton: 'Выбрать',
   noRuns: 'Нет предстоящих Run',
-  noMilestones: 'Нет предстоящих Milestone',
+  noMilestones: 'Нет предстоящих вех',
   none: 'Нет',
   propertiesAria: 'Свойства',
   ownerLabel: 'Исполнитель',
@@ -82,7 +86,7 @@ const text = defineText({
   effort: 'Оценка',
   totalEffort: 'Суммарная оценка с Sub Cards: ',
   runLabel: 'Run',
-  milestoneLabel: 'Milestone',
+  milestoneLabel: 'Веха',
   dueDate: 'Срок',
   immediate: 'Выбор сохраняется сразу. Своя оценка и срок — кнопкой «Сохранить».',
 });
@@ -91,16 +95,11 @@ type Selector = 'dueDate';
 interface DraftRevision { sourceHash: string; manifestHash: string; optionsHash: string; value: string }
 type PropertyChange = Partial<Pick<CatalogCard, 'owner' | 'effort' | 'priority'>>;
 
-export function cardHeroEffort(card: CatalogCard, catalog: Pick<CatalogView, 'cards'>): number | null {
-  if (card.kind !== 'hero') return null;
-  const children = catalog.cards.filter(candidate => candidate.parentId === card.id && candidate.kind === 'task' && !candidate.archived && !candidate.deleted);
-  if (!children.length && card.effort == null) return null;
-  // A Hero's own estimate is additional work; each Sub Card adds its weight (unestimated work counts one point).
-  return (card.effort ?? 0) + children.reduce((total, child) => total + subCardWeight(child), 0);
-}
+export { cardHeroEffort } from './CardQuickSettings.tsx';
 
-export function CardPropertiesPanel({ id, card, catalog, disabled, visible, onEdit, onActiveChange, onQuickSettings, children }: {
+export function CardPropertiesPanel({ id, card, catalog, handHolders, disabled, visible, onEdit, onActiveChange, onQuickSettings, children }: {
   id: string; card: CatalogCard; catalog: CatalogView; disabled: boolean; visible: boolean;
+  handHolders: readonly { id: string; label: string; slot: number | undefined }[];
   onEdit: (action: CatalogAction) => Promise<boolean>; onActiveChange: (active: boolean) => void; children?: ReactNode;
   onQuickSettings: (tab: CardQuickSettingsTab, anchor: HTMLElement) => void;
 }) {
@@ -117,9 +116,7 @@ export function CardPropertiesPanel({ id, card, catalog, disabled, visible, onEd
   const panel = useRef<HTMLElement>(null);
   const current = catalog.cards.find(candidate => candidate.id === card.id);
   const value = current ?? card;
-  // Offer every project tag, followed by this card's personal tags so they can be removed.
-  const projectTagChips = useMemo(() => [...(catalog.projectTags ?? [])].sort((left, right) => left.name.localeCompare(right.name)), [catalog.projectTags]);
-  const personalTags = useMemo(() => (value.tags ?? []).filter(name => !projectTagChips.some(tag => tag.name === name)), [value.tags, projectTagChips]);
+  const ownerLabel = memberForOwner(value.owner, catalog.members ?? [])?.label ?? value.owner ?? t.unassigned;
   const unavailable = disabled || busy || !current;
   const editing = effortDraft !== null || dueDraft !== null;
   const controlsDisabled = unavailable || editing || tagManagerOpen;
@@ -232,17 +229,19 @@ export function CardPropertiesPanel({ id, card, catalog, disabled, visible, onEd
     <p className="card-properties-save-hint">{t.immediate}</p>
     <section className="card-properties-section" data-property="owner">
       <div className="card-properties-heading"><h3>{t.ownerLabel}</h3>{pickButton('owner', t.ownerLabel)}</div>
-       <div className="card-properties-owner-value"><button type="button" className="card-properties-owner" title={value.owner || t.unassigned} disabled={controlsDisabled} aria-expanded={false} onClick={event => openQuickSettings('owner', event.currentTarget)}>
-        <CardOwnerAvatar owner={value.owner} members={catalog.members ?? []} /><span>{value.owner || t.unassigned}</span>
+       <div className="card-properties-owner-value"><button type="button" className="card-properties-owner" title={ownerLabel} disabled={controlsDisabled} aria-expanded={false} onClick={event => openQuickSettings('owner', event.currentTarget)}>
+        <CardOwnerAvatar owner={value.owner} members={catalog.members ?? []} /><span>{ownerLabel}</span>
       </button></div>
     </section>
+    {planningSection('run', t.runLabel, orderedRunChoices(catalog.runs ?? []).map(run => ({ value: run.id, label: runChoiceLabel(run, lang) })))}
+    {planningSection('milestone', t.milestoneLabel, (catalog.milestones ?? []).map(milestone => ({ value: milestone.id, label: milestone.title })))}
     {value.kind === 'doc' && effortDraft && <div className="card-properties-section" role="alert"><p className="card-properties-error">{t.docEffort(effortDraft.value || t.notSet)}</p><Button type="button" variant="outline" size="sm" disabled={busy} onClick={discardEffort}>{t.discardEffort}</Button></div>}
     {value.kind !== 'doc' && <>
       <section className="card-properties-section" data-property="priority">
         <div className="card-properties-heading"><h3>{t.priority}</h3>{value.priority && <button type="button" className="card-properties-clear" aria-label={t.clearPriority} title={t.clearPriority} disabled={controlsDisabled} onClick={() => void saveProperties({ priority: null })}><X size={13} /></button>}</div>
         <div className="card-properties-priorities" role="group" aria-label={t.priority}>
-          {(['low', 'medium', 'high'] as CardPriority[]).map(priority => <button key={priority} type="button" disabled={controlsDisabled} aria-pressed={value.priority === priority} onClick={() => void saveProperties({ priority: value.priority === priority ? null : priority })}>
-            <Layers size={24} strokeWidth={priority === 'high' ? 2.5 : 1.5} /><span>{priorityLabel(priority, lang)}</span>
+          {cardPriorityOptions.map(({ value: priority }) => <button key={priority ?? 'none'} type="button" disabled={controlsDisabled} aria-pressed={(value.priority ?? null) === priority} onClick={() => void saveProperties({ priority })}>
+            <span aria-hidden="true"><PriorityIcon priority={priority} size={16} /></span><span>{priority ? priorityLabel(priority, lang) : t.none}</span>
           </button>)}
         </div>
       </section>
@@ -250,7 +249,8 @@ export function CardPropertiesPanel({ id, card, catalog, disabled, visible, onEd
         <div className="card-properties-heading"><h3>{t.effort}</h3>{value.effort != null && <button type="button" className="card-properties-clear" aria-label={t.clearEffort} title={t.clearEffort} disabled={controlsDisabled} onClick={() => void saveProperties({ effort: null })}><X size={13} /></button>}</div>
         <form className="card-properties-effort-form" onSubmit={event => { event.preventDefault(); saveEffort(); }}>
           <div className="card-properties-effort-values"><div className="card-properties-effort-scale" role="group" aria-label={t.effort}>
-            {cardEffortPresets.filter(amount => amount <= 8).map(amount => <button key={amount} type="button" disabled={controlsDisabled} aria-pressed={value.effort === amount} onClick={() => void saveProperties({ effort: amount })}>{amount}</button>)}
+             <button type="button" disabled={controlsDisabled} aria-pressed={value.effort == null} aria-label={t.clearEffort} onClick={() => void saveProperties({ effort: null })}>—</button>
+             {cardEffortPresets.map(amount => <button key={amount} type="button" disabled={controlsDisabled} aria-pressed={value.effort === amount} onClick={() => void saveProperties({ effort: amount })}>{amount}</button>)}
           </div><label className="card-properties-effort-custom"><span className="visually-hidden">{t.customEffort}</span><input type="text" inputMode="decimal" value={effortText} disabled={unavailable || dueDraft !== null || tagManagerOpen} aria-invalid={!effortValid || effortConflict}
             onChange={event => { setSelector(null); setEffortDraft(previous => ({ ...(previous ?? revision('')), value: event.target.value })); setMessage(''); }} /></label></div>
           {effortDraft && <div className="card-properties-effort-draft-actions"><Button type="submit" size="sm" disabled={unavailable || !effortValid || effortConflict}>{t.saveEffort}</Button><Button type="button" variant="ghost" size="sm" disabled={busy} onClick={discardEffort}>{t.cancel}</Button></div>}
@@ -260,8 +260,6 @@ export function CardPropertiesPanel({ id, card, catalog, disabled, visible, onEd
         {effortConflict && <p className="card-properties-error" role="alert">{t.effortConflict}</p>}
       </section>
     </>}
-    {planningSection('run', t.runLabel, orderedRunChoices(catalog.runs ?? []).map(run => ({ value: run.id, label: runChoiceLabel(run, lang) })))}
-    {planningSection('milestone', t.milestoneLabel, (catalog.milestones ?? []).map(milestone => ({ value: milestone.id, label: milestone.title })))}
     <section className="card-properties-section" data-property="dueDate">
       <div className="card-properties-heading"><h3>{t.dueDate}</h3>{value.dueDate && <button type="button" className="card-properties-clear" aria-label={t.clearDue} title={t.clearDue} disabled={controlsDisabled} onClick={() => void saveBulk({ kind: 'options', patch: { dueDate: null } })}><X size={13} /></button>}{pickButton('dueDate', t.dueDate)}</div>
       <p className="card-properties-value">{dueLabel || t.none}</p>
@@ -271,23 +269,22 @@ export function CardPropertiesPanel({ id, card, catalog, disabled, visible, onEd
         {dueConflict && <p className="card-properties-error" role="alert">{t.dueConflict}</p>}
       </form>}
     </section>
+    <section className="card-properties-section" data-property="hand">
+      <div className="card-properties-heading"><h3>{t.hand}</h3></div>
+      {handHolders.length ? <ul className="card-properties-hand">{handHolders.map(holder =>
+        <li key={holder.id}><span>{holder.label}</span><span>{holder.slot === undefined ? t.noHandSlot : t.handSlot(holder.slot)}</span></li>
+      )}</ul> : <p className="card-properties-value">{t.none}</p>}
+    </section>
+    <section className="card-properties-section" data-property="version">
+      <div className="card-properties-heading"><h3>{t.version}</h3></div><p className="card-properties-value">{value.version ?? t.none}</p>
+    </section>
     <section className="card-properties-section" data-property="tags" tabIndex={-1} aria-label={t.projectTags}>
       <div className="card-properties-heading"><h3>{t.projectTags}</h3>
         <Tooltip.Provider delayDuration={200}><Tooltip.Root><Tooltip.Trigger asChild>
           <button type="button" className="card-properties-info" aria-label={t.projectTagsInfo}><Info size={14} aria-hidden="true" /></button>
         </Tooltip.Trigger><Tooltip.Portal><Tooltip.Content className="card-properties-info-tip" side="top" align="start" sideOffset={6}>{t.projectTagsInfo}</Tooltip.Content></Tooltip.Portal></Tooltip.Root></Tooltip.Provider>
-        <div className="card-properties-tag-manager"><Settings size={15} aria-hidden="true" /><TagPicker card={value} catalog={catalog} disabled={unavailable || editing} onEdit={onEdit} onOpenChange={setTagManagerOpen} /></div>
       </div>
-      {projectTagChips.length || personalTags.length ? <div className="card-properties-tag-chips" role="group" aria-label={t.projectTags}>
-        {projectTagChips.map(tag => { const on = Boolean(value.tags?.includes(tag.name)); return <button type="button" key={tag.name} className="card-properties-tag-chip" aria-pressed={on} disabled={controlsDisabled}
-          aria-label={on ? t.removeTag(tag.name) : t.addTag(tag.name)} title={tag.name} onClick={() => void saveBulk({ kind: 'tags', tags: [tag.name], mode: on ? 'remove' : 'add' })}>
-          <span className="card-properties-tag-chip-label"><TagGlyph tag={tag} />{tag.name}</span>{on && <span className="card-properties-tag-chip-remove" aria-hidden="true"><X size={13} /></span>}
-        </button>; })}
-        {personalTags.map(name => <button type="button" key={name} className="card-properties-tag-chip is-personal" aria-pressed="true" disabled={controlsDisabled}
-          aria-label={t.removeTag(name)} title={'#' + name} onClick={() => void saveBulk({ kind: 'tags', tags: [name], mode: 'remove' })}>
-          <span className="card-properties-tag-chip-label">#{name}</span><span className="card-properties-tag-chip-remove" aria-hidden="true"><X size={13} /></span>
-        </button>)}
-      </div> : <p className="card-properties-value">{t.noProjectTags}</p>}
+      <TagPicker key={value.id} inline card={value} catalog={catalog} disabled={unavailable || editing} onEdit={onEdit} onOpenChange={setTagManagerOpen} />
     </section>
     {message && <p className="card-properties-error" role="alert">{message}</p>}
     {children}

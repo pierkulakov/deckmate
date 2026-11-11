@@ -1,40 +1,39 @@
-.bulk-actions { display: inline-flex; align-items: center; gap: 2px; min-width: 0; }
+.bulk-actions { display: inline-flex; align-items: center; gap: var(--space-2); min-width: 0; }
 .bulk-actions .bulk-action-button { flex-shrink: 0; }
-/* 2026-11-08: Decks and Timeline fold the same actions into More using the selection bar's available width. */
+/* 2026-11-11: the bar's measured width controls both direct actions and menu entries, so an action appears only once. */
 .card-selection-toolbar.card-selection-bar, .planning-selection { container: selection-bar / inline-size; }
-/* Widths are the bar's content box: full deck row ≈ 890px, without secondary ≈ 762px, without narrow ≈ 506px. */
-@container selection-bar (max-width: 900px) { :is(.card-selection-bar, .planning-selection) .bulk-action-secondary { display: none; } }
-@container selection-bar (max-width: 770px) { :is(.card-selection-bar, .planning-selection) .bulk-action-narrow { display: none; } }
-@container selection-bar (max-width: 520px) { :is(.card-selection-bar, .planning-selection) .bulk-action-button { display: none; } }
-.card-selection-bar .bulk-actions .bulk-action-effort { width: 34px; min-width: 34px; height: 32px; padding: 1px 3px; flex-direction: column; gap: 0; }
-.bulk-action-effort small { max-width: 34px; overflow: hidden; text-overflow: ellipsis; font-size: 9px; line-height: 11px; font-variant-numeric: tabular-nums; }
-.bulk-action-feedback { max-width: 190px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; }
-.bulk-more-menu { z-index: 155; width: 220px; max-height: min(520px, var(--radix-dropdown-menu-content-available-height)); overflow-y: auto; padding: 6px; border: 1px solid var(--line); border-radius: var(--glass-radius); background: var(--surface); color: var(--ink); box-shadow: var(--shadow); scrollbar-width: thin; animation: overlay-pop var(--motion-spring-quick) var(--ease-spring-quick); }
-.bulk-more-item { display: flex; align-items: center; gap: 9px; min-height: 32px; padding: 6px 8px; border-radius: var(--control-radius); font-size: 12px; font-weight: 500; letter-spacing: .01em; outline: none; cursor: pointer; }
+.bulk-action-feedback { max-width: 48ch; font-size: 12px; line-height: 16px; overflow-wrap: anywhere; }
+.bulk-more-menu { z-index: 155; width: min(260px, calc(100vw - 24px)); max-height: min(600px, var(--radix-dropdown-menu-content-available-height)); overflow-y: auto; overscroll-behavior: contain; padding: var(--space-2); scrollbar-width: thin; animation: overlay-pop var(--motion-spring-quick) var(--ease-spring-quick); }
+.bulk-more-heading { padding: var(--space-3) var(--space-2) var(--space-1); color: var(--muted); font-size: 12px; font-weight: 600; line-height: 16px; }
+.bulk-more-menu > [role="group"] + [role="group"] { margin-top: var(--space-2); border-top: 1px solid var(--line); }
+.bulk-more-item { display: flex; align-items: center; gap: var(--space-2); min-height: 32px; padding: var(--space-1) var(--space-2); border-radius: var(--control-radius); font-size: 13px; font-weight: 500; line-height: 20px; letter-spacing: .01em; outline: none; cursor: pointer; }
+.bulk-more-item > svg { flex-shrink: 0; }
+.bulk-more-item > span { min-width: 0; overflow-wrap: anywhere; }
 .bulk-more-item[data-highlighted] { background: var(--hover); box-shadow: inset 0 0 0 1px var(--focus); }
 .bulk-more-item[data-disabled] { opacity: .45; cursor: default; }
-.bulk-more-separator { height: 1px; margin: 5px 0; background: var(--line); }
-.bulk-actions-dialog { position: fixed; z-index: 160; top: max(64px, 14vh); left: 50%; transform: translateX(-50%); width: min(440px, calc(100vw - 24px)); max-height: calc(100dvh - 88px); overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; border: 1px solid var(--line); border-radius: var(--glass-radius); background: var(--surface); color: var(--ink); box-shadow: var(--shadow); animation: dialog-drop var(--motion-spring-firm) var(--ease-spring-firm); }
-.bulk-dialog-header { position: sticky; top: 0; z-index: 1; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 15px 17px; border-bottom: 1px solid var(--line); background: var(--surface); }
-.bulk-dialog-header h2 { margin: 0; font-size: 17px; font-weight: 600; }
-.bulk-dialog-header p { margin: 4px 0 0; color: var(--muted); font-size: 11px; }
-.bulk-dialog-body { display: flex; flex-direction: column; gap: 14px; min-width: 0; margin: 0; padding: 18px; border: 0; font-size: 13px; line-height: 1.6; }
-.bulk-dialog-body > p { margin: 0; }
-.bulk-dialog-body > .ui-button { align-self: start; }
+.bulk-actions-dialog { position: fixed; z-index: 160; top: 50%; left: 50%; transform: translate(-50%, -50%); display: flex; flex-direction: column; width: min(440px, calc(100vw - 24px)); max-height: calc(100dvh - 24px); overflow: hidden; animation: dialog-drop var(--motion-spring-firm) var(--ease-spring-firm); }
+.bulk-dialog-header > div { min-width: 0; }
+.bulk-actions-dialog > form { display: flex; flex-direction: column; min-height: 0; }
+.bulk-dialog-body { min-width: 0; min-height: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; font-size: 13px; line-height: 20px; }
+.bulk-dialog-body > fieldset { display: flex; flex-direction: column; gap: var(--space-4); min-width: 0; margin: 0; padding: 0; border: 0; }
+.bulk-dialog-body > fieldset > p { margin: 0; }
+.bulk-dialog-body > fieldset > .ui-button { align-self: start; }
 .bulk-field { display: flex; flex-direction: column; gap: 6px; min-width: 0; color: var(--muted); font-size: 12px; font-weight: 500; }
-.bulk-field input, .bulk-field select, .bulk-field textarea { width: 100%; min-width: 0; min-height: 35px; border: 1px solid var(--control-field-line); border-radius: var(--control-radius); padding: 7px 9px; color: var(--ink); background: var(--control-field); font: inherit; }
+.bulk-field input, .bulk-field select, .bulk-field textarea { width: 100%; min-width: 0; min-height: 35px; border: var(--control-hairline) solid var(--control-field-line); border-radius: var(--control-radius); padding: 7px 9px; color: var(--ink); background: var(--control-field); font: inherit; }
 .bulk-field textarea { resize: vertical; }
 /* 2026-11-10: fields and the search box show focus on their own edge (DESIGN.md «Controls»); a select keeps the ring for
    the keyboard only, through the global :focus-visible. */
 .bulk-field :is(input, textarea):focus, .bulk-search:focus-within { border-color: var(--focus); box-shadow: inset 0 0 0 1px var(--focus); }
-.bulk-search { display: flex; align-items: center; gap: 8px; min-width: 0; padding: 7px 9px; border: 1px solid var(--control-field-line); border-radius: var(--control-radius); color: var(--muted); background: var(--control-field); }
+.bulk-search { display: flex; align-items: center; gap: 8px; min-width: 0; padding: 7px 9px; border: var(--control-hairline) solid var(--control-field-line); border-radius: var(--control-radius); color: var(--muted); background: var(--control-field); }
 @media (hover: hover) { .bulk-field :is(input, select, textarea):hover:not(:disabled, :focus), .bulk-search:hover:not(:focus-within) { border-color: var(--button-line); } }
 .bulk-search > svg { flex-shrink: 0; }
 .bulk-search input { width: 100%; min-width: 0; border: 0; outline: none; background: transparent; color: var(--ink); font-size: 12px; }
-.bulk-current, .bulk-help { color: var(--muted); font-size: 11px; line-height: 1.6; overflow-wrap: anywhere; }
+.bulk-current, .bulk-help { color: var(--muted); font-size: 12px; line-height: 16px; overflow-wrap: anywhere; }
 .bulk-current { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.bulk-pick-list { display: flex; flex-direction: column; gap: 3px; max-height: 250px; overflow-y: auto; scrollbar-width: thin; }
-.bulk-pick-option { display: flex; align-items: center; gap: 9px; width: 100%; min-height: 36px; padding: 7px 8px; border: 1px solid var(--control-line); border-radius: var(--control-radius); color: var(--ink); background: transparent; text-align: left; font: inherit; font-size: 12px; font-weight: 500; letter-spacing: .01em; cursor: pointer; }
+/* 2026-11-11: the shared hint supplies inline typography; bulk forms keep it secondary to the member choices. */
+.bulk-agent-hint > p { max-width: 48ch; padding: 0 !important; font-size: 12px !important; line-height: 16px; }
+.bulk-pick-list { display: flex; flex-direction: column; gap: var(--space-2); }
+.bulk-pick-option { display: flex; align-items: center; gap: 9px; width: 100%; min-height: 36px; padding: 7px 8px; border: var(--control-hairline) solid var(--control-line); border-radius: var(--control-radius); color: var(--ink); background: transparent; text-align: left; font: inherit; font-size: 12px; font-weight: 500; letter-spacing: .01em; cursor: pointer; }
 .bulk-pick-option > span:not(.card-owner-avatar) { flex: 1; min-width: 0; overflow-wrap: anywhere; }
 .bulk-pick-option > small { color: var(--muted); font-size: 10px; }
 .bulk-pick-option > svg { flex-shrink: 0; }
@@ -44,13 +43,20 @@
   .bulk-pick-option:hover:not(:disabled) { border-color: var(--button-line); background: var(--hover); }
   .bulk-pick-option[aria-pressed="true"]:hover:not(:disabled) { border-color: var(--mark); background: var(--mark-tint-strong); }
 }
-.bulk-pick-option:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
+.bulk-pick-option:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 .bulk-mode-choice, .bulk-tabs { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 15px; }
 .bulk-mode-choice label { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 500; }
 .bulk-checkboxes { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px 12px; padding: 0; margin: 0; border: 0; }
-.bulk-checkboxes legend { margin-bottom: 12px; color: var(--muted); font-size: 11px; }
+.bulk-checkboxes legend { margin-bottom: var(--space-3); color: var(--muted); font-size: 12px; line-height: 16px; }
 .bulk-checkboxes label { display: inline-flex; align-items: center; gap: 7px; font-size: 12px; font-weight: 500; }
 .bulk-mode-choice input { accent-color: var(--accent); }
-.bulk-dialog-footer { position: sticky; bottom: 0; display: flex; align-items: center; justify-content: flex-end; gap: 9px; padding: 13px 18px; border-top: 1px solid var(--line); background: var(--surface); }
-.bulk-action-warning { display: flex; flex-direction: column; align-items: start; gap: 8px; padding: 10px 16px; margin: 0; color: var(--warning-ink); background: var(--warning-bg); font-size: 11px; line-height: 1.6; }
-@media (prefers-reduced-motion: reduce) { .bulk-actions-dialog { animation: none; } }
+.bulk-action-warning { display: flex; flex-direction: column; align-items: start; gap: var(--space-2); padding: var(--space-2); margin: 0 0 var(--space-3); color: var(--warning-ink); background: var(--warning-bg); font-size: 12px; line-height: 16px; overflow-wrap: anywhere; }
+.bulk-action-warning > p, .bulk-action-warning > ul { margin: 0; }
+.bulk-action-warning > ul { padding-inline-start: var(--space-4); }
+@media (pointer: coarse) {
+  .bulk-more-item, .bulk-pick-option, .bulk-mode-choice label, .bulk-checkboxes label { min-height: var(--control-target-touch, 44px); }
+  .bulk-field :is(input, select, textarea), .bulk-search { min-height: var(--control-target-touch, 44px); }
+  .bulk-dialog-header .ui-button { width: var(--control-target-touch, 44px); height: var(--control-target-touch, 44px); }
+  .bulk-dialog-footer .ui-button { min-height: var(--control-target-touch, 44px); }
+}
+@media (prefers-reduced-motion: reduce) { .bulk-actions-dialog, .bulk-more-menu { animation: none; } }

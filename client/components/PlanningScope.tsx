@@ -7,6 +7,7 @@ import type { CatalogCard, CatalogView, MilestoneRecord, RunRecord } from '../..
 import type { BulkChange } from '../../src/bulk-contracts.ts';
 import type { WorkspaceSnapshot } from '../../src/workspace-contracts.ts';
 import { boardColumns } from '../../src/catalog-contracts.ts';
+import { PriorityIcon } from './PriorityIcon.tsx';
 import { buildCatalogLookups } from '../catalog-lookups.ts';
 import { currentMember } from '../current-member.ts';
 import type { CatalogAction } from '../useCatalog.ts';
@@ -48,9 +49,8 @@ const text = defineText({
   myCardsHint: "Show only the cards you own",
   search: "Search cards in plan",
   searchPlaceholder: "Search cards…",
-  accepted: 'Done', remainingEffort: 'Effort left',
-  groupEffort: 'Known Effort · done / total', unestimated: 'Without estimates',
-  effortShort: 'Effort',
+  remainingEffort: 'Effort left',
+  groupEffort: 'Known Effort · done / total', unestimated: 'Without estimates', effortShort: 'Effort',
   attachFailed: "Card created, but the assignment was not saved.",
   attaching: "Assigning the created card…",
   retry: "Retry assignment",
@@ -96,7 +96,7 @@ const text = defineText({
   myCardsHint: "Показать только ваши карточки",
   search: "Поиск карточек в плане",
   searchPlaceholder: "Поиск карточек…",
-  accepted: 'Принято', remainingEffort: 'Осталось по оценке',
+  remainingEffort: 'Осталось по оценке',
   groupEffort: 'Известная оценка · принято / всего', unestimated: 'Без оценки',
   effortShort: 'Оценка',
   attachFailed: "Карточка создана, но привязка не сохранилась.",
@@ -320,7 +320,7 @@ export function PlanningScope({ title, subtitle, target, retainedPlan, cards, ca
       </div>}
       {run && onPlanningEdit && <RunControls catalog={catalog} run={run} pending={pending} writable={writable && !draftOpen && !createdId && !missingPlan} onSave={onPlanningEdit} onDeleted={onDeleted} onOpenChange={setRunControlsOpen} onDirtyChange={setRunControlsDirty} />}
       </div></details>}
-      <div className="planning-count"><span>{t.accepted} <span className="page-number">{amount(summary.done)} / {amount(summary.tasks)}</span></span><span>{t.remainingEffort} <span className="page-number">{amount(summary.effort - summary.doneEffort)}</span></span></div>
+      <div className="planning-count"><span>{stateLabel('done', lang)} <span className="page-number">{amount(summary.done)} / {amount(summary.tasks)}</span></span><span>{t.remainingEffort} <span className="page-number">{amount(summary.effort - summary.doneEffort)}</span></span></div>
     </header>
     {editAnchor && milestone && onPlanningEdit && <PlanningPopover anchor={editAnchor} placement="below" wide={false} title={t.editMilestoneTitle} closeLabel={t.closeEdit} dirty={editDirty} pending={pending}
       onClose={closeMilestoneEdit}
@@ -360,7 +360,7 @@ export function PlanningScope({ title, subtitle, target, retainedPlan, cards, ca
         {groups.map(group => <section className="planning-card-group" key={group.value} aria-label={group.label}
           onDragOver={event => { if (!mutationDisabled && (grouping === 'run' || grouping === 'milestone') && event.dataTransfer.types.includes('application/x-deckmate-planning')) event.preventDefault(); }}
           onDrop={event => { event.preventDefault(); const card = visible.find(candidate => candidate.id === event.dataTransfer.getData('application/x-deckmate-planning')); if (card && !mutationDisabled && (grouping === 'run' || grouping === 'milestone')) void apply({ kind: 'options', patch: { [grouping]: group.value || null } }, [card]); }}>
-          {grouping !== 'manual' && <h3><span>{group.label}</span><span className="page-number">{amount(group.cards.length)}</span><GroupEffort cards={group.cards} /></h3>}
+          {grouping !== 'manual' && <h3>{grouping === 'priority' && <span aria-hidden="true"><PriorityIcon priority={group.value === 'high' || group.value === 'medium' || group.value === 'low' ? group.value : null} size={16} /></span>}<span>{group.label}</span><span className="page-number">{amount(group.cards.length)}</span><GroupEffort cards={group.cards} /></h3>}
           <div className="planning-card-grid">{group.cards.map(card => <div key={card.id} draggable={!mutationDisabled && (grouping === 'run' || grouping === 'milestone')} onDragStart={event => { event.dataTransfer.setData('application/x-deckmate-planning', card.id); event.dataTransfer.effectAllowed = 'move'; }}>
             <CatalogCardTile card={card} catalog={catalog} members={catalog.members ?? []} currentMemberId={viewer?.id} tagDefinitions={catalog.projectTags} lookups={lookups} selected={false} checked={selectionState.selectedIds.has(card.id)} selectionActive={selection.length > 0} disabled={pending || draftOpen || Boolean(createdId)} onOpen={(opened, _button, shift) => { if (draftOpen || createdId || pending) return; if (shift || selection.length) selectionState.toggle(opened.id, shift); else { closeComposer(); onOpenCard(opened.id); } }} onToggle={selectionState.toggle} onFamilyOpen={parent => { if (!draftOpen && !createdId && !pending) { closeComposer(); onOpenCard(parent.id); } }} />
           </div>)}</div>

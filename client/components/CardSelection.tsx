@@ -176,7 +176,7 @@ export function useCardSelection(orderedIds: readonly string[], scopeKey: string
 
 type SelectionAction = (id: string) => Promise<boolean> | boolean;
 
-export interface SelectionToolbarProps {
+interface SelectionToolbarProps {
   selectedCards: CatalogCard[];
   source: DataSource;
   catalog: CatalogView;

@@ -36,7 +36,7 @@ export { dependencyConflicts, stateNeedsDependencyWarning };
 export type { DependencyConflict };
 
 /** Card-to-prerequisite list shared by StatusMenu and bulk actions. */
-export function DependencyConflictList({ conflicts, disabled = false }: { conflicts: readonly DependencyConflict[]; disabled?: boolean }) {
+function DependencyConflictList({ conflicts, disabled = false }: { conflicts: readonly DependencyConflict[]; disabled?: boolean }) {
   const t = useText(text);
   return <ul className="dependency-warning-list">
     {conflicts.map(({ card, waiting }) => <li key={card.id}>

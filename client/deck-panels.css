@@ -58,8 +58,12 @@
 .card-ordering-default > div { display: flex; flex-wrap: wrap; gap: 8px; }
 
 .deck-tags-panel { width: 232px; max-width: 100%; }
-.deck-tags-body { display: flex; flex-direction: column; gap: 12px; }
-.deck-tags-modes { display: flex; gap: 4px; }
+.deck-tags-body { display: flex; flex-direction: column; gap: var(--space-3); }
+.deck-tags-purpose > button { flex: 1; min-width: 0; }
+.deck-tags-modes { display: flex; align-items: center; gap: var(--space-1); }
+.deck-tags-modes > span { flex: 1; min-width: 0; color: var(--muted); overflow-wrap: anywhere; }
+.deck-tags-summary { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); padding-top: var(--space-3); border-top: 1px solid var(--glass-seam); }
+.deck-tags-summary p { flex: 1; margin: 0; font-size: var(--text-help-size); line-height: var(--text-help-leading); }
 .deck-tags-list { display: flex; flex-direction: column; gap: 8px; }
 .deck-tag-row { justify-content: space-between; }
 .deck-tag-name { min-width: 0; overflow-wrap: anywhere; text-align: left; }
@@ -88,7 +92,11 @@
 .deck-table .catalog-card-group-heading > .catalog-group-label { grid-area: 1 / 2; justify-self: start; z-index: 1; max-width: calc(100% - 32px); padding-right: 8px; background: var(--ground); }
 .deck-table .catalog-group-filter { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .deck-table [data-shortcut-property] { position: relative; z-index: 2; display: inline-flex; align-items: center; gap: 4px; }
-.deck-table .deck-table-effort.is-empty [data-shortcut-property] > svg { opacity: .15; }
+/* 2026-11-11: an empty Effort and an empty Priority read equally quiet: the 0.1.0 table dimmed both, a rewrite kept
+   it for Effort only, and the two empty cells ended at different strengths. PriorityIcon's dash is an empty value,
+   not a mark of "no priority set", so it dims with the kettlebell. */
+.deck-table .deck-table-effort.is-empty [data-shortcut-property] > svg,
+.deck-table .deck-table-priority.is-empty [data-shortcut-property] .journey-priority-icon > svg { opacity: .15; }
 .deck-table .catalog-group-select:has(input:checked) input,
 .deck-table .catalog-group-select:has(input:indeterminate) input { opacity: 1; }
 .deck-open-tools .deck-archive-toggle { flex-shrink: 0; height: 30px; }

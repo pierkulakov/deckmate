@@ -1,5 +1,5 @@
 import type { DeckActivityEvent } from './activity-contracts.ts';
-import { defaultLang, defineText, type Lang } from './i18n.ts';
+import { defaultLang, defineText } from './i18n.ts';
 import { readCardState } from './format-vocabulary.ts';
 
 const text = defineText({ created: 'Created', status: 'States', done: 'Done', properties: 'Properties', content: 'Content', links: 'Links' },
@@ -20,10 +20,6 @@ export const activityGroupChips: readonly { id: ActivityEventGroup; label: strin
   { id: 'content', label: text[defaultLang].content },
   { id: 'links', label: text[defaultLang].links },
 ];
-
-export function activityGroupLabel(id: ActivityEventGroup, lang: Lang = defaultLang): string {
-  return text[lang][id];
-}
 
 const actionGroups: Record<string, ActivityEventGroup> = {
   'create-card': 'created', 'create-deck': 'created',

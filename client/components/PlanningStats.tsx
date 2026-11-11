@@ -1,11 +1,12 @@
 import { defineText, locale, useLang, useText } from '../i18n.ts';
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { priorityLabel, stateLabel } from '../locales/common.ts';
 import type { CatalogCard, CatalogView, PlanningDistribution, PlanningHistoryPoint, RunRecord } from '../../src/catalog-contracts.ts';
 import { boardColumns } from '../../src/catalog-contracts.ts';
 import { dayDistance, formatPlanningDate, metrics, runVelocityEffort } from '../planning-metrics.ts';
 import { localIsoDate } from '../../src/catalog-hand.ts';
 import { statusClass } from './StatusMenu.tsx';
+import { PriorityIcon } from './PriorityIcon.tsx';
 import '../planning-details.css';
 
 const text = defineText({
@@ -68,13 +69,14 @@ const text = defineText({
   estimatesNote: 'Учитывается только известная оценка; задачи без оценки исключены.',
 });
 
-function DistributionRow({ label, total, done, maximum, note, state }: {
+function DistributionRow({ label, total, done, maximum, note, state, icon }: {
   label: string;
   total: number;
   done: number;
   maximum: number;
   note?: string;
   state?: string;
+  icon?: ReactNode;
 }) {
   const t = useText(text);
   const lang = useLang();
@@ -82,7 +84,7 @@ function DistributionRow({ label, total, done, maximum, note, state }: {
   const width = maximum ? Math.min(100, total / maximum * 100) : 0;
   const completedWidth = total ? Math.min(100, done / total * 100) : 0;
   return <div className="planning-stat-row">
-    <span className="planning-stat-label" title={label}>{label}</span>
+    <span className="planning-stat-label" title={label}>{icon}{label}</span>
     <span className="planning-stat-value">{amount(done)} / {amount(total)}</span>
     <div className="planning-stat-bar" role="img" aria-label={t.distribution(label, amount(done), amount(total))}>
       <span className={'planning-stat-remaining' + (state ? ` status-${statusClass(state)}` : '')} style={{ width: `${width}%` }}>
@@ -193,7 +195,7 @@ export function PlanningStats({ cards, catalog, run, milestoneId, history }: {
       </section>
       <section className="planning-stats-section"><h3>{t.priority}</h3>
         {[...priorities].sort((first, second) => ['high', 'medium', 'low', ''].indexOf(first.key) - ['high', 'medium', 'low', ''].indexOf(second.key)).map(row =>
-          <DistributionRow key={row.key} label={row.key === 'high' || row.key === 'medium' || row.key === 'low' ? priorityLabel(row.key, lang) : t.noPriority}
+          <DistributionRow key={row.key} label={row.key === 'high' || row.key === 'medium' || row.key === 'low' ? priorityLabel(row.key, lang) : t.noPriority} icon={<span aria-hidden="true"><PriorityIcon priority={row.key === 'high' || row.key === 'medium' || row.key === 'low' ? row.key : null} size={16} /></span>}
             total={row.total} done={row.done} maximum={maximum} />)}
       </section>
       <section className="planning-stats-section"><h3>{t.owners}</h3>

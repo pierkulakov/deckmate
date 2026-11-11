@@ -54,6 +54,7 @@
 .planning-order { display: flex; flex-wrap: wrap; gap: var(--space-2) var(--space-4); align-items: center; margin-bottom: var(--space-4); color: var(--muted); font-size: 12px; }
 .planning-card-group { padding: 0 0 24px; min-height: 64px; }
 .planning-card-group h3 { display: flex; flex-wrap: wrap; gap: var(--space-2); margin: 0 0 var(--space-4); font-size: 12px; font-weight: 400; color: var(--muted); }
+.planning-card-group h3 > span[aria-hidden="true"] > span { display: inline-flex; color: inherit; }
 .planning-card-group h3 > span:first-child { overflow-wrap: anywhere; }
 .planning-group-effort { display: inline-flex; align-items: baseline; flex-wrap: wrap; gap: 4px 8px; font-size: 12px; line-height: 18px; }
 .planning-group-effort .page-number { white-space: nowrap; }
@@ -69,7 +70,8 @@
 .planning-stats-section { margin-top: 22px; }
 .planning-stats-section h3 { font-size: 12px; font-weight: 600; margin: 0 0 12px; }
 .planning-stat-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 5px 12px; margin-bottom: 12px; }
-.planning-stat-label { min-width: 0; font-size: 12px; overflow-wrap: anywhere; }
+.planning-stat-label { display: flex; align-items: center; gap: var(--space-1); min-width: 0; font-size: 12px; overflow-wrap: anywhere; }
+.planning-stat-label > span[aria-hidden="true"] > span { display: inline-flex; color: inherit; }
 .planning-stat-value { color: var(--muted); font: 12px/18px 'Geist Mono', monospace; font-variant-numeric: tabular-nums; }
 .planning-stat-bar { grid-column: 1 / -1; height: 5px; width: 100%; }
 .planning-stat-remaining { display: block; height: 100%; background: var(--planning-idle); border-radius: 3px; overflow: hidden; }
@@ -88,7 +90,10 @@
 .timeline-scroll:active { cursor: grabbing; }
 .timeline-canvas { position: relative; user-select: none; }
 .timeline-past { position: absolute; inset: 0 auto 0 0; background: var(--timeline-past); mix-blend-mode: multiply; pointer-events: none; }
-.timeline-month-label { position: absolute; display: flex; align-items: baseline; gap: 7px; padding-left: 7px; overflow: hidden; color: var(--timeline-axis-ink); font-size: 14px; line-height: 18px; white-space: nowrap; text-transform: capitalize; }
+.timeline-month { position: absolute; }
+/* 2026-11-11: the label rides inside its own month and sticks to the scroll edge, so a month that starts left of the
+   viewport keeps its full name visible; the horizontal scroll of the dates themselves does not change. */
+.timeline-month-label { position: sticky; left: 12px; display: inline-flex; align-items: baseline; gap: 7px; padding-left: 7px; max-width: 100%; overflow: hidden; color: var(--timeline-axis-ink); font-size: 14px; line-height: 18px; white-space: nowrap; text-transform: capitalize; }
 .timeline-month-label small { font: 500 12px/16px 'Geist Mono', monospace; }
 .timeline-month-strip { position: absolute; height: 24px; background: linear-gradient(var(--canvas), var(--sidebar)); }
 .timeline-week-label { position: absolute; height: 18px; border-top: var(--control-hairline) solid var(--timeline-week-edge); border-right: var(--control-hairline) solid var(--timeline-week-edge); border-radius: var(--glass-radius) var(--glass-radius) 0 0; background: var(--canvas); color: var(--timeline-axis-ink); font: 12px/16px 'Geist Mono', monospace; text-align: center; font-variant-numeric: tabular-nums; }

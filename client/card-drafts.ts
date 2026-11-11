@@ -7,7 +7,7 @@ import type { DataSource } from '../src/workspace-contracts.ts';
  * "unsaved changes" with Continue editing and Discard changes. The draft keeps the revision it was based on, so a file
  * changed meanwhile opens as the usual content conflict, never as a silent overwrite. Stored per browser, per card.
  */
-export interface StashedCardDraft { draft: string; baseline: CardContent & { manifestHash: string } }
+interface StashedCardDraft { draft: string; baseline: CardContent & { manifestHash: string } }
 
 const keyOf = (source: DataSource, cardId: string) => `deckmate:card-draft:${source}:${cardId}`;
 

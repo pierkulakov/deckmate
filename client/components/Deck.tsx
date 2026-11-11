@@ -1,6 +1,6 @@
 import { defineText, formatNumber, locale, textNow, useLang, useText } from '../i18n.ts';
 import { moveFocus } from '../focus.ts';
-import { stateLabel } from '../locales/common.ts';
+import { kindLabel, priorityLabel, stateLabel } from '../locales/common.ts';
 import { readStoredValue } from '../storage.ts';
 import { navigateTabs } from '../tab-navigation.ts';
 import { useEscapeToClose } from '../useEscapeToClose.ts';
@@ -13,8 +13,9 @@ import * as Tooltip from '@radix-ui/react-tooltip';
 import { DndContext, DragOverlay, KeyboardSensor, MeasuringStrategy, PointerSensor, closestCenter, pointerWithin, useDndContext, useDraggable, useDroppable, useSensor, useSensors } from '@dnd-kit/core';
 import { SortableContext, arrayMove, rectSortingStrategy, sortableKeyboardCoordinates, useSortable } from '@dnd-kit/sortable';
 import type { AutoScrollOptions, CollisionDetection, DragStartEvent, DragEndEvent, DragOverEvent, KeyboardCoordinateGetter } from '@dnd-kit/core';
-import { Activity, Archive, ArrowDown, ArrowUp, BookOpen, Box, Braces, Bug, ChevronDown, ChevronRight, CircleCheck, Copy, Ellipsis, Eye, Flag, Gamepad2, Gauge, GripVertical, Hourglass, Image, Inbox, Layers, ListChecks, LoaderCircle, Palette, Pencil, Plus, Route, ScrollText, Search, SlidersHorizontal, Swords, Trash2, UsersRound, Volume2, X } from 'lucide-react';
+import { Activity, Archive, ArrowDown, ArrowUp, BookOpen, Box, Braces, Bug, ChevronDown, ChevronRight, CircleCheck, Copy, Ellipsis, Eye, Flag, Gamepad2, GripVertical, Hourglass, Image, Inbox, Layers, ListChecks, LoaderCircle, Palette, Pencil, Plus, Route, ScrollText, Search, SlidersHorizontal, Swords, Trash2, UsersRound, Volume2, X } from 'lucide-react';
 import type { CatalogCard, CatalogDeck, CatalogDeckZone, CatalogSpace, CatalogView, CardKind, CardPriority, DeckKind, DeckStyle, SpaceKind } from '../../src/catalog-contracts.ts';
+import { catalogHandPositions } from '../../src/catalog-hand.ts';
 import { defaultDeckKind, deckCanBeInbox } from '../../src/catalog-contracts.ts';
 import type { WorkspaceSnapshot } from '../../src/workspace-contracts.ts';
 import { useCatalog } from '../useCatalog.ts';
@@ -39,6 +40,7 @@ import { DeckTagsPanel, cardsMatchingTagPick, emptyTagPick, tagPickSize, type Ta
 import { AttachSubCards, type AttachSubCardsRequest } from '../AttachSubCards.tsx';
 import { DeckActivity } from './DeckActivity.tsx';
 import { DeckSummary } from './DeckSummary.tsx';
+import { EffortIcon } from './EffortIcon.tsx';
 import { EmptyState } from './EmptyState.tsx';
 import { DeckTypePicker } from './DeckTypePicker.tsx';
 import { DeckAutomation, type DeckAutomationSettings } from './DeckAutomation.tsx';
@@ -55,7 +57,7 @@ import { currentMember } from '../current-member.ts';
 import { emitSignal } from '../onboarding/signals.ts';
 import { CardTags, TagBadge, TagTitlePrefix } from './CardTags.tsx';
 import { cardHeroEffort } from './CardPropertiesPanel.tsx';
-import { JourneyPriorityIcon } from './JourneyMiniCard.tsx';
+import { PriorityIcon } from './PriorityIcon.tsx';
 import { CardIndicators } from './CardIndicators.tsx';
 import { CardTransferContext, CatalogCardTile, OpenQuestionsBadge, cardIcons, emptyCards, taskStateIcons, useCardTransferDrag } from './CatalogCardTile.tsx';
 import { DependencyStateWarning, dependencyConflicts, type DependencyConflict } from './DependencyWarning.tsx';
@@ -206,8 +208,8 @@ const text = defineText({
   searchScopeCards: "Filter cards…",
   zone: "Zone",
   noSpaces: "No spaces yet.",
-  createSpaceHelp: " Create the first space with +, then add decks to it.",
-  sandboxSpaceHelp: " Open the test copy to create a space.",
+  createSpaceHelp: "Create the first space, then add decks to it.",
+  sandboxSpaceHelp: "Open the test copy to create a space.",
   noDeckMatches: "No decks found. Change the query or clear search.",
   emptySpace: "This space has no decks.",
   deckTitle: "Deck title",
@@ -251,6 +253,7 @@ const text = defineText({
   labelPriority: "Priority",
   labelEffort: "Effort",
   labelTags: "Tags",
+  notTagged: "Not tagged",
   labelArchiveCard: "Archive card",
   labelUnarchiveCard: "Unarchive card",
   labelMovetoTrash: "Move to Trash",
@@ -282,7 +285,7 @@ const text = defineText({
   deckProgress: (accepted: number, tasks: number) => `${number(accepted)} of ${number(tasks)} tasks accepted`,
   openCount: (count: number) => `Open tasks and other cards: ${number(count)}`,
   acceptedCount: (count: number) => `Done tasks: ${number(count)}`,
-  reviewCount: (count: number) => `Tasks in review: ${number(count)}`,
+  reviewCount: (count: number) => `Tasks in review: ${number(count)} (part of the open count)`,
   effortProgress: (done: string, total: string, missing: number) => `Effort: ${done} of ${total} done; ${number(missing)} unestimated`,
   selectGroup: (title: string) => `Select group: ${title}`,
   selectAll: (title: string) => `Select all: ${title}`,
@@ -315,8 +318,6 @@ const text = defineText({
   sourceWarnings: (count: number) => `Source warnings: ${number(count)}`,
   // 2026-11-09: the inventory under the project name sets each number apart in Geist Mono, so the nouns are separate keys.
   sourceDocuments: (count: number) => `Markdown ${new Intl.PluralRules(locale('en')).select(count) === 'one' ? 'document' : 'documents'}`,
-  sourceTasks: 'Task',
-  sourceHeroes: 'Hero',
   sourceDocs: 'Doc Cards',
   transferCount: (count: number) => count === 1 ? 'Move the card to' : `Move ${number(count)} cards to`,
   defaultDeckType: (kind: string) => `Default deck type: ${kind}`,
@@ -448,8 +449,8 @@ const text = defineText({
   searchScopeCards: "Фильтр карточек…",
   zone: "Зона",
   noSpaces: "Пространств пока нет.",
-  createSpaceHelp: " Создайте первое пространство кнопкой + и добавьте в него колоды.",
-  sandboxSpaceHelp: " Откройте тестовую копию для создания пространства.",
+  createSpaceHelp: "Создайте первое пространство и добавьте в него колоды.",
+  sandboxSpaceHelp: "Откройте тестовую копию, чтобы создать пространство.",
   noDeckMatches: "Колоды не найдены. Измените запрос или сбросьте поиск.",
   emptySpace: "В пространстве нет колод.",
   deckTitle: "Название колоды",
@@ -499,6 +500,7 @@ const text = defineText({
   labelPriority: "Приоритет",
   labelEffort: "Оценка",
   labelTags: "Теги",
+  notTagged: "Без тегов",
   labelArchiveCard: "Архивировать карточку",
   labelUnarchiveCard: "Вернуть из архива",
   labelMovetoTrash: "Переместить в корзину",
@@ -530,7 +532,7 @@ const text = defineText({
   deckProgress: (accepted: number, tasks: number) => `Принято задач: ${number(accepted)} из ${number(tasks)}`,
   openCount: (count: number) => `Открытые задачи и обычные карточки: ${number(count)}`,
   acceptedCount: (count: number) => `Принятые задачи: ${number(count)}`,
-  reviewCount: (count: number) => `Задач на приёмке: ${number(count)}`,
+  reviewCount: (count: number) => `Задач на приёмке: ${number(count)} (в составе открытых)`,
   effortProgress: (done: string, total: string, missing: number) => `Оценка: принято ${done} из ${total}; без оценки ${number(missing)}`,
   selectGroup: (title: string) => `Выбрать группу: ${title}`,
   selectAll: (title: string) => `Выбрать все: ${title}`,
@@ -571,8 +573,6 @@ const text = defineText({
     if (rule === 'one') return 'Markdown-документ';
     return rule === 'few' ? 'Markdown-документа' : 'Markdown-документов';
   },
-  sourceTasks: 'Task',
-  sourceHeroes: 'Hero',
   sourceDocs: 'Doc Cards',
   transferCount: (count: number) => count === 1 ? 'Перенести карточку в' : `Перенести карточки (${number(count)}) в`,
   defaultDeckType: (kind: string) => `Тип колоды по умолчанию: ${kind}`,
@@ -666,7 +666,8 @@ export function DeckHeaderHint({ label, keys, note, side = 'bottom', children }:
  * under the covers; the same line opens the source warnings, which list under the header. */
 function CatalogSourceLine({ documents, kinds, warnings, warningsOpen, onToggleWarnings }: { documents: number; kinds: Record<CardKind, number>; warnings: number; warningsOpen: boolean; onToggleWarnings: () => void }) {
   const t = useText(text);
-  const parts: [number, string][] = [[documents, t.sourceDocuments(documents)], [kinds.task, t.sourceTasks], [kinds.hero, t.sourceHeroes], [kinds.doc, t.sourceDocs]];
+  const lang = useLang();
+  const parts: [number, string][] = [[documents, t.sourceDocuments(documents)], [kinds.task, kindLabel('task', lang)], [kinds.hero, kindLabel('hero', lang)], [kinds.doc, t.sourceDocs]];
   return <p className="catalog-source">
     {parts.map(([count, label], index) => <Fragment key={index}>{index > 0 && <span className="dot-separator">·</span>}<span className="catalog-source-part"><span className="catalog-source-count">{number(count)}</span> {label}</span></Fragment>)}
     {warnings > 0 && <><span className="dot-separator">·</span><button type="button" className="catalog-source-warnings" aria-expanded={warningsOpen} aria-controls="catalog-source-warnings" onClick={onToggleWarnings}>{t.sourceWarnings(warnings)}</button></>}
@@ -879,7 +880,8 @@ function CardGroupHeading({ group, tagDefinitions, lookups, selectedIds, disable
   }
   const tagName = group.key.startsWith('tags:') && group.key !== 'tags:none' ? group.key.slice(5) : null;
   const groupLabel = tagName ? <TagBadge name={tagName} definition={tagDefinitions?.find(tag => tag.name === tagName)} /> : group.title;
-  const laneIcon = group.key.startsWith('deck:') || group.key.startsWith('priority:') ? <Layers size={13} /> : null;
+  const laneIcon = group.key.startsWith('priority:') ? <span aria-hidden="true"><PriorityIcon priority={groupPriorities[group.key]} size={16} /></span>
+    : group.key.startsWith('deck:') ? <Layers size={13} /> : null;
   return <div className={'catalog-card-group-heading' + (zone ? ' catalog-zone-heading' : '')} data-layout-follow={'heading:' + group.key} data-selecting={selectedIds.size > 0 || undefined}>
     {zone && zone.dragHandle}
     <div className="catalog-group-label">
@@ -903,7 +905,7 @@ function CardGroupHeading({ group, tagDefinitions, lookups, selectedIds, disable
             onEscape={zone.deleteConfirm.onKeep} onKeep={zone.deleteConfirm.onKeep} onConfirm={zone.deleteConfirm.onConfirm} />
         : <Button type="button" variant="ghost" size="icon" className="is-danger" disabled={disabled} title={t.deleteZone(group.title)} aria-label={t.deleteZone(group.title)} onClick={zone.onDelete}><Trash2 size={13} /></Button>)}
     </span>}
-    {effort && <span className="catalog-group-effort" title={effort.description} aria-label={effort.description}><Gauge size={14} />{effort.label}</span>}
+    {effort && <span className="catalog-group-effort" title={effort.description} aria-label={effort.description}><EffortIcon size={14} />{effort.label}</span>}
   </div>;
 }
 
@@ -1255,8 +1257,8 @@ function CatalogTableRow({ card, lookups, members, tagDefinitions, catalog, curr
     data-kind={card.kind} data-state={card.kind === 'task' ? statusClass(card.state ?? '') : undefined}
     className={'deck-table-row' + (checked ? ' is-multi-selected' : '') + (openedId === card.id ? ' is-opened' : '') + (orderDrop.isOver ? ' is-card-order-target' : '')}>
     <td className="deck-table-select"><input className="deck-table-check" type="checkbox" checked={checked} disabled={disabled} aria-label={t.selectCard(card.title)} onChange={event => onToggle(card.id, Boolean((event.nativeEvent as MouseEvent).shiftKey))} /></td>
-    <td className={'deck-table-priority' + (card.priority ? '' : ' is-empty')}><span data-shortcut-property="priority"><JourneyPriorityIcon priority={card.priority} size={16} /></span></td>
-    <td className={'deck-table-effort' + (effort == null ? ' is-empty' : '')}><span data-shortcut-property="effort"><Gauge size={16} aria-hidden="true" />{effort == null ? <span className="visually-hidden">{t.noEffort}</span> : <span>{formatNumber(effort, 2, lang)}</span>}</span></td>
+    <td className={'deck-table-priority' + (card.priority ? '' : ' is-empty')}><span data-shortcut-property="priority"><PriorityIcon priority={card.priority} size={16} /></span></td>
+    <td className={'deck-table-effort' + (effort == null ? ' is-empty' : '')}><span data-shortcut-property="effort"><EffortIcon size={16} />{effort == null ? <span className="visually-hidden">{t.noEffort}</span> : <span>{formatNumber(effort, 2, lang)}</span>}</span></td>
     <td className="deck-table-card">{parent && <CardFamilyPopover projectTags={tagDefinitions} members={members} hero={parent} children={familyChildren(lookups, parent.id)} disabled={disabled} onOpen={onFamilyOpen} />}
       {heroChildren.length > 0 ? <span className="deck-table-hero">{titleButton}<SubCardProgress cards={heroChildren} cardsById={lookups.cardById} /></span> : titleButton}
       </td>
@@ -1535,6 +1537,7 @@ export function Deck({ snapshot, refreshKey, onEditing, onImportCsv, onStartFrom
   const resolvedView = cardView ?? 'cards';
   const cards = catalog?.cards ?? emptyCards;
   const lookups = useMemo(() => buildCatalogLookups(cards, catalog?.subCardOrder), [cards, catalog?.subCardOrder]);
+  const handPositions = useMemo(() => catalog ? catalogHandPositions(catalog) : new Map<string, Record<string, number>>(), [catalog]);
   const tileDataById = useMemo(() => new Map(catalog ? cards.map(card => [card.id, cardTileData(card, lookups, catalog)]) : []), [cards, lookups, catalog]);
   const activeLookups = useMemo(() => buildCatalogLookups(cards.filter(card => !card.archived && !card.deleted), catalog?.subCardOrder), [cards, catalog?.subCardOrder]);
   const deckCounts = useMemo(() => new Map([...activeLookups.cardsByDeck].map(([deckId, deckCards]) => [deckId, countDeckCards(deckCards)])), [activeLookups]);
@@ -1601,7 +1604,7 @@ export function Deck({ snapshot, refreshKey, onEditing, onImportCsv, onStartFrom
   const projectTagNames = useMemo(() => new Set((catalog?.projectTags ?? []).map(tag => tag.name)), [catalog?.projectTags]);
   const orderingContext = useMemo<OrderingContext>(() => ({ deckById, deckOrder: catalog?.deckOrder, deckId: scope.kind === 'deck' ? scope.id : null,
     runs: catalog?.runs, milestones: catalog?.milestones, projectTagNames }), [deckById, catalog?.deckOrder, catalog?.runs, catalog?.milestones, projectTagNames, scope]);
-  const visibleCards = useMemo(() => {
+  const tagPickCards = useMemo(() => {
     // 2026-11-05: reuse the grouping rules for search entries, including None and names with spaces.
     const memberships = laneSearch.map(entry => {
       if (entry.ordering.order === 'tags') {
@@ -1617,6 +1620,12 @@ export function Deck({ snapshot, refreshKey, onEditing, onImportCsv, onStartFrom
     });
     return searchedCards.filter(card => memberships.every(ids => ids.has(card.id)));
   }, [searchedCards, scopedCards, lookups.cardById, orderingContext, laneSearch, projectTagNames]);
+  const showingTagPick = tagPick.purpose !== 'select' && tagPickSize(tagPick) > 0;
+  const visibleCards = useMemo(() => {
+    if (!showingTagPick) return tagPickCards;
+    const ids = new Set(cardsMatchingTagPick(tagPickCards, tagPick));
+    return tagPickCards.filter(card => ids.has(card.id));
+  }, [tagPickCards, tagPick, showingTagPick]);
   const tableGroups = useMemo(() => groupAndSortCards(visibleCards, lookups.cardById, ordering, orderingContext), [visibleCards, lookups.cardById, ordering, orderingContext, lang]);
   const labeledLaneSearch = useMemo(() => laneSearch.map(entry => {
     let title = groupAndSortCards(scopedCards, lookups.cardById, entry.ordering, orderingContext)
@@ -1631,10 +1640,10 @@ export function Deck({ snapshot, refreshKey, onEditing, onImportCsv, onStartFrom
   // 2026-11-05: the side rail also offers empty priorities; creating a target must not reflow the source grid.
   const dragGroups = useMemo(() => {
     if (laneOrderOf(ordering) !== 'priority') return tableGroups;
-    const priorities = [{ key: 'priority:high', title: dragText.high }, { key: 'priority:medium', title: dragText.medium },
-      { key: 'priority:low', title: dragText.low }, { key: 'priority:none', title: dragText.noPriority }];
+    const priorities = [{ key: 'priority:high', title: priorityLabel('high', lang) }, { key: 'priority:medium', title: priorityLabel('medium', lang) },
+      { key: 'priority:low', title: priorityLabel('low', lang) }, { key: 'priority:none', title: dragText.noPriority }];
     return priorities.map(group => ({ ...group, state: null, cards: tableGroups.find(current => current.key === group.key)?.cards ?? [] }));
-  }, [ordering, tableGroups, dragText]);
+  }, [ordering, tableGroups, dragText, lang]);
   // Selection and bulk actions include each card once, even if groups repeat its presentation (2026-11-04).
   const orderedCards = useMemo(() => [...new Map(tableGroups.flatMap(group => group.cards).map(card => [card.id, card])).values()], [tableGroups]);
   // Manual Order is scoped to one deck: its zones and only its cards can be reordered.
@@ -1659,7 +1668,8 @@ export function Deck({ snapshot, refreshKey, onEditing, onImportCsv, onStartFrom
   const selectedCards = orderedCards.filter(card => selection.selectedIds.has(card.id));
   // A tag pick stays active only while the selection is exactly its cards; any other selection change ends it.
   const tagPickIds = useMemo(() => cardsMatchingTagPick(orderedCards, tagPick), [orderedCards, tagPick]);
-  const tagPickActive = tagPickSize(tagPick) > 0 && tagPickIds.length === selection.selectedIds.size && tagPickIds.every(id => selection.selectedIds.has(id));
+  const tagPickActive = tagPick.purpose !== 'select' || (tagPickSize(tagPick) > 0
+    && tagPickIds.length === selection.selectedIds.size && tagPickIds.every(id => selection.selectedIds.has(id)));
   const sticky = useCatalogStickyLayout(Boolean(selectedDeck), showCards && selectedCards.length > 0);
   const deckTransition = useDeckTransition(sticky.root, selectedDeck?.id ?? null);
   const members = useMemo(() => catalog?.members ?? [], [catalog?.members]);
@@ -2229,7 +2239,8 @@ export function Deck({ snapshot, refreshKey, onEditing, onImportCsv, onStartFrom
   function pickTags(next: TagPick) {
     if (navigationLocked || cardTransfer) return;
     setTagPick(next);
-    selection.retain(cardsMatchingTagPick(orderedCards, next));
+    if (next.purpose === 'select') selection.retain(cardsMatchingTagPick(orderedCards, next));
+    else if (tagPick.purpose === 'select') selection.clear();
   }
   function familyCardCreated(cardId: string) {
     setFamilyDirty(false); 
@@ -2252,7 +2263,7 @@ export function Deck({ snapshot, refreshKey, onEditing, onImportCsv, onStartFrom
     if (target?.isConnected) moveFocus(target, { preventScroll: true });
     else moveFocus(searchField.current, { preventScroll: true });
   }
-  function resetCardFilters() { setSearch(''); setMineOnly(false); setTagFilter(''); setLaneSearch([]); }
+  function resetCardFilters() { setSearch(''); setMineOnly(false); setTagFilter(''); setLaneSearch([]); setTagPick(emptyTagPick); }
   function focusCardSearch() {
     if (selectedDeck && !deckToolsOpen && window.matchMedia('(max-width: 760px)').matches) {
       searchFocusPending.current = true;
@@ -2484,6 +2495,9 @@ export function Deck({ snapshot, refreshKey, onEditing, onImportCsv, onStartFrom
     onRemove: () => setLaneSearch(entries => entries.filter((_, position) => position !== index)),
   }));
   if (tagFilter) activeFilters.push({ id: 'tag', kind: 'tags', value: tagFilter, onRemove: () => setTagFilter('') });
+  if (showingTagPick) activeFilters.push({ id: 'tag-pick', kind: 'tags',
+    value: [...tagPick.tags.map(name => '#' + name), ...(tagPick.notTagged ? [t.notTagged] : [])].join(tagPick.mode === 'and' ? ' + ' : ' | '),
+    onRemove: () => setTagPick({ ...emptyTagPick, mode: tagPick.mode }) });
   if (mineOnly) activeFilters.push({ id: 'mine', kind: 'mine', value: '', onRemove: () => setMineOnly(false) });
   if (search.trim()) activeFilters.push({ id: 'search', kind: 'search', value: search.trim(), onRemove: () => setSearch('') });
   const hasFilters = activeFilters.length > 0;
@@ -2557,7 +2571,7 @@ export function Deck({ snapshot, refreshKey, onEditing, onImportCsv, onStartFrom
           <Button variant="ghost" size="icon" aria-pressed={watchingDeck}
             disabled={!writable || navigationLocked || !currentMember} onClick={() => void toggleDeckWatch()} aria-label={t.deckWatch} title={watchHint}><Eye size={16} />{watchingDeck ? t.unwatch : t.watch}</Button>
           <Button variant="ghost" disabled={!writable || navigationLocked || !onImportCsv} onClick={() => { setDeckActionsAnchor(null); onImportCsv?.(selectedDeck.id); }} aria-label={t.importCsv}><Inbox size={16} />{t.importCsv}</Button>
-        <DeckAutomation draftKey={JSON.stringify([catalog.rootIdentity, snapshot.source, selectedDeck.id])} deck={selectedDeck} members={members} tagNames={(catalog.projectTags ?? []).map(tag => tag.name)}
+        <DeckAutomation draftKey={JSON.stringify([catalog.rootIdentity, snapshot.source, selectedDeck.id])} deck={selectedDeck} members={members} tagNames={(catalog.projectTags ?? []).map(tag => tag.name)} projectTags={catalog.projectTags} cards={catalog.cards}
           manifestHash={catalog.manifestHash} pending={navigationLocked} writable={writable} onSave={saveDeckAutomation} />
         <DeckGuardians deck={selectedDeck} members={members} manifestHash={catalog.manifestHash}
           pending={navigationLocked} writable={writable} onSave={saveDeckGuardians} />
@@ -2635,7 +2649,7 @@ export function Deck({ snapshot, refreshKey, onEditing, onImportCsv, onStartFrom
           onEdit={edit} onDirtyChange={setMembershipDirty} onShowTagCards={name => { openCardView('all'); setTagFilter(name); }} onOpenDeck={selectedCard.deckId && selectedCard.deckId !== deckScopeId ? () => showCardInDeck(selectedCard.id, selectedCard.deckId!) : undefined} onManageJourney={selectedCard.deckId ? opener => { journeyReturnFocus.current = opener ?? null; closeInlinePanels(); setJourneyDeckId(selectedCard.deckId); } : undefined} familyVisible={showFamily} onShowFamily={() => { if (navigationLocked) return; setFamilyVisible(true); }} onToggleFamily={() => { if (navigationLocked) return; if (showFamily) resetFamilyContext(); else setFamilyVisible(true); }} />}</div><PanelResize label={t.leftPanelWidth} value={panels.leftPanelWidth} minimum={420} maximum={800} direction={1} onChange={panels.setLeftPanelWidth} /></> : <>{showSummary && (narrowPanel ? <aside className="deck-summary deck-narrow-panel">{activeDeckPanel === 'ordering'
           ? <CardOrdering value={ordering} onChange={changeOrdering} disabled={navigationLocked} inDeck={Boolean(selectedDeck)} hideEmpty={hideEmptyZones} onHideEmpty={setHideEmptyZones} view={resolvedView} onViewChange={setCardView}
             defaultView={selectedDeck ? { canReset: orderingChoice !== null && orderDiffersFromDefault, canSave: writable && orderDiffersFromDefault, onReset: resetOrdering, onSave: () => void saveDefaultOrdering() } : undefined} />
-          : <DeckTagsPanel cards={visibleCards} projectTags={catalog.projectTags} pick={tagPick} active={tagPickActive} disabled={navigationLocked} onPick={pickTags} />}</aside>
+          : <DeckTagsPanel cards={tagPickCards} projectTags={catalog.projectTags} pick={tagPick} active={tagPickActive} selectedCount={selection.selectedIds.size} disabled={navigationLocked} onPick={pickTags} />}</aside>
           : selectedDeck && <><>{activityOpen ? <aside className="deck-summary deck-activity-sidebar"><DeckActivity deckId={selectedDeck.id} source={snapshot.source} refreshKey={refreshKey + ":" + catalog.indexedAt} disabled={navigationLocked} onOpen={id => { const card = lookups.cardById.get(id); if (card) openCard(card); }} /></aside> : <DeckSummary deck={selectedDeck} cards={lookups.cardsByDeck.get(selectedDeck.id) ?? emptyCards} catalog={catalog} source={snapshot.source} refreshKey={refreshKey + ":" + catalog.indexedAt} onOpen={id => { const card = lookups.cardById.get(id); if (card) openCard(card); }} disabled={navigationLocked} onCollapse={() => panels.setSummaryCollapsed(true)} onTrack={id => openCardView('all', id)} />}</><PanelResize label={t.leftPanelWidth} value={panels.leftPanelWidth} minimum={420} maximum={800} direction={1} onChange={panels.setLeftPanelWidth} /></>)}</>}
         <div className="catalog-results" ref={attachResults} role="region" aria-label={t.cards} tabIndex={-1}
           onPointerDown={event => { if (familyShown && !navigationLocked && event.target === event.currentTarget) resetFamilyContext(); }}>
@@ -2657,8 +2671,7 @@ export function Deck({ snapshot, refreshKey, onEditing, onImportCsv, onStartFrom
               {shownGroups.map(group => <CatalogCardGroupSection key={group.key} group={group} pointerDrag={Boolean(cardDragPreview)} baseline={cardTransfer} lane={laneOfGroup(group)} zoneDrag={zoneDrag} catalogCards={cards}>
                 {group.key !== 'all' && <CardGroupHeading group={group} tagDefinitions={catalog.projectTags} lookups={lookups} selectedIds={selection.selectedIds} disabled={navigationLocked} onToggleGroup={selection.toggleGroup} onFilter={filterGroup} onCreate={writable ? () => createGroupCard(group) : undefined} zone={zoneControlsOf(group)} />}
                 <VirtualCardGrid cards={group.cards} enabled={orderedCards.length >= 50} pinnedIds={pinnedTileIds}>{card => <ManualCardDrop key={card.id} cardId={card.id} enabled={manualDrop} deckId={scope.kind === 'deck' ? scope.id : ''} zoneId={zoneIdOfGroup(group)}>
-                  <CatalogCardTile card={card} {...tileDataById.get(card.id)!} members={members} tagDefinitions={catalog.projectTags} currentMemberId={currentMember?.id} calendarDay={calendarDay} selected={selectedCard?.id === card.id} checked={selection.selectedIds.has(card.id)} selectionActive={selection.selectedIds.size > 0} disabled={draftLocked} onToggle={toggleTile} onOpen={activateTile} onFamilyOpen={openTileFamily}
-                    groupedBy={group.key !== 'all' && (ordering.order === 'state' || ordering.order === 'priority') ? ordering.order : undefined}
+                  <CatalogCardTile card={card} {...tileDataById.get(card.id)!} members={members} tagDefinitions={catalog.projectTags} currentMemberId={currentMember?.id} handPositions={handPositions.get(card.id)} calendarDay={calendarDay} selected={selectedCard?.id === card.id} checked={selection.selectedIds.has(card.id)} selectionActive={selection.selectedIds.size > 0} disabled={draftLocked} onToggle={toggleTile} onOpen={activateTile} onFamilyOpen={openTileFamily}
                     onQuickSettings={writable && !navigationLocked && !cardTransfer && !showFamily ? openTileQuickSettings : undefined} />
                 </ManualCardDrop>}</VirtualCardGrid>
               </CatalogCardGroupSection>)}
@@ -2881,7 +2894,11 @@ function CatalogSpaces({ catalog, deckCounts, visibleDecks, filtering, source, w
   return <DndContext sensors={sensors} collisionDetection={deckSortCollisions} measuring={{ droppable: { strategy: MeasuringStrategy.Always } }} onDragStart={start} onDragOver={over} onDragEnd={finish} onDragCancel={cancel}>
     <div ref={coverMotion} className={'catalog-spaces' + (dragged ? ' is-dragging' : '')}>
       <p className="visually-hidden" role="status">{dragged ? t.moveToSpace(spaceTitle) : ''}</p>
-      {catalog.spaces.length === 0 && <p className="catalog-empty">{t.noSpaces}{writable ? t.createSpaceHelp : t.sandboxSpaceHelp}</p>}
+      {/* 2026-11-11: a first-run catalog is a large empty area (DESIGN.md, Empty states): the shared scene
+          with the one available action, centered like the other catalog empty states, not a lone line at the edge. */}
+      {catalog.spaces.length === 0 && <EmptyState variant="first-run" art="first-card"
+        title={t.noSpaces} message={writable ? t.createSpaceHelp : t.sandboxSpaceHelp}
+        action={writable ? { label: t.labelCreateSpace, disabled, onClick: () => onForm({ kind: 'space' }) } : undefined} />}
       {filtering && visibleDecks.length === 0 && <p className="catalog-empty">{t.noDeckMatches}</p>}
       {catalog.spaces.filter(space => !filtering || visibleDecks.some(deck => deck.spaceId === space.id)).map(space => {
         const spaceIndex = catalog.spaces.indexOf(space);

@@ -105,7 +105,7 @@ const text = defineText({
   sortIntoDecks: 'Разложить по колодам',
 });
 
-export interface ProjectPulseStripProps {
+interface ProjectPulseStripProps {
   source: DataSource;
   rootIdentity?: string;
   refreshKey: string | number;

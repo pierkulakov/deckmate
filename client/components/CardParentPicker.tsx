@@ -1,10 +1,12 @@
 import { useId, useMemo, useRef, useState } from 'react';
 import * as Dialog from '@radix-ui/react-dialog';
-import { ArrowLeft, Check, Crown, Gauge, Layers, LoaderCircle, NotebookText, Search, X } from 'lucide-react';
+import { ArrowLeft, Check, Crown, Layers, LoaderCircle, NotebookText, Search, X } from 'lucide-react';
 import { deckAcceptsCard, type CatalogCard, type CatalogView } from '../../src/catalog-contracts.ts';
 import { shortReference } from '../../src/references.ts';
 import { Button } from './ui/button.tsx';
 import { CardOwnerAvatar } from './CardQuickSettings.tsx';
+import { EffortIcon } from './EffortIcon.tsx';
+import { PriorityIcon } from './PriorityIcon.tsx';
 import { defineText, locale, useLang, useText } from '../i18n.ts';
 import { priorityLabel } from '../locales/common.ts';
 import { failureMessage } from '../failure-message.ts';
@@ -113,7 +115,7 @@ export interface ParentPromotionRequest {
   deckId: string | null;
 }
 
-export interface CardParentPickerProps {
+interface CardParentPickerProps {
   card: CatalogCard;
   catalog: CatalogView;
   pending: boolean;
@@ -228,7 +230,7 @@ export function CardParentPicker({ card, catalog, pending, embedded = false, onC
     const Icon = candidate.kind === 'hero' ? Crown : candidate.kind === 'doc' ? NotebookText : Layers;
     const priority = candidate.priority ? priorityLabel(candidate.priority, lang) : '—';
     return <><Icon className="card-parent-option-kind" size={16} /><span className="card-parent-option-content"><strong>{candidate.title}</strong>
-      <span className="card-parent-option-metrics"><span title={t.effort}><Gauge size={12} />{candidate.effort ?? '—'}</span><span title={t.priority}><Layers size={12} />{priority}</span>
+      <span className="card-parent-option-metrics"><span title={t.effort}><EffortIcon size={12} />{candidate.effort ?? '—'}</span><span title={t.priority}><PriorityIcon priority={candidate.priority} size={12} />{priority}</span>
         <span className="card-parent-option-owner" title={t.owner(candidate.owner ?? t.unassigned)}><CardOwnerAvatar owner={candidate.owner} members={catalog.members ?? []} /><span>{candidate.owner ?? t.unassigned}</span></span></span>
       <small>{candidate.deckId ? deckTitles.get(candidate.deckId) ?? t.deckUnavailable : t.noDeck} · {requiresPromotion(candidate) ? t.promoteToHero : candidate.kind === 'doc' ? t.docCard : t.heroCard} · {shortReference('c', candidate.id)}</small>
     </span>{saving && selected.id === candidate.id ? <LoaderCircle size={15} className="spin" /> : base.parentId === candidate.id && <Check size={15} />}</>;

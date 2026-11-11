@@ -1,22 +1,20 @@
-import { ChevronDown, ChevronUp, ChevronsUp, Gauge, Hourglass, Minus } from 'lucide-react';
+import { Hourglass } from 'lucide-react';
 import type { MouseEventHandler, ReactNode } from 'react';
 import type { CardPriority } from '../../src/catalog-contracts.ts';
 import { defineText, locale, textNow, useLang, useText } from '../i18n.ts';
-import { priorityLabel } from '../locales/common.ts';
+import { PriorityIcon } from './PriorityIcon.tsx';
+import { EffortIcon } from './EffortIcon.tsx';
 import { journeyStepTitle } from './journey-step-title.ts';
 
+
 const text = defineText({
-  priority: (priority: CardPriority) => `Priority: ${priorityLabel(priority, 'en')}`,
   effort: (value: string) => `Effort: ${value}`,
   newStep: 'New step',
-  noPriority: 'No priority',
   taskCardInDeck: (deck: string) => `Task Card in deck “${deck}”`,
   noDeck: 'No deck selected',
 }, {
-  priority: (priority: CardPriority) => `Приоритет: ${priorityLabel(priority, 'ru')}`,
   effort: (value: string) => `Оценка: ${value}`,
   newStep: 'Новый шаг',
-  noPriority: 'Без приоритета',
   taskCardInDeck: (deck: string) => `Task Card в колоде «${deck}»`,
   noDeck: 'Колода не выбрана',
 });
@@ -24,13 +22,6 @@ const text = defineText({
 // %PARENT_TITLE% becomes the Hero Card title when the Journey starts; on step cards it reads as a short token.
 export function journeyStepLabel(title: string) {
   return journeyStepTitle(title, '‹Hero›', textNow(text).newStep);
-}
-
-export function JourneyPriorityIcon({ priority, size = 16 }: { priority?: CardPriority | null; size?: number }) {
-  const t = useText(text);
-  const Icon = priority === 'high' ? ChevronsUp : priority === 'medium' ? ChevronUp : priority === 'low' ? ChevronDown : Minus;
-  const label = priority ? t.priority(priority) : t.noPriority;
-  return <span className="journey-priority-icon" title={label}><Icon size={size} aria-hidden="true" /><span className="visually-hidden">{label}</span></span>;
 }
 
 // The 115×146 step card uses a 14/17 title, a task hourglass and a purple effort/priority band.
@@ -48,8 +39,8 @@ export function JourneyMiniCard({ title, effort, priority, deckTitle, onClick, d
     {target && <span className="journey-mini-state" title={target}><Hourglass size={14} aria-hidden="true" /><span className="visually-hidden">{target}</span></span>}
     {badge}
     <span className="journey-mini-band">
-      <span className="journey-mini-effort" title={t.effort(effortLabel ?? '—')}><Gauge size={14} aria-hidden="true" /><b>{effortLabel ?? '-'}</b></span>
-      <JourneyPriorityIcon priority={priority} size={15} />
+      <span className="journey-mini-effort" title={t.effort(effortLabel ?? '—')}><EffortIcon size={14} /><b>{effortLabel ?? '-'}</b></span>
+      <PriorityIcon priority={priority} size={15} />
     </span>
   </>;
   if (!onClick) return <div className="journey-mini">{content}</div>;

@@ -1,11 +1,11 @@
 import { readStoredValue } from '../storage.ts';
 import { runLabel } from '../run-label.ts';
-import { ArrowUpRight, Bookmark, Check, Crown, Gauge, GripVertical, NotebookText, Users, X } from 'lucide-react';
+import { Bookmark, Check, GripVertical, Users, X } from 'lucide-react';
 import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { PointerEvent as ReactPointerEvent, ReactNode } from 'react';
 import { DndContext, DragEndEvent, DragOverlay, KeyboardSensor, PointerSensor, closestCenter, useSensor, useSensors, type CollisionDetection, type UniqueIdentifier } from '@dnd-kit/core';
 import { SortableContext, arrayMove, rectSortingStrategy, sortableKeyboardCoordinates, useSortable, type SortingStrategy } from '@dnd-kit/sortable';
-import { currentRunsByOwner, dueBadgeOf, getCatalogHands, groupCardsByStateFlow, isoWeekStart, localIsoDate, ownerCardsOfMilestone, pinnedMilestoneOf, splitDueCards, summarizeDoneWeek, type CatalogHand, type DueCardsSplit, type OwnerRunCards } from '../../src/catalog-hand.ts';
+import { currentRunsByOwner, catalogHandPositions, dueBadgeOf, getCatalogHands, groupCardsByStateFlow, isoWeekStart, localIsoDate, ownerCardsOfMilestone, pinnedMilestoneOf, splitDueCards, summarizeDoneWeek, type CatalogHand, type DueCardsSplit, type OwnerRunCards } from '../../src/catalog-hand.ts';
 import { type CatalogCard, type CatalogDeck, type MilestoneRecord, type RunRecord } from '../../src/catalog-contracts.ts';
 import type { WorkspaceSnapshot } from '../../src/workspace-contracts.ts';
 import type { ProjectTag } from '../../src/project-tags.ts';
@@ -16,9 +16,10 @@ import { navigateToPlanning } from '../planning-navigation.ts';
 import { CardTransferContext, CatalogCardTile } from './CatalogCardTile.tsx';
 import { CardDragFace, captureCardDragPreview, type CardDragPreview } from './CardDragPresentation.tsx';
 import { CardOwnerAvatar, CardQuickSettings, type CardQuickSettingsTab } from './CardQuickSettings.tsx';
-import { StatusBadge } from './StatusMenu.tsx';
 import { CardTags } from './CardTags.tsx';
-import { storedMemberId } from '../current-member.ts';
+import { CardMetrics } from './CardMetrics.tsx';
+import { EffortIcon } from './EffortIcon.tsx';
+import { storedMemberId, currentMember } from '../current-member.ts';
 import { readMotionTokens } from '../motion.ts';
 import { useCardLayoutMotion } from '../useCardLayoutMotion.ts';
 import { AgentQueueHint } from './AgentQueueHint.tsx';
@@ -38,6 +39,8 @@ const text = defineText({
   yourHand: 'Your Hand',
   yourDueCards: 'Your due cards',
   yourRuns: 'Your Runs',
+  dueCards: 'Due cards',
+  runs: 'Runs',
   tabWithCount: (label: string, count: number) => `${label}, ${count.toLocaleString(locale())} ${new Intl.PluralRules('en-US').select(count) === 'one' ? 'card' : 'cards'}`,
   addToHand: 'Add to Hand',
   removeFromHand: 'Remove from Hand',
@@ -51,9 +54,7 @@ const text = defineText({
   dueLater: 'Due later',
   seeFullMilestone: 'See full Milestone',
   due: 'Due',
-  unassigned: 'Unassigned',
   bookmark: 'Bookmark',
-  effort: 'Effort',
   agent: 'Agent',
   human: 'Human',
   noBookmarks: 'No bookmarked cards yet. Open a card and choose “Bookmark Card” in its menu.',
@@ -97,7 +98,6 @@ const text = defineText({
   openRunTimeline: (label: string) => `Open ${label} in Timeline`,
   noOwnedMilestone: 'You have no cards in this Milestone.',
   noOwnedRun: 'You have no cards in this Run.',
-  openCard: (title: string) => `Open ${title}`,
   removeCard: (title: string) => `Remove from Hand: ${title}`,
   refreshData: 'Refresh data',
   runWorkload: (effort: number, unestimated: number, days: number) => `Active Effort: ${effort.toLocaleString(locale())} · Unestimated: ${unestimated.toLocaleString(locale())} · Workdays left: ${days.toLocaleString(locale())}`,
@@ -105,6 +105,8 @@ const text = defineText({
   yourHand: 'Ваш Hand',
   yourDueCards: 'Ваши карточки по срокам',
   yourRuns: 'Ваши Run',
+  dueCards: 'Карточки по срокам',
+  runs: 'Run',
   tabWithCount: (label: string, count: number) => {
     const rule = new Intl.PluralRules('ru-RU').select(count);
     return `${label}, ${count.toLocaleString(locale())} ${rule === 'one' ? 'карточка' : rule === 'few' ? 'карточки' : 'карточек'}`;
@@ -121,9 +123,7 @@ const text = defineText({
   dueLater: 'Срок позже',
   seeFullMilestone: 'Показать Milestone целиком',
   due: 'Срок',
-  unassigned: 'Без исполнителя',
   bookmark: 'Закладка',
-  effort: 'Оценка',
   agent: 'Агент',
   human: 'Человек',
   noBookmarks: 'Закладок пока нет. Откройте карточку и добавьте закладку в её меню.',
@@ -169,7 +169,6 @@ const text = defineText({
   openRunTimeline: (label: string) => `Открыть ${label} в Timeline`,
   noOwnedMilestone: 'Ваших карточек в этом Milestone нет.',
   noOwnedRun: 'Ваших карточек в этом Run нет.',
-  openCard: (title: string) => `Открыть ${title}`,
   removeCard: (title: string) => `Убрать из Hand: ${title}`,
   refreshData: 'Обновить данные',
   runWorkload: (effort: number, unestimated: number, days: number) => `Оценка активных: ${effort.toLocaleString(locale())} · Без оценки: ${unestimated.toLocaleString(locale())} · Рабочих дней осталось: ${days.toLocaleString(locale())}`,
@@ -253,6 +252,7 @@ export function Hand({ snapshot, refreshKey, onOpenCard: openCard, onOpenMembers
   const handMutation = useRef(false);
   const viewRef = useRef<HTMLElement>(null);
   const t = useText(text);
+  const lang = useLang();
   // Viewing another Hand must not change the acting member used for authorship.
   const [requestedMember, setRequestedMember] = useState(() => new URLSearchParams(location.search).get('handMember') ?? storedMemberId() ?? '');
   // The URL overrides localStorage, so ?hands=all works even with empty storage.
@@ -265,10 +265,8 @@ export function Hand({ snapshot, refreshKey, onOpenCard: openCard, onOpenMembers
   // Show all includes the whole team's due dates, beyond the selected member.
   const [showAllDue, setShowAllDue] = useState(false);
   const hands = useMemo(() => catalog ? getCatalogHands(catalog) : [], [catalog]);
-  const { cardsById, decksById } = useMemo(() => ({
-    cardsById: new Map(catalog?.cards.map(card => [card.id, card])),
-    decksById: new Map(catalog?.decks.map(deck => [deck.id, deck])),
-  }), [catalog]);
+  const handPositions = useMemo(() => catalog ? catalogHandPositions(catalog) : new Map<string, Record<string, number>>(), [catalog]);
+  const decksById = useMemo(() => new Map(catalog?.decks.map(deck => [deck.id, deck])), [catalog]);
   // Your Hand defaults to the first human, or the first registered member if there are no humans.
   const defaultMember = hands.find(hand => hand.member.kind === 'human')?.member.id ?? hands[0]?.member.id ?? '';
   const memberFromLinkIsValid = hands.some(hand => hand.member.id === requestedMember);
@@ -283,6 +281,12 @@ export function Hand({ snapshot, refreshKey, onOpenCard: openCard, onOpenMembers
     return { ...savedHand, cards: [...savedHand.cards].sort((left, right) => place(left) - place(right)) };
   }, [savedHand, droppedOrder]);
   const members = catalog?.members ?? [];
+  // 2026-11-11: the acting member authors changes; the viewed Hand only names the header and planning tabs,
+  // so another member's Hand never claims to be "Your" while authorship stays with the acting member.
+  const ownHand = !activeHand || activeHand.member.id === (currentMember(members)?.id ?? '');
+  const handTitle = ownHand || !activeHand ? t.yourHand : t.handOf(activeHand.member.label);
+  const dueTabLabel = ownHand ? t.yourDueCards : t.dueCards;
+  const runsTabLabel = ownHand ? t.yourRuns : t.runs;
   const lookups = useMemo(() => catalog ? buildCatalogLookups(catalog.cards, catalog.subCardOrder) : null, [catalog]);
   const writable = snapshot.writable && snapshot.source === 'sandbox';
   const openQuickSettings = useCallback((cardId: string, tab: CardQuickSettingsTab, anchor: HTMLElement) => {
@@ -290,7 +294,7 @@ export function Hand({ snapshot, refreshKey, onOpenCard: openCard, onOpenMembers
     if (card) setQuickSettings({ card, tab, anchor });
   }, [catalog]);
   // Hand slots reuse the deck's card tile; selection belongs to Decks, so no checkbox here.
-  const tile = (card: CatalogCard, memberId = selectedMember) => lookups && <CatalogCardTile key={card.id} card={card} catalog={catalog ?? undefined} currentMemberId={memberId} lookups={lookups} members={members} tagDefinitions={catalog?.projectTags} selected={false} checked={false} selectionActive={false} disabled={pending} selectable={false} onOpen={() => onOpenCard(card.id)} onToggle={() => undefined} onFamilyOpen={family => onOpenCard(family.id)} onQuickSettings={writable ? openQuickSettings : undefined} />;
+  const tile = (card: CatalogCard, memberId = selectedMember) => lookups && <CatalogCardTile key={card.id} card={card} catalog={catalog ?? undefined} currentMemberId={memberId} handPositions={handPositions.get(card.id)} lookups={lookups} members={members} tagDefinitions={catalog?.projectTags} selected={false} checked={false} selectionActive={false} disabled={pending} selectable={false} onOpen={() => onOpenCard(card.id)} onToggle={() => undefined} onFamilyOpen={family => onOpenCard(family.id)} onQuickSettings={writable ? openQuickSettings : undefined} />;
   const bookmarkedCards = useMemo(() => catalog ? catalog.cards.filter(card => card.bookmarked && !card.archived && !card.deleted) : [], [catalog]);
   // Planning sections use the selected member's due dates, current Runs and pinned Milestone.
   const today = localIsoDate();
@@ -456,16 +460,16 @@ export function Hand({ snapshot, refreshKey, onOpenCard: openCard, onOpenMembers
   /** The active tab shows one of three planning sections, Bookmarks or Team Hands. */
   function renderTabPanel(): ReactNode {
     if (activeTab === 'due' && shownDueSplit) return <div className="hand-tab-panel" role="tabpanel" id="hand-tab-panel" tabIndex={0} aria-labelledby="hand-tab-due">
-      <HandDueSection split={shownDueSplit} showAll={showAllDue}
-        decksById={decksById} members={members} checklistByCard={lookups?.checklistByCard} projectTags={catalog?.projectTags} onOpenCard={onOpenCard} />
+      <HandDueSection split={shownDueSplit} title={dueTabLabel} showAll={showAllDue}
+        decksById={decksById} members={members} lookups={lookups!} projectTags={catalog?.projectTags} onOpenCard={onOpenCard} />
     </div>;
     if (activeTab === 'runs' && runsByOwner) return <div className="hand-tab-panel" role="tabpanel" id="hand-tab-panel" tabIndex={0} aria-labelledby="hand-tab-runs">
-      <HandRunsSection owned={runsByOwner.owned} withoutCards={runsByOwner.withoutCards}
-        decksById={decksById} projectTags={catalog?.projectTags} onOpenTimeline={openTimeline} onOpenCard={onOpenCard} handControls={handControls} />
+      <HandRunsSection title={runsTabLabel} owned={runsByOwner.owned} withoutCards={runsByOwner.withoutCards}
+        decksById={decksById} lookups={lookups!} projectTags={catalog?.projectTags} onOpenTimeline={openTimeline} onOpenCard={onOpenCard} handControls={handControls} />
     </div>;
     if (activeTab === 'milestone' && pinnedMilestone) return <div className="hand-tab-panel" role="tabpanel" id="hand-tab-panel" tabIndex={0} aria-labelledby="hand-tab-milestone">
       <HandMilestoneSection milestone={pinnedMilestone} cards={milestoneOwnedCards}
-        decksById={decksById} projectTags={catalog?.projectTags} onOpenTimeline={openTimeline} onOpenCard={onOpenCard} handControls={handControls} />
+        decksById={decksById} lookups={lookups!} projectTags={catalog?.projectTags} onOpenTimeline={openTimeline} onOpenCard={onOpenCard} handControls={handControls} />
     </div>;
     if (activeTab === 'bookmarks') return <div className="hand-tab-panel glass-panel" role="tabpanel" id="hand-tab-panel" tabIndex={0} aria-labelledby="hand-tab-bookmarks">
       {bookmarkedCards.length
@@ -475,7 +479,14 @@ export function Hand({ snapshot, refreshKey, onOpenCard: openCard, onOpenMembers
     return <div className="hand-tab-panel glass-stack" role="tabpanel" id="hand-tab-panel" tabIndex={0} aria-labelledby="hand-tab-team">
       {hands.map(({ member, cards }) => <section className="hand-member glass-panel" key={member.id} aria-labelledby={`hand-${member.id}`}>
         <header className="hand-member-heading panel-head"><CardOwnerAvatar owner={member.label} members={members} /><h2 className="panel-title" id={`hand-${member.id}`}>{member.label}</h2><span className="hand-member-kind">{member.kind === 'agent' ? t.agent : t.human}</span><span className="hand-count panel-count" aria-label={t.cardCount(cards.length)}>{(cards.length).toLocaleString(locale())}</span></header>
-        {!cards.length ? <EmptyState message={writable ? t.emptyMemberHand : t.emptyHandReadOnly} /> : <div className="hand-cards">{cards.map(card => <HandMemberCard key={card.id} card={card} cardsById={cardsById} decksById={decksById} members={members} progress={lookups?.checklistByCard.get(card.id)} projectTags={catalog?.projectTags} onOpenCard={onOpenCard} />)}</div>}
+        {!cards.length ? <EmptyState message={writable ? t.emptyMemberHand : t.emptyHandReadOnly} /> : <div className="hand-cards">{cards.map(card => <div className="hand-team-card" key={card.id}>
+          {tile(card, member.id)}
+          <div className="hand-team-card-meta">
+            <span>{decksById.get(card.deckId ?? '')?.title ?? t.noDeck}</span>
+            {card.dueDate && <span>{t.due} · {formatPlanningDate(card.dueDate, lang)}</span>}
+            {card.bookmarked && <span className="hand-team-bookmark"><Bookmark size={12} aria-hidden="true" />{t.bookmark}</span>}
+          </div>
+        </div>)}</div>}
       </section>)}
     </div>;
   }
@@ -485,9 +496,9 @@ export function Hand({ snapshot, refreshKey, onOpenCard: openCard, onOpenMembers
   // All Hands follows registry order, humans before agents; stable sorting preserves ties.
   const orderedHands = useMemo(() => [...hands].sort((left, right) => (left.member.kind === 'human' ? 0 : 1) - (right.member.kind === 'human' ? 0 : 1)), [hands]);
   const panelHeader = <header className="hand-panel-header page-head">
-    <div className="page-head-main"><div className="page-title-block"><h1 className="page-title">{t.yourHand}</h1>
+    <div className="page-head-main"><div className="page-title-block"><h1 className="page-title">{handTitle}</h1>
     </div></div><div className="page-tools">
-    {!showAllHands && handEffort > 0 && <span className="hand-panel-effort page-number" role="img" title={t.totalEffort(handEffort)} aria-label={t.totalEffort(handEffort)}><Gauge size={16} aria-hidden="true" />{(handEffort).toLocaleString(locale())}</span>}
+    {!showAllHands && handEffort > 0 && <span className="hand-panel-effort page-number" role="img" title={t.totalEffort(handEffort)} aria-label={t.totalEffort(handEffort)}><EffortIcon size={16} />{(handEffort).toLocaleString(locale())}</span>}
     <label className="hand-all-toggle" title={t.showAllTitle}>
       <input type="checkbox" role="switch" checked={showAllHands} onChange={event => toggleAllHands(event.target.checked)} aria-label={t.allHands} />
       <span className="hand-all-track" aria-hidden="true"><span className="hand-all-thumb" /></span>
@@ -507,7 +518,7 @@ export function Hand({ snapshot, refreshKey, onOpenCard: openCard, onOpenMembers
         return <section className="hand-all-member" key={hand.member.id} aria-label={t.handOf(hand.member.label)}>
           <header className="hand-all-member-heading"><CardOwnerAvatar owner={hand.member.label} members={members} /><h2>{hand.member.label}</h2></header>
           {hand.cards.length || hand.doneCards.length ? <HandSlots key={hand.member.id} hand={hand} tile={card => tile(card, hand.member.id)} canReorder={false} onOpenCard={onOpenCard} /> : <EmptyState message={t.empty} />}
-          <HandQueue cards={queuedCards} decksById={decksById} projectTags={catalog?.projectTags} canReorder={false} onOpenCard={onOpenCard} />
+          <HandQueue cards={queuedCards} decksById={decksById} lookups={lookups!} projectTags={catalog?.projectTags} canReorder={false} onOpenCard={onOpenCard} />
         </section>;
       })}
     </div>
@@ -524,11 +535,11 @@ export function Hand({ snapshot, refreshKey, onOpenCard: openCard, onOpenMembers
       {panelHeader}
       <div className="hand-tabs control-tabs">
         <div className="hand-tab-list" role="tablist" aria-label={t.handSections} onKeyDown={navigateTabs}>
-          {dueTabVisible && <button type="button" role="tab" id="hand-tab-due" aria-controls="hand-tab-panel" tabIndex={activeTab === 'due' ? 0 : -1} aria-selected={activeTab === 'due'} aria-label={t.tabWithCount(t.yourDueCards, dueCount)} className={`hand-tab control-tab${activeTab === 'due' ? ' is-active' : ''}`} onClick={() => selectTab('due')}>
-            <span className={`hand-tab-count page-number${dueBadge?.bucket ? ` is-due-${dueBadge.bucket}` : ''}`} aria-hidden="true">{dueCount.toLocaleString(locale())}</span>{t.yourDueCards}
+          {dueTabVisible && <button type="button" role="tab" id="hand-tab-due" aria-controls="hand-tab-panel" tabIndex={activeTab === 'due' ? 0 : -1} aria-selected={activeTab === 'due'} aria-label={t.tabWithCount(dueTabLabel, dueCount)} className={`hand-tab control-tab${activeTab === 'due' ? ' is-active' : ''}`} onClick={() => selectTab('due')}>
+            <span className={`hand-tab-count page-number${dueBadge?.bucket ? ` is-due-${dueBadge.bucket}` : ''}`} aria-hidden="true">{dueCount.toLocaleString(locale())}</span>{dueTabLabel}
           </button>}
-          {runsTabVisible && <button type="button" role="tab" id="hand-tab-runs" aria-controls="hand-tab-panel" tabIndex={activeTab === 'runs' ? 0 : -1} aria-selected={activeTab === 'runs'} aria-label={t.tabWithCount(t.yourRuns, runsOwnedCardCount)} className={`hand-tab control-tab${activeTab === 'runs' ? ' is-active' : ''}`} onClick={() => selectTab('runs')}>
-            <span className="hand-tab-count page-number" aria-hidden="true">{runsOwnedCardCount.toLocaleString(locale())}</span>{t.yourRuns}
+          {runsTabVisible && <button type="button" role="tab" id="hand-tab-runs" aria-controls="hand-tab-panel" tabIndex={activeTab === 'runs' ? 0 : -1} aria-selected={activeTab === 'runs'} aria-label={t.tabWithCount(runsTabLabel, runsOwnedCardCount)} className={`hand-tab control-tab${activeTab === 'runs' ? ' is-active' : ''}`} onClick={() => selectTab('runs')}>
+            <span className="hand-tab-count page-number" aria-hidden="true">{runsOwnedCardCount.toLocaleString(locale())}</span>{runsTabLabel}
           </button>}
           {milestoneTabVisible && <button type="button" role="tab" id="hand-tab-milestone" aria-controls="hand-tab-panel" tabIndex={activeTab === 'milestone' ? 0 : -1} aria-selected={activeTab === 'milestone'} aria-label={t.tabWithCount(t.pinnedMilestone, milestoneOwnedCards.length)} className={`hand-tab control-tab${activeTab === 'milestone' ? ' is-active' : ''}`} onClick={() => selectTab('milestone')}>
             <span className="hand-tab-count page-number" aria-hidden="true">{milestoneOwnedCards.length.toLocaleString(locale())}</span>{t.pinnedMilestone}
@@ -543,14 +554,14 @@ export function Hand({ snapshot, refreshKey, onOpenCard: openCard, onOpenMembers
         {activeTab === 'due' && <button type="button" className="hand-show-all control" aria-pressed={showAllDue} onClick={() => setShowAllDue(enabled => !enabled)}>{t.showAll}</button>}
       </div>
       {!showAllHands && activeHand
-        ? <HandBoard hand={activeHand} canReorder={canReorder} decksById={decksById} projectTags={catalog.projectTags} onOpenCard={onOpenCard} onRemove={canReorder ? removeHandCard : undefined} onDragEnd={event => void finishHandDrag(event)}>
-          <section className="hand-panel glass-panel" aria-label={t.yourHand}>
+        ? <HandBoard hand={activeHand} canReorder={canReorder} decksById={decksById} lookups={lookups!} projectTags={catalog.projectTags} onOpenCard={onOpenCard} onRemove={canReorder ? removeHandCard : undefined} onDragEnd={event => void finishHandDrag(event)}>
+          <section className="hand-panel glass-panel" aria-label={handTitle}>
             <div className="hand-panel-body">
               {panelBody}
             </div>
           </section>
         </HandBoard>
-        : <section className="hand-panel glass-panel" aria-label={t.yourHand}>
+        : <section className="hand-panel glass-panel" aria-label={handTitle}>
             <div className="hand-panel-body">
               {panelBody}
             </div>
@@ -584,10 +595,11 @@ function DoneSlot({ doneCards, lastWeek, expanded, controls, onToggle }: { doneC
 }
 
 /** A single hand shares one drag zone across slots and queue; the panel is passed as children. */
-function HandBoard({ hand, canReorder, decksById, projectTags, onOpenCard, onRemove, onDragEnd, children }: {
+function HandBoard({ hand, canReorder, decksById, lookups, projectTags, onOpenCard, onRemove, onDragEnd, children }: {
   hand: CatalogHand;
   canReorder: boolean;
   decksById: Map<string, CatalogDeck>;
+  lookups: CatalogLookups;
   projectTags?: readonly ProjectTag[];
   onOpenCard: (id: string) => void;
   onRemove?: (card: CatalogCard) => void;
@@ -638,7 +650,7 @@ function HandBoard({ hand, canReorder, decksById, projectTags, onOpenCard, onRem
       <div ref={layoutMotion} className={'hand-board' + (dragging ? ' is-card-transfer-active' : '') + (overlayActive ? ' has-hand-drag-overlay' : '')}>
         <SortableContext items={openIds} strategy={handSorting}>
           {children}
-          <HandQueue cards={splitHand(hand.cards).queuedCards} decksById={decksById} projectTags={projectTags} canReorder={canReorder} overlayActive={Boolean(drag?.queueTitle)} onOpenCard={onOpenCard} onRemove={onRemove} />
+          <HandQueue cards={splitHand(hand.cards).queuedCards} decksById={decksById} lookups={lookups} projectTags={projectTags} canReorder={canReorder} overlayActive={Boolean(drag?.queueTitle)} onOpenCard={onOpenCard} onRemove={onRemove} />
         </SortableContext>
       </div>
       <DragOverlay dropAnimation={dropAnimation} adjustScale={false} style={{ pointerEvents: 'none' }}>
@@ -698,9 +710,10 @@ function HandSlotTile({ card, tile, canReorder, onRemove }: { card: CatalogCard;
 }
 
 /** Cards beyond the seven slots use queue drag handles; start them with the open card's play action or Space on a tile. */
-function HandQueue({ cards, decksById, projectTags, canReorder, overlayActive, onOpenCard, onRemove }: {
+function HandQueue({ cards, decksById, lookups, projectTags, canReorder, overlayActive, onOpenCard, onRemove }: {
   cards: CatalogCard[];
   decksById: Map<string, CatalogDeck>;
+  lookups: CatalogLookups;
   projectTags?: readonly ProjectTag[];
   canReorder: boolean;
   overlayActive?: boolean;
@@ -712,13 +725,14 @@ function HandQueue({ cards, decksById, projectTags, canReorder, overlayActive, o
   return <div className={'hand-queue' + (overlayActive ? ' has-drag-overlay' : '')}>
     <strong>{t.queue(cards.length)}</strong>
     <ul>{cards.map(card => <HandQueueRow key={card.id} card={card} deckTitle={decksById.get(card.deckId ?? '')?.title ?? t.noDeck}
-      projectTags={projectTags} canReorder={canReorder} onOpen={() => onOpenCard(card.id)} onRemove={onRemove ? () => onRemove(card) : undefined} />)}</ul>
+      lookups={lookups} projectTags={projectTags} canReorder={canReorder} onOpen={() => onOpenCard(card.id)} onRemove={onRemove ? () => onRemove(card) : undefined} />)}</ul>
   </div>;
 }
 
-function HandQueueRow({ card, deckTitle, projectTags, canReorder, onOpen, onRemove }: {
+function HandQueueRow({ card, deckTitle, lookups, projectTags, canReorder, onOpen, onRemove }: {
   card: CatalogCard;
   deckTitle: string;
+  lookups: CatalogLookups;
   projectTags?: readonly ProjectTag[];
   canReorder: boolean;
   onOpen: () => void;
@@ -731,7 +745,10 @@ function HandQueueRow({ card, deckTitle, projectTags, canReorder, onOpen, onRemo
   return <li ref={sortable.setNodeRef} data-hand-card={card.id} className={sortable.isDragging ? 'is-drag-source' : undefined} style={{ transform, transition: sortable.transition }}>
     {canReorder && <button type="button" ref={sortable.setActivatorNodeRef} className="hand-queue-handle" {...sortable.attributes} {...sortable.listeners}
       aria-label={t.moveInHand(card.title)} title={t.reorderTitle}><GripVertical size={14} /></button>}
-    <button type="button" className="hand-queue-open" onClick={onOpen}><span title={card.title}>{card.title}</span><CardTags tags={card.tags} definitions={projectTags} compact /><small title={deckTitle}>{deckTitle}</small></button>
+    <div className="hand-queue-content">
+      <button type="button" className="hand-queue-open" onClick={onOpen}><span className="hand-queue-title" title={card.title}>{card.title}</span><CardMetrics card={card} lookups={lookups} /><small title={deckTitle}>{deckTitle}</small></button>
+      {(card.tags?.length ?? 0) > 0 && <div className="hand-queue-tags"><CardTags tags={card.tags} definitions={projectTags} compact maxVisible={2} /></div>}
+    </div>
     {onRemove && <button type="button" className="hand-queue-remove" aria-label={t.removeCard(card.title)} title={t.removeCard(card.title)} onClick={onRemove}><X size={14} aria-hidden="true" /></button>}
   </li>;
 }
@@ -752,9 +769,10 @@ interface HandMembershipControls {
 }
 
 /** A hand section row shows title, due date and deck; clicking opens the card. */
-function HandSectionRow({ card, deckTitle, dueBucket, owner, members, progress, projectTags, onOpenCard, handControls }: {
+function HandSectionRow({ card, deckTitle, lookups, dueBucket, owner, members, progress, projectTags, onOpenCard, handControls }: {
   card: CatalogCard;
   deckTitle: string;
+  lookups: CatalogLookups;
   dueBucket?: 'now' | 'soon' | 'later';
   /** Only Show all needs an owner avatar on each row. */
   owner?: string | null;
@@ -771,6 +789,7 @@ function HandSectionRow({ card, deckTitle, dueBucket, owner, members, progress, 
     <button type="button" className="hand-section-row" onClick={() => onOpenCard(card.id)}>
       {owner !== undefined && members && <span className="hand-row-owner"><CardOwnerAvatar owner={owner} members={members} progress={progress} /></span>}
       <span className="hand-row-title" title={card.title}>{card.title}</span>
+      <CardMetrics card={card} lookups={lookups} />
       <CardTags tags={card.tags} definitions={projectTags} compact />
       {card.dueDate && <small className={'hand-row-due' + (dueBucket ? ` is-due-${dueBucket}` : '')}>{formatPlanningDate(card.dueDate, lang)}</small>}
       <small title={deckTitle}>{deckTitle}</small>
@@ -780,12 +799,14 @@ function HandSectionRow({ card, deckTitle, dueBucket, owner, members, progress, 
 }
 
 /** Your due cards has up to three groups: Due now, Due soon and Due later; Show all includes the whole team. */
-function HandDueSection({ split, showAll, decksById, members, checklistByCard, projectTags, onOpenCard }: {
+function HandDueSection({ split, title, showAll, decksById, members, lookups, projectTags, onOpenCard }: {
   split: DueCardsSplit;
+  /** The tab name: "Your due cards" for the acting member, a neutral name for another member's Hand. */
+  title: string;
   showAll: boolean;
   decksById: Map<string, CatalogDeck>;
   members: HandSectionMembers;
-  checklistByCard?: CatalogLookups['checklistByCard'];
+  lookups: CatalogLookups;
   projectTags?: readonly ProjectTag[];
   onOpenCard: (id: string) => void;
 }) {
@@ -795,15 +816,15 @@ function HandDueSection({ split, showAll, decksById, members, checklistByCard, p
     { key: 'soon', label: t.dueSoon },
     { key: 'later', label: t.dueLater },
   ];
-  return <section className="hand-section glass-panel" aria-label={t.yourDueCards}>
+  return <section className="hand-section glass-panel" aria-label={title}>
     {dueBadgeOf(split).count === 0 && <EmptyState message={t.noDueCards} />}
     {groups.map(group => split[group.key].length > 0 && (
       <div className="hand-group" key={group.key}>
         <h3 className={`hand-group-title is-due-${group.key}`}>{group.label}</h3>
         <ul className="hand-row-list">
-          {split[group.key].map(card => <HandSectionRow key={card.id} card={card} dueBucket={group.key}
+          {split[group.key].map(card => <HandSectionRow key={card.id} card={card} lookups={lookups} dueBucket={group.key}
             deckTitle={decksById.get(card.deckId ?? '')?.title ?? t.noDeck}
-            owner={showAll ? card.owner : undefined} members={members} progress={checklistByCard?.get(card.id)} projectTags={projectTags} onOpenCard={onOpenCard} />)}
+            owner={showAll ? card.owner : undefined} members={members} progress={lookups.checklistByCard.get(card.id)} projectTags={projectTags} onOpenCard={onOpenCard} />)}
         </ul>
       </div>
     ))}
@@ -811,10 +832,11 @@ function HandDueSection({ split, showAll, decksById, members, checklistByCard, p
 }
 
 /** The Run title links to its full Timeline view. */
-function HandRunBlock({ run, cards, decksById, projectTags, onOpenTimeline, onOpenCard, handControls }: {
+function HandRunBlock({ run, cards, decksById, lookups, projectTags, onOpenTimeline, onOpenCard, handControls }: {
   run: RunRecord;
   cards: CatalogCard[];
   decksById: Map<string, CatalogDeck>;
+  lookups: CatalogLookups;
   projectTags?: readonly ProjectTag[];
   onOpenTimeline: (target: PlanningTarget) => void;
   onOpenCard: (id: string) => void;
@@ -835,7 +857,7 @@ function HandRunBlock({ run, cards, decksById, projectTags, onOpenTimeline, onOp
       <div className="hand-group" key={group.key}>
         <h4 className="hand-group-title">{stateGroupLabel(group.key, lang)}</h4>
         <ul className="hand-row-list">
-          {group.cards.map(card => <HandSectionRow key={card.id} card={card} projectTags={projectTags}
+          {group.cards.map(card => <HandSectionRow key={card.id} card={card} lookups={lookups} projectTags={projectTags}
             deckTitle={decksById.get(card.deckId ?? '')?.title ?? t.noDeck} onOpenCard={onOpenCard} handControls={handControls} />)}
         </ul>
       </div>
@@ -844,29 +866,33 @@ function HandRunBlock({ run, cards, decksById, projectTags, onOpenTimeline, onOp
 }
 
 /** Your Runs lists personal cards in current Runs; Runs without personal cards form the lower group. Exported for the surface test: the tab starts on Bookmarks, so a static render never reaches this section through Hand. */
-export function HandRunsSection({ owned, withoutCards, decksById, projectTags, onOpenTimeline, onOpenCard, handControls }: {
+export function HandRunsSection({ title, owned, withoutCards, decksById, lookups: providedLookups, projectTags, onOpenTimeline, onOpenCard, handControls }: {
+  /** The tab name: "Your Runs" for the acting member, a neutral name for another member's Hand. */
+  title: string;
   owned: OwnerRunCards[];
   withoutCards: RunRecord[];
   decksById: Map<string, CatalogDeck>;
+  lookups?: CatalogLookups;
   projectTags?: readonly ProjectTag[];
   onOpenTimeline: (target: PlanningTarget) => void;
   onOpenCard: (id: string) => void;
   handControls?: HandMembershipControls;
 }) {
-  const t = useText(text);
-  return <section className="hand-section glass-panel" aria-label={t.yourRuns}>
+  const lookups = useMemo(() => providedLookups ?? buildCatalogLookups(owned.flatMap(entry => entry.cards)), [providedLookups, owned]);
+  return <section className="hand-section glass-panel" aria-label={title}>
     {owned.map(({ run, cards }) => <HandRunBlock key={run.id} run={run} cards={cards} projectTags={projectTags}
-      decksById={decksById} onOpenTimeline={onOpenTimeline} onOpenCard={onOpenCard} handControls={handControls} />)}
+      decksById={decksById} lookups={lookups} onOpenTimeline={onOpenTimeline} onOpenCard={onOpenCard} handControls={handControls} />)}
     {withoutCards.map(run => <HandRunBlock key={run.id} run={run} cards={[]} projectTags={projectTags}
-      decksById={decksById} onOpenTimeline={onOpenTimeline} onOpenCard={onOpenCard} handControls={handControls} />)}
+      decksById={decksById} lookups={lookups} onOpenTimeline={onOpenTimeline} onOpenCard={onOpenCard} handControls={handControls} />)}
   </section>;
 }
 
 /** Pinned Milestone shows personal cards; See full Milestone opens the complete view. */
-function HandMilestoneSection({ milestone, cards, decksById, projectTags, onOpenTimeline, onOpenCard, handControls }: {
+function HandMilestoneSection({ milestone, cards, decksById, lookups, projectTags, onOpenTimeline, onOpenCard, handControls }: {
   milestone: MilestoneRecord;
   cards: CatalogCard[];
   decksById: Map<string, CatalogDeck>;
+  lookups: CatalogLookups;
   projectTags?: readonly ProjectTag[];
   onOpenTimeline: (target: PlanningTarget) => void;
   onOpenCard: (id: string) => void;
@@ -883,41 +909,11 @@ function HandMilestoneSection({ milestone, cards, decksById, projectTags, onOpen
       <div className="hand-group" key={group.key}>
         <h4 className="hand-group-title">{stateGroupLabel(group.key, lang)}</h4>
         <ul className="hand-row-list">
-          {group.cards.map(card => <HandSectionRow key={card.id} card={card} projectTags={projectTags}
+          {group.cards.map(card => <HandSectionRow key={card.id} card={card} lookups={lookups} projectTags={projectTags}
             deckTitle={decksById.get(card.deckId ?? '')?.title ?? t.noDeck} onOpenCard={onOpenCard} handControls={handControls} />)}
         </ul>
       </div>
     ))}
     {cards.length === 0 && <EmptyState message={t.noOwnedMilestone} />}
   </section>;
-}
-
-/** Team Hands keeps the per-member list view of 2026-11-03. */
-function HandMemberCard({ card, cardsById, decksById, members, progress, projectTags, onOpenCard }: {
-  card: CatalogCard;
-  cardsById: Map<string, CatalogCard>;
-  decksById: Map<string, CatalogDeck>;
-  members: Parameters<typeof CardOwnerAvatar>[0]['members'];
-  progress?: ChecklistProgress;
-  projectTags?: readonly ProjectTag[];
-  onOpenCard: (id: string) => void;
-}) {
-  const t = useText(text);
-  const lang = useLang();
-  const parent = card.parentId ? cardsById.get(card.parentId) : undefined;
-  const deck = card.deckId ? decksById.get(card.deckId) : undefined;
-  return <div className={`sprint-task hand-card kind-${card.kind}`}>
-    {parent && <span className="sprint-task-parent"><Crown size={12} /><span>{parent.title}</span></span>}
-    <button type="button" className="hand-card-open" onClick={() => onOpenCard(card.id)} aria-label={t.openCard(card.title)}>
-      <span className="sprint-task-body"><strong>{card.title}</strong><small>{deck?.title ?? t.noDeck}</small>
-        <CardTags tags={card.tags} definitions={projectTags} compact />
-        {card.dueDate && <small>{t.due} · {formatPlanningDate(card.dueDate, lang)}</small>}
-        <span className="sprint-task-owner"><CardOwnerAvatar owner={card.owner} members={members} progress={progress} /><span>{card.owner ?? t.unassigned}</span>{card.bookmarked && <Bookmark size={12} aria-label={t.bookmark} />}</span>
-      </span>
-    </button>
-    <span className="sprint-task-band">
-      {card.kind === 'task' ? <StatusBadge state={card.state ?? 'not-started'} /> : <span className="hand-card-kind">{card.kind === 'hero' ? <Crown size={12} /> : <NotebookText size={12} />}{card.kind === 'hero' ? kindLabel('hero', lang) : kindLabel('doc', lang)}</span>}
-      {card.effort != null && <span className="sprint-task-effort" title={t.effort}><Gauge size={13} />{(card.effort).toLocaleString(locale())}</span>}<ArrowUpRight size={14} />
-    </span>
-  </div>;
 }

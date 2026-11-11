@@ -41,7 +41,7 @@ const emojiRows = [
   ['🫥', 'dotted line invisible невидимый скрытый'],
   ['😏', 'smirk smug усмешка хитрый'],
   ['😒', 'unamused annoyed недовольный скука'],
-  // Emotions and gestures — 30.
+  // Emotions and gestures — 31.
   ['🤯', 'mind blown surprise взрыв мозга удивление'],
   ['🥳', 'party celebrate праздник вечеринка'],
   ['😎', 'cool sunglasses круто очки'],
@@ -52,6 +52,7 @@ const emojiRows = [
   ['😱', 'scream fear shock крик страх шок'],
   ['😡', 'angry rage злость гнев'],
   ['🤬', 'cursing angry symbols ругань злость'],
+  ['💀', 'skull death undead necromancer череп смерть нежить некромант'],
   ['👋', 'wave hello goodbye привет пока махать'],
   ['🤚', 'raised hand back рука ладонь'],
   ['✋', 'raised hand stop рука стоп'],
@@ -72,7 +73,7 @@ const emojiRows = [
   ['🙌', 'raising hands celebrate ура руки праздник'],
   ['🙏', 'pray thanks please спасибо пожалуйста молитва'],
   ['💪', 'muscle strength strong сила мускул сильный'],
-  // Animals — 30.
+  // Animals — 31.
   ['🐶', 'dog puppy pet собака щенок'],
   ['🐱', 'cat kitten pet кошка кот питомец'],
   ['🐭', 'mouse rodent мышь грызун'],
@@ -100,6 +101,7 @@ const emojiRows = [
   ['🦄', 'unicorn magic единорог магия'],
   ['🐝', 'bee honey insect пчела мёд насекомое'],
   ['🐛', 'bug caterpillar insect гусеница насекомое'],
+  ['🐞', 'ladybug beetle bug insect жук божья коровка баг ошибка насекомое'],
   ['🦋', 'butterfly beauty бабочка красота'],
   ['🐢', 'turtle slow черепаха медленно'],
   ['🐍', 'snake serpent змея'],
@@ -312,3 +314,8 @@ const emojiRows = [
 ] as const;
 
 export const tagEmojis = emojiRows.map(([emoji, keywords]) => ({ emoji, keywords }));
+
+export function findTagEmojis(query: string) {
+  const needle = query.trim().toLocaleLowerCase('ru');
+  return tagEmojis.filter(item => (item.emoji + ' ' + item.keywords).toLocaleLowerCase('ru').includes(needle));
+}

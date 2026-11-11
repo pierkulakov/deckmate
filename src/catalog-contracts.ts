@@ -1,4 +1,4 @@
-import type { BulkEditRequest, BulkOutcome, CardOptions } from './bulk-contracts.ts';
+import type { BulkEditRequest, CardOptions } from './bulk-contracts.ts';
 import type { ProjectTag } from './project-tags.ts';
 import type { ByteRange } from './contracts.ts';
 import type { CardState, FormatLanguage } from './format-vocabulary.ts';

@@ -10,11 +10,12 @@ import type { WorkspaceSnapshot } from '../../src/workspace-contracts.ts';
 import { useCatalog } from '../useCatalog.ts';
 import { currentMember, onMemberChange, storedMemberId } from '../current-member.ts';
 import { matchShortcut, shortcutTargetBlocked } from '../keyboard-shortcuts.ts';
-import { RESULT_LIMIT, runSearch, parseSearch, toggleTagOr, withoutToken, type FilterToken, type NavigationTarget } from '../search-query.ts';
+import { RESULT_LIMIT, runSearch, parseSearch, toggleTagOr, withoutToken, suggestTagFilters, completeTagFilter, matchedTagsFirst, searchTagNames, type FilterToken, type NavigationTarget, type TagFilterSuggestion } from '../search-query.ts';
 import { cardIcons } from './CatalogCardTile.tsx';
 import { memberForOwner, ownerProgressLabel } from './CardOwnerAvatar.tsx';
 import { CardTags, TagBadge } from './CardTags.tsx';
 import { CardFaceStatus, cardFaceStatus } from './CardIndicators.tsx';
+import { CardMetrics } from './CardMetrics.tsx';
 import { buildCatalogLookups } from '../catalog-lookups.ts';
 import type { CardTileLookups } from '../card-tile-equality.ts';
 import { defineText, locale, useLang, useText } from '../i18n.ts';
@@ -48,6 +49,9 @@ const text = defineText({
   goToLabel: 'Go to:',
   deck: (title: string) => `Deck: ${title}`,
   open: (title: string) => `Open: ${title}`,
+  tagSuggestions: 'Tag suggestions',
+  applyTag: (name: string) => `Filter by tag: ${name}`,
+  tagCards: (count: number) => `Cards: ${count.toLocaleString(locale())}`,
 }, {
   syntaxHint: 'слова · #тег (#a|#b — ИЛИ) · @исполнитель · @none · !исключить · deck:Колода · kind:hero|task|doc · state:done|archived|deleted · '
     + 'effort:3+|3- · priority:high|medium|low · run:current|future|past|none · milestone:Название|none · hand:in|not · due:today|soon|any · '
@@ -70,16 +74,19 @@ const text = defineText({
   goToLabel: 'Перейти:',
   deck: (title: string) => `Колода: ${title}`,
   open: (title: string) => `Открыть: ${title}`,
+  tagSuggestions: 'Подсказки тегов',
+  applyTag: (name: string) => `Фильтр по тегу: ${name}`,
+  tagCards: (count: number) => `Карточек: ${count.toLocaleString(locale())}`,
 });
 
 type GoToTarget = Exclude<NavigationTarget, { kind: 'ambiguous' }>;
 
 /** One combined list row: a navigation suggestion ("Go to: ...") or a plain search result. */
-type SearchEntry = { type: 'navigation'; target: GoToTarget } | { type: 'card'; card: CatalogCard };
+type SearchEntry = { type: 'tag'; suggestion: TagFilterSuggestion } | { type: 'navigation'; target: GoToTarget } | { type: 'card'; card: CatalogCard };
 
 function SearchFilterLabel({ token, definitions = [] }: { token: FilterToken; definitions?: readonly ProjectTag[] }) {
   if (token.kind !== 'tag') return <span>{token.raw}</span>;
-  const names = token.raw.replace(/^!?#/u, '').split('|').map(name => name.replace(/^#/u, '')).filter(Boolean);
+  const names = searchTagNames(token);
   return <span className="global-search-tag-filter">
     {token.negated && <span aria-hidden="true">!</span>}
     {names.map((name, index) => {
@@ -103,6 +110,8 @@ export function GlobalSearch({ snapshot, refreshKey, onOpenCard, onOpenDeck, dis
   const t = useText(text);
   const lang = useLang();
   const [value, setValue] = useState('');
+  const [caret, setCaret] = useState(0);
+  const completionCaret = useRef<number | null>(null);
   const [open, setOpen] = useState(false);
   const [expanded, setExpanded] = useState(false);
   const [syntaxOpen, setSyntaxOpen] = useState(false);
@@ -122,10 +131,26 @@ export function GlobalSearch({ snapshot, refreshKey, onOpenCard, onOpenDeck, dis
     ? results.navigation.filter((target): target is GoToTarget => target.kind !== 'ambiguous')
     : [], [results]);
   const ambiguous = useMemo(() => results?.navigation.filter(target => target.kind === 'ambiguous') ?? [], [results]);
+  const suggestions = useMemo(() => catalog ? suggestTagFilters(catalog, value, caret) : [], [catalog, value, caret]);
   const entries = useMemo<SearchEntry[]>(() => [
+    ...suggestions.map(suggestion => ({ type: 'tag' as const, suggestion })),
     ...goTo.map(target => ({ type: 'navigation' as const, target })),
     ...results?.cards.map(card => ({ type: 'card' as const, card })) ?? [],
-  ], [goTo, results]);
+  ], [suggestions, goTo, results]);
+
+  useLayoutEffect(() => {
+    if (completionCaret.current === null) return;
+    inputRef.current?.setSelectionRange(completionCaret.current, completionCaret.current);
+    completionCaret.current = null;
+  }, [value]);
+
+  function completeTag(suggestion: TagFilterSuggestion) {
+    const next = completeTagFilter(value, suggestion);
+    const nextCaret = suggestion.end + next.length - value.length;
+    completionCaret.current = nextCaret;
+    setValue(next); setCaret(nextCaret); setOpen(true);
+    moveFocus(inputRef.current);
+  }
 
   // Filter pills use the current input rather than deferred input so removal appears immediately.
   const pills = useMemo(() => parseSearch(value).filter((token): token is FilterToken => token.kind !== 'nav' && token.kind !== 'word'), [value]);
@@ -197,7 +222,7 @@ export function GlobalSearch({ snapshot, refreshKey, onOpenCard, onOpenDeck, dis
     return () => clearTimeout(timer);
   }, [value]);
 
-  useEffect(() => { setHighlighted(0); }, [results]);
+  useEffect(() => { setHighlighted(0); }, [results, suggestions]);
 
   // Clicking outside a focusable element still counts as leaving the search.
   useEffect(() => {
@@ -268,7 +293,9 @@ export function GlobalSearch({ snapshot, refreshKey, onOpenCard, onOpenDeck, dis
     } else if (event.key === 'Enter') {
       event.preventDefault();
       const entry = entries[highlighted] ?? entries[0];
-      if (entry.type === 'navigation') openNavigation(entry.target); else openResult(entry.card);
+      if (entry.type === 'tag') completeTag(entry.suggestion);
+      else if (entry.type === 'navigation') openNavigation(entry.target);
+      else openResult(entry.card);
     }
   }
 
@@ -284,9 +311,10 @@ export function GlobalSearch({ snapshot, refreshKey, onOpenCard, onOpenDeck, dis
         aria-controls="global-search-results" aria-activedescendant={open && entries.length ? `global-search-option-${highlighted}` : undefined}
         aria-autocomplete="list" placeholder={t.searchPlaceholder} autoComplete="off" spellCheck={false}
         value={value} onKeyDown={onKeyDown} disabled={disabled}
+        onSelect={event => setCaret(event.currentTarget.selectionStart ?? value.length)}
         onFocus={() => { if (value.trim()) setOpen(true); }}
         onBlur={event => { if (!fieldRef.current?.contains(event.relatedTarget as Node | null)) setOpen(false); }}
-        onChange={event => { setValue(event.target.value); setOpen(Boolean(event.target.value.trim())); }} />
+        onChange={event => { setValue(event.target.value); setCaret(event.target.selectionStart ?? event.target.value.length); setOpen(Boolean(event.target.value.trim())); }} />
       <kbd className="global-search-key" aria-hidden="true">/</kbd>
       <Button variant="ghost" size="icon" className="global-search-close" aria-label={t.close} onClick={closeSearch}><X size={18} /></Button>
     </div>
@@ -309,17 +337,31 @@ export function GlobalSearch({ snapshot, refreshKey, onOpenCard, onOpenDeck, dis
             onClick={toggleOr}>{t.or}</button>}
         </div>}
         <div id="global-search-results" role="listbox" aria-label={t.results}>
+          {suggestions.length > 0 && <div className="global-search-tag-suggestions" role="group" aria-labelledby="global-search-tags-label">
+            <h3 id="global-search-tags-label" className="global-search-section-label">{t.tagSuggestions}</h3>
+            <ul role="presentation" className="global-search-results">
+              {suggestions.map((suggestion, index) => <li key={suggestion.name} id={`global-search-option-${index}`} role="option" aria-selected={highlighted === index}>
+                <button type="button" className="global-search-row global-search-tag-suggestion" aria-label={t.applyTag(suggestion.name)}
+                  onMouseDown={event => event.preventDefault()} onMouseEnter={() => setHighlighted(index)} onClick={() => completeTag(suggestion)}>
+                  <TagBadge name={suggestion.name} definition={catalog.projectTags?.find(tag => tag.name === suggestion.name)} compact />
+                  <span className="page-number" aria-label={t.tagCards(suggestion.count)}>{suggestion.count.toLocaleString(locale(lang))}</span>
+                </button>
+              </li>)}
+            </ul>
+          </div>}
           <div role="group" aria-labelledby="global-search-navigation-label">
             <h3 id="global-search-navigation-label" className="global-search-section-label">{t.results} · {((results?.total ?? 0) + goTo.length).toLocaleString(locale(lang))}</h3>
             {ambiguous.map(({ message }, index) => <p key={`ambiguous-${index}`} className="global-search-nav-note" role="status">{message}</p>)}
             <ul role="presentation" className="global-search-results">
-              {entries.map((entry, index) => entry.type === 'navigation'
-                ? <NavigationRow key={entry.target.kind === 'deck' ? `nav-deck-${entry.target.deck.id}` : `nav-card-${entry.target.card.id}`}
+              {entries.map((entry, index) => {
+                if (entry.type === 'tag') return null;
+                if (entry.type === 'navigation') return <NavigationRow key={entry.target.kind === 'deck' ? `nav-deck-${entry.target.deck.id}` : `nav-card-${entry.target.card.id}`}
                     entry={entry} index={index} highlighted={highlighted} decksById={decksById} tagDefinitions={catalog.projectTags} members={members} lookups={lookups}
-                    onHover={() => setHighlighted(index)} onOpen={openNavigation} />
-                : <ResultRow key={`result-${entry.card.id}`} card={entry.card} index={index} highlighted={highlighted}
-                    decksById={decksById} members={members} tagDefinitions={catalog.projectTags} lookups={lookups}
-                    onHover={() => setHighlighted(index)} onOpen={openResult} />)}
+                    onHover={() => setHighlighted(index)} onOpen={openNavigation} />;
+                return <ResultRow key={`result-${entry.card.id}`} card={entry.card} index={index} highlighted={highlighted}
+                    decksById={decksById} members={members} tagDefinitions={catalog.projectTags} lookups={lookups} query={deferredValue}
+                    onHover={() => setHighlighted(index)} onOpen={openResult} />;
+              })}
             </ul>
           </div>
         </div>
@@ -368,7 +410,7 @@ function NavigationRow({ entry, index, highlighted, decksById, tagDefinitions, m
   </li>;
 }
 
-function ResultRow({ card, index, highlighted, decksById, members, tagDefinitions, lookups, navigation = false, onHover, onOpen }: {
+function ResultRow({ card, index, highlighted, decksById, members, tagDefinitions, lookups, query = '', navigation = false, onHover, onOpen }: {
   card: CatalogCard;
   index: number;
   highlighted: number;
@@ -376,6 +418,7 @@ function ResultRow({ card, index, highlighted, decksById, members, tagDefinition
   members: CatalogMember[];
   tagDefinitions?: readonly ProjectTag[];
   lookups: CardTileLookups;
+  query?: string;
   navigation?: boolean;
   onHover: () => void;
   onOpen: (card: CatalogCard) => void;
@@ -395,8 +438,9 @@ function ResultRow({ card, index, highlighted, decksById, members, tagDefinition
       <span className="visually-hidden">{kindLabel(card.kind, lang)}</span>
       <span className="global-search-card-main">
         <span className="global-search-title">{navigation && <span className="global-search-nav-label">{t.goToLabel} </span>}{card.title}</span>
-        <CardTags tags={card.tags} definitions={tagDefinitions} compact maxVisible={2} />
+        <CardTags tags={matchedTagsFirst(card.tags, query)} definitions={tagDefinitions} compact maxVisible={2} />
         <span className="global-search-card-meta">
+          <CardMetrics card={card} lookups={lookups} />
           {deck && <span className="global-search-deck" style={{ '--deck-color': deck.color } as CSSProperties} title={deck.title}>
             <span className="global-search-deck-dot" aria-hidden="true" />{deck.title}</span>}
           {owner && <span className="global-search-owner" title={ownerLabel} aria-label={ownerLabel}>{owner}</span>}

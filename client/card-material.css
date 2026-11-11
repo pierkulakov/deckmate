@@ -10,9 +10,13 @@
 @property --glare-v { syntax: '*'; inherits: false; }
 @property --glare-opacity { syntax: '*'; inherits: false; }
 @property --glare-shift { syntax: '*'; inherits: false; }
+@property --holo-angle { syntax: '*'; inherits: false; }
 
 /* 2026-11-08: Footers and Hero affiliation strips share satin; reading surfaces stay matte. */
 :root {
+  --tile-metric-size: 13px;
+  --tile-metric-icon: 14px;
+  --tile-accepted-ink: #040806;
   --sub-card-state-accepted: var(--accepted-metal);
   --sub-card-state-working: var(--champagne);
   --sub-card-state-review: var(--plum);
@@ -23,6 +27,73 @@
   --metal-shadow: #241b24;
   /* 2026-11-08: warm shadow that deepens gold to amber without greying it. */
   --metal-amber: #6b3f0a;
+  /* 2026-11-09: holographic foil of an accepted Hero: one rainbow, used by the face and ring. */
+  --holo-rose: #ff5c9a;
+  --holo-amber: #ffcb3d;
+  --holo-mint: #5dff9a;
+  --holo-sky: #3fc8ff;
+  --holo-violet: #9c6bff;
+  /* One long sweep, not a repeating tile: a repeated angled tile left a vertical seam across the card (2026-11-09). */
+  --holo-stripes: linear-gradient(115deg, var(--holo-rose), var(--holo-amber), var(--holo-mint), var(--holo-sky), var(--holo-violet), var(--holo-rose), var(--holo-amber), var(--holo-mint), var(--holo-sky), var(--holo-violet), var(--holo-rose), var(--holo-amber), var(--holo-mint), var(--holo-sky), var(--holo-violet), var(--holo-rose)) no-repeat;
+  /* 2026-11-09: sparse glitter — four dot layers with unrelated tile sizes read as scattered, not as a grid. */
+  --holo-glitter: radial-gradient(circle at 23% 31%, #fff 0 .45px, transparent .8px) 0 0 / 13px 11px, radial-gradient(circle at 71% 64%, #fff 0 .4px, transparent .75px) 5px 3px / 17px 19px, radial-gradient(circle at 42% 83%, #fff6c8 0 .5px, transparent .85px) 2px 9px / 23px 17px, radial-gradient(circle at 86% 12%, #e9f6ff 0 .4px, transparent .7px) 11px 6px / 29px 31px;
+}
+
+.deck-card-identity { display: flex; align-items: center; color: inherit; }
+.catalog-card-doc .deck-card-identity { gap: 4px; height: 16px; margin-bottom: 0; }
+.deck-card-doc-kind > svg { width: var(--tile-metric-icon); height: var(--tile-metric-icon); }
+.deck-card-doc-kind { display: inline-flex; flex: 0 0 auto; }
+/* 2026-11-11: one 16px row for every tile. The owner medallion never moves or grows it: the left metric stops short of
+   the medallion instead, and a value of three or more characters beside a medallion drops its mark, not its digits. */
+.deck-card-metrics { display: flex; justify-content: space-between; align-items: center; height: 16px; font-size: var(--tile-metric-size); font-weight: 700; }
+.deck-card-metric { position: relative; display: inline-flex; align-items: center; gap: 2px; min-width: 0; height: 16px; max-width: calc(100% - var(--tile-metric-icon) - var(--space-2)); padding: 0; border: 0; border-radius: 3px; background: none; color: inherit; font: inherit; }
+.deck-card-band:has(> .deck-card-owner-medallion) .deck-card-metric:first-child { max-width: calc(50% - 14px); }
+.deck-card-metrics.is-compact .effort-icon { display: none; }
+.deck-card-metrics strong { overflow: hidden; margin-right: -1px; padding-right: 1px; text-overflow: ellipsis; white-space: nowrap; font: inherit; font-family: 'Geist Mono', monospace; line-height: 16px; font-variant-numeric: tabular-nums; font-synthesis: weight; letter-spacing: -.03em; }
+.deck-card-metrics svg { flex-shrink: 0; width: var(--tile-metric-icon); height: var(--tile-metric-icon); }
+/* The effort mark keeps a 16px box: its 24 grid then maps to whole device pixels on a 1.5× screen. */
+/* Both marks keep side bearings inside their boxes; the offsets put their ink on the band's 7px inset, in line with the Hero steps. */
+.deck-card-metrics svg.effort-icon { width: 16px; height: 16px; margin: 0 -2px 0 -3px; }
+.deck-card-metrics .priority-icon svg { display: block; margin-right: -2px; }
+/* 2026-11-11: an editable metric is a button whose target fills the band's height; the tint shows only under the pointer. */
+button.deck-card-metric { cursor: pointer; }
+button.deck-card-metric::after { content: ''; position: absolute; inset: -3px -4px; border-radius: 4px; }
+button.deck-card-metric:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+@media (hover: hover) { button.deck-card-metric:hover:not(:disabled)::after { background: color-mix(in srgb, currentColor 14%, transparent); } }
+.deck-card-band .priority-icon { color: inherit; }
+/* 2026-11-11: the ribbon's darkest stop needs deeper ink than the flat silver and accepted bands. */
+.deck-card.catalog-card-task > .deck-card-band { --card-metal-ink: var(--metal-shadow); }
+.deck-card.catalog-card-task.deck-state-accepted > .deck-card-band { --card-metal-ink: var(--tile-accepted-ink); }
+.deck-card.catalog-card-task.deck-state-working > .deck-card-band { --card-metal-ink: var(--started-metal-ink); }
+.deck-card.catalog-card-task.deck-state-review > .deck-card-band { --card-metal-ink: var(--review-metal-ink); }
+.deck-card-band > .deck-card-owner-medallion { position: absolute; z-index: 5; left: 50%; top: -12px; transform: translateX(-50%); border: 2px solid var(--metal-base, var(--card-metal)); border-radius: 50%; background: var(--card-face); }
+/* 2026-11-11: the ring is a shade deeper than the band, so it shows all the way round. In the band's own colour it vanished on the lower half, the disc read as taller than it is and the initials seemed to sit low. */
+.deck-card-band > .deck-card-owner-medallion:not(.deck-card-done-medallion) { border-width: 1px; border-color: color-mix(in srgb, var(--metal-base, var(--card-metal)) 72%, var(--metal-shadow)); }
+.deck-card-owner { display: flex; }
+/* 2026-11-11: the medallion is a little smaller than the 24px band it sits on, half above the seam and half below. */
+.deck-card-owner-medallion .card-owner-avatar { width: 21px; height: 21px; border: 0; font-size: 8px; letter-spacing: -.02em; text-box: trim-both cap alphabetic; }
+/* 2026-11-11: the settings hit area follows the medallion; the avatar stays mounted during a save. */
+.deck-card-band > .deck-card-settings { position: absolute; z-index: 6; left: 50%; top: -12px; transform: translateX(-50%); display: grid; place-items: center; width: 23px; height: 23px; padding: 0; border: 0; border-radius: 50%; background: var(--card-face); color: var(--card-muted); opacity: 0; pointer-events: none; transition: opacity var(--motion-feedback); }
+.deck-card:focus-within .deck-card-settings, .deck-card-settings[aria-expanded="true"] { opacity: 1; pointer-events: auto; }
+.deck-card-owner-medallion + .deck-card-settings { opacity: 1; pointer-events: auto; background: transparent; }
+.deck-card-settings:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+@media (hover: hover) {
+  .deck-card-space:hover .deck-card-settings { opacity: 1; pointer-events: auto; }
+  .deck-card-settings:hover:not(:disabled) { background: color-mix(in srgb, var(--metal-base, var(--card-metal)) 16%, transparent); }
+}
+@media (hover: none), (pointer: coarse) {
+  /* 2026-11-11: the 44px owner target grows below the band rather than over the opener, wherever the tile is used. */
+  .deck-card-band > .deck-card-settings { top: 0; width: var(--control-target-touch); height: var(--control-target-touch); opacity: 1; pointer-events: auto; background: transparent; }
+  /* 2026-11-11: the metrics stay above that target. The band is too low for a 44px target, so each metric's own target
+     takes the band's full height from the tile's edge inward and runs on below the tile, where no other control lives. */
+  .deck-card-band > .deck-card-metrics { z-index: 7; pointer-events: none; }
+  .deck-card-metric { pointer-events: auto; }
+  button.deck-card-metric::after { inset: -4px -7px -14px; }
+  button.deck-card-metric:last-child::after { left: -16px; }
+  /* 2026-11-11: a Hand slot keeps its own controls 5px under the tile, so there the targets stop at that gap and the
+     owner's reaches up no further than the medallion itself does. */
+  .hand-slot .deck-card-band > .deck-card-settings { top: -15px; }
+  .hand-slot button.deck-card-metric::after { bottom: -8px; }
 }
 .sub-card-progress { --sub-card-gap: 2px; display: flex; gap: var(--sub-card-gap); width: 100%; height: 8px; }
 /* 2026-11-09: a step is as long as its Sub Card's weight (subCardWeight), in exact proportion. The 3px floor keeps a
@@ -36,7 +107,7 @@ button.sub-card-progress-segment { cursor: pointer; }
 .catalog-card-hero > .deck-card-band { border-radius: 0 0 5px 5px; }
 .catalog-card-hero { --metal-sheen: var(--hero-sheen); }
 /* 2026-11-09: a Hero tile's Sub Cards read as a thin line of light on the gold, quiet beside the
-   effort and the crown (the 8px bar of five saturated colours caught the eye). Done steps are near-white, working steps
+   metrics (the 8px bar of five saturated colours caught the eye). Done steps are near-white, working steps
    brighter cream, review and blocked steps carry a faint violet and rose; the Sub Cards panel keeps the full colours. */
 .catalog-card-hero .sub-card-progress {
   --sub-card-state-accepted: var(--hero-step-done);
@@ -44,18 +115,16 @@ button.sub-card-progress-segment { cursor: pointer; }
   --sub-card-state-review: var(--hero-step-review);
   --sub-card-state-blocked: var(--hero-step-blocked);
   --sub-card-state-planned: var(--hero-step-empty);
-  /* Padding, not margins: the identity row's bottom margin would swallow a top margin and shorten the band. */
   box-sizing: border-box;
-  padding: 2px 0 3px;
+  height: 5px;
+  padding: 2px 0 0;
 }
 .catalog-card-hero .sub-card-progress-segment { border-radius: 1.5px; }
 
 .catalog-card-hero > .deck-card-band,
-.hand-card.kind-hero > .sprint-task-band,
 .card-preview-hero .card-preview-sheet:not([data-family-done]) > .card-preview-material-band,
 .deck-card > .card-family-trigger,
-.card-preview-main > .card-preview-parent,
-.sprint-task > .sprint-task-parent {
+.card-preview-main > .card-preview-parent {
   --metal-base: var(--hero-metal);
   --metal-sheen: var(--hero-sheen);
   --metal-polish: 24%;
@@ -74,8 +143,6 @@ button.sub-card-progress-segment { cursor: pointer; }
 .deck-card > .card-family-trigger,
 .card-preview-main > .card-preview-parent,
 .card-preview-sheet > .card-preview-material-band,
-.sprint-task > .sprint-task-parent,
-.sprint-task > .sprint-task-band,
 .journey-step-card > .journey-step-card-deck {
   --material-base: var(--metal-base, var(--card-metal));
   --material-low: color-mix(in srgb, var(--material-base) 90%, var(--metal-shadow));
@@ -208,46 +275,118 @@ button.sub-card-progress-segment { cursor: pointer; }
   transition: transform 700ms cubic-bezier(.22, .61, .36, 1);
 }
 
-/* A finished family closes into one line; its count names acceptance without replacing the owner. */
+/* 2026-11-11: review is looking, so a card in review wears a foil of small eyes on its amethyst band. At rest the eyes
+   are a faint emboss; under the pointer the foil's rainbow and a pool of light travel across them with the tilt. The
+   film thins beside the edges, where the effort and priority marks sit, and stays under their ink. Only tiles in
+   review pay for the mask and the blend layer; the open card's band takes the amethyst without the film. */
+:root { --review-eyes: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='12' viewBox='0 0 16 12'%3E%3Cg fill='none' stroke='%23fff' stroke-width='.9' stroke-linejoin='round'%3E%3Cpath id='e' d='M.5 3C2.3 1.3 3.7 1 5 1s2.7.3 4.5 2C7.7 4.7 6.3 5 5 5S2.3 4.7 .5 3Z'/%3E%3Cpath d='M8.5 9c1.8-1.7 3.2-2 4.5-2s2.7.3 4.5 2c-1.8 1.7-3.2 2-4.5 2s-2.7-.3-4.5-2ZM-7.5 9c1.8-1.7 3.2-2 4.5-2s2.7.3 4.5 2c-1.8 1.7-3.2 2-4.5 2s-2.7-.3-4.5-2Z'/%3E%3C/g%3E%3Cg fill='%23fff'%3E%3Ccircle cx='5' cy='3' r='1.1'/%3E%3Ccircle cx='13' cy='9' r='1.1'/%3E%3Ccircle cx='-3' cy='9' r='1.1'/%3E%3C/g%3E%3C/svg%3E"); }
+.deck-card.deck-state-review > .deck-card-band { --glare-x: inherit; --glare-y: inherit; --glare-opacity: inherit; }
+.deck-card.deck-state-review > .deck-card-band::after {
+  --glare-x: inherit;
+  --glare-y: inherit;
+  --glare-opacity: inherit;
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  pointer-events: none;
+  background: radial-gradient(70px 44px at var(--glare-x, 50%) 50%, rgb(255 255 255 / .95), transparent 72%) no-repeat, var(--holo-stripes);
+  background-size: 100% 100%, 420% 100%;
+  background-position: 0 0, calc(var(--glare-x, 50%) * .7 + var(--glare-y, 50%) * .3) 0;
+  -webkit-mask: var(--review-eyes) 3px 0 / 16px 12px, linear-gradient(90deg, rgb(0 0 0 / .22) 0 26%, #000 40% 64%, rgb(0 0 0 / .22) 82% 100%);
+  mask: var(--review-eyes) 3px 0 / 16px 12px, linear-gradient(90deg, rgb(0 0 0 / .22) 0 26%, #000 40% 64%, rgb(0 0 0 / .22) 82% 100%);
+  -webkit-mask-composite: source-in;
+  mask-composite: intersect;
+  mix-blend-mode: screen;
+  opacity: calc(.3 + var(--glare-opacity, 0) * .6);
+  transition: opacity 400ms ease-out;
+}
+
+/* 2026-11-09: an accepted Hero turns holographic: its band keeps the working
+   Hero's gold metal, the face carries a faint rainbow film, a 2px rainbow ring replaces the border, and glitter gathers around
+   the pointer. Only accepted Heroes pay for the blend layers; ink stays above the foil. */
+.deck-card-space > .deck-card.catalog-card-hero.is-family-done {
+  --card-metal-ink: var(--hero-ink);
+  --holo-angle: calc(var(--glare-u, .5) * 240deg + var(--glare-v, .5) * 90deg);
+  border: 2px solid transparent;
+  background: linear-gradient(var(--hero-family-face, var(--card-face)), var(--hero-family-face, var(--card-face))) padding-box,
+    conic-gradient(from var(--holo-angle), var(--holo-amber), var(--holo-rose), var(--holo-violet), var(--holo-sky), var(--holo-mint), var(--holo-amber)) border-box;
+}
+.deck-card.catalog-card-hero.is-family-done > .deck-card-band {
+  --card-metal-ink: var(--hero-ink);
+  color: var(--hero-ink);
+  /* Inside the 2px ring the card's inner radius is 3px; the bottom inset would read as a seam. */
+  border-radius: 0 0 3px 3px;
+  --material-inset: inset 0 1px 2px color-mix(in srgb, var(--metal-shadow) 12%, transparent);
+}
+/* A finished family closes into one unbroken line of light; the done medallion carries the green. */
 .deck-card.catalog-card-hero.is-family-done .sub-card-progress { --sub-card-gap: 0px; }
 .deck-card.catalog-card-hero.is-family-done .sub-card-progress-segment { background-color: var(--hero-step-done); }
 .deck-card.catalog-card-hero.is-family-done .sub-card-progress-segment:not(:first-child) { border-top-left-radius: 0; border-bottom-left-radius: 0; }
 .deck-card.catalog-card-hero.is-family-done .sub-card-progress-segment:not(:last-child) { border-top-right-radius: 0; border-bottom-right-radius: 0; }
 
-/* The state and the date stay together on metal; the face has only the title and quiet identifying context. */
-.deck-card.is-text-face > .deck-card-band { min-height: 27px; padding: 4px 7px; }
-:root:not(.dark) .deck-card.is-text-face.catalog-card-task:not(.deck-state-accepted) > .deck-card-band { --card-metal-ink: var(--card-ink); }
-/* Short status text keeps its contrast through the checked card's dimming filter. */
-.deck-card.is-text-face:is(.deck-state-accepted, .catalog-card-doc) > .deck-card-band { --metal-deep: color-mix(in srgb, var(--material-base) 85%, var(--metal-sheen)); }
-.deck-card.is-text-face:has(> .card-family-trigger) .deck-card-title { -webkit-line-clamp: 2; }
-.deck-card-context { position: relative; display: flex; flex: 0 0 auto; flex-direction: column; justify-content: center; min-width: 0; margin-top: auto; color: var(--card-muted); font-size: var(--text-help-size); line-height: var(--text-help-leading); pointer-events: none; }
-/* 2026-11-11: the owner shares the action corner, leaving at most two lines of identifying context. */
-.deck-card-context.has-controls { min-height: 24px; padding-right: 28px; }
-.deck-card-owner { display: grid; place-items: center; width: 24px; height: 24px; border-radius: var(--control-radius); }
-.deck-card-owner .card-owner-avatar { width: 20px; height: 20px; font-size: var(--text-help-size); }
-.deck-card-open > .deck-card-owner { position: absolute; z-index: 3; right: 3px; bottom: 4px; }
-.deck-card-priority { white-space: nowrap; }
-.deck-card-effort { display: inline-flex; align-items: center; gap: 3px; min-width: 0; height: var(--text-help-leading); margin-left: auto; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--text-help-size); }
-.deck-card-effort b { font: 500 var(--text-help-size)/var(--text-help-leading) 'Geist Mono', monospace; }
-.deck-card-family-count { display: flex; align-items: center; gap: 4px; min-height: 18px; font-size: var(--text-help-size); line-height: var(--text-help-leading); font-weight: 500; }
-.deck-card-family-count svg { flex: 0 0 auto; }
-.deck-card-kind-name { display: block; font-size: var(--text-help-size); line-height: 18px; font-weight: 500; }
-.deck-card-settings { position: absolute; z-index: 4; right: 3px; bottom: 4px; display: grid; place-items: center; width: 24px; height: 24px; padding: 0; border: 0; border-radius: var(--control-radius); background: var(--card-face); color: var(--card-muted); opacity: 0; pointer-events: none; transition: opacity var(--motion-feedback); }
-.deck-card:focus-within .deck-card-settings, .deck-card-settings[aria-expanded="true"] { opacity: 1; pointer-events: auto; }
-/* 2026-11-11: saving can remove the settings action; its transparent hit area leaves the owner mounted in the face. */
-.deck-card-face:has(.deck-card-owner) .deck-card-settings { opacity: 1; pointer-events: auto; background: transparent; }
-.deck-card-settings:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
-@media (hover: hover) {
-  .deck-card-space:hover .deck-card-settings { opacity: 1; pointer-events: auto; }
-  .deck-card-settings:hover:not(:disabled) { background: var(--hover); }
-  .deck-card-face:has(.deck-card-settings:hover:not(:disabled)) .deck-card-owner { background: var(--hover); }
+/* Face film and glitter sit under the band and title, preserving their ink. */
+.deck-card.catalog-card-hero.is-family-done::before,
+.deck-card.catalog-card-hero.is-family-done::after {
+  --glare-x: inherit;
+  --glare-y: inherit;
+  --glare-opacity: inherit;
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  transition: opacity 300ms ease-out;
 }
-@media (hover: none), (pointer: coarse) {
-  .deck-card-settings, .deck-card-open > .deck-card-owner { width: var(--control-target-touch); height: var(--control-target-touch); opacity: 1; pointer-events: auto; }
-  .deck-card-context.has-controls { min-height: var(--control-target-touch); padding-right: calc(var(--control-target-touch) + var(--space-1)); }
-  .deck-card.is-text-face .deck-card-title { -webkit-line-clamp: 2; }
-  .deck-card.is-text-face .deck-card-face { padding-bottom: 3px; }
-  .deck-card.is-text-face:has(> .card-family-trigger) .deck-card-face { padding-top: 23px; }
+.deck-card.catalog-card-hero.is-family-done::before {
+  z-index: 1;
+  background: var(--holo-stripes);
+  background-size: 300% 100%;
+  background-position: calc(var(--glare-x, 50%) * .7 + var(--glare-y, 50%) * .3) 0;
+  mix-blend-mode: screen;
+  opacity: calc(.06 + var(--glare-opacity, 0) * .12);
+}
+:root:not(.dark) .deck-card.catalog-card-hero.is-family-done::before { mix-blend-mode: multiply; opacity: calc(.08 + var(--glare-opacity, 0) * .12); }
+/* 2026-11-09: color-dodge lights the rainbow from the dark, strongest in a broad pool around the pointer. */
+:root.dark .deck-card.catalog-card-hero.is-family-done::before {
+  mix-blend-mode: color-dodge;
+  opacity: calc(.14 + var(--glare-opacity, 0) * .2);
+  -webkit-mask: radial-gradient(140% 110% at var(--glare-x, 50%) var(--glare-y, 50%), #000, rgb(0 0 0 / .45) 45%, rgb(0 0 0 / .12));
+  mask: radial-gradient(140% 110% at var(--glare-x, 50%) var(--glare-y, 50%), #000, rgb(0 0 0 / .45) 45%, rgb(0 0 0 / .12));
+}
+:root.dark .deck-card.catalog-card-hero.is-family-done::after { opacity: calc(var(--glare-opacity, 0) * .6); }
+.deck-card.catalog-card-hero.is-family-done::after {
+  z-index: 1;
+  background: var(--holo-glitter);
+  mix-blend-mode: screen;
+  opacity: calc(var(--glare-opacity, 0) * .7);
+  -webkit-mask: radial-gradient(90px 70px at var(--glare-x, 50%) var(--glare-y, 50%), #000, transparent 75%);
+  mask: radial-gradient(90px 70px at var(--glare-x, 50%) var(--glare-y, 50%), #000, transparent 75%);
+}
+/* 2026-11-11: selection replaces the glitter layer with its frame while retaining the face's holographic film. */
+.catalog-card-grid .deck-card.catalog-card-hero.is-family-done.is-multi-selected {
+  --hero-family-face: color-mix(in srgb, var(--check-on-face) 18%, var(--card-face));
+}
+.catalog-card-grid .deck-card.catalog-card-hero.is-family-done.is-multi-selected::after {
+  inset: -2px; z-index: 5; background: none; opacity: 1; mix-blend-mode: normal; -webkit-mask: none; mask: none;
+}
+/* Each dot layer slides one tile in its own direction, keeping the hovered drift seamless. */
+@keyframes holo-glitter-drift {
+  to { background-position: 13px -11px, -12px 22px, 25px 26px, -18px -25px; }
+}
+@media (hover: hover) and (pointer: fine) and (prefers-reduced-motion: no-preference) {
+  .deck-card-space:hover > .deck-card.catalog-card-hero.is-family-done:not(.is-multi-selected):not(:has(.deck-card-open:disabled))::after { animation: holo-glitter-drift 3.2s linear infinite; }
+}
+.deck-card-owner-medallion.deck-card-done-medallion {
+  display: grid;
+  place-items: center;
+  width: 19px;
+  height: 19px;
+  box-sizing: content-box;
+  color: #fff;
+  background: var(--accepted-metal);
+  box-shadow: 0 1px 4px rgb(0 0 0 / .3);
 }
 
 @media (prefers-reduced-motion: reduce), (hover: none), (pointer: coarse) {

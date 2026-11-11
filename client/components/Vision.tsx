@@ -19,7 +19,7 @@ import { emitSignal } from '../onboarding/signals.ts';
 import type { ShortcutScreen } from '../keyboard-shortcuts.ts';
 import { ShortcutsHelp } from './ShortcutsHelp.tsx';
 import { Button } from './ui/button.tsx';
-import { CardTagSummary } from './CardTags.tsx';
+import { CardTags } from './CardTags.tsx';
 import { CardFaceStatus, cardFaceStatus } from './CardIndicators.tsx';
 import { buildCatalogLookups } from '../catalog-lookups.ts';
 import { EmptyState } from './EmptyState.tsx';
@@ -821,10 +821,16 @@ export default function Vision({ snapshot, refreshKey, dark, onEditing, onOpenCa
           <p className="vision-note">{t.cardLinksDescription}</p>
           <label className="vision-search control-field"><Search size={15} aria-hidden="true" /><input placeholder={t.findCard} aria-label={t.findCardForBoard} value={query} onChange={event => setQuery(event.target.value)} /></label>
           {/* 2026-11-10: no matches is a filtered state with a reset; an empty project is a quiet fact, not a failed search. */}
-          {query && <div className="vision-results">{results.map(card => <button key={card.id} disabled={!editable || pending} onClick={() => addCard(card)}><Plus size={13} /><span title={card.title}>{card.title}<small>{kindLabel(card.kind, lang)} · ${shortReference('c', card.id)}</small><CardFaceStatus status={cardFaceStatus(card, lookups, lang)} /><CardTagSummary tags={card.tags} definitions={catalog?.projectTags} /></span></button>)}{!results.length && (catalog?.cards.length
+          {query && <div className="vision-results">{results.map(card => <div className="vision-card-row" key={card.id}>
+            <button type="button" className="vision-card-row-open" disabled={!editable || pending} onClick={() => addCard(card)}><Plus size={13} /><span title={card.title}>{card.title}<small>{kindLabel(card.kind, lang)} · ${shortReference('c', card.id)}</small><CardFaceStatus status={cardFaceStatus(card, lookups, lang)} /></span></button>
+            <div className="vision-card-row-tags"><CardTags tags={card.tags} definitions={catalog?.projectTags} compact maxVisible={1} /></div>
+          </div>)}{!results.length && (catalog?.cards.length
             ? <EmptyState variant="filtered" message={t.noMatches} onReset={() => setQuery('')} />
             : <EmptyState variant="quiet" message={t.noCards} />)}</div>}
-          <div className="vision-linked-list">{linkedIds.map(id => { const card = lookups.cardById.get(id); return <button key={id} disabled={editing || !card} onClick={() => onOpenCard(id)}><span title={card?.title}>{card?.title ?? t.cardNotFound}<small>{card ? kindLabel(card.kind, lang) : id}</small>{card && <CardFaceStatus status={cardFaceStatus(card, lookups, lang)} />}<CardTagSummary tags={card?.tags} definitions={catalog?.projectTags} /></span><ArrowUpRight size={14} /></button>; })}</div>
+          <div className="vision-linked-list">{linkedIds.map(id => { const card = lookups.cardById.get(id); return <div className="vision-card-row" key={id}>
+            <button type="button" className="vision-card-row-open" disabled={editing || !card} onClick={() => onOpenCard(id)}><span title={card?.title}>{card?.title ?? t.cardNotFound}<small>{card ? kindLabel(card.kind, lang) : id}</small>{card && <CardFaceStatus status={cardFaceStatus(card, lookups, lang)} />}</span><ArrowUpRight size={14} /></button>
+            <div className="vision-card-row-tags"><CardTags tags={card?.tags} definitions={catalog?.projectTags} compact maxVisible={1} /></div>
+          </div>; })}</div>
           {!linkedIds.length && <EmptyState variant="quiet" message={readOnly ? t.emptyLinkedReadOnly : t.emptyLinked} />}
         </section>
 

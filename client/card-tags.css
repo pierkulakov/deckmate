@@ -1,11 +1,23 @@
+.card-tag-pie { position: relative; display: inline-grid; place-items: center; flex: 0 0 auto; width: var(--space-4); height: var(--space-4); border-radius: 50%; cursor: default; }
+.card-tag-pie::before { content: ''; width: var(--tag-dot-size); height: var(--tag-dot-size); border-radius: inherit; background: var(--tag-pie-background); }
+.card-tag-pie:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.card-tag-pie[aria-disabled="true"] { pointer-events: none; }
+.deck-card-face > .card-tag-pie { position: absolute; z-index: 3; right: 4px; bottom: 4px; }
+.deck-card-title .card-title-tags { position: relative; z-index: 1; }
+:root { --tag-color-dark-ink: #000; }
 .card-tags { display: inline-flex; align-items: center; flex-wrap: wrap; gap: var(--tag-gap); min-width: 0; max-width: 100%; }
 .card-tags.is-bounded { flex-wrap: nowrap; }
 .card-tags.is-bounded > .tag-badge { flex-shrink: 1; }
 .tag-overflow { flex: 0 0 auto; color: inherit; font-size: var(--tag-compact-font-size); line-height: var(--tag-compact-line-height); }
+button.tag-overflow { min-width: var(--space-6); min-height: var(--space-6); padding: 0 var(--space-1); border: var(--control-hairline) solid var(--control-line); border-radius: var(--control-radius); background: transparent; cursor: pointer; }
+button.tag-overflow:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+button.tag-overflow:disabled { opacity: .5; cursor: default; }
+@media (hover: hover) { button.tag-overflow:hover:not(:disabled) { background: var(--hover); } }
 .tag-badge { display: inline-flex; align-items: center; flex: 0 1 auto; min-width: 0; max-width: min(100%, 220px); height: var(--tag-height); padding: 0; border: 0; border-radius: var(--tag-radius); overflow: hidden; vertical-align: middle; font-size: var(--tag-font-size); font-weight: 700; line-height: var(--tag-line-height); text-align: left; letter-spacing: normal; text-transform: none; }
 .tag-badge.is-project { background: var(--tag-background); color: var(--tag-foreground); }
 .tag-badge-name { display: block; min-width: 0; padding: 1px var(--tag-name-padding); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tag-badge-glyph { display: inline-flex; align-items: center; justify-content: center; flex: 0 0 var(--tag-glyph-width); width: var(--tag-glyph-width); height: 100%; background: var(--tag-glyph-background); color: var(--tag-background); }
+.tag-badge-glyph.is-color { color: var(--tag-color-ink); }
 .tag-badge-glyph .card-tag-icon { width: 15px; height: 12px; }
 .tag-badge-glyph .card-tag-emoji { font-size: 12px; line-height: 14px; }
 .tag-badge.is-personal { background: transparent; color: var(--tag-personal-foreground); }
@@ -18,27 +30,46 @@
 /* 2026-11-08: tag plaques are not underlined; hover only lifts the plaque's tone, keyboard focus keeps its outline. */
 .tag-badge-link { cursor: pointer; }
 @media (hover: hover) { .tag-badge-link:hover:not(:disabled) .tag-badge { filter: brightness(1.15); } }
-.card-tag-summary { display: flex; align-items: baseline; gap: var(--space-1); min-width: 0; max-width: 100%; font-size: var(--text-help-size); line-height: var(--text-help-leading); }
-.card-tag-summary > span:first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.card-tag-summary .tag-overflow { font-size: inherit; line-height: inherit; }
 .card-tag-emoji { display: inline-block; flex: 0 0 auto; font-size: 14px; line-height: 1; }
 .card-tag-icon { display: inline-block; width: 14px; height: 14px; object-fit: contain; flex: 0 0 auto; }
 .card-title-tags { display: inline-flex; align-items: center; gap: 3px; margin-right: 5px; vertical-align: -2px; white-space: nowrap; }
 .card-title-tags .card-tag-icon { width: 16px; height: 16px; }
 .card-title-tags .card-tag-emoji { font-size: 15px; }
+/* 2026-11-11: on the 18 px Hero strip of a tile the tag glyphs follow the strip text size and stay close to the name. */
+.deck-card > .card-family-trigger .card-title-tags { gap: 2px; margin-right: 3px; vertical-align: -1px; }
+.deck-card > .card-family-trigger .card-title-tags .card-tag-emoji { font-size: 10.5px; line-height: 1; }
+.deck-card > .card-family-trigger .card-title-tags .card-tag-icon { width: 11px; height: 11px; }
 /* 2026-11-09: the open card's 24/700 title: its tag glyphs are sized to the title and fill exactly its first line
    box, so they sit centred on that line and a wrapping title continues under them like a plain one. */
 .card-preview-title .card-title-tags { height: 1lh; gap: 4px; margin-right: 6px; vertical-align: top; }
 .card-preview-title .card-title-tags .card-tag-emoji { font-size: 20px; }
 .card-preview-title .card-title-tags .card-tag-icon { width: 20px; height: 20px; }
 .card-project-tags { --tag-personal-foreground: var(--tag-personal-on-card); z-index: 160; display: flex; flex-direction: column; align-items: flex-start; gap: var(--tag-gap); max-width: min(300px, calc(100vw - 24px)); padding: var(--space-2) var(--space-3); border-radius: var(--glass-radius); background: var(--tag-popover-background); color: var(--tag-foreground); box-shadow: var(--shadow); animation: overlay-pop var(--motion-spring-quick) var(--ease-spring-quick); }
-.card-project-tags-title { font-size: var(--text-help-size); font-weight: 600; line-height: var(--text-help-leading); }
+.card-tag-pie-tooltip, [data-radix-popper-content-wrapper]:has(> .card-tag-pie-tooltip) { pointer-events: none; }
+.card-project-tags-title { font-size: var(--text-help-size); font-weight: 600; line-height: var(--text-help-leading); text-transform: uppercase; }
+:is(.card-project-tags, .card-tag-tooltip, .card-tag-menu) .tag-badge { max-width: 100%; height: auto; min-height: var(--tag-height); align-items: stretch; }
+:is(.card-project-tags, .card-tag-tooltip, .card-tag-menu) .tag-badge-name { white-space: normal; overflow-wrap: anywhere; }
+:is(.card-project-tags, .card-tag-tooltip, .card-tag-menu) .tag-badge-glyph { height: auto; min-height: var(--tag-height); }
 .card-tag-tooltip { z-index: 160; display: flex; flex-direction: column; align-items: flex-start; gap: var(--space-1); padding: var(--space-2) var(--space-3); border-radius: var(--glass-radius); background: var(--tag-popover-background); color: var(--tag-foreground); box-shadow: var(--shadow); font-size: var(--text-help-size); max-width: min(300px, calc(100vw - 24px)); overflow-wrap: anywhere; animation: overlay-pop var(--motion-spring-quick) var(--ease-spring-quick); }
 .card-tag-tooltip-card { display: inline-flex; align-items: center; gap: var(--space-1); font-size: var(--text-help-size); }
+.card-tag-info { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-1) var(--space-2); min-width: 0; max-width: 100%; }
+.card-tag-type { font-size: var(--text-help-size); line-height: var(--text-help-leading); }
+.card-tag-info .card-tag-tooltip-card { flex-basis: 100%; overflow-wrap: anywhere; }
+.card-tag-tooltip { --tag-personal-foreground: var(--tag-personal-on-card); }
+.card-tag-menu { z-index: 160; min-width: min(240px, calc(100vw - 24px)); max-width: min(360px, calc(100vw - 24px)); max-height: var(--radix-dropdown-menu-content-available-height); overflow-y: auto; padding: var(--space-2); border: 1px solid var(--line); border-radius: var(--glass-radius); background: var(--surface); color: var(--ink); box-shadow: var(--shadow); animation: overlay-pop var(--motion-spring-quick) var(--ease-spring-quick); }
+.card-tag-menu > .card-project-tags-title { display: block; padding: var(--space-1) var(--space-2); color: var(--muted); text-transform: none; }
+.card-tag-menu-item { display: flex; align-items: center; min-height: calc(var(--space-4) * 2); padding: var(--space-2); border-radius: var(--control-radius); color: inherit; text-decoration: none; cursor: pointer; outline: none; }
+.card-tag-menu-item[data-highlighted] { background: var(--hover); }
+.card-tag-menu-item .card-tag-type, .card-tag-menu-item .card-tag-tooltip-card { color: var(--muted); }
 .card-tag-links { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 4px 0 0; }
 .card-tag-link { display: inline-flex; align-items: center; gap: var(--space-2); min-height: 24px; padding: var(--space-1) var(--space-2); border: var(--control-hairline) solid var(--control-line); border-radius: var(--control-radius); background: transparent; color: var(--ink); cursor: pointer; font-size: var(--text-help-size); line-height: var(--text-help-leading); }
 @media (hover: hover) { .card-tag-link:hover { background: var(--hover); } }
 .card-tag-control { display: flex; align-items: center; flex-wrap: wrap; gap: var(--tag-gap); margin: 12px 0; }
+.card-tag-control.is-inline { display: block; margin: var(--space-2) 0 0; }
+.tag-selected-summary { padding-bottom: var(--space-3); margin-bottom: var(--space-3); border-bottom: 1px solid var(--line); }
+.card-tag-control.is-inline > .card-tag-open { margin-top: var(--space-2); }
+.tag-auto-heading { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-2); margin-bottom: var(--space-2); }
+.tag-auto-heading .deck-settings-section-title { margin: 0; }
 .card-tag-open { color: var(--muted); font-size: var(--text-help-size); }
 /* The backdrop is the shared .card-journey-overlay (card-preview.css); frame, shadow and thin scrollbars match the card dialogs. */
 .tag-picker-dialog.dialog-panel { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); width: min(420px, calc(100vw - 24px)); max-height: min(680px, calc(100dvh - 24px)); overflow: hidden; z-index: 131; animation: dialog-drop var(--motion-spring-firm) var(--ease-spring-firm); }
@@ -51,9 +82,12 @@
 .tag-choice-list { max-height: 280px; overflow-y: auto; scrollbar-width: thin; margin: 8px 0; }
 .tag-picker-body .tag-choice-list { max-height: none; overflow: visible; }
 .tag-choice-row { display: flex; align-items: center; gap: var(--space-2); min-width: 0; border-radius: var(--control-radius); }
+.tag-choice-heading { margin: var(--space-3) 0 var(--space-1); color: var(--muted); font-size: var(--text-help-size); line-height: var(--text-help-leading); font-weight: 600; }
+.tag-choice-count { flex: 0 0 auto; padding-right: var(--space-2); color: var(--muted); font-size: var(--text-help-size); line-height: var(--text-help-leading); font-variant-numeric: tabular-nums; }
+.tag-choice-action { flex: 0 0 auto; margin-left: auto; color: var(--muted); }
 @media (hover: hover) { .tag-choice-row:hover { background: var(--hover); } }
-.tag-choice { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; padding: 8px 5px; border: 0; background: transparent; color: inherit; text-align: left; cursor: pointer; font-size: 13px; }
-.tag-choice > span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tag-choice, .tag-choice.card-properties-tag-chip { display: flex; align-items: center; gap: var(--space-2); flex: 1; min-width: 0; min-height: calc(var(--space-4) * 2); height: auto; padding: var(--space-2) var(--space-1); overflow: visible; border: 0; background: transparent; color: inherit; text-align: left; cursor: pointer; font-size: var(--text-ui-size); line-height: var(--text-ui-leading); }
+.tag-choice .tag-badge { flex-shrink: 1; }
 .tag-choice-check { display: flex; justify-content: center; align-items: center; box-sizing: border-box; width: 16px; height: 16px; flex: 0 0 auto; border: 1px solid var(--check-edge); border-radius: var(--control-radius); background: var(--check-face); transition: background-color var(--motion-feedback) ease-out, border-color var(--motion-feedback) ease-out; }
 .tag-choice-check::before { content: ""; width: 12px; height: 12px; background: currentColor; -webkit-mask: var(--check-mark-icon) center / contain no-repeat; mask: var(--check-mark-icon) center / contain no-repeat; opacity: 0; transform: scale(.25); transition: opacity 300ms cubic-bezier(.2, .9, .3, 1.5), transform 300ms cubic-bezier(.2, .9, .3, 1.5); }
 .tag-choice[aria-checked="true"] .tag-choice-check { background: var(--check-on-face); color: var(--check-on-mark); border-color: var(--check-on-edge); }
@@ -63,7 +97,6 @@
   .tag-choice[aria-checked="true"]:hover:not(:disabled) .tag-choice-check { border-color: var(--check-on-edge); }
 }
 @media (prefers-reduced-motion: reduce) { .tag-choice-check, .tag-choice-check::before { transition: none; } }
-.tag-configure { display: flex; align-items: center; justify-content: center; width: 30px; height: 30px; border: 0; background: transparent; color: var(--muted); cursor: pointer; }
 .tag-help { font-size: var(--text-help-size); line-height: var(--text-help-leading); color: var(--muted); margin: var(--space-2) 0; }
 .tag-create { margin-top: 4px; }
 .tag-editor fieldset { border: 0; padding: 0; margin: 10px 0; min-width: 0; }
@@ -76,6 +109,9 @@
 .tag-color-swatch svg { filter: drop-shadow(0 0 1px var(--card-metal-ink)) drop-shadow(0 0 2px var(--card-metal-ink)); }
 .tag-custom-color { display: inline-flex; width: 27px; height: 27px; }
 .tag-custom-color input { padding: 0; border: 0; width: 100%; height: 100%; background: transparent; cursor: pointer; }
+.tag-hex { display: flex; align-items: center; gap: var(--space-2); color: var(--muted); font-size: var(--text-help-size); }
+.tag-hex input { min-width: 0; width: 10ch; min-height: calc(var(--space-4) * 2); padding: var(--space-1) var(--space-2); border: var(--control-hairline) solid var(--control-field-line); border-radius: var(--control-radius); background: var(--control-field); color: var(--ink); font-family: 'Geist Mono', monospace; }
+.tag-hex input[aria-invalid="true"] { border-color: var(--danger); }
 .tag-icon-editor { margin: 14px 0; }
 .tag-icon-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 7px; font-size: 12px; font-weight: 500; }
 .tag-icon-tabs { display: flex; flex-wrap: wrap; gap: var(--space-2); }
@@ -100,18 +136,20 @@
 @media (hover: hover) { .tag-card-result:hover { background: var(--hover); } }
 .tag-card-result span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tag-card-result small { color: var(--muted); margin-right: 4px; }
-.tag-preview { border-top: 1px solid var(--line); padding-top: var(--space-3); display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3); margin-top: var(--space-3); }
-.tag-preview > span { color: var(--muted); font-size: var(--text-help-size); }
+.tag-preview { position: sticky; top: 0; z-index: 1; border-bottom: 1px solid var(--line); padding: var(--space-3) 0; display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3); margin-top: var(--space-2); background: var(--surface); }
+.tag-preview-label { color: var(--muted); font-size: var(--text-help-size); }
 .tag-editor-actions { flex-wrap: wrap; }
 .tag-feedback, .tag-conflict { font-size: 12px; line-height: 1.5; margin: 10px 0 0; }
 .tag-conflict { display: grid; gap: var(--space-2); padding: var(--space-3); border: 1px solid var(--line); border-radius: var(--glass-radius); }
-.tag-choice:disabled, .tag-configure:disabled, .tag-color-swatch:disabled { opacity: .5; cursor: default; }
+.tag-choice:disabled, .tag-color-swatch:disabled { opacity: .5; cursor: default; }
 .tag-card-result:disabled, .tag-card-link > input:disabled { opacity: .5; cursor: default; }
-.tag-badge-link:focus-visible, .tag-choice:focus-visible, .tag-configure:focus-visible, .tag-color-swatch:focus-visible, .card-tag-link:focus-visible, .tag-card-result:focus-visible, .tag-symbol-choice:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.tag-badge-link:focus-visible, .tag-choice:focus-visible, .tag-color-swatch:focus-visible, .card-tag-link:focus-visible, .tag-card-result:focus-visible, .tag-symbol-choice:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.tag-choice.card-properties-tag-chip:focus-visible { outline-offset: 2px; }
 @media (pointer: coarse) {
   .tag-picker-dialog .ui-button { min-width: var(--control-target-touch); min-height: var(--control-target-touch); }
-  .tag-choice, .tag-icon-tab, .tag-card-result, .card-tag-link, .tag-search, .tag-card-link > input, .tag-editor fieldset > label input { min-height: var(--control-target-touch); }
-  .tag-configure, .tag-color-swatch, .tag-custom-color, .tag-symbol-choice { width: var(--control-target-touch); height: var(--control-target-touch); flex-shrink: 0; }
+  .tag-choice, .tag-choice.card-properties-tag-chip, .tag-icon-tab, .tag-card-result, .card-tag-link, .tag-search, .tag-card-link > input, .tag-editor fieldset > label input, .tag-hex input, .card-tag-menu-item { min-height: var(--control-target-touch); }
+  button.tag-overflow { min-width: var(--control-target-touch); min-height: var(--control-target-touch); }
+  .tag-color-swatch, .tag-custom-color, .tag-symbol-choice { width: var(--control-target-touch); height: var(--control-target-touch); flex-shrink: 0; }
   .tag-symbol-grid { grid-template-columns: repeat(auto-fill, minmax(var(--control-target-touch), 1fr)); gap: var(--space-2); }
   .tag-card-results { gap: var(--space-2); }
 }

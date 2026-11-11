@@ -98,10 +98,11 @@
 .deck-table-row:hover .deck-table-check, .deck-table-check:is(:focus-visible, :checked) { opacity: 1; }
 .deck-table-priority { color: var(--row-meta); }
 .deck-table-priority .journey-priority-icon { color: inherit; }
+.catalog-group-filter > span[aria-hidden="true"] > span { display: inline-flex; color: inherit; }
 /* Effort is a counter, so it takes the home's Geist Mono numbers (12/500, tabular, as the cover counters). */
-.deck-table-effort { gap: 4px; overflow: visible; color: var(--row-meta); font-family: 'Geist Mono', monospace; font-size: 12px; font-weight: 500; line-height: 14px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.deck-table-effort { gap: 4px; overflow: visible; color: var(--row-meta); font-family: 'Geist Mono', monospace; font-size: var(--text-ui-size); font-weight: 500; line-height: var(--text-ui-leading); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.deck-table-effort > span { display: inline-flex; align-items: center; gap: var(--space-1); }
 .deck-table-effort > svg { flex: 0 0 auto; }
-.deck-table-priority.is-empty > *, .deck-table-effort.is-empty > svg { opacity: .15; }
 
 /* Title: one line with an ellipsis; the button covers the row so the whole row opens and drags the card. */
 /* A row without tags lets the title take the Tags column too. */
@@ -150,6 +151,8 @@
 /* The checklist fraction is a counter: Geist Mono, tabular. */
 .deck-table-checklist { display: inline-flex; align-items: center; gap: 3px; color: var(--card-muted); font-family: 'Geist Mono', monospace; font-weight: 500; font-size: 11px; line-height: 12px; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .deck-table-state { display: inline-flex; color: var(--mint, var(--card-highlight)); }
+/* 2026-11-11: the mint fill is a surface, 1.23:1 on the light row; light rows take the mint ink (8.13:1), dark keeps the fill. */
+:root:not(.dark) .deck-table-state { color: var(--action-mint-ink); }
 
 /* 2026-11-08: below 460 px the title owns the first line; the parent and metrics share the second.
    The nested subgrid keeps the parent inside its cell without letting it squeeze the title. */
@@ -168,7 +171,7 @@
   .deck-table-row > .deck-table-details .card-indicators, .deck-table-row > .deck-table-details .deck-table-checklist { display: none; }
 }
 
-/* Not-started states fade only on the dark row: the light mint is 3.33:1 on white at full strength, and any fade drops it below 3:1. */
+/* Not-started states fade only on the dark row: at half opacity the light mint ink falls below 3:1, while the dark mint stays near it (≈3.7:1). */
 :root.dark .deck-table-row:is([data-state="planned"], [data-state="discuss"], [data-state="iteration"], [data-state="cancelled"]) .deck-table-state { opacity: .5; }
 .deck-table-owner { display: inline-flex; }
 .deck-table-owner .card-owner-avatar { width: 20px; height: 20px; font-size: 8px; }

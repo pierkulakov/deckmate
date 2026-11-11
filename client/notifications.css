@@ -43,7 +43,8 @@
 .notification-card:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 /* 2026-11-06: each stack already has its own panel and heading, so its color marks the heading icon once instead of a stripe on every card. */
 .notification-stack-watching .notification-stack-header > svg { color: var(--accent); }
-.notification-stack-due .notification-stack-header > svg { color: var(--champagne); }
+/* 2026-11-11: champagne read 2.3:1 on the light panel surface; --warning-ink stays past 3:1 in both themes and matches the due-soon markers of the Timeline. */
+.notification-stack-due .notification-stack-header > svg { color: var(--warning-ink); }
 .notification-card-head { display: grid; gap: 2px; min-width: 0; }
 .notification-card-head strong { font-size: 13px; font-weight: 600; line-height: 1.35; overflow-wrap: anywhere; }
 .notification-card-head small { color: var(--muted); font-size: 12px; line-height: 16px; overflow-wrap: anywhere; }

@@ -44,7 +44,8 @@
 .deck-choice-kind { flex-shrink: 0; }
 .deck-choice-current { flex-shrink: 0; margin-left: auto; color: inherit; font-size: 12px; line-height: 14px; }
 .deck-choice-hint { flex-shrink: 0; margin: 0; padding: 0 16px 8px; color: var(--edit-hint); font-size: 12px; line-height: 20px; }
-.deck-choice-confirm { height: 24px; margin: -3px 0; padding: 0 8px; border: 0; border-radius: var(--control-radius); background: transparent; color: var(--button-ink, var(--ink)); font-size: 12px; font-weight: 500; line-height: 14px; letter-spacing: .01em; vertical-align: middle; }
+/* 2026-11-11: no padding on the right — the trailing period must hug the word; the min-width target grows to the left. */
+.deck-choice-confirm { height: 24px; margin: -3px 0; padding: 0 0 0 8px; border: 0; border-radius: var(--control-radius); background: transparent; color: var(--button-ink, var(--ink)); font-size: 12px; font-weight: 500; line-height: 14px; letter-spacing: .01em; text-align: right; vertical-align: middle; }
 @media (hover: hover) { .deck-choice-confirm:hover:not(:disabled) { background: var(--hover); } }
 @media (prefers-reduced-motion: reduce) { .deck-picker-popover { animation: none; } .deck-choice-option { transition: none; } }
 

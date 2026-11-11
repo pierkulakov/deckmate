@@ -157,7 +157,7 @@ export function JourneyTrack({ title, version, description, members, cards, step
   return <section className="card-preview-journey-progress" aria-label={t.progress}>
       <header className="journey-track-header">
         <JourneyTrackMenu title={title} version={version} description={description} members={members} steps={models}
-          disabled={disabled} onOpen={onOpen} onOpenJourney={onOpenJourney}>
+          onOpen={onOpen} onOpenJourney={onOpenJourney}>
           <button type="button" className="journey-track-title-button" aria-haspopup="menu" aria-label={t.openMenu(title)}
             title={title} disabled={disabled}>
             <Route size={13} aria-hidden="true" />

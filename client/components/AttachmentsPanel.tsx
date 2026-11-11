@@ -111,7 +111,7 @@ const text = defineText({
   browse: 'выберите файл',
 });
 
-export interface AttachmentsPanelProps {
+interface AttachmentsPanelProps {
   card: CatalogCard;
   catalog: CatalogView;
   writable: boolean;

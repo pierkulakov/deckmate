@@ -4,8 +4,8 @@
 /* 2026-11-10: the context bar is the workbench's first row (deck-workbench.css): --workbench-row-inset below the column's
    top, as tall as a rail button, so the deck picker and Close line up with the rail's first button; the card's own icon
    rail starts level with the sheet below the bar. */
-/* 2026-11-11: a compact band leaves the reading and save row more space. */
-.card-preview { --preview-header-height: 32px; --preview-header-gap: var(--space-3); --preview-icon-size: 16px; --preview-band-height: 44px; --preview-owner-size: 36px; --preview-height: max(0px, calc(var(--catalog-scroll-height, 100dvh) - var(--catalog-content-offset, 0px) - 12px)); min-width: 0; max-height: var(--preview-height); overflow: clip; border-radius: 8px; color: var(--ink); }
+/* 2026-11-11: the full-width metal reserves space for three controls and the family's progress. */
+.card-preview { --preview-header-height: 32px; --preview-header-gap: var(--space-3); --preview-icon-size: 16px; --preview-band-height: 64px; --preview-owner-size: 56px; --preview-height: max(0px, calc(var(--catalog-scroll-height, 100dvh) - var(--catalog-content-offset, 0px) - 12px)); min-width: 0; max-height: var(--preview-height); overflow: clip; border-radius: 8px; color: var(--ink); }
 /* The sheet fills the left panel at any width to avoid a gap before the divider. 2026-11-08: the row caps at the shell height,
    so a long card hands its extra height to the panels area instead of growing past the column. */
 /* 2026-11-10: the rail is flush with the column's edge and keeps 12px on both sides — to the sheet, and to the divider
@@ -35,8 +35,12 @@
 .card-preview-parent > kbd { flex: none; display: inline-grid; place-items: center; min-width: 22px; height: 16px; padding: 0 4px; box-sizing: border-box; border-radius: 3px; border: 1px solid color-mix(in srgb, var(--hero-ink) 40%, transparent); background: color-mix(in srgb, var(--hero-sheen) 45%, transparent); color: var(--hero-ink); font: 600 10px/1 var(--mono, 'Geist Mono', monospace); }
 .card-preview-sheet { display: flex; flex-direction: column; border-radius: 8px; background: var(--canvas); box-shadow: var(--shadow); overflow: clip; container-type: inline-size; }
 /* 2026-11-08: only the panels area gives way; every fixed row of the sheet keeps its height while the content scrolls. */
-.card-preview-sheet > :is(.card-preview-state-actions, .card-preview-state-notice, .dependency-warning, .journey-return, .card-preview-dock, .card-preview-material-band) { flex-shrink: 0; }
+.card-preview-sheet > :is(.card-preview-subcards-bar, .card-preview-state-actions, .card-preview-state-notice, .dependency-warning, .journey-return, .card-preview-dock, .card-preview-material-band) { flex-shrink: 0; }
+.card-preview-subcards-bar { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); min-height: 48px; padding: var(--space-2) var(--space-4); }
+.card-preview-family-actions { display: flex; align-items: center; gap: var(--space-1); min-width: 0; }
+.card-preview .ui-button.card-preview-subcards-toggle { gap: var(--space-1); height: 32px; min-height: 32px; padding: var(--space-1) var(--space-2); font-size: 14px; line-height: 20px; white-space: nowrap; }
 .card-preview-subcards-actions { display: flex; align-items: center; gap: 8px; }
+.card-preview-subcards-bar > .card-preview-subcards-actions { margin-left: auto; }
 .card-preview-reading { position: relative; padding: 16px; }
 .card-preview-title { margin: 0 0 20px; font-size: 22px; font-weight: 600; line-height: 26px; overflow-wrap: anywhere; }
 .card-preview .card-content-heading { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: start; gap: 12px; margin-bottom: 12px; }
@@ -44,7 +48,6 @@
 /* 2026-11-08: a narrow sheet gives the title its whole reading width, even in a resized desktop column. */
 @container (max-width: 400px) {
   .card-preview .card-content-heading { grid-template-columns: minmax(0, 1fr); }
-  .card-content-heading > .card-preview-subcards-actions { grid-row: 1; justify-self: end; }
 }
 .card-preview .ui-button.card-preview-focus { width: 30px; height: 30px; margin: 0; padding: 4px; color: var(--muted); }
 /* 2026-11-10: every ghost icon button of the card chrome answers hover the same flat way; the pressed (open panel,
@@ -278,39 +281,57 @@
 .card-journey-dialog:focus { outline: none; }
 .card-journey-dialog > .journey-apply { margin: 0; border: 0; background: transparent; }
 
-/* 2026-11-11: the footer values share the text inset; the centered owner medallion uses the same card metal. */
-.card-preview-material-band { position: relative; display: flex; align-items: center; justify-content: space-between; flex-wrap: nowrap; gap: 8px; height: var(--preview-band-height); min-height: var(--preview-band-height); padding: 5px 16px; color: var(--card-metal-ink); font-size: 12px; }
-.card-preview-doc .card-preview-material-band { --card-metal: var(--doc-metal); --card-metal-ink: var(--doc-ink); justify-content: center; }
+/* 2026-11-11: the empty middle grid track reserves the protruding medallion at every sheet width. */
+.card-preview-material-band { position: relative; display: grid; grid-template-columns: minmax(0, 1fr) var(--preview-owner-size) minmax(0, 1fr); align-items: center; gap: var(--space-2); height: var(--preview-band-height); min-height: var(--preview-band-height); padding: var(--space-2) var(--space-4); color: var(--card-metal-ink); font-size: var(--text-help-size); }
+.card-preview-doc .card-preview-material-band { --card-metal: var(--doc-metal); --card-metal-ink: var(--doc-ink); }
 .card-preview-sheet[data-state="done"] > .card-preview-material-band { --card-metal: var(--accepted-metal); --card-metal-ink: var(--accepted-metal-ink); }
+.card-preview-sheet[data-state="started"] > .card-preview-material-band { --card-metal: var(--started-metal); --card-metal-ink: var(--started-metal-ink); }
+.card-preview-sheet[data-state="review"] > .card-preview-material-band { --card-metal: var(--review-metal); --card-metal-ink: var(--review-metal-ink); }
 /* 2026-11-09: these two read live — the open card is `aside.card-preview-hero`; dropping them as dead in 0.3.0 turned the
    Hero band's owner medallion and ink lavender and lost the accepted Hero band colour. */
-.card-preview-hero .card-preview-material-band { --card-metal: var(--hero-metal); --card-metal-ink: var(--hero-ink); --metal-sheen: var(--hero-sheen); box-shadow: 0 1px 6px var(--hero-glow, transparent); }
-.card-preview-hero .card-preview-sheet[data-family-done] > .card-preview-material-band { --card-metal: var(--accepted-metal); --card-metal-ink: var(--accepted-metal-ink); --metal-sheen: #ffffff; box-shadow: none; }
+/* 2026-11-11: only a Hero keeps the deeper lower gutter, for its step strip; every other band centres its row. */
+.card-preview-hero .card-preview-material-band { padding-block: var(--space-1) var(--space-3); --card-metal: var(--hero-metal); --metal-base: var(--hero-metal); --card-metal-ink: var(--hero-ink); --metal-sheen: var(--hero-sheen); --metal-polish: 24%; box-shadow: 0 1px 6px var(--hero-glow, transparent); }
 /* Constant padding adds room around the hover label; the negative margin (border + padding) keeps the label
    text exactly on the band's 16px axis — the border-width adds 1px, so the margin cancels 9px. */
-.card-preview .card-preview-material-band .ui-button.card-preview-property-shortcut { gap: 4px; max-width: calc(50% - var(--preview-owner-size) / 2 - var(--space-2)); height: 30px; min-height: 30px; padding-inline: 8px; margin-inline: -9px; border-radius: var(--control-radius); color: inherit; background: transparent; border-color: transparent; }
-.card-preview-property-shortcut > strong { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 15px; font-weight: 600; line-height: 20px; }
+.card-preview .card-preview-material-band .ui-button.card-preview-property-shortcut { justify-self: start; gap: var(--space-2); max-width: calc(100% + var(--space-4)); height: 36px; min-height: 36px; padding-inline: var(--space-2); margin-inline: -9px; border-radius: var(--control-radius); color: inherit; background: transparent; border-color: transparent; }
+.card-preview-property-label { font-size: var(--text-ui-size); font-weight: 600; line-height: var(--text-ui-leading); text-transform: uppercase; }
+.card-preview-property-shortcut > strong { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 500 20px/24px 'Geist Mono', monospace; }
 .card-preview-property-shortcut > svg { flex: none; }
+.card-preview .card-preview-material-band .ui-button.card-preview-property-shortcut[data-quick-settings-tab="priority"] { grid-column: 3; justify-self: end; }
+.card-preview-property-shortcut .journey-priority-icon { color: inherit; }
+.card-preview-word-count { grid-column: 3; justify-self: end; font-size: var(--text-help-size); font-variant-numeric: tabular-nums; }
 @container (max-width: 400px) {
-  .card-preview-material-band { padding-inline: 12px; }
-  .card-preview-property-shortcut > svg { width: var(--preview-icon-size); height: var(--preview-icon-size); }
+  .card-preview-material-band { padding-inline: var(--space-3); }
+  .card-preview-property-label { display: none; }
+  .card-preview-subcards-bar { padding-inline: var(--space-3); }
 }
-/* 2026-11-10: reserve the widest localized Priority label in one grid cell, so changing its value cannot move the right-aligned control. */
-.card-preview-property-value { display: inline-grid; }
-.card-preview-property-value > span { grid-area: 1 / 1; }
-.card-preview-property-value > span[aria-hidden="true"] { visibility: hidden; }
 .card-preview .card-preview-material-band .ui-button.card-preview-property-shortcut:hover:not(:disabled) { color: inherit; background: #ffffff24; border-color: transparent; box-shadow: inset 0 0 0 1px #ffffff2e; }
 .card-preview .card-preview-material-band .ui-button.card-preview-property-shortcut:active:not(:disabled) { color: inherit; background: #ffffff33; border-color: transparent; box-shadow: inset 0 0 0 1px #ffffff40; }
-.card-preview .card-preview-material-band .ui-button.card-preview-property-shortcut:disabled { color: inherit; background: transparent; border-color: transparent; box-shadow: none; opacity: .65; }
+.card-preview .card-preview-material-band .ui-button.card-preview-property-shortcut:disabled { color: inherit; background: transparent; border-color: transparent; box-shadow: none; opacity: 1; }
 .card-preview .card-preview-material-band .ui-button.card-preview-property-shortcut:focus-visible { outline: 2px solid var(--card-metal-ink); outline-offset: 1px; }
 .card-preview .card-preview-material-band .ui-button.card-preview-owner-shortcut { position: absolute; top: calc(var(--preview-owner-size) / -2); left: calc(50% - var(--preview-owner-size) / 2); width: var(--preview-owner-size); height: var(--preview-owner-size); padding: 0; border: 2px solid var(--card-metal); border-radius: 50%; background: var(--card-metal); color: var(--card-metal-ink); box-shadow: none; }
-/* 2026-11-10: the owner medallion is flat — one disc of the band's metal with the icon in its ink; the light rim, the
-   drop shadow under it and the avatar's own gradient disc read as a raised edge. Hover marks the rim only. */
-.card-preview-material-band .card-preview-owner-shortcut:not(:has(.card-preview-owner-initials)) > .card-owner-avatar { border: 0; background: transparent; color: inherit; }
+/* 2026-11-11: the material ring frames the avatar; sheet ink keeps initials legible on every metal. */
+.card-preview-material-band .card-preview-owner-shortcut:not(:has(.card-preview-owner-initials)) > .card-owner-avatar { border: 0; background: var(--canvas); color: var(--ink); }
 .card-preview .card-preview-material-band .ui-button.card-preview-owner-shortcut:hover:not(:disabled) { border-color: color-mix(in srgb, var(--card-metal-ink) 40%, var(--card-metal)); }
 .card-preview .card-preview-material-band .ui-button.card-preview-owner-shortcut:active:not(:disabled) { border-color: var(--card-metal-ink); }
 .card-preview .card-preview-material-band .ui-button.card-preview-owner-shortcut:disabled { background: var(--card-metal); opacity: .8; }
 .card-preview-material-band .card-preview-owner-shortcut > .card-owner-avatar { width: calc(var(--preview-owner-size) - 8px); height: calc(var(--preview-owner-size) - 8px); }
+.card-preview-material-band > .sub-card-progress {
+  --sub-card-state-accepted: var(--hero-step-done); --sub-card-state-working: var(--hero-step-working);
+  --sub-card-state-review: var(--hero-step-review); --sub-card-state-blocked: var(--hero-step-blocked); --sub-card-state-planned: var(--hero-step-empty);
+  position: absolute; inset: auto var(--space-4) var(--space-2); width: auto; height: var(--space-1);
+}
+.card-preview-sheet[data-family-done] > .card-preview-material-band .sub-card-progress { --sub-card-gap: 0px; }
+.card-preview-sheet[data-family-done] > .card-preview-material-band .sub-card-progress-segment { border-radius: 0; background-color: var(--hero-step-done); }
+
+/* 2026-11-11: the accepted Hero keeps its rainbow rim around the ordinary matte reading surface. */
+.card-preview-hero .card-preview-sheet[data-family-done] {
+  --holo-rose: var(--danger); --holo-amber: var(--hero-metal); --holo-mint: var(--mint); --holo-sky: var(--kind-task-bg); --holo-violet: var(--accent);
+  --holo-angle: calc(var(--glare-u, .5) * 240deg + var(--glare-v, .5) * 90deg);
+  position: relative; isolation: isolate; border: 2px solid transparent;
+  background: linear-gradient(var(--canvas), var(--canvas)) padding-box,
+    conic-gradient(from var(--holo-angle), var(--holo-amber), var(--holo-rose), var(--holo-violet), var(--holo-sky), var(--holo-mint), var(--holo-amber)) border-box;
+}
 
 /* 2026-11-10: a definite height fills even a short card down to the measured scrollport inset. The flexible text area
    holds the dock and band at the bottom; the context/parent rows and the independent rail keep their positions. */
@@ -324,14 +345,11 @@
   .card-preview-context { gap: 7px; }
   /* 2026-11-08: the narrow single column keeps the page as its scroller; the panels area neither clips nor scrolls. */
   .card-preview-panels { flex: 0 0 auto; overflow: visible; scrollbar-gutter: auto; }
-  .card-preview-panel > .card-tag-control { margin: 8px 0 12px; }
 }
 @keyframes card-preview-panel-enter { from { opacity: .5; transform: translateX(5px); } to { opacity: 1; transform: none; } }
 @media (prefers-reduced-motion: reduce) { .card-preview-panel, .card-journey-overlay, .card-journey-dialog { animation: none; } .card-preview-parent { transition: none; } }
 
 /* Edit mode uses a hint row, one monospace Markdown box and Preview, Cancel and Save actions. */
-.card-preview-panel:has(> .card-content-reading.is-editing) > .card-tag-control,
-.card-preview-panel:has(> .card-content-reading.is-editing) > .card-tag-links { display: none; }
 .card-preview-reading.card-content-reading.is-editing { display: flex; flex-direction: column; flex: 1; min-height: 0; gap: 8px; padding: 8px 0; }
 .card-preview-panels:has(.card-content-reading.is-editing) > .card-preview-panel { flex: 1; min-height: 0; }
 .card-preview-panel .card-edit { flex: 1; }
@@ -396,8 +414,11 @@
    them (24px), held by a zero-height sticky holder that keeps it level with the card while the deck scrolls. */
 .card-preview-layout > .card-properties-slot { left: calc(100% + var(--space-3)); }
 /* 2026-11-10: with a section open, the width divider rises with the column to the header, so the two edges meet it
-   together; otherwise the divider stopped 8px short of the column's top. */
-.catalog-content-layout:has(.card-preview-layout[data-card-panel-open], .catalog-family-layer > .card-family-panel) > .catalog-resize-handle > .catalog-resize-line { top: calc(-1 * var(--card-panel-lift)); }
+   together; otherwise the divider stopped 8px short of the column's top.
+   2026-11-11: a sticky inset pins scrolling but cannot lift the initial flow position; the margin carries the same lift.
+   2026-11-11: beside the deck summary, with no card open, the divider also rises to the header: there is no card
+   edge to line up with, and a line that stopped short left a gap above it. */
+.catalog-content-layout:is(:not(.has-preview), :has(.card-preview-layout[data-card-panel-open], .catalog-family-layer > .card-family-panel)) > .catalog-resize-handle > .catalog-resize-line { --catalog-resize-lift: var(--card-panel-lift); }
 .catalog-family-layer { position: sticky; top: var(--catalog-content-offset, 0px); z-index: 40; height: 0; }
 .catalog-family-layer > .card-family-panel { left: calc(-24px + var(--space-3)); flex: none; min-height: 0; }
 /* Sub Cards' own sections fade in on other screens; in the column they appear with it, at once. */
@@ -416,31 +437,40 @@
 .catalog-content-layout:has(.card-preview-layout[data-card-panel-open]) > .catalog-preview-slot { z-index: 40; }
 :root { --card-panel-veil: color-mix(in srgb, var(--ground) 58%, transparent); --card-panel-shadow: 14px 0 28px -16px rgb(48 36 56 / .3); }
 :root.dark { --card-panel-veil: color-mix(in srgb, var(--ground) 62%, transparent); --card-panel-shadow: 14px 0 28px -14px rgb(0 0 0 / .55); }
-/* Copy feedback: the header-hint bubble (mint, .67 edge, radius 6, arrow) above the chip with a 6 px gap, rising in 140 ms. */
+.card-id-control { position: relative; display: inline-flex; flex: 0 0 auto; align-items: center; min-width: 0; margin-right: auto; }
+/* 2026-11-11: the compact ID plaque shares the muted Task metal and its readable ink. */
+.card-id-chip {
+  --chip-metal: var(--card-metal);
+  display: inline-flex; align-items: center; height: 20px; padding: 0 7px; border: 0; border-radius: var(--control-radius);
+  color: var(--card-metal-ink); background-color: var(--chip-metal);
+  background-image: linear-gradient(112deg, color-mix(in srgb, var(--chip-metal) 90%, var(--metal-shadow)) 0%, var(--chip-metal) 22%,
+    color-mix(in srgb, var(--metal-sheen) 16%, var(--chip-metal)) 48%, var(--chip-metal) 76%);
+  box-shadow: inset 0 1px 1px color-mix(in srgb, var(--metal-shadow) 12%, transparent), inset 0 -1px 0 color-mix(in srgb, var(--metal-shadow) 22%, transparent);
+  font: 700 var(--text-help-size)/var(--text-help-leading) 'Geist Mono', monospace; letter-spacing: .12px; cursor: pointer; user-select: none;
+  transition: filter var(--motion-feedback) var(--ease-out);
+}
+@media (hover: hover) { .card-id-chip:hover { filter: brightness(1.07); } }
+.card-id-chip:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.card-id-chip:focus:not(:focus-visible) { outline: none; }
+.card-id-chip[data-copied] { background: color-mix(in srgb, var(--action-mint-ink) 18%, transparent); color: var(--action-mint-ink); }
+/* Copy feedback stays anchored above the ID, outside the action row's layout. */
 .card-id-feedback { position: absolute; z-index: 5; left: 0; bottom: calc(100% + 6px); display: inline-flex; align-items: center; gap: 4px; width: max-content; max-width: 250px; border: .67px solid var(--mint-edge, var(--line)); border-radius: 6px; color: var(--mint-ink, var(--ink)); background: var(--mint, var(--accent-soft)); font-size: 12px; font-weight: 600; line-height: 16px; box-shadow: var(--shadow); pointer-events: none; }
 .card-id-feedback:empty { display: none; }
 .card-id-feedback:not(:empty) { padding: 4px 8px; animation: toast-rise var(--motion-spring-pop) var(--ease-spring-pop); }
 .card-id-feedback::after { content: ''; position: absolute; top: 100%; left: 12px; width: 8px; height: 8px; border-right: .67px solid var(--mint-edge, var(--line)); border-bottom: .67px solid var(--mint-edge, var(--line)); background: var(--mint, var(--accent-soft)); transform: translateY(-4px) rotate(45deg); }
 .card-id-feedback[data-state="failed"] { border-color: var(--danger); color: var(--ink); background: var(--surface); }
 .card-id-feedback[data-state="failed"]::after { border-color: var(--danger); background: var(--surface); }
-@media (prefers-reduced-motion: reduce) { .card-id-feedback:not(:empty) { animation: none; } }
-/* 2026-11-11: the pinned action row clears the small owner mark without adding a second frame. */
+@media (prefers-reduced-motion: reduce) { .card-id-feedback:not(:empty) { animation: none; } .card-id-chip { transition: none; } }
+/* 2026-11-11: the pinned action row clears half the owner medallion. */
 .card-preview-dock { flex-shrink: 0; display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-2) var(--space-4) calc(var(--preview-owner-size) / 2 + 4px); background: var(--canvas); }
 .card-preview-dock-journey > :is(.card-preview-journey-progress, .journey-step-note) { margin: 0; padding: 0; border-radius: 0; background: none; }
 /* Journey sections belong to reading: they step aside in the same frame the editor appears (2026-11-09), so the editor's
    fit measures the whole sheet instead of keeping the height it had beside them. */
 .card-preview-sheet:has(.card-content-reading.is-editing) .card-preview-dock-journey { display: none; }
 .card-preview-dock-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; min-width: 0; }
-.card-preview-meta-row { display: flex; flex: 0 1 auto; flex-wrap: wrap; align-items: center; gap: 4px 8px; min-width: 0; }
-.card-preview-meta-row:not(:has(.card-indicators, .card-tags)) { display: none; }
-/* Indicators at the tile's scale (DESIGN.md «Open card»): 14px glyphs, a 2px step, counts in Geist Mono. A button keeps a
-   24×24 target; a passive mark is only as wide as its glyph and count. */
-.card-preview-meta-row .card-indicators.is-preview { gap: 2px; }
-.card-preview-meta-row .card-indicators.is-preview .card-indicator { min-width: 18px; min-height: 24px; }
-.card-preview-meta-row .card-indicators.is-preview .card-indicator-button { min-width: 24px; }
-.card-preview-meta-row .card-indicators.is-preview .card-indicator > svg { width: 14px; height: 14px; }
-.card-preview-meta-row .card-indicators.is-preview :is(.card-hand-indicator > strong, .card-gate-numbers) { font: 500 10px/12px 'Geist Mono', monospace; font-variant-numeric: tabular-nums; }
-.card-preview-meta-row .card-gate-indicator.card-indicator-button { min-width: 32px; min-height: 24px; padding: 0 2px; }
+.card-preview-dock-row > :is(.card-preview-blocker-note, .card-preview-due-note) { flex-basis: 100%; }
+.card-preview-tags { display: flex; flex-direction: column; align-items: flex-start; gap: var(--space-1); min-width: 0; }
+.card-preview-sheet:has(.card-content-reading.is-editing) .card-preview-tags { display: none; }
 /* Reading and editing use the same pinned action slot. */
 .card-preview-dock-actions { display: flex; flex: 1 0 auto; justify-content: flex-end; min-width: 0; margin-inline-start: auto; }
 .card-preview-dock-actions:empty { display: none; }
@@ -456,6 +486,20 @@
   translate: -50% -50%; box-sizing: border-box; border: 1px solid color-mix(in srgb, currentColor 60%, transparent); border-bottom-width: 2px; border-radius: 2.5px;
   background: color-mix(in srgb, currentColor 14%, transparent); box-shadow: none; color: currentColor; font: 700 7px/1 'Geist Mono', monospace; }
 .card-preview .ui-button.card-preview-more { width: 30px; height: 30px; padding: 5px; color: var(--muted); }
+.card-preview .ui-button.card-preview-hand { width: 30px; height: 30px; padding: 5px; color: var(--muted); }
+.card-preview .ui-button.card-preview-hand.is-on { border-color: var(--mark); background: var(--mark-tint); color: var(--mark); }
+.card-hand-tooltip { z-index: 160; width: max-content; max-width: min(360px, calc(100vw - var(--space-4))); padding: var(--space-3); border: var(--control-hairline) solid var(--line); border-radius: var(--glass-radius); background: var(--surface); color: var(--ink); box-shadow: var(--shadow); font-size: var(--text-help-size); line-height: var(--text-help-leading); }
+.card-hand-tooltip > header { display: flex; align-items: center; justify-content: space-between; gap: var(--space-4); }
+.card-hand-tooltip strong { font-weight: 600; }
+.card-hand-tooltip kbd { padding: var(--space-1); border: var(--control-hairline) solid var(--line); border-radius: var(--control-radius); color: var(--muted); font: inherit; }
+.card-hand-tooltip > ul { display: grid; gap: var(--space-2); margin: var(--space-3) 0; padding: 0; list-style: none; }
+.card-hand-tooltip li { display: flex; align-items: center; gap: var(--space-2); }
+.card-hand-tooltip li > .card-owner-avatar { flex: none; width: 24px; height: 24px; }
+.card-hand-tooltip li > span:not(.card-owner-avatar) { min-width: 0; overflow-wrap: anywhere; }
+.card-hand-slot { flex: none; margin-left: auto; color: var(--muted); font-family: 'Geist Mono', monospace; }
+.card-hand-hint-actions { display: grid; gap: var(--space-1); margin-top: var(--space-2); padding-top: var(--space-2); border-top: var(--control-hairline) solid var(--line); color: var(--muted); }
+.card-hand-tooltip > svg { fill: var(--surface); }
+.hand-view [data-card-revealed] :is(.deck-card, .hand-queue-open) { outline: 2px solid var(--tile-highlight); outline-offset: 2px; }
 .card-more-menu { z-index: 90; width: max-content; min-width: 245px; max-width: calc(100vw - 16px); max-height: var(--radix-dropdown-menu-content-available-height); overflow-y: auto; padding: 5px; border: 1px solid var(--line); border-radius: var(--glass-radius); background: var(--surface); color: var(--ink); box-shadow: var(--shadow); }
 .card-more-menu [role="menuitem"] { display: flex; align-items: center; gap: 8px; min-height: 32px; padding: 6px 8px; border-radius: 4px; font-size: 12px; line-height: 18px; cursor: pointer; outline: none; }
 .card-more-menu [role="menuitem"] > svg { flex-shrink: 0; }
@@ -471,8 +515,8 @@
 .card-removal-dialog p { margin: 0 0 12px; font-size: 14px; line-height: 20px; overflow-wrap: anywhere; }
 .card-removal-dialog [role="alert"] { color: var(--danger); }
 .card-removal-dialog footer { display: flex; justify-content: flex-end; gap: 8px; margin-top: 20px; }
-.card-preview-backlinks { padding: 12px 16px 16px; border-top: 1px solid var(--line); }
-.card-preview-backlinks h3 { margin: 0 0 8px; font-size: 12px; font-weight: 700; }
+.card-preview-backlinks { margin-top: var(--space-4); padding-top: var(--space-3); border-top: var(--control-hairline) solid var(--line); }
+.card-preview-backlinks h3 { margin: 0 0 var(--space-2); font-size: var(--text-help-size); font-weight: 600; }
 .card-preview-backlinks ul { display: grid; gap: 4px; list-style: none; padding: 0; margin: 0; }
 .card-preview-backlinks button { width: 100%; padding: 5px 0; border: 0; background: transparent; color: var(--edit-link); text-align: left; font-size: 12px; overflow-wrap: anywhere; cursor: pointer; }
 .card-preview-backlinks button:hover:not(:disabled) { text-decoration: underline; text-underline-offset: 3px; }
@@ -491,7 +535,7 @@
 .card-preview-lifecycle { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); padding: var(--space-3) var(--space-4); border-bottom: 1px solid var(--line); background: var(--warning-bg); color: var(--warning-ink); }
 .card-preview-lifecycle p { flex: 1 1 140px; margin: 0; font-size: 13px; line-height: 1.5; overflow-wrap: anywhere; }
 .card-preview-lifecycle > .ui-button { min-height: var(--space-10); height: auto; white-space: normal; }
-.card-preview-owner-initials { font: 600 18px/1 var(--font-sans); }
+.card-preview-owner-initials { display: grid; place-items: center; width: calc(var(--preview-owner-size) - 8px); height: calc(var(--preview-owner-size) - 8px); border-radius: 50%; background: var(--canvas); color: var(--ink); font: 600 18px/1 var(--font-sans); }
 .card-preview-owner-shortcut:has(.card-preview-owner-initials) > .card-owner-avatar { position: absolute; right: calc(-1 * var(--space-1)); bottom: calc(-1 * var(--space-1)); width: var(--space-4); height: var(--space-4); border-radius: 50%; background: var(--card-metal); }
 .card-preview-owner-shortcut:has(.card-preview-owner-initials) > .card-owner-avatar svg { width: var(--space-3); height: var(--space-3); }
 .card-related-slot { color: var(--ink); }
@@ -504,24 +548,14 @@
 .card-review-return-dialog .journey-return { display: flex; flex-direction: column; align-items: stretch; margin: 0; padding: 0; border: 0; }
 .card-review-return-dialog .journey-return input:not([type="checkbox"]) { min-height: var(--space-10); }
 .card-review-return-dialog .journey-return-actions .ui-button { min-width: var(--space-10); min-height: var(--space-10); height: auto; white-space: normal; }
-.card-preview-backlinks p { margin: 8px 0 0; font-size: 12px; color: var(--muted); }
-.card-preview-relations { margin-top: var(--space-4); color: var(--muted); font-size: 13px; }
-.card-preview-relations > summary { min-height: 32px; cursor: pointer; line-height: 32px; }
-.card-preview-relations > summary > span { margin-left: var(--space-2); }
-.card-preview-relations > summary:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
-.card-preview-relation-actions { display: flex; flex-wrap: wrap; gap: var(--space-1); }
-.card-preview-relation-actions .ui-button { height: auto; min-height: 32px; padding: var(--space-1) var(--space-2); white-space: normal; }
-.card-preview-relations .card-preview-backlinks { border: 0; padding: var(--space-3) 0 0; }
 .card-preview-blocker-note, .card-preview-due-note { padding: 0; border: 0; background: transparent; color: var(--warning-ink); font: 12px/18px var(--font-sans); text-align: left; }
 .card-preview-blocker-note { cursor: pointer; min-height: 28px; }
 .card-preview-blocker-note:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 .card-panel-error { position: absolute; right: 0; top: 0; color: var(--warning-ink); font-size: 12px; }
 .card-panel-close { margin-bottom: var(--space-3); }
 @media (pointer: coarse) {
-  .card-preview { --preview-owner-size: var(--control-target-touch); }
-  .card-preview .card-preview-material-band { padding-block: 0; }
   .card-preview .card-preview-material-band .ui-button.card-preview-property-shortcut { height: var(--control-target-touch); min-height: var(--control-target-touch); }
-  .card-preview :is(.card-preview-property-shortcut, .card-preview-parent, .card-preview-blocker-note, .card-preview-backlinks button, .card-preview-relations > summary),
+  .card-preview :is(.card-preview-property-shortcut, .card-preview-parent, .card-preview-blocker-note, .card-id-chip), .card-preview-backlinks button,
   .journey-track-title-button, .journey-track-next, .journey-step-note-button, .journey-track-menu-open { min-height: var(--control-target-touch); }
   .journey-track-header, .journey-track-summary { height: auto; min-height: var(--control-target-touch); }
   .journey-track-next { margin: 0; }

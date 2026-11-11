@@ -2,20 +2,22 @@
 // The node is an Excalidraw embeddable; Excalidraw positions and scales this content with pan/zoom.
 // The figure redraws from the catalog on every revision, so the title, state and owner are always live.
 import { ArrowUpRight } from 'lucide-react';
+import { useMemo } from 'react';
 import type { CardPriority, CatalogCard, CatalogView } from '../../src/catalog-contracts.ts';
 import { CardFaceStatus, cardFaceStatus } from './CardIndicators.tsx';
-import { CardTagSummary } from './CardTags.tsx';
+import { CardTags } from './CardTags.tsx';
+import { CardMetrics, cardMetricsOf } from './CardMetrics.tsx';
+import { docExcerpt } from '../doc-excerpt.ts';
+import { splitJourneyStepLink } from './journey-step-link.ts';
 import type { CardTileLookups } from '../card-tile-equality.ts';
-import { defineText, locale, textNow, useLang, useText } from '../i18n.ts';
-import { kindLabel, priorityLabel } from '../locales/common.ts';
+import { defineText, formatNumber, textNow, useLang, useText } from '../i18n.ts';
+import { kindLabel, priorityLabel, stateLabel } from '../locales/common.ts';
 
 const text = defineText({
   missing: 'Card not found',
   openCard: (title: string) => `Open card ${title}`,
   open: 'Open',
   iteration: (iteration: string) => `Iteration ${iteration}`,
-  effortShort: (effort: string) => `Est. ${effort}`,
-  effortValue: (effort: string) => `Effort: ${effort}`,
   priorityValue: (priority: CardPriority) => `Priority: ${priorityLabel(priority, 'en')}`,
   lane: 'Card lane',
   mini: 'Mini Card',
@@ -25,8 +27,6 @@ const text = defineText({
   openCard: (title: string) => `Открыть карточку ${title}`,
   open: 'Открыть',
   iteration: (iteration: string) => `Итерация ${iteration}`,
-  effortShort: (effort: string) => `Оц. ${effort}`,
-  effortValue: (effort: string) => `Оценка: ${effort}`,
   priorityValue: (priority: CardPriority) => `Приоритет: ${priorityLabel(priority, 'ru')}`,
   lane: 'Строка карточки',
   mini: 'Мини-карточка',
@@ -55,17 +55,6 @@ function memberLabel(catalog: CatalogView | null, ownerId: string | null | undef
   return catalog?.members?.find(member => member.id === ownerId)?.label ?? ownerId;
 }
 
-/** Plain-text excerpt of the card Markdown for the Full view; the Markdown file stays the source of truth. */
-function textExcerpt(markdown: string, limit = 300): string {
-  const plain = markdown
-    .replace(/```[\s\S]*?```/gu, ' ')
-    .replace(/!?\[([^\]]*)\]\([^)]*\)/gu, '$1')
-    .replace(/[#>*_`|]/gu, ' ')
-    .replace(/\s+/gu, ' ')
-    .trim();
-  return plain.length > limit ? `${plain.slice(0, limit).trimEnd()}…` : plain;
-}
-
 type Props = {
   card: CatalogCard | undefined;
   cardId: string;
@@ -80,7 +69,9 @@ type Props = {
 export default function VisionCardNode({ card, cardId, view, catalog, lookups, interactive, onOpen }: Props) {
   const t = useText(text);
   const lang = useLang();
-  const numbers = new Intl.NumberFormat(locale(lang));
+  const excerpt = useMemo(() => card && view === 'full'
+    ? docExcerpt(splitJourneyStepLink(card.markdown, card.journey).body, card.id.startsWith('doc:')).map(block => block.text).join(' ')
+    : '', [card, view]);
   const pointerEvents = interactive ? 'auto' : 'none';
   if (!card) {
     return <div className="deckmate-vision-card is-missing" style={{ pointerEvents }}>
@@ -90,15 +81,25 @@ export default function VisionCardNode({ card, cardId, view, catalog, lookups, i
   const owner = memberLabel(catalog, card.owner);
   const deck = card.deckId ? catalog?.decks.find(candidate => candidate.id === card.deckId) : undefined;
   const status = cardFaceStatus(card, lookups, lang);
-  const description = [kindLabel(card.kind, lang), status.accessible, owner, card.effort != null ? t.effortValue(numbers.format(card.effort)) : '', ...(card.tags ?? [])].filter(Boolean).join(', ');
-  const openCard = () => { onOpen(cardId); };
-  return <div className={`deckmate-vision-card is-${view} kind-${card.kind}`} style={{ pointerEvents }} onClick={openCard} role={interactive ? 'button' : undefined} tabIndex={interactive ? 0 : -1}
-    aria-label={`${interactive ? t.openCard(card.title) : card.title}, ${description}`} onKeyDown={event => { if (interactive && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); event.stopPropagation(); openCard(); } }}>
+  // 2026-11-11: a Task in progress or on review carries the same state metal as the tile and Hand bands, so the two
+  // boards read one card state the same way. The band takes the node's existing footer row; the sizes stay documented.
+  const stateBand = card.kind === 'task' && (card.state === 'started' || card.state === 'review') ? card.state : null;
+  const description = [kindLabel(card.kind, lang), status.accessible, owner, cardMetricsOf(card, lookups, lang).effortLabel, card.kind !== 'doc' && card.priority ? t.priorityValue(card.priority) : '', ...(card.tags ?? [])].filter(Boolean).join(', ');
+  return <div className={`deckmate-vision-card is-${view} kind-${card.kind}`} data-state={card.state ?? undefined} style={{ pointerEvents }} onClick={event => {
+    const target = event.target;
+    if (!interactive || !(target instanceof Element) || !event.currentTarget.contains(target)) return;
+    const control = target.closest('button, a, [role="button"]');
+    if (control && event.currentTarget.contains(control)) return;
+    onOpen(cardId);
+  }}>
+    <button type="button" className="deckmate-card-opener" tabIndex={interactive ? 0 : -1} disabled={!interactive}
+      aria-label={`${interactive ? t.openCard(card.title) : card.title}, ${description}`} onClick={() => onOpen(cardId)}
+      onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') event.stopPropagation(); }} />
     {view === 'lane' && <>
       <span className="deckmate-card-kind" aria-hidden="true">{kindLabel(card.kind, lang)}</span>
       <span className="vision-lane-main"><strong className="deckmate-card-title" title={card.title}>{card.title}</strong>
-        <span className="deckmate-card-meta">{owner && <span className="deckmate-card-owner" title={owner}>{owner}</span>}<CardTagSummary tags={card.tags} definitions={catalog?.projectTags} /></span></span>
-      <CardFaceStatus status={status} />
+        <span className="deckmate-card-meta">{owner && <span className="deckmate-card-owner" title={owner}>{owner}</span>}<CardTags tags={card.tags} definitions={catalog?.projectTags} compact maxVisible={1} disabled={!interactive} /></span></span>
+      <CardMetrics card={card} lookups={lookups} showEffort={false} className="vision-card-priority-icon" /><CardFaceStatus status={status} />
     </>}
     {view === 'mini' && <>
       <div className="deckmate-card-head">
@@ -106,12 +107,13 @@ export default function VisionCardNode({ card, cardId, view, catalog, lookups, i
         <strong className="deckmate-card-title" title={card.title}>{card.title}</strong>
       </div>
       <div className="deckmate-card-meta">
-        <CardFaceStatus status={status} />
+        <CardFaceStatus status={status} hideWorkflow />
       </div>
-      <div className="deckmate-card-meta">
+      <div className={'deckmate-card-meta deckmate-card-foot' + (stateBand ? ' is-state-band' : '')}>
+        {stateBand && <span className="deckmate-card-state-word">{stateLabel(stateBand, lang)}</span>}
         {owner && <span className="deckmate-card-owner" title={owner}>{owner}</span>}
-        {card.effort != null && <span className="deckmate-card-effort" title={t.effortValue(numbers.format(card.effort))}>{t.effortShort(numbers.format(card.effort))}</span>}
-        <CardTagSummary tags={card.tags} definitions={catalog?.projectTags} />
+        <CardMetrics card={card} lookups={lookups} className="vision-card-priority-icon" />
+        <CardTags tags={card.tags} definitions={catalog?.projectTags} compact maxVisible={1} disabled={!interactive} />
       </div>
     </>}
     {view === 'full' && <>
@@ -121,16 +123,16 @@ export default function VisionCardNode({ card, cardId, view, catalog, lookups, i
         {interactive && <span className="deckmate-card-open"><ArrowUpRight size={12} />{t.open}</span>}
       </div>
       <div className="deckmate-card-meta">
-        <CardFaceStatus status={status} />
+        <CardFaceStatus status={status} hideWorkflow />
         {deck && <span className="deckmate-card-deck" title={deck.title}>{deck.title}</span>}
         {owner && <span className="deckmate-card-owner" title={owner}>{owner}</span>}
       </div>
-      {textExcerpt(card.markdown) && <p className="deckmate-card-excerpt">{textExcerpt(card.markdown)}</p>}
-      <CardTagSummary tags={card.tags} definitions={catalog?.projectTags} />
-      <div className="deckmate-card-properties">
-        {card.priority && <span>{t.priorityValue(card.priority)}</span>}
-        {card.effort != null && <span>{t.effortValue(numbers.format(card.effort))}</span>}
-        {card.iteration != null && <span>{t.iteration(numbers.format(card.iteration))}</span>}
+      {excerpt && <p className="deckmate-card-excerpt">{excerpt}</p>}
+      <CardTags tags={card.tags} definitions={catalog?.projectTags} compact maxVisible={1} disabled={!interactive} />
+      <div className={'deckmate-card-properties' + (stateBand ? ' is-state-band' : '')}>
+        {stateBand && <span className="deckmate-card-state-word">{stateLabel(stateBand, lang)}</span>}
+        <CardMetrics card={card} lookups={lookups} className="vision-card-priority-icon" />
+        {card.iteration != null && <span>{t.iteration(formatNumber(card.iteration, 0, lang))}</span>}
       </div>
     </>}
   </div>;

@@ -33,17 +33,17 @@
 @font-face { font-family: 'Roboto Mono Variable'; src: url('../assets/fonts/roboto-mono/RobotoMono-latin-wght.woff2') format('woff2-variations'); font-weight: 100 700; font-display: swap; unicode-range: U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD; }
 @font-face { font-family: 'Roboto Mono Variable'; src: url('../assets/fonts/roboto-mono/RobotoMono-cyrillic-wght.woff2') format('woff2-variations'); font-weight: 100 700; font-display: swap; unicode-range: U+0301,U+0400-045F,U+0490-0491,U+04B0-04B1,U+2116; }
 
-:root { color-scheme: light; --font-sans: 'Source Sans 3', sans-serif; --canvas: #f0ecf4; --surface: #f3f0f6; --ground: #ebe5f0; --sidebar: #e1d9e8; --ink: #2f2440; --muted: #51445f; --line: #afa1bd; --hover: #dcd2e6; --accent: #68428b; --accent-soft: #e4d8ef; --focus: #6e4697; --mint: #a8eedf; --mint-ink: #0c5547; --mint-edge: #5fcfb9; --mint-hover: #bdf3e7; --danger: #983c56; --warning-bg: #f9edcf; --warning-ink: #80531c; --mark-back: #a184e0; --mark-front: #6538a3; --mark-pip: #e8ad2e; --edit-bg: #efebf4; --edit-line: #a38acb; --edit-link: #4a3a63; --edit-cancel: #b64267; --edit-hint: var(--muted); --edit-save: #7a5aae; --plum: #8a6aa6; --champagne: #cb973c; --shadow: 0 8px 28px #30243812; --panel-gradient: linear-gradient(145deg, color-mix(in srgb, var(--surface) 93%, var(--plum)), var(--surface) 72%); --chrome-gradient: linear-gradient(120deg, color-mix(in srgb, var(--sidebar) 92%, var(--plum)), var(--sidebar) 58%, color-mix(in srgb, var(--sidebar) 96%, var(--champagne))); --tab-gradient: linear-gradient(145deg, color-mix(in srgb, var(--surface) 88%, var(--plum)), var(--surface) 75%); font-family: var(--font-sans); font-synthesis: none; }
+:root { color-scheme: light; --font-sans: 'Source Sans 3', sans-serif; --canvas: #f0ecf4; --surface: #f3f0f6; --ground: #ebe5f0; --sidebar: #e1d9e8; --ink: #2f2440; --muted: #51445f; --line: #afa1bd; --hover: #dcd2e6; --accent: #68428b; --accent-soft: #e4d8ef; --focus: #6e4697; --mint: #a8eedf; --mint-ink: #0c5547; --mint-edge: #5fcfb9; --danger: #983c56; --warning-bg: #f9edcf; --warning-ink: #80531c; --mark-back: #a184e0; --mark-front: #6538a3; --mark-pip: #e8ad2e; --edit-bg: #efebf4; --edit-line: #a38acb; --edit-link: #4a3a63; --edit-cancel: #b64267; --edit-hint: var(--muted); --edit-save: #7a5aae; --plum: #8a6aa6; --champagne: #cb973c; --shadow: 0 8px 28px #30243812; --panel-gradient: linear-gradient(145deg, color-mix(in srgb, var(--surface) 93%, var(--plum)), var(--surface) 72%); --chrome-gradient: linear-gradient(120deg, color-mix(in srgb, var(--sidebar) 92%, var(--plum)), var(--sidebar) 58%, color-mix(in srgb, var(--sidebar) 96%, var(--champagne))); font-family: var(--font-sans); font-synthesis: none; }
 /* Dark is the default theme. */
 :root.dark { color-scheme: dark; --canvas: #322f40; --surface: #39354a; --ground: #27242f; --sidebar: #1c1a24; --chrome: #27242f; --ink: #edeef2; --muted: #cdc8dc; --line: #4a4560; --hover: #443f59; --accent: #c3a3e5; --accent-soft: #453351; --focus: #cfb4ec; --danger: #edaaa9; --warning-bg: #4a3a22; --warning-ink: #fde793; --plum: #906cbd; --champagne: #f7e18e; --shadow: 0 10px 28px #0c0a1366; --scrim: color-mix(in srgb, #11151f 38%, transparent);
-  --tab-idle: #6e6884; --tab-idle-ink: var(--count-face); --tab-ink: #e2dcee; --mint: #a8eedf; --mint-ink: #0c5547; --mint-edge: #74dcc8; --mint-hover: #b2f0e3; --quote-bg: #0f3a35; --quote-bar: #a8eedf; --quote-edge: #2a8a7b; --hero-glow: #e5b65066; --hero-chip: #f4e4b8; --gold-chip-ink: #8a5300; --mark-back: #7a52d6; --mark-front: #b08af3; --mark-pip: #f5c24c;
+  --tab-idle: #6e6884; --tab-idle-ink: var(--count-face); --tab-ink: #e2dcee; --mint: #a8eedf; --mint-ink: #0c5547; --mint-edge: #74dcc8; --quote-bg: #0f3a35; --quote-bar: #a8eedf; --quote-edge: #2a8a7b; --hero-glow: #e5b65066; --hero-chip: #f4e4b8; --gold-chip-ink: #8a5300; --mark-back: #7a52d6; --mark-front: #b08af3; --mark-pip: #f5c24c;
   /* Card edit-mode tokens. */
   /* 2026-11-11: editor Save keeps a darker fill than outline controls so its light label remains readable. */
   --edit-bg: #2e1e34; --edit-line: #a38acb; --edit-link: #e7dff7; --edit-cancel: #e7a9ab; --edit-hint: #e3dff0; --edit-save: #8362b1;
-  --panel-gradient: linear-gradient(var(--surface), var(--surface)); --chrome-gradient: linear-gradient(var(--chrome), var(--chrome)); --tab-gradient: linear-gradient(var(--canvas), var(--canvas));
+  --panel-gradient: linear-gradient(var(--surface), var(--surface)); --chrome-gradient: linear-gradient(var(--chrome), var(--chrome));
   --card-face: #322f40; --card-ink: #f9f9fa; --card-muted: #cdc8dc; --card-edge: #4a4560; --card-metal: #c6bee3; --card-metal-ink: #2b2540; --card-highlight: #7fd9c7; --hero-metal: #e8bd48; --card-shadow: 0 2px 6px #0c0a1355; --card-hover-shadow: 0 6px 16px #0c0a1377;
   /* Family panel tokens for Hero and Sub Cards; the light theme falls back to base tokens. */
-  --card-strip: #968db6; --hero-strip: #e5b650; --card-icon-line: #5b5572; --card-meta-ink: #e3dff0; --button-line: #a58cbf; --card-current-ring: #63e6cfd9; --card-row-shadow: 0 0 1px #0000003d, 0 1.5px 9px #0000003d;
+  --card-strip: #968db6; --hero-strip: #e5b650; --card-meta-ink: #e3dff0; --button-line: #a58cbf; --card-current-ring: #63e6cfd9; --card-row-shadow: 0 0 1px #0000003d, 0 1.5px 9px #0000003d;
   /* Journey tokens cover the sea, step waves and hazard frame; the light theme falls back to base tokens. */
   --journey-sea: #083051; --journey-bar: #0d4065; --journey-zone: #0e2847; --journey-wave-back: #245575; --journey-wave-mid: #447b88; --journey-wave-front: #6298a3; --journey-wave-ground: #0c1624;
   --journey-band: #4b3168; --journey-stripe: #d6b23a; --journey-preview: #2b123d; --journey-scrim: #4b4f5ae6; --violet-fill: #68478c; --danger-fill: #983c56;
@@ -52,7 +52,7 @@
 /* Shared card material keeps the same identity in Decks, Board and Hand. */
 /* 2026-11-11: lightly tinted card faces separate reading from the page without a pure-white field. Image overlays keep a fixed pair (--overlay-*). */
 /* 2026-11-06: --scrim backs every dialog. The light theme veils the page with the palette's violet-black (as Deck settings does), so the page under a dialog stays lilac instead of turning cold gray; the dark theme overrides it with a navy veil. --scrim-heavy is the image viewer's near-black field in both themes. */
-:root { --card-face: #f8f6fa; --card-ink: #2a2440; --card-muted: #514a66; --card-edge: #b5a9c4; --card-metal: #cdc8dc; --card-metal-ink: #40465a; --overlay-ink: #f9f9fa; --overlay-face: #322f40; --hero-metal: #edc451; --hero-ink: #24180a; --hero-sheen: #fff4c2; --hero-strip: #bf8f34; --hero-chip: #f4e4b8; --hero-step-done: #fff9dd; --hero-step-working: #fff4c2b8; --hero-step-review: #e0ced7b3; --hero-step-blocked: #eea39abf; --hero-step-empty: #fff4c257; --doc-metal: #e0ac86; --doc-ink: #2e1606; --accepted-metal: #34a865; --accepted-metal-ink: #102016; --card-highlight: #2b9e7f; --card-shadow: 0 5px 12px #18213624; --card-hover-shadow: 0 9px 20px #18213638; --kind-hero-bg: #f4e7c6; --kind-hero-ink: #876125; --kind-task-bg: #c5d9ed; --kind-task-ink: #1d4873; --kind-doc-bg: #f6e3a6; --kind-doc-ink: #9d5f00; --quote-bg: #e2f7ef; --quote-bar: #2fae97; --quote-edge: #74dcc8; --count-face: #ffffff; --count-foot: #e2dcee; --count-ink: #4c5060; --cover-window: #1c1a24; --motion-feedback: 150ms; --scrim: color-mix(in srgb, #24182d 40%, transparent); --scrim-heavy: #080b12cc; --busy-dim-delay: 300ms; --motion-material: 220ms; --ease-out: cubic-bezier(.16, 1, .3, 1); }
+:root { --card-face: #f8f6fa; --card-ink: #2a2440; --card-muted: #514a66; --card-edge: #b5a9c4; --card-metal: #cdc8dc; --card-metal-ink: #40465a; --overlay-ink: #f9f9fa; --overlay-face: #322f40; --hero-metal: #edc451; --hero-ink: #24180a; --hero-sheen: #fff4c2; --hero-strip: #bf8f34; --hero-chip: #f4e4b8; --hero-step-done: #fff9dd; --hero-step-working: #fff4c2b8; --hero-step-review: #e0ced7b3; --hero-step-blocked: #eea39abf; --hero-step-empty: #fff4c257; --doc-metal: #e0ac86; --doc-ink: #2e1606; --accepted-metal: #34a865; --accepted-metal-ink: #102016; --started-metal: #9fc3ee; --started-metal-ink: #0f2238; --review-metal: #a57fe6; --review-metal-ink: #1c1033; --card-highlight: #2b9e7f; --card-shadow: 0 5px 12px #18213624; --card-hover-shadow: 0 9px 20px #18213638; --kind-hero-bg: #f4e7c6; --kind-hero-ink: #876125; --kind-task-bg: #c5d9ed; --kind-task-ink: #1d4873; --kind-doc-bg: #f6e3a6; --kind-doc-ink: #9d5f00; --quote-bg: #e2f7ef; --quote-bar: #2fae97; --quote-edge: #74dcc8; --count-face: #ffffff; --count-foot: #e2dcee; --count-ink: #4c5060; --cover-window: #1c1a24; --motion-feedback: 150ms; --scrim: color-mix(in srgb, #24182d 40%, transparent); --scrim-heavy: #080b12cc; --busy-dim-delay: 300ms; --motion-material: 220ms; --ease-out: cubic-bezier(.16, 1, .3, 1); }
 /* 2026-11-09: Decks home is a glass showcase with gradients and softly lit materials, kept minimal and easy
    to read. A cover is drawn in --u, 1/132 of its width, so the gallery and shelf reuse one drawing at different scales.
    2026-11-10: the shelf has its own 165×225 size; the base 132×180 tokens still belong to the settings preview. The rim
@@ -126,17 +126,17 @@
 * { box-sizing: border-box; }
 body { margin: 0; color: var(--ink); background: var(--canvas); font-size: 14px; -webkit-font-smoothing: antialiased; }
 /* 2026-11-05: selected green rows need dark ink; light-theme accent rows need light ink. */
-:root { --quick-choice-ink: var(--surface); --link-ink: var(--accent); }
+:root { --link-ink: var(--accent); }
 /* 2026-11-06: gold chips (card links, activity cards, the Hand due-soon count) keep one gold face in both themes. With the token only
    in dark, a light due-soon count lost its face, and the warning-pair fallback of links read as near-white beside white count chips.
    Light ink is the warning ink (5.4:1 on the gold); dark keeps its own ink. */
 :root { --gold-chip: #fde793; --gold-chip-ink: var(--warning-ink); }
 /* 2026-11-11: checkboxes keep a 16px glyph, a single edge, mint checked fill and an animated check.
    WCAG 1.4.11 requires at least 3:1: dark edges use #8a91ab instead of #645c7e, and both themes use #2b9e7f with a white check (#e8fbf3 on #2fae97 reached only 2.4:1). */
-:root { --check-face: #ffffff; --check-edge: #8b74a3; --check-on-face: #2b9e7f; --check-on-edge: #23876b; --check-on-mark: #ffffff; --check-glow: #8251ba80; --check-inset: #33333306;
+:root { --check-face: #ffffff; --check-edge: #8b74a3; --check-on-face: #2b9e7f; --check-on-edge: #23876b; --check-on-mark: #ffffff;
   --check-mark-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M2.4 6.3 4.9 8.7 9.6 3.5' fill='none' stroke='%23000' stroke-width='1.9' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
   --check-dash-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M3 6h6' fill='none' stroke='%23000' stroke-width='1.9' stroke-linecap='round'/%3E%3C/svg%3E"); }
-:root.dark { --check-face: #322f40; --check-edge: #8a91ab; --check-on-face: #2b9e7f; --check-on-edge: #4cc9b0; --check-on-mark: #ffffff; --check-glow: #a38acbb3; --check-inset: #0000000c; }
+:root.dark { --check-face: #322f40; --check-edge: #8a91ab; --check-on-face: #2b9e7f; --check-on-edge: #4cc9b0; --check-on-mark: #ffffff; }
 /* One checkbox for the app. Layout and the disabled dimming sit at zero specificity (:where), so a place that hides the box until
    hover or pins it absolutely keeps doing so; the look keeps its weight over container rules for text inputs. The deck-settings
    and hand switches (role=switch) keep their own track. */
@@ -155,7 +155,7 @@ input[type="checkbox"]:not([role="switch"]):focus-visible { outline: 2px solid v
 @media (prefers-reduced-motion: reduce) { input[type="checkbox"]:not([role="switch"]), input[type="checkbox"]:not([role="switch"])::before { transition: none; } }
 /* Windows contrast themes force backgrounds away, so the drawn mark would vanish: hand the box back to the system. */
 @media (forced-colors: active) { input[type="checkbox"]:not([role="switch"]) { appearance: auto; } input[type="checkbox"]:not([role="switch"])::before { content: none; } }
-:root.dark { --quick-choice-ink: var(--sidebar); --link-ink: var(--edit-link); }
+:root.dark { --link-ink: var(--edit-link); }
 button, input, textarea, select { font: inherit; }
 /* 2026-11-09: a select with a transparent background hands its light ink to the native list, which Chrome draws on
    white — unreadable in the dark theme. Options carry the theme's own surface and ink everywhere. */
@@ -335,16 +335,19 @@ kbd { display: inline-flex; align-items: center; justify-content: center; min-wi
 .deck-card-open { position: relative; z-index: 2; display: flex; flex-direction: column; flex: 1; min-height: 0; width: 100%; text-align: left; border: 0; background: none; color: inherit; padding: 8px 7px 5px; border-radius: 4px 4px 0 0; }
 .deck-card-title { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; font-weight: 500; font-size: 14px; line-height: 17px; letter-spacing: -.2px; overflow-wrap: anywhere; }
 /* The satin finish, shadowed seam and reflection overlay come from card-material.css; the matte top stays flat. */
-.deck-card-band { position: relative; isolation: isolate; z-index: 2; flex-shrink: 0; color: var(--card-metal-ink); border-radius: 0 0 4px 4px; padding: 3px 7px; border-top: 1px solid; }
+/* 2026-11-11: no top border — a one-pixel edge sat above the inset shadow and read as a light line on the darker left of the satin. */
+.deck-card-band { position: relative; isolation: isolate; z-index: 2; flex-shrink: 0; color: var(--card-metal-ink); border-radius: 0 0 4px 4px; padding: 4px 7px; }
 /* Completion belongs to the footer; hover/selection and the Hero strip keep their own meaning. */
 .deck-state-accepted > .deck-card-band { --metal-base: var(--accepted-metal); --card-metal-ink: var(--accepted-metal-ink); }
+/* 2026-11-11: a started Task turns its band to cool steel — the one hue no card kind uses — so work in progress reads from the band alone. */
+.deck-state-working > .deck-card-band { --metal-base: var(--started-metal); --card-metal-ink: var(--started-metal-ink); }
+/* 2026-11-11: a Task in review turns its band to amethyst, a violet clearly deeper than the lavender silver. */
+.deck-state-review > .deck-card-band { --metal-base: var(--review-metal); --card-metal-ink: var(--review-metal-ink); }
 /* 2026-11-10: the outline belongs to the whole tile, not a second frame around only the title. */
 .deck-card-open:focus-visible { outline: none; }
-.deck-card > .card-family-trigger { --material-position: absolute; position: absolute; z-index: 5; top: 0; inset-inline: 0; width: 100%; max-width: none; height: 18px; min-height: 18px; padding: 2px 2px 2px 7px; border: 0; border-radius: 4px 4px 0 0; color: var(--hero-ink); font-size: 9.5px; font-weight: 600; line-height: 14px; letter-spacing: 0; }
-/* 2026-11-08: reserve the checkbox's 10px intrusion plus 4px in every state, so affiliation never jumps on hover. */
-/* 2026-11-09: 14px pushed the Hero name 7px right of the card title. 9px ends the hover checkbox
-   (16px at -6px) right before the first glyph and keeps the name within 2px of the title below. */
-.deck-card:has(> .catalog-card-checkbox) > .card-family-trigger { padding-left: 9px; }
+.deck-card > .card-family-trigger { --material-position: absolute; position: absolute; z-index: 5; top: 0; inset-inline: 0; width: 100%; max-width: none; height: 18px; min-height: 18px; padding: 2px 2px 2px 5px; border: 0; border-radius: 4px 4px 0 0; color: var(--hero-ink); font-size: 9.5px; font-weight: 600; line-height: 14px; letter-spacing: 0; }
+/* 2026-11-11: the 14px checkbox at −8px ends 6px inside the card; the inset keeps affiliation clear in every state. */
+.deck-card:has(> .catalog-card-checkbox) > .card-family-trigger { padding-left: 6px; }
 .deck-card > .card-family-trigger:focus-visible { outline: 2px solid var(--hero-ink); outline-offset: -2px; }
 .deck-card:has(> .card-family-trigger) .deck-card-open { padding-top: 24px; }
 @media (max-width: 760px) { .deck-view { padding: 27px 20px 40px; } .deck-heading { align-items: start; flex-direction: column; gap: 18px; } }
@@ -404,7 +407,9 @@ kbd { display: inline-flex; align-items: center; justify-content: center; min-wi
 /* A short copper chapter mark opens the text; the text itself is the card's own ink, white on the dark face
    (2026-11-09: the copper-warmed text read too dim). */
 .deck-card-doc-excerpt { display: flex; flex-direction: column; gap: 3px; flex: 1 1 0; min-height: 0; margin-top: 5px; overflow: hidden; color: var(--card-ink); font-size: var(--text-help-size); line-height: var(--text-help-leading); overflow-wrap: anywhere;
-  -webkit-mask-image: linear-gradient(#000 40%, transparent 97%); mask-image: linear-gradient(#000 40%, transparent 97%); }
+  /* 2026-11-11: an eased fade — the text stays readable for half the excerpt and dissolves before the clip edge, so no line ends in cut glyphs. */
+  --doc-excerpt-fade: linear-gradient(#000 0, #000 48%, rgb(0 0 0 / .78) 62%, rgb(0 0 0 / .46) 76%, rgb(0 0 0 / .18) 88%, transparent 98%);
+  -webkit-mask-image: var(--doc-excerpt-fade); mask-image: var(--doc-excerpt-fade); }
 .deck-card-doc-excerpt b { font-weight: 600; color: var(--card-ink); }
 .deck-card-doc-excerpt::before { content: ''; flex: 0 0 auto; width: 16px; height: 2px; margin: 1px 0; border-radius: 1px; background: var(--doc-accent); }
 .catalog-card-hero .deck-card-band { --metal-base: var(--hero-metal); --card-metal-ink: var(--hero-ink); }
@@ -454,8 +459,9 @@ kbd { display: inline-flex; align-items: center; justify-content: center; min-wi
 .deck-open-toolbar h1 { flex: 0 1 auto; min-width: 0; margin: 0; overflow: hidden; font-size: 22px; font-weight: 600; line-height: 28px; text-overflow: ellipsis; white-space: nowrap; }
 /* Journey and deck actions follow the title; search stays at the far right. */
 .deck-open-toolbar .deck-open-tools { display: contents; }
-/* My Cards carries the margin-left:auto that pushes the right group to the edge, so the search keeps none (2026-11-04). */
-.deck-open-toolbar .deck-toolbar-search { flex: 0 1 300px; max-width: 300px; height: 32px; border: var(--control-hairline) solid var(--control-field-line); border-radius: var(--control-radius); background: var(--control-field); }
+/* My Cards carries the margin-left:auto that pushes the right group to the edge, so the search keeps none (2026-11-04).
+   2026-11-11: the width cap moved to deck-workbench.css (350px); only the 300px flex basis of this row survives here. */
+.deck-open-toolbar .deck-toolbar-search { flex: 0 1 300px; height: 32px; border: var(--control-hairline) solid var(--control-field-line); border-radius: var(--control-radius); background: var(--control-field); }
 /* 2026-11-10: size only; the face, line and label come from .action-mint (surface.css, the Foil Rule). */
 .deck-open-toolbar .deck-journey-button { height: 32px; gap: 4px; padding: 0 9px 0 5px; font-size: 13px; }
 .deck-open-toolbar > span { font-size: 11px; color: var(--muted); white-space: nowrap; }
@@ -464,7 +470,7 @@ kbd { display: inline-flex; align-items: center; justify-content: center; min-wi
 .deck-open-tools > .ui-button { flex-shrink: 0; }
 /* Ordering, Filters and Activity share the Info spacing: no panel box, first line centered in the 44px header row. */
 .deck-summary { position: sticky; top: var(--catalog-content-offset, 0px); min-width: 0; max-height: calc(var(--catalog-scroll-height, 100dvh) - var(--catalog-content-offset, 0px) - 12px); padding: 11px 14px 16px 2px; overflow: auto; overscroll-behavior: contain; scrollbar-width: thin; }
-/* 2026-11-06: below 1180 the search starts at 120px and grows into what the title leaves (up to its 300px), so the title
+/* 2026-11-06: below 1180 the search starts at 120px and grows into what the title leaves (up to its 350px cap), so the title
    is cut only when it cannot fit at all ("World & props" stays whole at 1024); below 1000 one row cannot hold title,
    tools and search, so the tools take a second row inside the same sidebar header and wrap there instead of pushing
    the page into horizontal scroll. */
@@ -481,11 +487,14 @@ kbd { display: inline-flex; align-items: center; justify-content: center; min-wi
 /* 2026-11-09: whatever a :hover or :focus-* rule styles below its anchor is named by a class. Chromium keeps one invalidation
    set per pseudo-class, so `.catalog-resize-handle:hover > span` restyled every span under any element the pointer
    entered or left — each move across the card grid restyled hundreds of elements. */
-.catalog-resize-line { position: absolute; top: 0; bottom: 0; left: 3px; width: 1px; background: var(--line); transition: background-color 160ms; }
+/* 2026-11-11: the line follows the sticky panel beside it — same top and visible height — instead of running the whole
+   length of the card list, where it outgrew the panel and scrolled away from it. The shared measured height accounts for the shelf above it.
+   2026-11-11: with no card open there is no panel to follow, so the line runs to the bottom of the visible layout. */
+.catalog-resize-line { position: sticky; top: calc(var(--catalog-content-offset, 0px) - var(--catalog-resize-lift, 0px)); display: block; width: 1px; height: min(100% + var(--catalog-resize-lift, 0px), calc(var(--preview-height, calc(var(--catalog-scroll-height, 100dvh) - var(--catalog-content-offset, 0px))) + var(--catalog-resize-lift, 0px))); margin-top: calc(-1 * var(--catalog-resize-lift, 0px)); margin-left: 3px; background: var(--line); transition: background-color 160ms; }
 .catalog-resize-handle:is(:hover, :focus-visible) > .catalog-resize-line { background: var(--focus); }
 /* 2026-11-06: keyboard focus widens the handle line instead of framing the whole column with a second ring. */
 .catalog-resize-handle:focus-visible { outline: none; }
-.catalog-resize-handle:focus-visible > .catalog-resize-line { left: 2px; width: 3px; }
+.catalog-resize-handle:focus-visible > .catalog-resize-line { margin-left: 2px; width: 3px; }
 /* 2026-11-10: no bottom padding here: the open deck fills the main area and its results column keeps the bottom space
    (deck-workbench.css); one rule, so CSS load order cannot bring the 40px back. */
 .catalog-view.is-deck-open { max-width: none; padding: 12px 16px 0; }
@@ -527,20 +536,33 @@ kbd { display: inline-flex; align-items: center; justify-content: center; min-wi
 .catalog-view[data-toolbar-sticky="true"] > .deck-open-toolbar { position: sticky; top: 0; z-index: 30; box-shadow: 0 5px 10px color-mix(in srgb, var(--ground) 75%, transparent); }
 .catalog-view[data-toolbar-sticky="true"] > .deck-open-toolbar::after,
 .catalog-view[data-selection-sticky="true"] > .catalog-selection-dock::after { content: ''; position: absolute; top: 100%; inset-inline: 0; height: 8px; background: var(--ground); pointer-events: none; }
+/* 2026-11-11: the ungrouped first row needs room for the raised checkbox and its focus outline below the sticky divider. */
+.catalog-card-group:not(:has(> .catalog-card-group-heading)) > .catalog-card-grid { padding-top: 12px; }
+@media (hover: none), (pointer: coarse) { .catalog-card-grid { row-gap: 20px; } }
 .deck-toolbar-search { flex: 0 1 260px; min-width: 64px; margin-left: 7px; padding-inline: 8px; }.deck-toolbar-search input { height: 29px; font-size: 11px; }
 .catalog-content-layout { display: grid; grid-template-columns: minmax(0, 1fr); align-items: start; gap: 8px; min-width: 0; }
 /* The card column is 503 px; below about 420 px, sheet actions wrap into the band. */
 .catalog-content-layout.has-summary, .catalog-content-layout.has-preview { grid-template-columns: minmax(min(420px, 100%), min(var(--left-panel-width, 503px), 62%)) 8px minmax(0, 1fr); }
 .catalog-preview-slot { min-width: 0; position: sticky; top: var(--catalog-content-offset, 0px); }
 /* 2026-11-08: selection overlaps the corner; the family strip reserves its text inset above. */
-.catalog-card-checkbox { --check-face: #fff; position: absolute; z-index: 6; top: -6px; left: -6px; opacity: 0; cursor: pointer; transition: opacity var(--motion-feedback); }
-/* 2026-11-10: returning focus to the face is not selection; Tab still reveals the checkbox itself. */
-.deck-card-space:hover .catalog-card-checkbox, .catalog-card-checkbox:focus-visible, .catalog-card-checkbox:checked { opacity: 1; }
-/* 2026-11-08 (NW-03): the 16px tile checkbox keeps its visible square and center; the ::after adds a transparent
-   24×24 target above the face (z-index 6); -5px covers the input's 1px border. On family cards the extra area reaches
-   only the trigger's reserved 14px inset. */
-.catalog-card-checkbox::after { content: ''; position: absolute; inset: -5px; }
-@media (hover: none) { .catalog-card-checkbox { opacity: 1; } }
+/* 2026-11-11: opacity alone reveals the box, keeping it fixed to the tilted sheet throughout the transition. */
+input[type="checkbox"].catalog-card-checkbox { --check-face: color-mix(in srgb, #fff 84%, var(--surface)); --check-edge: color-mix(in srgb, var(--ink) 26%, transparent); position: absolute; z-index: 6; top: -8px; left: -8px; width: 14px; height: 14px; border-radius: 4px; box-shadow: 0 1px 3px rgb(0 0 0 / .2); opacity: 0; cursor: pointer;
+  transition: opacity 140ms ease-out, background-color var(--control-hover-duration) ease-out, border-color var(--control-hover-duration) ease-out; }
+input[type="checkbox"].catalog-card-checkbox::before { width: 10px; height: 10px; }
+/* Other choices remain discoverable during bulk selection without competing with checked cards. */
+input[type="checkbox"].catalog-card-checkbox[data-selection-active] { opacity: .55; }
+input[type="checkbox"].catalog-card-checkbox:is(:hover, :focus-visible, :checked) { opacity: 1; }
+/* 2026-11-11: hovering anywhere on the tile reveals its checkbox; the short delay keeps a pointer that sweeps across the grid
+   from flashing every corner on its way. */
+@media (hover: hover) { .deck-card-space:hover input[type="checkbox"].catalog-card-checkbox:not(:checked) { opacity: 1; } }
+@media (hover: hover) and (prefers-reduced-motion: no-preference) { .deck-card-space:hover input[type="checkbox"].catalog-card-checkbox:not(:checked) { transition-duration: 220ms, var(--control-hover-duration), var(--control-hover-duration); transition-delay: 90ms, 0s, 0s; } }
+@media (hover: hover) {
+  input[type="checkbox"].catalog-card-checkbox:hover:not(:disabled, :checked) { border-color: var(--check-edge); }
+  input[type="checkbox"].catalog-card-checkbox:hover:checked:not(:disabled) { border-color: var(--check-on-edge); }
+}
+/* The 28px corner target leaves the interior text area to the family strip and card opener. */
+input[type="checkbox"].catalog-card-checkbox::after { content: ''; position: absolute; inset: -7px; clip-path: polygon(0 0, 100% 0, 100% 50%, 75% 50%, 75% 100%, 0 100%); }
+@media (hover: none) { input[type="checkbox"].catalog-card-checkbox:not(:checked) { opacity: 1; } }
 /* 2026-11-08: checked cards stay recessed under the pointer; the frame covers metal without blocking its controls.
    Checking also flattens the hover tilt. The 220ms expo ease that follows the pointer made that read as icons jumping,
    so the press settles over a longer, gentler curve. */
@@ -558,14 +580,9 @@ kbd { display: inline-flex; align-items: center; justify-content: center; min-wi
   .catalog-browser-navigation { grid-template-columns: minmax(0, 1fr); }.catalog-track-picker { grid-column: auto; }.catalog-nav-section > div { flex-wrap: wrap; }
 }
 
-/* Quick Settings tokens; the light theme uses base semantic tokens. 2026-11-06: the picker popover sits on --ground over light panels
-   of nearly the same tone, so light mode needs the same 1 px ring and lift as deck settings; the soft --shadow left it edgeless. */
-:root { --quick-settings-shadow: var(--deck-settings-shadow); }
-:root.dark { --quick-settings-shadow: 0 0 1px #0000003d, 0 2.5px 15px #0000003d; }
-
 /* 2026-11-05: deck settings use the existing light palette. All deck switches share one off-track token: muted in light mode (5.22:1 on ground), #514a66 from :root.dark in dark mode. */
-:root { --toggle-off: var(--muted); --deck-settings-toggle-line: var(--muted); --deck-settings-surface: var(--surface); --deck-settings-label: var(--ink); --deck-settings-input: var(--edit-bg); --deck-settings-input-ink: var(--ink); --deck-settings-focus: var(--focus); --deck-settings-preview: var(--ground); --deck-settings-art-row: var(--sidebar); --deck-settings-scrim: #24182d66; --deck-settings-shadow: 0 0 1px #3024383d, 0 2.5px 15px #3024383d; }
-:root.dark { --deck-settings-toggle-line: transparent; --deck-settings-surface: #322f40; --deck-settings-label: #e3dff0; --deck-settings-input: #250b35; --deck-settings-input-ink: #f1ebfc; --deck-settings-focus: #6695ec; --deck-settings-preview: #1c1a24; --deck-settings-art-row: #514a66cc; --deck-settings-scrim: #0c0a1380; --deck-settings-shadow: 0 0 1px #0000003d, 0 2.5px 15px #0000003d; }
+:root { --toggle-off: var(--muted); --deck-settings-scrim: #24182d66; --deck-settings-shadow: 0 0 1px #3024383d, 0 2.5px 15px #3024383d; }
+:root.dark { --deck-settings-scrim: #0c0a1380; --deck-settings-shadow: 0 0 1px #0000003d, 0 2.5px 15px #0000003d; }
 /* 2026-11-08: the 336 px desktop menu fills phone widths, so no clipped, apparently active chrome peeks out beside it. */
 .mission-control-trigger { width: 34px; height: 34px; padding: 0; }
 .mission-control-trigger .deckmate-mark { width: 24px; height: 24px; }

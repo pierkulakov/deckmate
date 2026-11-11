@@ -7,7 +7,7 @@ import { contrastRatio, rgbOf, type Rgb } from './color-contrast.ts';
 // light theme's dark ink — and the glass, the color and every mix between them stay readable.
 
 /** OKLCH: lightness 0–1, chroma, hue in degrees. */
-export type Lch = readonly [number, number, number];
+type Lch = readonly [number, number, number];
 
 /** The --ink token of each theme (client/styles.css); the title is set in it on every cover. */
 const themeInk = { dark: rgbOf('#edeef2'), light: rgbOf('#2f2440') } as const;
@@ -37,7 +37,7 @@ function labToLch([lightness, a, b]: Lch): Lch {
 }
 
 /** sRGB for an OKLCH color, giving up chroma until it fits the gamut, so the hue and lightness survive. */
-export function lchToRgb([lightness, chroma, hue]: Lch): Rgb {
+function lchToRgb([lightness, chroma, hue]: Lch): Rgb {
   const radians = hue * Math.PI / 180;
   for (let c = chroma; c >= 0; c -= .004) {
     const linear = labToLinearRgb([lightness, c * Math.cos(radians), c * Math.sin(radians)]);

@@ -12,12 +12,16 @@
   .card-quick-tabs button { flex-basis: var(--control-target-touch); width: var(--control-target-touch); height: var(--control-target-touch); }
 }
 .card-quick-panel .deck-choice-body { padding-top: 16px; }
+.card-quick-total { margin: 0; padding: 12px 16px 0; color: var(--edit-hint); font-size: var(--text-help-size); line-height: var(--text-help-leading); overflow-wrap: anywhere; }
+.card-quick-total + .deck-choice .deck-choice-body { padding-top: 8px; }
 .card-quick-panel .deck-choice-list { max-height: 259px; }
 .card-quick-settings[data-tab="deck"] .deck-choice-list { max-height: 320px; }
 .card-quick-settings[data-tab="run"] .deck-choice-list, .card-quick-settings[data-tab="milestone"] .deck-choice-list { max-height: 175px; }
 .card-quick-message { margin: 0; padding: 0 16px 12px; color: var(--edit-hint); font-size: 12px; line-height: 16px; }
 .card-quick-message[role="alert"] { color: var(--danger); }
 .deck-choice-option .card-owner-avatar { width: 24px; height: 24px; }
+.priority-icon { display: inline-flex; flex-shrink: 0; vertical-align: middle; }
+.card-quick-settings .priority-icon { color: inherit; }
 
 .card-owner-avatar { position: relative; display: inline-flex; flex-shrink: 0; width: 29px; height: 29px; align-items: center; justify-content: center; border: 1px solid color-mix(in srgb, var(--muted) 25%, transparent); border-radius: 50%; background: var(--accent-soft); color: var(--ink); font-size: 10px; font-weight: 600; line-height: 1; }
 .card-owner-avatar.is-agent { border-color: color-mix(in srgb, var(--agent-tint, var(--accent)) 38%, var(--line)); background: linear-gradient(135deg, color-mix(in srgb, var(--agent-tint, var(--accent)) 18%, var(--surface)), var(--surface)); }

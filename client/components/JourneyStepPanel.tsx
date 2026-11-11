@@ -1,11 +1,13 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import * as Dialog from '@radix-ui/react-dialog';
-import { Gauge, Layers, Link2, SlidersHorizontal, Trash2, UserRound, X } from 'lucide-react';
+import { Layers, Link2, SlidersHorizontal, Trash2, UserRound, X } from 'lucide-react';
 import type { CardPriority, CatalogJourneyStep, CatalogView } from '../../src/catalog-contracts.ts';
 import type { DataSource } from '../../src/workspace-contracts.ts';
 import { parseEditorMarkdown } from '../editor-checklists.ts';
 import { MemberOptions } from './JourneyPanel.tsx';
-import { JourneyPriorityIcon, journeyStepLabel } from './JourneyMiniCard.tsx';
+import { journeyStepLabel } from './JourneyMiniCard.tsx';
+import { PriorityIcon } from './PriorityIcon.tsx';
+import { EffortIcon } from './EffortIcon.tsx';
 import { Markdown } from './Markdown.tsx';
 import { CardEditForm, composeDraft, splitDraft } from './CardEditForm.tsx';
 import { ConfirmStrip, useConfirmStrip } from './ConfirmStrip.tsx';
@@ -308,12 +310,12 @@ export function JourneyStepPanel({
               <button type="button" className="journey-step-edit" disabled={disabled} onClick={startEditing}>{t.edit}</button>
             </div>}
             <footer className="journey-step-properties">
-              <label><span>{t.effort}</span><Gauge size={18} aria-hidden="true" /><input aria-label={t.stepEffortAria} type="number" min="0" step="0.25" inputMode="decimal" placeholder="-" value={step.effort ?? ''} disabled={locked} onChange={event => {
+              <label><span>{t.effort}</span><EffortIcon size={18} /><input aria-label={t.stepEffortAria} type="number" min="0" step="0.25" inputMode="decimal" placeholder="-" value={step.effort ?? ''} disabled={locked} onChange={event => {
                 const value = event.target.value;
                 if (!value) onChange({ effort: null });
                 else if (Number.isFinite(Number(value)) && Number(value) >= 0) onChange({ effort: Number(value) });
               }} /></label>
-              <label className="journey-step-priority" title={t.priority}><span>{t.priority}</span><JourneyPriorityIcon priority={step.priority} size={20} /><select aria-label={t.stepPriorityAria} value={step.priority ?? ''} disabled={locked} onChange={event => onChange({ priority: event.target.value ? event.target.value as CardPriority : null })}>
+              <label className="journey-step-priority" title={t.priority}><span>{t.priority}</span><PriorityIcon priority={step.priority} size={20} /><select aria-label={t.stepPriorityAria} value={step.priority ?? ''} disabled={locked} onChange={event => onChange({ priority: event.target.value ? event.target.value as CardPriority : null })}>
                 <option value="">{t.noPriority}</option><option value="high">{t.priorityValue('high')}</option><option value="medium">{t.priorityValue('medium')}</option><option value="low">{t.priorityValue('low')}</option>
               </select></label>
             </footer>

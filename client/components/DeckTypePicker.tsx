@@ -62,7 +62,7 @@ function deckTypeOptions(t: typeof text.en): Record<DeckKind, DeckTypeOption> {
 }
 const deckTypeOrder: DeckKind[] = ['asset', 'task', 'knowledge', 'mixed'];
 
-export interface DeckTypePickerProps {
+interface DeckTypePickerProps {
   deck: CatalogDeck;
   cards: CatalogCard[];
   journeys: CatalogJourney[];

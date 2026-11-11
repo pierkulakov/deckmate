@@ -2,7 +2,7 @@ import { defineText, textNow } from './i18n.ts';
 
 const text = defineText({ linkLabel: 'text' }, { linkLabel: 'текст' });
 
-export interface EditorSelection { start: number; end: number }
+interface EditorSelection { start: number; end: number }
 export interface EditorReplacement extends EditorSelection { value: string }
 export type EditorFormat = 'bold' | 'italic' | 'strike' | 'code' | 'link';
 

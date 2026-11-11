@@ -12,6 +12,8 @@
 .deck-card > .card-transfer-handle { position: absolute; z-index: 6; right: 3px; top: 3px; width: 22px; height: 22px; color: var(--card-ink); background: var(--card-face); opacity: 0; }
 /* The pointer drags the whole tile (2026-11-04), so the grip shows only for keyboard drag; on hover it just hid the title's end. */
 .deck-card .card-transfer-handle:focus-visible { opacity: 1; }
+/* 2026-11-11: a visible grip must not cover title glyphs, including below an affiliation strip. */
+.deck-card:has(> .card-transfer-handle:focus-visible) .deck-card-title { padding-right: 20px; }
 /* The deck dock (2026-11-06): rises from the bottom while a card is dragged; every deck is a small cover, the one under
    the pointer lifts with a mint ring and the heading names it. One authored moment: the rise; the rest answers the pointer. */
 .card-transfer-targets { position: fixed; z-index: 130; left: 50%; bottom: 16px; width: min(1180px, calc(100vw - 32px)); max-height: min(272px, 40dvh); overflow: hidden auto; padding: var(--space-3) var(--space-4); border: 1px solid var(--line); border-radius: var(--glass-radius); color: var(--ink); background: var(--surface); box-shadow: var(--shadow); translate: -50% 0; animation: transfer-dock-rise var(--motion-material) var(--ease-out); scrollbar-width: thin; }
@@ -53,7 +55,10 @@
 .catalog-card-group.is-drop-over { border-radius: var(--glass-radius); background: var(--mark-tint); box-shadow: inset 0 0 0 1px var(--mark); }
 tbody.is-drop-over > tr > * { background: var(--mark-tint); }
 tbody.is-drop-over > tr.catalog-table-group > th { box-shadow: inset 0 2px 0 var(--mark); }
-@media (hover: none) { .deck-card > .card-transfer-handle { opacity: 1; } }
+@media (hover: none), (pointer: coarse) {
+  .deck-card > .card-transfer-handle { opacity: 1; }
+  .deck-card:has(> .card-transfer-handle) .deck-card-title { padding-right: 20px; }
+}
 @media (max-width: 600px) { .card-transfer-targets { bottom: 8px; width: calc(100vw - 16px); padding: 10px; } .card-transfer-help { display: none; } .card-transfer-target, .card-transfer-thumb { width: 84px; } .card-transfer-thumb { height: 52px; } }
 @media (prefers-reduced-motion: reduce) { .card-transfer-overlay, .card-transfer-handle, .card-transfer-target, .card-transfer-thumb, .card-transfer-targets, .card-transfer-destination strong, .is-card-transfer-active .deck-card { animation: none; transition: none; } }
 

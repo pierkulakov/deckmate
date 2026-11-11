@@ -48,7 +48,7 @@ export interface JourneyTrackStepModel {
 }
 
 // The trigger is the caller's own button (the Hero's title or a Sub Card's step note), so each surface keeps its look.
-export function JourneyTrackMenu({ children, title, version, description, members = [], steps, disabled, onOpen, onOpenJourney, instructionHref }: {
+export function JourneyTrackMenu({ children, title, version, description, members = [], steps, onOpen, onOpenJourney, instructionHref }: {
   children: ReactNode;
   /** The current step's instruction file, offered where the menu belongs to one Sub Card. */
   instructionHref?: string;
@@ -57,7 +57,6 @@ export function JourneyTrackMenu({ children, title, version, description, member
   description?: string;
   members?: CatalogMember[];
   steps: JourneyTrackStepModel[];
-  disabled: boolean;
   onOpen?: (card: CatalogCard) => void;
   onOpenJourney?: () => void;
 }) {

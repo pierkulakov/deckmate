@@ -1,0 +1,4 @@
+.card-metrics, .card-metrics > .card-metrics-effort { display: inline-flex; align-items: center; gap: var(--space-1); }
+.card-metrics { flex: 0 0 auto; color: inherit; font: 500 var(--text-ui-size)/var(--text-ui-leading) 'Geist Mono', monospace; font-variant-numeric: tabular-nums; }
+.card-metrics > .card-metrics-effort, .card-metrics > .priority-icon, .card-metrics-effort > span { color: inherit; font: inherit; }
+.card-metrics svg { flex-shrink: 0; }

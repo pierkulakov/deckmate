@@ -15,6 +15,10 @@ export interface Quest<Key extends string = string> {
   view?: AppView;
   /** Selector list of the action element, then the first steps when it needs an open card or deck (show-me.ts). */
   target?: string;
+  /** Body key while the project has no decks: the default body assumes a cover exists to click (2026-11-11). */
+  bodyWithoutDecks?: Key;
+  /** Selector list while the project has no decks: actions that create the first deck or come from a template. */
+  targetWithoutDecks?: string;
   /** True when the signal is the action this quest teaches. Pure and cheap: it reads the signal only. */
   done(signal: OnboardingSignal): boolean;
 }
@@ -57,7 +61,7 @@ export function earnedXp(chapters: readonly Chapter[], done: ReadonlySet<string>
   return chapters.reduce((sum, chapter) => sum + chapter.quests.reduce((part, quest) => part + (done.has(quest.id) ? quest.xp : 0), 0), 0);
 }
 
-export interface LevelProgress {
+interface LevelProgress {
   /** 1-based level. */
   level: number;
   xp: number;

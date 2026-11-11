@@ -23,12 +23,11 @@ const text = defineText({
   cards: 'Cards',
   members: 'Members',
   commands: 'Commands',
-  projectTags: 'Project tags',
-  personalTag: 'Personal tag',
+  projectTags: 'Insert # in text',
   media: 'Images and videos in the text',
   emoji: 'Emoji',
   formatSelection: 'Format selected text',
-  newTag: 'New tag: keep typing and finish with a space.',
+  newTag: 'Keep typing and finish with a space. To assign a tag, select it in Properties.',
   noMedia: 'There are no images or videos in the text yet. Paste a file or drag it into the field.',
   choose: '↑↓ select',
   insert: 'Enter / Tab insert',
@@ -44,12 +43,11 @@ const text = defineText({
   cards: 'Карточки',
   members: 'Участники',
   commands: 'Команды',
-  projectTags: 'Теги проекта',
-  personalTag: 'Личный тег',
+  projectTags: 'Вставить # в текст',
   media: 'Картинки и видео в тексте',
   emoji: 'Эмодзи',
   formatSelection: 'Форматирование выделенного текста',
-  newTag: 'Новый тег: продолжайте ввод и завершите пробелом.',
+  newTag: 'Продолжайте ввод и завершите пробелом. Чтобы назначить тег, выберите его в свойствах.',
   noMedia: 'В тексте ещё нет картинок и видео. Вставьте файл из буфера или перетащите его в поле.',
   choose: '↑↓ выбор',
   insert: 'Enter / Tab вставить',
@@ -277,7 +275,7 @@ export function EditorCommandMenu({ value, onChange, catalog, disabled, label: t
           const Icon = option.cardKind ? cardIcons[option.cardKind] : commandIcons[option.icon];
           const isTag = trigger?.kind === 'tag';
           const tagDefinition = isTag ? catalog.projectTags?.find(tag => tag.name === option.id) : undefined;
-          const detail = isTag && !tagDefinition ? t.personalTag : option.detail;
+          const detail = option.detail;
           return <button type="button" role="option" tabIndex={-1} id={`${menuId}-${index}`} key={option.id} aria-selected={index === selectedIndex}
             className="editor-command-option" title={`${option.label} · ${detail}`} onPointerMove={() => setSelected(index)} onClick={() => insert(option)}>
             {!isTag && (option.memberId ? <CardOwnerAvatar owner={option.label} members={catalog.members ?? []} /> : <Icon size={16} aria-hidden="true" />)}

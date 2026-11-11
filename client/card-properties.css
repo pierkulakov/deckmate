@@ -25,7 +25,8 @@
 .card-properties-hand li > span:first-child { min-width: 0; overflow-wrap: anywhere; }
 .card-properties-hand li > span:last-child { flex: none; color: var(--muted); }
 .card-properties-priorities { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-1); }
-.card-properties-priorities button { display: flex; align-items: center; gap: var(--space-2); min-height: 32px; padding: var(--space-2); border: var(--control-hairline) solid var(--control-line); border-radius: var(--control-radius); color: var(--edit-link); background: var(--canvas); font-size: 12px; font-weight: 500; line-height: 14px; }
+.card-properties-priorities button { display: flex; align-items: center; gap: var(--space-2); min-height: 32px; padding: var(--space-2); border: var(--control-hairline) solid var(--control-line); border-radius: var(--control-radius); color: var(--edit-link); background: var(--canvas); font-size: var(--text-ui-size); font-weight: 500; line-height: var(--text-ui-leading); }
+.card-properties-priorities button > span[aria-hidden="true"] > span { display: inline-flex; color: inherit; }
 .card-properties-priorities button:hover:not(:disabled):not([aria-pressed="true"]), .card-properties-effort-scale button:hover:not(:disabled):not([aria-pressed="true"]) { border-color: var(--button-line); background: var(--hover); }
 /* 2026-11-10, the Foil Rule: chosen property controls carry the accent mark and a flat tint, not a filled pill. */
 .card-properties-priorities button[aria-pressed="true"], .card-properties-effort-scale button[aria-pressed="true"] { border-color: var(--mark); color: var(--mark); background: var(--mark-tint); }
@@ -34,54 +35,36 @@
 .card-properties-effort-form { display: flex; flex-direction: column; gap: 8px; }
 .card-properties-effort-values { display: flex; align-items: center; gap: 4px; }
 .card-properties-effort-scale { display: grid; flex: 1; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 4px; }
-.card-properties-effort-scale button { display: grid; place-items: center; height: 31px; padding: 0 8px; border: var(--control-hairline) solid var(--control-line); border-radius: var(--control-radius); background: var(--canvas); color: var(--edit-link); font-size: 12px; font-weight: 500; line-height: 14px; font-variant-numeric: tabular-nums; }
+.card-properties-effort-scale button { display: grid; place-items: center; height: 31px; padding: 0 8px; border: var(--control-hairline) solid var(--control-line); border-radius: var(--control-radius); background: var(--canvas); color: var(--edit-link); font-size: var(--text-ui-size); font-weight: 500; line-height: var(--text-ui-leading); font-variant-numeric: tabular-nums; }
 .card-properties-effort-custom { display: block; flex: 0 0 32px; width: 32px; }
-.card-properties-effort-custom input { width: 32px; min-width: 0; height: 31px; padding: 7px 5px; border: var(--control-hairline) solid var(--control-field-line); border-radius: var(--control-radius); color: var(--edit-link); background: var(--control-field); font-size: 12px; font-weight: 400; line-height: 16px; text-align: center; }
+.card-properties-effort-custom input { width: 32px; min-width: 0; height: 31px; padding: 7px 5px; border: var(--control-hairline) solid var(--control-field-line); border-radius: var(--control-radius); color: var(--edit-link); background: var(--control-field); font-size: var(--text-ui-size); font-weight: 400; line-height: var(--text-ui-leading); text-align: center; }
 .card-properties-effort-draft-actions { display: flex; gap: 6px; }
 .card-properties-total { display: flex; align-items: baseline; justify-content: center; gap: 4px; margin: 0; color: var(--edit-hint); font-size: 12px; font-weight: 500; line-height: 16px; }
-.card-properties-total strong { color: var(--ink); font-weight: 700; }
+.card-properties-total strong { color: var(--ink); font-size: var(--text-ui-size); font-weight: 700; }
 .card-properties-date { display: flex; flex-direction: column; gap: 8px; }
 .card-properties-date input { width: 100%; min-height: 32px; padding: 4px 8px; border: var(--control-hairline) solid var(--control-field-line); border-radius: var(--control-radius); color: var(--ink); background: var(--control-field); }
 .card-properties-date > div { display: flex; gap: 6px; }
-.card-properties-tag-manager { position: relative; margin-left: auto; flex: 0 0 24px; width: 24px; height: 24px; }
-.card-properties-tag-manager > svg { position: absolute; z-index: 1; inset: 4.5px; pointer-events: none; color: var(--muted); }
-.card-properties-tag-manager .card-tag-control { display: block; margin: 0; padding: 0; }
-.card-properties-tag-manager .card-tag-control > .card-tags { display: none; }
-/* Keep TagPicker's real trigger and accessible label; only its visual presentation becomes a gear. */
-.card-properties-tag-manager .card-tag-open { display: block; width: 24px; height: 24px; min-height: 24px; padding: 0; margin: 0; border-radius: var(--control-radius); font-size: 0; color: transparent; }
-.card-properties-tag-manager .card-tag-open > svg { display: none; }
 .card-properties-error { color: var(--danger); }
 .card-properties-panel input { caret-color: var(--focus); }
 .card-properties-panel [aria-invalid="true"] { outline-color: var(--danger); }
 @media (max-width: 700px) { .card-properties-panel { width: 100%; } }
 /* 2026-11-10: project tags are 2px chips with a quiet line; selection uses the shared mark rather than a filled face. */
-:root { --tag-chip-on: #d7f8eb; --tag-chip-on-edge: #74dcc8; --tag-chip-on-ink: #0c5547; --property-edge: #8b74a3; --tag-chip-off-ink: var(--ink); --tag-chip-off-hover: var(--hover); --tag-chip-remove: #edeef2; --tag-chip-remove-ink: #645c7e; }
-:root.dark { --tag-chip-on: #a8eedf; --tag-chip-on-edge: #74dcc8; --tag-chip-on-ink: #0c5547; --property-edge: #7d86a5; --tag-chip-off-ink: #e7dff7; --tag-chip-off-hover: #514a66; --tag-chip-remove: #514a66; --tag-chip-remove-ink: #bbc0d6; }
+:root { --tag-chip-off-ink: var(--ink); }
+:root.dark { --tag-chip-off-ink: #e7dff7; }
 .card-properties-info { display: grid; place-items: center; width: 18px; height: 18px; padding: 0; border: 0; border-radius: var(--control-radius); color: var(--muted); background: transparent; cursor: help; }
 .card-properties-info:hover { color: var(--ink); background: var(--hover); }
 .card-properties-info:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
 .card-properties-info-tip { z-index: 160; max-width: 260px; padding: 8px 10px; border: 1px solid var(--line); border-radius: var(--glass-radius); color: var(--tag-foreground, var(--ink)); background: var(--tag-popover-background, var(--surface)); box-shadow: var(--shadow); font-size: 12px; line-height: 16px; animation: overlay-pop var(--motion-spring-quick) var(--ease-spring-quick); }
-.card-properties-tag-chips { display: flex; flex-wrap: wrap; gap: 4px; }
 .card-properties-tag-chip { position: relative; display: inline-flex; align-items: center; max-width: 100%; height: 24px; padding: 0 6px; overflow: hidden; border: var(--control-hairline) solid var(--control-line); border-radius: var(--control-radius); color: var(--tag-chip-off-ink); background: transparent; font-size: 12px; font-weight: 500; line-height: 16px; white-space: nowrap; cursor: pointer; }
-.card-properties-tag-chip-label { display: inline-flex; align-items: center; gap: 3px; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-.card-properties-tag-chip-label .card-tag-emoji { font-size: 11px; }
-.card-properties-tag-chip-label .card-tag-icon { width: 12px; height: 12px; }
-.card-properties-tag-chip:hover:not(:disabled):not([aria-pressed="true"]) { border-color: var(--button-line); background: var(--hover); }
-.card-properties-tag-chip[aria-pressed="true"] { border-color: var(--mark); color: var(--mark); background: var(--mark-tint); }
-.card-properties-tag-chip[aria-pressed="true"]:hover:not(:disabled) { border-color: var(--mark); background: var(--mark-tint-strong); color: var(--mark); }
-.card-properties-tag-chip.is-personal[aria-pressed="true"] { font-weight: 500; }
-.card-properties-tag-chip-remove { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: var(--tag-chip-remove-ink); background: var(--tag-chip-remove); opacity: 0; pointer-events: none; transition: opacity var(--control-hover-duration) ease-out; }
-.card-properties-tag-chip:is(:hover, :focus-visible):not(:disabled) > .card-properties-tag-chip-remove { opacity: 1; }
+.card-properties-tag-chip:hover:not(:disabled) { border-color: var(--button-line); background: var(--hover); }
 .card-properties-tag-chip:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
 .card-properties-tag-chip:disabled { opacity: .5; cursor: default; }
-@media (prefers-reduced-motion: reduce) { .card-properties-tag-chip, .card-properties-tag-chip-remove { transition: none; } }
+@media (prefers-reduced-motion: reduce) { .card-properties-tag-chip { transition: none; } }
 .card-properties-error { margin: 0; font-size: 12px; line-height: 16px; overflow-wrap: anywhere; }
 .card-properties-panel > .card-properties-error { padding-top: 12px; }
 @media (pointer: coarse) {
-  .card-properties-panel :is(button, input), .card-properties-tag-manager, .card-properties-tag-manager .card-tag-open { min-width: var(--control-target-touch); min-height: var(--control-target-touch); height: auto; }
-  .card-properties-tag-manager { flex-basis: var(--control-target-touch); }
-  .card-properties-tag-manager > svg { inset: calc((var(--control-target-touch) - 15px) / 2); }
-  .card-properties-priorities, .card-properties-effort-scale, .card-properties-tag-chips { gap: var(--space-2); }
+  .card-properties-panel :is(button, input) { min-width: var(--control-target-touch); min-height: var(--control-target-touch); height: auto; }
+  .card-properties-priorities, .card-properties-effort-scale { gap: var(--space-2); }
   .card-properties-effort-values { flex-wrap: wrap; gap: var(--space-2); }
   .card-properties-effort-scale { flex-basis: 100%; grid-template-columns: repeat(auto-fit, minmax(var(--control-target-touch), 1fr)); }
   .card-properties-effort-custom { flex-basis: var(--control-target-touch); }

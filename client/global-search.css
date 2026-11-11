@@ -20,7 +20,7 @@
 .global-search-kind { display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; width: 20px; height: 20px; border-radius: 50%; background: var(--kind-hero-bg); color: var(--kind-hero-ink); }
 .global-search-kind.is-task { background: var(--kind-task-bg); color: var(--kind-task-ink); }
 .global-search-kind.is-doc { background: var(--kind-doc-bg); color: var(--kind-doc-ink); }
-.global-search-deck { display: inline-flex; align-items: center; gap: 5px; flex-shrink: 1; min-width: 0; max-width: 160px; overflow: hidden; padding: 2px 7px 2px 6px; border-radius: var(--control-radius); background: color-mix(in srgb, var(--deck-color) 16%, transparent); color: var(--muted); font-size: 12px; white-space: nowrap; }
+.global-search-deck { display: inline-flex; align-items: center; gap: 5px; flex-shrink: 1; min-width: 0; max-width: 160px; padding: 2px 7px 2px 6px; border-radius: var(--control-radius); background: color-mix(in srgb, var(--deck-color) 16%, transparent); color: var(--muted); font-size: 12px; white-space: normal; overflow-wrap: anywhere; }
 .global-search-deck-dot { flex-shrink: 0; width: 8px; height: 8px; border-radius: 50%; background: var(--deck-color); }
 .global-search-owner { min-width: 0; color: var(--muted); overflow-wrap: anywhere; }
 .global-search-row .card-face-status { flex-direction: row; flex-wrap: wrap; gap: var(--space-1) var(--space-2); }
@@ -66,3 +66,9 @@
 .global-search-card-main > .global-search-title { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; flex: none; width: 100%; }
 .global-search-card-meta { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
 .global-search-tag-filter, .global-search-tag-alternative { display: inline-flex; align-items: center; min-width: 0; gap: 4px; }
+.global-search-tag-suggestions { margin-bottom: var(--space-3); }
+.global-search-tag-suggestion { min-height: calc(var(--space-4) * 2); gap: var(--space-2); }
+.global-search-tag-suggestion .page-number { flex-shrink: 0; margin-left: auto; }
+.global-search-tag-suggestion .tag-badge { min-width: 0; height: auto; }
+.global-search-tag-suggestion .tag-badge-name { white-space: normal; overflow-wrap: anywhere; }
+@media (pointer: coarse) { .global-search-tag-suggestion { min-height: var(--control-target-touch); } }

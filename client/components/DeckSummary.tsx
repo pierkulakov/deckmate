@@ -1,12 +1,13 @@
 import { useMemo, type CSSProperties } from 'react';
-import { FileText, Gauge, Layers, NotebookText, PanelLeftClose, Route } from 'lucide-react';
+import { FileText, Layers, NotebookText, PanelLeftClose, Route } from 'lucide-react';
 import type { CatalogCard, CatalogDeck, CatalogView } from '../../src/catalog-contracts.ts';
 import type { WorkspaceSnapshot } from '../../src/workspace-contracts.ts';
 import type { CardPriority } from '../../src/catalog-contracts.ts';
 import { isActiveCatalogCard } from '../../src/catalog-hand.ts';
 import { CardOwnerAvatar } from './CardOwnerAvatar.tsx';
 import { DeckActivity } from './DeckActivity.tsx';
-import { JourneyPriorityIcon } from './JourneyMiniCard.tsx';
+import { PriorityIcon } from './PriorityIcon.tsx';
+import { EffortIcon } from './EffortIcon.tsx';
 import { statusClass } from './StatusMenu.tsx';
 import { Button } from './ui/button.tsx';
 import { EmptyState } from './EmptyState.tsx';
@@ -116,11 +117,11 @@ export function DeckSummary({ deck, cards, catalog, source, refreshKey, onOpen, 
           {summary.priorityStats.map(({ priority, total, done }) => {
             const label = t.priorityShare(priority ? priorityLabel(priority, lang) : t.noPriority, formatNumber(done, 3, lang), formatNumber(total, 3, lang));
             return <span role="listitem" key={priority ?? 'none'} className="deck-overview-priority" title={label} aria-label={label}>
-              <JourneyPriorityIcon priority={priority} size={16} /><span>{priority ? priorityLabel(priority, lang) : t.noPriority}</span><strong>{formatNumber(total, 3, lang)}</strong></span>; })}
+              <PriorityIcon priority={priority} size={16} /><span>{priority ? priorityLabel(priority, lang) : t.noPriority}</span><strong>{formatNumber(total, 3, lang)}</strong></span>; })}
         </div>
       </div>
       <div className="deck-overview-effort" title={t.effortHint(formatNumber(summary.estimatedCount, 3, lang), formatNumber(summary.tasks.length, 3, lang), taskLabel)}>
-        <span><Gauge size={16} aria-hidden="true" />{t.effort} <strong>{formatNumber(summary.effort, 2, lang)}</strong></span>
+        <span><EffortIcon size={16} />{t.effort} <strong>{formatNumber(summary.effort, 2, lang)}</strong></span>
       </div>
       <p className="deck-overview-accepted">{t.accepted(stateLabel('done', lang), formatNumber(summary.accepted, 3, lang), formatNumber(summary.tasks.length, 3, lang), taskLabel)} · <strong>{formatNumber(percentage, 3, lang)}%</strong></p>
       <progress className="deck-overview-progress" value={summary.accepted} max={Math.max(1, summary.tasks.length)} aria-label={t.accepted(stateLabel('done', lang), formatNumber(summary.accepted, 3, lang), formatNumber(summary.tasks.length, 3, lang), taskLabel)} />

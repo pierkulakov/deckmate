@@ -5,17 +5,19 @@ import { createPortal } from 'react-dom';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import { DndContext, DragOverlay, KeyboardSensor, PointerSensor, closestCenter, useSensor, useSensors, type CollisionDetection, type DragEndEvent } from '@dnd-kit/core';
 import { SortableContext, arrayMove, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
-import { ArrowDownUp, Check, Crown, Filter, Gauge, GripVertical, History as HistoryIcon, Layers, Link2, LoaderCircle, LockKeyhole, LockOpen, NotebookText, Plus, Search, X } from 'lucide-react';
+import { ArrowDownUp, ArrowUpRight, Check, Crown, Ellipsis, Filter, GripVertical, History as HistoryIcon, Layers, Link2, LoaderCircle, LockKeyhole, LockOpen, MessageCircleQuestion, NotebookText, Plus, Search, UserRound, X } from 'lucide-react';
 import type { DeckActivityEvent } from '../../src/activity-contracts.ts';
 import type { CatalogCard, CatalogMember, CatalogView } from '../../src/catalog-contracts.ts';
 import { dependencyCycle, openDependencies, waitingCards, type CardHistoryCreated } from '../../src/dependency-contracts.ts';
 import type { DataSource } from '../../src/workspace-contracts.ts';
-import { orderSubCards } from '../catalog-lookups.ts';
-import { cardOrdering, groupAndSortCards, laneOrderOf, type CardOrdering } from '../catalog-ordering.ts';
+import { tagIconDataUrl } from '../../src/project-tags.ts';
+import { buildCatalogLookups, orderSubCards, type CatalogLookups } from '../catalog-lookups.ts';
+import { catalogHandPositions } from '../../src/catalog-hand.ts';
+import { cardOrdering, groupAndSortCards, laneOrderOf, serializeOrdering, type CardOrdering } from '../catalog-ordering.ts';
 import { subCardStateLabel, subCardVisualState, subCardWeight } from '../sub-card-state.ts';
 import type { CatalogAction } from '../useCatalog.ts';
 import { Button } from './ui/button.tsx';
-import { CardOwnerAvatar, CardQuickSettings, type CardQuickSettingsTab } from './CardQuickSettings.tsx';
+import { CardOwnerAvatar, CardQuickSettings, cardHeroEffort, type CardQuickSettingsTab } from './CardQuickSettings.tsx';
 import { CardFamilyComposer, type CreateFamilyCardAction } from './CardFamilyComposer.tsx';
 import { DependencyStateBadge } from './DependencyWarning.tsx';
 import { CardTags, TagTitlePrefix } from './CardTags.tsx';
@@ -26,8 +28,10 @@ import { useCardLayoutMotion } from '../useCardLayoutMotion.ts';
 import { defineText, locale, textNow, useLang, useText } from '../i18n.ts';
 import { moveFocus } from '../focus.ts';
 import { kindLabel, priorityLabel, stateLabel } from '../locales/common.ts';
-import { runLabel } from '../run-label.ts';
+import { CardIndicators, cardFaceStatus } from './CardIndicators.tsx';
 import { CardValueHint } from './CardValueHint.tsx';
+import { PriorityIcon } from './PriorityIcon.tsx';
+import { EffortIcon } from './EffortIcon.tsx';
 import { ActivityAttribution } from './ActivityAttribution.tsx';
 
 /** One count label for the preview toggle and the family popover. Russian keeps the product term Sub Cards
@@ -126,9 +130,7 @@ const text = defineText({
   reorderHint: 'Change order · Space and arrows',
   owner: (owner: string) => `Owner: ${owner}`,
   assignOwner: (title: string, owner: string) => `Assign Owner: ${title} · ${owner}`,
-  notInRegistry: 'not in registry',
   waiting: 'waiting on:',
-  journeyDetach: 'Link set by Journey: these Sub Cards cannot be detached separately.',
   detachHero: 'Detach from Hero; keep the card and its deck',
   detachFrom: (title: string) => `Detach from Hero: ${title}`,
   detachConfirm: (title: string) => `Confirm detaching ${title}`,
@@ -154,9 +156,7 @@ const text = defineText({
   subCardsHeading: 'Sub Cards',
   orderMenu: 'Order Sub Cards',
   historyAction: 'History',
-  runPrefix: (reference: string) => `Run ${reference}`,
   unassigned: 'Unassigned',
-  milestoneOf: (label: string) => `Milestone: ${label}`,
   orderManual: 'Manual',
   orderPriority: 'Priority',
   orderState: 'State',
@@ -165,6 +165,10 @@ const text = defineText({
   orderTitle: 'Title',
   subCardFallback: 'Sub Card',
   subCardsCount: subCardsCount.en,
+  moreActions: 'More Sub Card actions',
+  openList: 'Open Sub Cards in Decks',
+  openParent: (title: string) => `Open parent card: ${title}`,
+  blocked: 'Blocked',
 }, {
   progress: (done: number, total: number) => `${done} из ${total} принято`,
   openSubCard: (label: string) => `Открыть Sub Card: ${label}`,
@@ -254,9 +258,7 @@ const text = defineText({
   reorderHint: 'Изменить порядок · Пробел и стрелки',
   owner: (owner: string) => `Исполнитель: ${owner}`,
   assignOwner: (title: string, owner: string) => `Назначить исполнителя: ${title} · ${owner}`,
-  notInRegistry: 'нет в реестре',
   waiting: 'ждёт:',
-  journeyDetach: 'Связь задана Journey: такие Sub Cards нельзя отвязывать отдельно.',
   detachHero: 'Отвязать от Hero; сохранить карточку и её колоду',
   detachFrom: (title: string) => `Отвязать от Hero: ${title}`,
   detachConfirm: (title: string) => `Подтверждение отвязки ${title}`,
@@ -282,9 +284,7 @@ const text = defineText({
   subCardsHeading: 'Sub Cards',
   orderMenu: 'Порядок Sub Cards',
   historyAction: 'История',
-  runPrefix: (reference: string) => `Run ${reference}`,
   unassigned: 'Без исполнителя',
-  milestoneOf: (label: string) => `Milestone: ${label}`,
   orderManual: 'Вручную',
   orderPriority: 'Приоритет',
   orderState: 'Состояние',
@@ -293,6 +293,10 @@ const text = defineText({
   orderTitle: 'Название',
   subCardFallback: 'Sub Card',
   subCardsCount: subCardsCount.ru,
+  moreActions: 'Другие действия с Sub Cards',
+  openList: 'Открыть Sub Cards в Decks',
+  openParent: (title: string) => `Открыть родительскую карточку: ${title}`,
+  blocked: 'Заблокирована',
 });
 
 /**
@@ -343,11 +347,10 @@ export function SubCardProgress({ cards, cardsById, disabled = false, onOpen }: 
 export function CardMetrics({ card, members = [], showOwner = true, compact = false }: { card: CatalogCard; members?: CatalogMember[]; showOwner?: boolean; compact?: boolean }) {
   const t = useText(text);
   const lang = useLang();
-  const icon = compact ? 16 : 12;
   const priority = card.priority ? priorityLabel(card.priority, lang) : null;
   return <span className={'card-metrics' + (compact ? ' is-compact' : '')}>
-    <span title={t.effort}><Gauge size={icon} />{card.effort ?? '—'}</span>
-    <span title={priority ? t.priorityOf(priority) : t.noPriority} aria-label={priority ? t.priorityOf(priority) : t.noPriority}><Layers size={icon} />{compact ? <span className="visually-hidden">{priority ?? t.noPriority}</span> : priority ?? '—'}</span>
+    {(!compact || card.effort != null) && <span title={t.effort} aria-label={t.effort + ': ' + (card.effort ?? '—')}><EffortIcon size={16} />{card.effort ?? '—'}</span>}
+    {card.kind !== 'doc' && <span title={priority ? t.priorityOf(priority) : t.noPriority} aria-label={priority ? t.priorityOf(priority) : t.noPriority}><span aria-hidden="true"><PriorityIcon priority={card.priority} size={16} /></span>{!compact && (priority ?? '—')}</span>}
     {showOwner && card.owner && <span className="card-metrics-owner" title={card.owner}><CardOwnerAvatar owner={card.owner} members={members} /><span>{card.owner}</span></span>}
   </span>;
 }
@@ -370,7 +373,7 @@ function formatGateCount(count: number): string {
  * with linked-card state strips below. Red indicates unfinished prerequisites.
  * Hidden when both counts are zero; shared by the family panel and open card.
  */
-export function DependencyGate({ card, cardsById, disabled = false, onReveal }: {
+function DependencyGate({ card, cardsById, disabled = false, onReveal }: {
   card: CatalogCard; cardsById: ReadonlyMap<string, CatalogCard>; disabled?: boolean; onReveal?: (card: CatalogCard) => void;
 }) {
   const t = useText(text);
@@ -734,7 +737,9 @@ export function CardFamilyPanel({ hero, card, children, openedId, catalog, disab
   else if (currentHasChildren) parentReason = t.nestedFamilies;
   const creationReason = canContainChildren ? t.createReason : t.chooseFirst;
   const searchText = search.trim().toLocaleLowerCase(languageTag);
-  const cardsById = useMemo(() => new Map(catalog.cards.map(card => [card.id, card])), [catalog.cards]);
+  const lookups = useMemo(() => buildCatalogLookups(catalog.cards, catalog.subCardOrder), [catalog.cards, catalog.subCardOrder]);
+  const cardsById = lookups.cardById;
+  const handPositions = useMemo(() => catalogHandPositions(catalog), [catalog.cards, catalog.members]);
   const ordered = optimistic?.heroId === familyParent.id ? orderSubCards(children, optimistic.ids) : children;
   const shown = ordered.filter(card => !card.archived && !card.deleted && (!onlyOpen || card.state !== 'done') && (!searchText || [card.title, card.version, card.owner].join(' ').toLocaleLowerCase(languageTag).includes(searchText)));
   const filtered = Boolean(searchText) || onlyOpen;
@@ -819,6 +824,8 @@ export function CardFamilyPanel({ hero, card, children, openedId, catalog, disab
   function closeComposer() {
     if (pending) return;
     setComposerMounted(false); setCreating(false); setCreationDirty(false); sessionCallback.current?.(null);
+    // Release the navigation lock before focus returns to the newly enabled trigger (2026-11-11).
+    dirtyCallback.current?.(false);
     requestAnimationFrame(() => {
       // The trigger is found by a stable attribute: its aria-label follows the interface language.
       const target = creationOpener.current?.isConnected ? creationOpener.current : panel.current?.querySelector<HTMLButtonElement>('[data-new-subcard]');
@@ -887,42 +894,66 @@ export function CardFamilyPanel({ hero, card, children, openedId, catalog, disab
   if (activeChildren.length) emptyMessage = t.emptyFiltered;
   else if (canContainChildren) emptyMessage = t.emptyCreate;
 
+  function openList() {
+    if (interacting) return;
+    const query = new URLSearchParams({ view: 'deck', catalogSource: source ?? 'sandbox', layout: 'table' });
+    const deckIds = new Set(activeChildren.map(child => child.deckId));
+    const deckId = activeChildren.length ? activeChildren[0].deckId : familyParent.deckId;
+    if (deckIds.size <= 1 && deckId) query.set('deck', deckId);
+    else query.set('scope', 'all');
+    if (familyParent.kind === 'hero') query.set('lane', JSON.stringify({ key: 'hero:' + familyParent.id,
+      title: familyParent.title, order: serializeOrdering(cardOrdering('hero', 'asc')) }));
+    location.href = '/?' + query;
+  }
+  const orderItems = <><DropdownMenu.Label className="dropdown-label">{t.orderMenu}</DropdownMenu.Label>
+    <DropdownMenu.RadioGroup value={order} onValueChange={value => chooseOrder(value as SubCardOrder)}>
+      {subCardOrders.map(option => <DropdownMenu.RadioItem key={option.key} value={option.key} className="dropdown-item">
+        <span className="card-family-order-check"><DropdownMenu.ItemIndicator><Check size={14} /></DropdownMenu.ItemIndicator></span>{orderLabels[option.key]}
+      </DropdownMenu.RadioItem>)}
+    </DropdownMenu.RadioGroup></>;
+
   const content = <aside ref={panel} className="card-family-panel" aria-label={t.panel}>
-    <div className="card-family-parent-heading"><h2>{hero?.kind === 'doc' ? t.parentDoc : t.heroCardHeading}</h2>
+    <div className="card-family-parent-heading"><h2>{familyParent.kind === 'doc' ? t.parentDoc : t.heroCardHeading}</h2>
       {writable && onChooseParent && (!hero || hero.id !== card.id) && <div className="card-family-parent-actions">
         {parentPicker ? <Button type="button" variant="outline" size="sm" disabled={pending || !onCancelParentPicker} title={t.closeParent} onClick={onCancelParentPicker}>{t.cancel}</Button>
           : <Button type="button" variant="outline" size="sm" disabled={interacting || !canChooseParent} title={canChooseParent ? t.chooseParent : parentReason} onClick={onChooseParent}>{hero ? t.change : t.select}</Button>}
         {!parentPicker && hero && onDetach && <Button type="button" variant="ghost" size="sm" disabled={interacting || !canChooseParent} title={canChooseParent ? t.removeParent : parentReason} onClick={() => onDetach(card)}>{t.remove}</Button>}
       </div>}
     </div>
-    {hero && parentActive ? <button type="button" className={'card-family-hero' + (openedId === hero.id ? ' is-current' : '')} data-kind={hero.kind} disabled={interacting} onClick={() => onOpen(hero)} aria-current={openedId === hero.id ? 'true' : undefined}>
-      <span className="card-family-hero-title"><span className="card-family-hero-icon" aria-hidden="true">{hero.kind === 'doc' ? <NotebookText size={10} /> : <Crown size={10} />}</span><strong><TagTitlePrefix tags={hero.tags} definitions={catalog.projectTags} />{hero.title}</strong></span>
-      <CardTags tags={hero.tags} definitions={catalog.projectTags} compact />
-      <CardMetrics card={hero} members={catalog.members} compact />
-    </button> : <p className="card-family-parent-empty">{currentHasChildren ? t.hasOwnChildren : t.noParentChosen}</p>}
+    {(hero || canContainChildren) && parentActive ? <FamilyCardRow card={familyParent} parent current={openedId === familyParent.id}
+      catalog={catalog} lookups={lookups} handPositions={handPositions.get(familyParent.id)} family={activeChildren}
+      disabled={interacting} writable={writable} onOpen={onOpen} /> : <p className="card-family-parent-empty">{currentHasChildren ? t.hasOwnChildren : t.noParentChosen}</p>}
     {parentPicker ? <div className="card-family-parent-slot">{parentPicker}</div> : <div className="card-family-subcards-slot">
     {/* Title and search stay left; add, attach, and filter controls stay right. */}
     <div className="card-family-heading">
-      <div className="card-family-heading-title"><h2>{t.subCardsHeading}</h2>{withoutDeck.length > 0 && <span className="card-family-no-deck-count">{t.withoutDeckCount(withoutDeck.length)}</span>}
+      <div className="card-family-heading-title"><h2>{t.subCardsHeading}</h2>
         <Button type="button" variant="ghost" size="icon" title={t.findSubCards} aria-label={t.findSubCards} aria-expanded={searchOpen} aria-controls={searchId} disabled={interacting} onClick={() => { setSearchOpen(!searchOpen); if (searchOpen) setSearch(''); }}><Search size={16} /></Button>
       </div>
       <div className="card-family-actions">
-        {(writable || composerMounted) && <div className="card-family-action-group"><Button type="button" variant="ghost" size="icon" title={composerMounted ? t.toggleComposer : creationReason} aria-label={t.newSubCard} data-new-subcard aria-pressed={creating}
+        {(writable || composerMounted) && <Button type="button" variant="outline" size="icon" title={composerMounted ? t.toggleComposer : creationReason} aria-label={t.newSubCard} data-new-subcard aria-pressed={creating}
           disabled={pending || reordering || Boolean(activeId) || (!composerMounted && (disabled || !canContainChildren))}
-          onClick={event => { newTrigger.current = event.currentTarget; toggleComposer(); }}><Plus size={16} /></Button><Button type="button" variant="ghost" size="icon" title={canContainChildren ? t.attachSubCards : creationReason} aria-label={t.attachSubCards} disabled={interacting || !canContainChildren || !writable} onClick={onAttach}><Link2 size={16} /></Button></div>}
-        <div className="card-family-action-group"><DropdownMenu.Root modal={false}>
-          <DropdownMenu.Trigger asChild><Button type="button" variant="ghost" size="icon" className={manualOrder ? undefined : 'is-active'} title={t.changeOrder + ' · ' + orderLabels[orderOption.key]} aria-label={t.changeOrder} disabled={interacting}><ArrowDownUp size={16} /></Button></DropdownMenu.Trigger>
+          onClick={event => { newTrigger.current = event.currentTarget; toggleComposer(); }}><Plus size={16} /></Button>}
+        {writable && <Button type="button" variant="outline" size="icon" className="card-family-secondary" title={canContainChildren ? t.attachSubCards : creationReason} aria-label={t.attachSubCards} disabled={interacting || !canContainChildren} onClick={onAttach}><Link2 size={16} /></Button>}
+        <DropdownMenu.Root modal={false}>
+          <DropdownMenu.Trigger asChild><Button type="button" variant="outline" size="icon" className={'card-family-secondary' + (manualOrder ? '' : ' is-active')} title={t.changeOrder + ' · ' + orderLabels[orderOption.key]} aria-label={t.changeOrder} disabled={interacting}><ArrowDownUp size={16} /></Button></DropdownMenu.Trigger>
           <DropdownMenu.Portal><DropdownMenu.Content className="dropdown card-family-order-menu" align="end" sideOffset={6} collisionPadding={12}>
-            <DropdownMenu.Label className="dropdown-label">{t.orderMenu}</DropdownMenu.Label>
-            <DropdownMenu.RadioGroup value={order} onValueChange={value => chooseOrder(value as SubCardOrder)}>
-              {subCardOrders.map(option => <DropdownMenu.RadioItem key={option.key} value={option.key} className="dropdown-item">
-                <span className="card-family-order-check"><DropdownMenu.ItemIndicator><Check size={14} /></DropdownMenu.ItemIndicator></span>{orderLabels[option.key]}
-              </DropdownMenu.RadioItem>)}
-            </DropdownMenu.RadioGroup>
+            {orderItems}
           </DropdownMenu.Content></DropdownMenu.Portal>
-        </DropdownMenu.Root><Button type="button" variant="ghost" size="icon" title={onlyOpen ? t.showAll : t.onlyOpen} aria-label={t.onlyOpen} aria-pressed={onlyOpen} disabled={interacting} onClick={() => setOnlyOpen(!onlyOpen)}><Filter size={16} /></Button></div>
+        </DropdownMenu.Root><Button type="button" variant="outline" size="icon" title={onlyOpen ? t.showAll : t.onlyOpen} aria-label={t.onlyOpen} aria-pressed={onlyOpen} disabled={interacting} onClick={() => setOnlyOpen(!onlyOpen)}><Filter size={16} /></Button>
+        <Button type="button" variant="outline" size="icon" className="card-family-secondary" title={t.openList} aria-label={t.openList} disabled={interacting || !canContainChildren} onClick={openList}><ArrowUpRight size={16} /></Button>
+        <DropdownMenu.Root modal={false}>
+          <DropdownMenu.Trigger asChild><Button type="button" variant="outline" size="icon" className={'card-family-overflow' + (manualOrder ? '' : ' is-active')} title={t.moreActions} aria-label={t.moreActions} disabled={interacting}><Ellipsis size={16} /></Button></DropdownMenu.Trigger>
+          <DropdownMenu.Portal><DropdownMenu.Content className="dropdown" align="end" sideOffset={6} collisionPadding={12}>
+            {writable && <DropdownMenu.Item className="dropdown-item" disabled={!canContainChildren} onSelect={onAttach}><Link2 size={16} />{t.attachSubCards}</DropdownMenu.Item>}
+            <DropdownMenu.Sub><DropdownMenu.SubTrigger className="dropdown-item"><ArrowDownUp size={16} />{t.changeOrder}</DropdownMenu.SubTrigger>
+              <DropdownMenu.Portal><DropdownMenu.SubContent className="dropdown card-family-order-menu" collisionPadding={12}>{orderItems}</DropdownMenu.SubContent></DropdownMenu.Portal>
+            </DropdownMenu.Sub>
+            <DropdownMenu.Item className="dropdown-item" disabled={!canContainChildren} onSelect={openList}><ArrowUpRight size={16} />{t.openList}</DropdownMenu.Item>
+          </DropdownMenu.Content></DropdownMenu.Portal>
+        </DropdownMenu.Root>
       </div>
     </div>
+    {withoutDeck.length > 0 && <p className="card-family-deck-hint"><span className="card-family-no-deck-count">{t.withoutDeckCount(withoutDeck.length)}</span></p>}
     {composerMounted && onCreateCard && <div className="card-family-composer-slot" hidden={!creating}>
       <CardFamilyComposer key={familyParent.id} parent={familyParent} catalog={catalog} initialDeckId={card.deckId ?? undefined} active={creating} pending={pending} readOnly={!writable}
         onCreate={onCreateCard} onCancel={closeComposer} onDirtyChange={setCreationDirty}
@@ -952,16 +983,27 @@ export function CardFamilyPanel({ hero, card, children, openedId, catalog, disab
       },
     }}>
       <SortableContext items={displayed.map(card => card.id)} strategy={verticalListSortingStrategy}>
-        <div className={'card-family-list' + (activeId ? ' is-dragging' : '')} ref={listRef}>{(groups ?? [{ key: 'manual', title: '', cards: shown }]).map(group => <Fragment key={group.key}>
+        <div className={'card-family-list' + (activeId ? ' is-dragging' : '')} ref={listRef} onKeyDown={event => {
+          if (!(event.target instanceof HTMLElement) || !event.target.matches('.card-family-row-open') || event.altKey || event.ctrlKey || event.metaKey) return;
+          const buttons = [...event.currentTarget.querySelectorAll<HTMLButtonElement>('.card-family-row-open:not(:disabled)')];
+          const index = buttons.indexOf(event.target as HTMLButtonElement);
+          let next = index;
+          if (event.key === 'ArrowDown') next = Math.min(index + 1, buttons.length - 1);
+          else if (event.key === 'ArrowUp') next = Math.max(index - 1, 0);
+          else if (event.key === 'Home') next = 0;
+          else if (event.key === 'End') next = buttons.length - 1;
+          else return;
+          event.preventDefault(); event.stopPropagation(); moveFocus(buttons[next]);
+        }}>{(groups ?? [{ key: 'manual', title: '', cards: shown }]).map(group => <Fragment key={group.key}>
           {groupHeadings && <h3 className="card-family-group">{group.title}<span>{group.cards.length}</span></h3>}
           {group.cards.map(card => <SortableSubCard key={card.id} card={card} hero={familyParent} current={card.id === openedId} deckName={card.deckId ? deckNames.get(card.deckId) ?? t.deckUnavailable : t.noDeck}
-          writable={writable} disabled={interacting} canReorder={canReorder} showHandle={writable && Boolean(onReorder) && manualOrder} confirming={detachingId === card.id} members={catalog.members} cardsById={cardsById} catalog={catalog}
+          writable={writable} disabled={interacting} canReorder={canReorder} showHandle={writable && Boolean(onReorder) && manualOrder} confirming={detachingId === card.id} lookups={lookups} handPositions={handPositions.get(card.id)} catalog={catalog}
           onOpen={onOpenSubCard ?? onOpen} onOwner={onEdit ? (selected, trigger) => { ownerTrigger.current = trigger; setSettingsTab('owner'); setOwnerCard(selected); } : undefined}
           onDependencies={revealDependencies}
           onDetach={onDetach} onConfirm={() => setDetachingId(detachingId === card.id ? null : card.id)} onCancel={() => setDetachingId(null)} />)}
         </Fragment>)}</div>
       </SortableContext>
-      {createPortal(<DragOverlay dropAnimation={null} adjustScale={false} zIndex={140} style={{ pointerEvents: 'none' }}>{draggedCard && <div className="card-family-row card-family-drag-overlay" data-kind={draggedCard.kind} data-state={draggedCard.state ?? undefined} data-progress-state={subCardVisualState(draggedCard, cardsById)} aria-hidden="true"><strong><TagTitlePrefix tags={draggedCard.tags} definitions={catalog.projectTags} />{draggedCard.title}</strong><CardTags tags={draggedCard.tags} definitions={catalog.projectTags} compact /><CardMetrics card={draggedCard} members={catalog.members} compact /></div>}</DragOverlay>, document.body)}
+      {createPortal(<DragOverlay dropAnimation={null} adjustScale={false} zIndex={140} style={{ pointerEvents: 'none' }}>{draggedCard && <div className="card-family-drag-overlay" aria-hidden="true"><FamilyCardRow card={draggedCard} catalog={catalog} lookups={lookups} handPositions={handPositions.get(draggedCard.id)} disabled writable={false} onOpen={onOpen} /></div>}</DragOverlay>, document.body)}
     </DndContext>
     {shown.length === 0 && <p className="card-family-empty">{emptyMessage}</p>}
     </div>
@@ -986,32 +1028,99 @@ export function CardFamilyPanel({ hero, card, children, openedId, catalog, disab
   return mobileTarget ? createPortal(content, mobileTarget) : content;
 }
 
-function SortableSubCard({ card, hero, current, deckName, disabled, writable, canReorder, showHandle, confirming, members = [], cardsById, catalog, onOpen, onOwner, onDependencies, onDetach, onConfirm, onCancel }: {
+interface FamilyCardRowProps {
+  card: CatalogCard;
+  catalog: CatalogView;
+  lookups: CatalogLookups;
+  handPositions?: Readonly<Record<string, number>>;
+  current?: boolean;
+  parent?: boolean;
+  family?: CatalogCard[];
+  disabled: boolean;
+  writable: boolean;
+  onOpen: (card: CatalogCard) => void;
+  onOwner?: (card: CatalogCard, trigger: HTMLButtonElement) => void;
+  onDependencies?: (card: CatalogCard) => void;
+  onPointerDown?: (event: PointerEvent<HTMLDivElement>) => void;
+  canReorder?: boolean;
+  actions?: ReactNode;
+  children?: ReactNode;
+}
+
+/** One face keeps Hero, Sub Cards and the drag preview aligned; material and attention remain independent of selection. */
+function FamilyCardRow({ card, catalog, lookups, handPositions, current, parent, family = [], disabled, writable, onOpen, onOwner, onDependencies, onPointerDown, canReorder, actions, children }: FamilyCardRowProps) {
+  const t = useText(text);
+  const lang = useLang();
+  const visualState = subCardVisualState(card, lookups.cardById);
+  const status = cardFaceStatus(card, lookups, lang);
+  const tasks = family.filter(child => child.kind === 'task');
+  const accepted = tasks.filter(child => child.state === 'done').length;
+  const effort = parent && card.kind === 'hero' ? cardHeroEffort(card, { cards: family }) : card.effort;
+  const deck = catalog.decks.find(deck => deck.id === card.deckId);
+  const deckName = card.deckId ? deck?.title ?? t.deckUnavailable : t.noDeck;
+  const waiting = (card.dependsOn ?? []).filter(id => lookups.cardById.get(id)?.state !== 'done').map(id => lookups.cardById.get(id)?.title ?? id);
+  const blocked = visualState === 'blocked';
+  let state = card.kind === 'task' && card.state && card.state !== 'not-started' ? stateLabel(card.state, lang) : '';
+  if (blocked) state = t.blocked;
+  const questions = card.kind === 'doc' && card.openQuestions?.length ? status.questions || status.label : '';
+  const label = [parent ? t.openParent(card.title) : t.openSubCard(card.title), deckName, status.accessible, card.tags?.join(', ')].filter(Boolean).join(' · ');
+  const prefixedTags = new Set((catalog.projectTags ?? []).filter(tag => tag.emoji || tagIconDataUrl(tag)).map(tag => tag.name));
+  const remainingTags = (card.tags ?? []).filter(name => !prefixedTags.has(name));
+  return <div className={'card-family-row' + (parent ? ' card-family-hero' : '') + (current ? ' is-current' : '') + (canReorder ? ' is-reorderable' : '')}
+    data-kind={card.kind} data-state={card.state ?? undefined} data-progress-state={visualState} onPointerDown={onPointerDown}>
+    <div className="card-family-row-main">
+      <div className="card-family-row-title">
+        <CardValueHint text={card.title} measure=".card-family-row-open > strong"><button type="button" className="card-family-row-open" disabled={disabled}
+          onClick={() => onOpen(card)} aria-current={current ? 'true' : undefined} aria-label={label} title={label}>
+          {parent && <span className="card-family-hero-icon" aria-hidden="true">{card.kind === 'doc' ? <NotebookText size={12} /> : <Crown size={12} />}</span>}
+          <strong>{card.version && <small>{card.version}</small>}<TagTitlePrefix tags={card.tags} definitions={catalog.projectTags} />{card.title}</strong>
+        </button></CardValueHint>
+        {remainingTags.length > 0 && <div className="card-family-row-tags"><CardTags tags={remainingTags} definitions={catalog.projectTags} compact maxVisible={2} /></div>}
+        <div className="card-family-row-actions">
+          {!card.owner && writable && onOwner && <Button type="button" variant="ghost" size="icon" className="card-family-assign-owner" disabled={disabled}
+            title={t.assignOwner(card.title, t.unassigned)} aria-label={t.assignOwner(card.title, t.unassigned)} onClick={event => onOwner(card, event.currentTarget)}><UserRound size={14} /></Button>}
+          {actions}
+        </div>
+      </div>
+      <div className="card-family-row-details">
+        {card.owner && <button type="button" className="card-family-row-owner" disabled={disabled || !writable || !onOwner} title={t.owner(card.owner)}
+          aria-label={t.assignOwner(card.title, card.owner)} onClick={event => onOwner?.(card, event.currentTarget)}>
+          <CardOwnerAvatar owner={card.owner} members={catalog.members ?? []} progress={lookups.checklistByCard.get(card.id)} />
+        </button>}
+        <CardMetrics card={{ ...card, effort }} showOwner={false} compact />
+        {parent && card.deckId && <span className="card-family-row-deck" title={deckName} aria-label={deckName}><Layers size={14} /></span>}
+        <CardIndicators card={card} lookups={lookups} members={catalog.members ?? []} catalog={catalog} handPositions={handPositions} variant="table"
+          onDependencies={onDependencies ? () => onDependencies(card) : undefined} dependenciesDisabled={disabled} />
+        {card.deckId === null && <span className="card-family-row-no-deck">{t.noDeck}</span>}
+        <span className="card-family-row-summary">
+          {state && <span className="card-family-row-state" title={blocked ? t.waiting + ' ' + waiting.join(', ') : status.accessible}>
+            {blocked && <LockKeyhole size={12} />}{visualState === 'accepted' && <Check size={12} />}{state}
+          </span>}
+          {questions && <span className="card-family-row-questions" title={card.openQuestions?.map(question => question.text).join('\n')}><MessageCircleQuestion size={12} />{questions}</span>}
+          {status.due && <span className={'card-family-row-due' + (status.urgent ? ' is-urgent' : '')} title={status.dueTitle}>{status.due}</span>}
+          {parent && tasks.length > 0 && <span className="card-family-progress-count">{t.progress(accepted, tasks.length)}</span>}
+        </span>
+      </div>
+      {parent && tasks.length > 0 && <div className="card-family-progress"><SubCardProgress cards={tasks} cardsById={lookups.cardById} /></div>}
+    </div>
+    {children}
+  </div>;
+}
+
+function SortableSubCard({ card, hero, current, deckName, disabled, writable, canReorder, showHandle, confirming, lookups, handPositions, catalog, onOpen, onOwner, onDependencies, onDetach, onConfirm, onCancel }: {
   card: CatalogCard; hero: CatalogCard; current: boolean; deckName: string; disabled: boolean; writable: boolean; canReorder: boolean; showHandle: boolean; confirming: boolean;
-  members?: CatalogMember[]; cardsById: ReadonlyMap<string, CatalogCard>; catalog: Pick<CatalogView, 'runs' | 'milestones' | 'projectTags'>;
+  lookups: CatalogLookups; handPositions?: Readonly<Record<string, number>>; catalog: CatalogView;
   onOwner?: (card: CatalogCard, trigger: HTMLButtonElement) => void;
   onDependencies?: (card: CatalogCard) => void;
   onOpen: (card: CatalogCard) => void; onDetach?: (card: CatalogCard) => void; onConfirm: () => void; onCancel: () => void;
 }) {
   const sortable = useSortable({ id: card.id, disabled: !canReorder, transition: { duration: 180, easing: 'cubic-bezier(.2,.8,.2,1)' } });
   const t = useText(text);
-  const lang = useLang();
   const transform = sortable.transform ? `translate3d(${sortable.transform.x}px, ${sortable.transform.y}px, 0)` : undefined;
-  const visualState = subCardVisualState(card, cardsById);
-  const waitingNames = (card.dependsOn ?? []).filter(id => cardsById.get(id)?.state !== 'done').map(id => cardsById.get(id)?.title ?? id);
-  const runReference = card.run?.trim();
-  const milestoneReference = card.milestone?.trim();
-  const run = catalog.runs?.find(candidate => candidate.id === runReference);
-  const milestone = catalog.milestones?.find(candidate => candidate.id === milestoneReference);
-  let runName = runReference ? t.runPrefix(runReference) : null;
-  if (run) runName = runLabel(run, lang);
-  let runTitle = runName ?? '';
-  if (run && !run.configurationId) runTitle += ' · ' + run.goal;
-  if (!run) runTitle += ' · ' + t.notInRegistry;
-  const milestoneLabel = milestoneReference ? milestone?.title || milestoneReference : null;
   function startPointerDrag(event: PointerEvent<HTMLDivElement>) {
     if (!canReorder || event.defaultPrevented) return;
     const target = event.target as Element;
+    if (event.pointerType === 'touch' && !target.closest('.card-family-drag-handle')) return;
     if (target.closest('.card-family-detach, .card-family-detach-confirm')) return;
     const control = target.closest('button, a, input, select, textarea, [role="button"], [contenteditable="true"]');
     if (control && !control.matches('.card-family-row-open, .card-family-drag-handle')) return;
@@ -1020,39 +1129,16 @@ function SortableSubCard({ card, hero, current, deckName, disabled, writable, ca
     sortable.listeners?.onPointerDown?.(event);
   }
   return <div ref={sortable.setNodeRef} data-card-id={card.id} className={'card-family-sortable' + (sortable.isDragging ? ' is-drag-source' : '')} style={{ transform, transition: sortable.transition }}>
-    <div className={'card-family-row' + (current ? ' is-current' : '') + (canReorder ? ' is-reorderable' : '')} data-kind={card.kind} data-state={card.state ?? undefined} data-progress-state={visualState} onPointerDown={startPointerDrag} onClick={event => {
-      if (!disabled && !sortable.isDragging && !(event.target as Element).closest('button, a, input, select, textarea, [role="button"], .card-family-detach, .card-family-detach-confirm')) onOpen(card);
-    }}>
-      <div className="card-family-row-main">
-        {showHandle && <button type="button" ref={sortable.setActivatorNodeRef} className="card-family-drag-handle" {...sortable.attributes} onKeyDown={event => sortable.listeners?.onKeyDown?.(event)} aria-disabled={!canReorder} tabIndex={canReorder ? 0 : -1} aria-label={t.moveSubCard(card.title)} title={t.reorderHint}><GripVertical size={16} /></button>}
-        <div className="card-family-row-body">
-          <CardValueHint text={card.title} measure=".card-family-row-open > strong"><button type="button" className="card-family-row-open" disabled={disabled} onClick={() => onOpen(card)} aria-current={current ? 'true' : undefined} aria-label={t.openSubCard(card.title) + ' · ' + deckName + (card.state ? ' · ' + stateLabel(card.state, lang) : '')} title={card.title + ' · ' + deckName + (card.state ? ' · ' + stateLabel(card.state, lang) : '')}>
-            <strong>{card.version && <small>{card.version}</small>}<TagTitlePrefix tags={card.tags} definitions={catalog.projectTags} />{card.title}</strong>
-          </button></CardValueHint>
-          <CardTags tags={card.tags} definitions={catalog.projectTags} compact />
-          <div className="card-family-row-details">{card.kind === 'task' && <span className="card-family-row-state">{visualState === 'accepted' && <Check size={16} aria-hidden="true" />}{stateLabel(card.state ?? 'not-started', lang)}</span>}<CardMetrics card={card} members={members} showOwner={false} compact />
-            <button type="button" className="card-family-row-owner" disabled={disabled || !writable || !onOwner} title={t.owner(card.owner ?? t.unassigned)}
-              aria-label={t.assignOwner(card.title, card.owner ?? t.unassigned)} onClick={event => onOwner?.(card, event.currentTarget)}>
-              <CardOwnerAvatar owner={card.owner} members={members} />{card.owner && <span>{card.owner}</span>}
-            </button>
-            {card.deckId === null && <span className="card-family-row-no-deck">{t.noDeck}</span>}
-            {(runName || milestoneLabel) && <span className="card-family-row-planning">
-              {runName && <span title={runTitle}>{runName}</span>}
-              {runName && milestoneLabel && <span aria-hidden="true">·</span>}
-              {milestoneLabel && <span title={t.milestoneOf(milestoneLabel) + (milestone ? '' : ' · ' + t.notInRegistry)} aria-label={t.milestoneOf(milestoneLabel)}>{milestoneLabel}</span>}
-            </span>}
-            <DependencyGate card={card} cardsById={cardsById} disabled={disabled} onReveal={onDependencies} />
-          </div>
-          {visualState === 'blocked' && <span className="card-family-row-waiting"><LockKeyhole size={12} /><span>{t.waiting} {waitingNames.join(', ')}</span></span>}
-        </div>
-        {writable && onDetach && <span className="card-family-detach" title={card.journey ? t.journeyDetach : t.detachHero}><Button type="button" variant="ghost" size="icon" disabled={disabled || Boolean(card.journey)} aria-label={t.detachFrom(card.title)} aria-expanded={confirming} onClick={onConfirm}><X size={16} /></Button></span>}
-      </div>
-      {writable && onDetach && card.journey && <span className="card-family-journey-note">{t.journeyLink}</span>}
+    <FamilyCardRow card={card} catalog={catalog} lookups={lookups} handPositions={handPositions} current={current} disabled={disabled}
+      writable={writable} canReorder={canReorder} onOpen={onOpen} onOwner={onOwner} onDependencies={onDependencies} onPointerDown={startPointerDrag}
+      actions={<>{showHandle && <Button type="button" variant="ghost" size="icon" ref={sortable.setActivatorNodeRef} className="card-family-drag-handle" {...sortable.attributes} onKeyDown={event => sortable.listeners?.onKeyDown?.(event)} aria-disabled={!canReorder} tabIndex={canReorder ? 0 : -1} aria-label={t.moveSubCard(card.title)} title={t.reorderHint}><GripVertical size={16} /></Button>}
+        {/* 2026-11-11: a Sub Card linked by a Journey cannot be detached on its own, so the row shows no dead control. */}
+        {writable && onDetach && !card.journey && <span className="card-family-detach" title={t.detachHero}><Button type="button" variant="ghost" size="icon" disabled={disabled} aria-label={t.detachFrom(card.title)} aria-expanded={confirming} onClick={onConfirm}><X size={16} /></Button></span>}</>}>
       {confirming && writable && onDetach && !card.journey && <div className="card-family-detach-confirm" role="group" aria-label={t.detachConfirm(card.title)}>
         <p>{t.detachMessage(hero.title, card.deckId ? deckName : null)}</p>
         <div><Button type="button" variant="ghost" size="sm" disabled={disabled} onClick={onCancel}>{t.cancel}</Button><Button type="button" variant="outline" size="sm" disabled={disabled} onClick={() => { onCancel(); onDetach(card); }}>{t.detach}</Button></div>
       </div>}
-    </div>
+    </FamilyCardRow>
   </div>;
 }
 
@@ -1084,7 +1170,7 @@ export function CardFamilyPopover({ hero, children: allChildren, disabled, membe
   }}>
     <DropdownMenu.Trigger asChild><button ref={trigger} type="button" className="card-family-trigger" disabled={unavailable} aria-label={t.parentStrip(hero.title)}>
       <span className="card-material-glare" aria-hidden="true" />
-      <span>{hero.title}</span>
+      <span><TagTitlePrefix tags={hero.tags} definitions={projectTags} />{hero.title}</span>
     </button></DropdownMenu.Trigger>
     <DropdownMenu.Portal><DropdownMenu.Content className="card-family-popover" side={side} align="start" sideOffset={6} collisionPadding={12} aria-label={t.subCardsOf(hero.title)}>
       <DropdownMenu.Arrow className="card-family-popover-arrow" width={12} height={7} />

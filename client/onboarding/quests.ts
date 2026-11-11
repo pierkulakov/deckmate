@@ -13,6 +13,8 @@ export const questText = defineText({
   firstMovesTitle: 'First moves',
   openDeckTitle: 'Open a deck',
   openDeckBody: 'Cards live in decks, their home. On the `Decks` tab, click any deck to open its cards.',
+  // 2026-11-11: an empty project has no cover to click, so the quest first teaches an action that exists there.
+  openDeckNoDecksBody: 'Cards live in decks, their home. There are no decks yet: on the `Decks` tab press `Create space` and add a deck to it — or start from a ready template.',
   handAddTitle: 'Put a card in your Hand',
   handAddBody: 'A Hand is a personal queue, apart from Owner. Tick a card on `Decks`, press `Hand` in the bar that appears and pick whose Hand — or drag the card onto the `Add to hand` tab.',
   visitHandTitle: 'Visit your Hand',
@@ -73,6 +75,7 @@ export const questText = defineText({
   firstMovesTitle: 'Первые шаги',
   openDeckTitle: 'Откройте колоду',
   openDeckBody: 'Карточки живут в колодах — это их дом. На вкладке `Decks` щёлкните по любой колоде, чтобы увидеть её карточки.',
+  openDeckNoDecksBody: 'Карточки живут в колодах — это их дом. Колод пока нет: на вкладке `Decks` нажмите `Создать пространство` и добавьте в него колоду — или начните с готового шаблона.',
   handAddTitle: 'Положите карточку в Hand',
   handAddBody: 'Hand — личная очередь, отдельная от исполнителя. Отметьте карточку на `Decks`, нажмите `Hand` в появившейся полосе и выберите, чей это Hand, — или перетащите карточку на ярлык `Добавить в Hand`.',
   visitHandTitle: 'Загляните в Hand',
@@ -182,7 +185,9 @@ export const chapters: readonly Chapter<QuestTextKey>[] = [{
   title: 'firstMovesTitle',
   icon: Footprints,
   quests: [
+    // Without decks «Show me» points at the actions that create the first deck: the gallery «+» and the template start.
     { id: 'open-deck', xp: 40, title: 'openDeckTitle', body: 'openDeckBody', view: 'deck', target: '.catalog-deck-cover',
+      bodyWithoutDecks: 'openDeckNoDecksBody', targetWithoutDecks: '.deck-gallery-add, .project-template-start > .ui-button',
       done: signal => signal.type === 'deck-opened' },
     { id: 'hand-add', xp: 80, title: 'handAddTitle', body: 'handAddBody', view: 'deck',
       target: `.bulk-action-button[aria-label="Hand"], ${openCardStart}`,
@@ -257,7 +262,7 @@ export const chapters: readonly Chapter<QuestTextKey>[] = [{
       target: '.mission-control-trigger',
       done: signal => signal.type === 'catalog-edit' && signal.action.action === 'apply-project-template' },
     { id: 'run-journey', xp: 150, title: 'runJourneyTitle', body: 'runJourneyBody', view: 'deck',
-      target: `.card-preview-hero .card-preview-more, .deck-journey-button, ${openCardStart}`,
+      target: `.card-preview-journey, .deck-journey-button, ${openCardStart}`,
       done: signal => signal.type === 'catalog-edit' && signal.action.action === 'apply-journey' },
     { id: 'vision-card', xp: 120, title: 'visionCardTitle', body: 'visionCardBody', view: 'vision', target: '.vision-search input',
       done: signal => signal.type === 'vision-card-added' },

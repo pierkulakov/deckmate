@@ -73,10 +73,13 @@
   .card-focus-mode .card-preview-action-rail .ui-button,
   .card-focus-mode .card-preview :is(.card-edit-save, .card-edit-link, .card-content-edit-action),
   .card-focus-mode .card-preview-state-actions .ui-button,
-  .card-focus-mode .card-preview-subcards-actions .ui-button,
+  .card-focus-mode .card-preview .card-preview-family-actions .ui-button,
+  .card-focus-mode .card-preview-journey,
+  .card-focus-mode .card-preview .card-preview-subcards-actions .ui-button,
   .card-focus-mode .open-question-actions .ui-button { min-height: var(--control-target-touch, 44px); height: auto; }
   .card-focus-mode .card-preview-action-rail .ui-button,
   .card-focus-mode .card-preview-state-actions .ui-button,
+  .card-focus-mode .card-preview-hero-mark .ui-button,
   .card-focus-mode .card-preview-subcards-actions .ui-button { min-width: var(--control-target-touch, 44px); }
   .card-focus-mode :is(.card-state-buttons, .card-preview-state-actions, .open-question-actions) { gap: var(--space-2); }
 }

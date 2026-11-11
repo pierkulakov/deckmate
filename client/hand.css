@@ -11,7 +11,7 @@
 .hand-agent-hint { flex: 0 0 100%; }
 .hand-overview-hint { flex: 0 0 100%; margin: 0; color: var(--muted); font-size: 13px; line-height: 18px; }
 .hand-error { position: sticky; top: var(--space-2); z-index: 20; margin-bottom: var(--space-4); border-radius: var(--glass-radius); }
-.hand-panel-effort { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; line-height: 12px; color: var(--ink); }
+.hand-panel-effort { display: inline-flex; align-items: center; gap: 4px; font-size: var(--text-ui-size); line-height: var(--text-ui-leading); color: var(--ink); }
 /* The All Hands switch uses only theme tokens so its track and thumb work in the light theme. */
 .hand-all-toggle { position: relative; display: inline-flex; align-items: center; gap: 8px; color: var(--ink); font-size: 12px; font-weight: 600; cursor: pointer; }
 .hand-all-toggle input { position: absolute; width: 1px; height: 1px; margin: 0; opacity: 0; }
@@ -77,10 +77,13 @@
 .hand-queue.has-drag-overlay li.is-drag-source { opacity: .35; box-shadow: none; outline: none; }
 .hand-queue-handle { flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; min-width: 24px; padding: 6px 3px; border: 0; border-radius: var(--control-radius); background: none; color: var(--muted); cursor: grab; touch-action: none; }
 .hand-queue-handle:hover { background: var(--hover); color: var(--ink); }
-.hand-queue-open { display: flex; align-items: baseline; gap: 10px; flex: 1; min-width: 0; padding: 6px 10px; border: 0; border-radius: var(--control-radius); background: none; color: var(--ink); font-size: 12px; text-align: left; }
+.hand-queue-content { flex: 1; min-width: 0; }
+.hand-queue-open { display: flex; align-items: baseline; gap: 10px; width: 100%; min-width: 0; padding: 6px 10px; border: 0; border-radius: var(--control-radius); background: none; color: var(--ink); font-size: 12px; text-align: left; }
 .hand-queue-open:hover { background: var(--hover); }
-.hand-queue-open > span:not(.card-tags) { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
-.hand-queue-open > small { min-width: 0; max-width: 40%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); font-size: 12px; }
+.hand-queue-open > .hand-queue-title { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.hand-queue-open > small { min-width: 0; max-width: 40%; white-space: normal; overflow-wrap: anywhere; color: var(--muted); font-size: 12px; }
+.hand-queue-tags { min-width: 0; padding: 0 var(--space-3) var(--space-1); }
+.hand-queue-tags .card-tags > :first-child:not(:last-child) { flex-shrink: 0; max-width: 50%; }
 .hand-queue-remove { display: inline-flex; align-items: center; justify-content: center; flex: 0 0 24px; min-height: 24px; padding: 0; border: 0; border-radius: var(--control-radius); background: transparent; color: var(--muted); }
 @media (hover: hover) { .hand-queue-remove:hover { background: var(--hover); color: var(--ink); } }
 
@@ -110,6 +113,7 @@
 .hand-row-owner .card-owner-avatar { width: 18px; height: 18px; }
 .hand-row-title { flex: 0 1 auto; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-weight: 600; }
 .hand-section-row small { flex: 0 1 auto; min-width: 0; overflow: hidden; color: var(--muted); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+.hand-section-row > small:last-child { white-space: normal; overflow-wrap: anywhere; }
 .hand-section-row .hand-row-due { flex-shrink: 0; font-variant-numeric: tabular-nums; }
 /* Due dates use their group's red or yellow highlight. */
 .hand-row-due.is-due-now { color: var(--hand-due-now-face); font-weight: 700; }
@@ -129,29 +133,20 @@
 .hand-milestone-title small { color: var(--muted); font-size: 12px; font-weight: 400; }
 .hand-section .hand-empty { padding: 8px 0; }
 
-/* Team Hands keeps the 2026-11-03 per-member lists below the tabs. */
 .hand-member-heading { flex-wrap: wrap; }
+.hand-member-heading h2 { min-width: 0; overflow-wrap: anywhere; }
 .hand-member-kind { font-size: 12px; color: var(--muted); }
 .hand-count { margin-left: 4px; font: 12px 'Geist Mono', monospace; color: var(--muted); }
 .hand-empty { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.7; }
-.hand-cards { display: grid; grid-template-columns: repeat(auto-fill, 168px); align-items: stretch; gap: 18px; }
+.hand-cards { display: grid; grid-template-columns: repeat(auto-fill, var(--tile-width)); align-items: start; gap: var(--tile-gap); }
+.hand-team-card { display: flex; min-width: 0; flex-direction: column; gap: var(--space-2); }
+.hand-team-card-meta { display: flex; min-width: 0; flex-direction: column; gap: var(--space-1); color: var(--muted); font-size: var(--text-help-size); line-height: var(--text-help-leading); overflow-wrap: anywhere; }
+.hand-team-bookmark { display: inline-flex; align-items: baseline; gap: var(--space-1); }
+.hand-team-bookmark svg { flex-shrink: 0; }
 .hand-view .card-tags { --tag-compact-height: var(--text-help-leading); --tag-compact-font-size: var(--text-help-size); --tag-compact-line-height: var(--text-help-leading); }
-.hand-card.sprint-task { width: 168px; min-height: 216px; margin: 0; }
-.hand-card .hand-card-open { display: flex; flex-direction: column; flex: 1; min-width: 0; padding: 0; border: 0; background: none; color: inherit; text-align: left; }
-.hand-card .hand-card-open:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
-.hand-card.sprint-task > .sprint-task-parent, .hand-card.sprint-task small, .hand-card .sprint-task-owner, .hand-card.sprint-task > .sprint-task-band .status-badge { font-size: var(--text-help-size); line-height: var(--text-help-leading); }
-.hand-card .sprint-task-body { flex: 1; min-width: 0; }
-.hand-card .sprint-task-body > strong { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
-.hand-card .sprint-task-owner > span { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
-.hand-card .sprint-task-owner .card-owner-avatar { flex-shrink: 0; width: 18px; height: 18px; }
-.hand-card.kind-hero { --card-metal: var(--hero-metal); --card-metal-ink: var(--hero-ink); --metal-sheen: var(--hero-sheen); }
-.hand-card.kind-doc { --card-metal: var(--doc-metal); }
-.hand-card-kind { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; }
 @media (max-width: 900px) {
   .hand-view { padding: 20px 16px 32px; }
   .hand-panel-header { flex-wrap: wrap; }
-  .hand-cards { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 12px; }
-  .hand-card.sprint-task { width: 100%; }
 }
 @media (max-width: 600px) {
   .hand-view { --shelf-inset: var(--space-3); }
@@ -159,9 +154,8 @@
   .hand-member-picker { width: 100%; }
   .hand-tabs { align-items: flex-end; gap: 12px; }
   .hand-tab-list { gap: 0 var(--space-4); }
-  .hand-queue-open { flex-wrap: wrap; gap: var(--space-1) var(--space-2); }
-  .hand-queue-open > span:not(.card-tags) { flex: 1 0 100%; overflow: visible; white-space: normal; overflow-wrap: anywhere; }
-  .hand-queue-open > small { max-width: 100%; white-space: normal; overflow-wrap: anywhere; }
+  .hand-queue-open { gap: var(--space-2); }
+  .hand-queue-open > .hand-queue-title { flex: 1 1 auto; }
   .hand-section-toolbar { flex-wrap: wrap; }
   .hand-section-row { flex-wrap: wrap; gap: 4px 10px; }
   .hand-row-title { flex: 1 1 calc(100% - 28px); white-space: normal; overflow-wrap: anywhere; }
@@ -173,6 +167,4 @@
   .hand-queue li { gap: var(--space-2); }
 }
 
-/* 2026-11-05: tags take their own width (up to 40%), so the deck label follows the title on every row. */
-.hand-queue-open > .card-tags { flex: 0 1 auto; max-width: 40%; }
 .hand-section-row .card-tags { max-width: 240px; }

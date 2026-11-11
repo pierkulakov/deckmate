@@ -175,3 +175,10 @@ export function collectProjectTags(cards: readonly { tags?: readonly string[] }[
   for (const card of cards) for (const name of card.tags ?? []) if (!tags.has(name)) tags.set(name, { name, color: defaultTagColor });
   return [...tags.values()].sort((left, right) => left.name.localeCompare(right.name));
 }
+
+/** Search is case-insensitive; prefix matching suggests names but never broadens an assigned-tag filter. */
+export function matchesTagName(name: string, query: string, mode: 'exact' | 'prefix' = 'exact'): boolean {
+  const normalized = name.toLocaleLowerCase('ru');
+  const term = query.toLocaleLowerCase('ru');
+  return mode === 'prefix' ? normalized.startsWith(term) : normalized === term;
+}

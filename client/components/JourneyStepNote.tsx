@@ -38,7 +38,7 @@ export function JourneyStepNote({ card, cards, steps, title, version, descriptio
   const instructionHref = source && instructionPath ? `/api/file?source=${source}&path=${encodeURIComponent(instructionPath)}` : undefined;
   return <div className="journey-step-note">
     <JourneyTrackMenu title={title} version={version} description={description} members={members} steps={models}
-      disabled={disabled} onOpen={onOpen} onOpenJourney={onOpenJourney} instructionHref={instructionHref}>
+      onOpen={onOpen} onOpenJourney={onOpenJourney} instructionHref={instructionHref}>
       <button type="button" className="journey-step-note-button" data-step-state={model.state}
         data-next={model.next || undefined} aria-haspopup="menu" title={fullTitle} disabled={disabled}>
         <span className="journey-track-face" aria-hidden="true">

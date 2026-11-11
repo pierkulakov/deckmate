@@ -55,7 +55,7 @@ const text = defineText({
   keepEditing: 'Продолжить правку', discardChanges: 'Отменить изменения',
 });
 
-export function CarryOverFields({ value, onChange }: { value: RunCarryOver; onChange: (value: RunCarryOver) => void }) {
+function CarryOverFields({ value, onChange }: { value: RunCarryOver; onChange: (value: RunCarryOver) => void }) {
   const t = useText(text);
   return <fieldset className="run-carry-fields"><legend>{t.carry}</legend>{(['review', 'blocked', 'other'] as const).map(key =>
     <label className="planning-checkbox" key={key}><input type="checkbox" checked={value[key]} onChange={event => onChange({ ...value, [key]: event.target.checked })} />{t[key]}</label>)}</fieldset>;

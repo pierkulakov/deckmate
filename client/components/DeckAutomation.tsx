@@ -1,10 +1,14 @@
-import { useEffect, useId, useRef, useState } from 'react';
+import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import * as Dialog from '@radix-ui/react-dialog';
 import { Bot, X } from 'lucide-react';
-import type { CatalogDeck, CatalogMember, CardPriority } from '../../src/catalog-contracts.ts';
+import type { CatalogCard, CatalogDeck, CatalogMember, CardPriority } from '../../src/catalog-contracts.ts';
+import { collectProjectTags, defaultTagColor, validTagName, type ProjectTag } from '../../src/project-tags.ts';
+import { TagSelectionList } from './TagPicker.tsx';
+import { TagBadge } from './CardTags.tsx';
 import { DeckHeaderHint } from './Deck.tsx';
 import { Button } from './ui/button.tsx';
-import { defineText, useText } from '../i18n.ts';
+import { defineText, useLang, useText } from '../i18n.ts';
+import { priorityLabel } from '../locales/common.ts';
 import { AgentQueueHint } from './AgentQueueHint.tsx';
 
 const text = defineText({
@@ -15,11 +19,11 @@ const text = defineText({
   saveFailed: 'Automation was not saved. Check the catalog message and try again.',
   catalogChanged: 'The catalog changed. Your draft is kept. Reload the saved settings before editing again.',
   reload: 'Reload and discard draft', close: 'Close',
-  heading: 'Deck tags and template', autoTagging: 'Auto-tagging', deckTag: 'Deck tag', tagPlaceholder: 'tag name',
+  heading: 'Deck tags and template', autoTagging: 'Auto-tagging', clearTag: 'Turn off auto-tagging', noTag: 'No auto-tag', useTag: (name: string) => `Use “${name}”`,
   keepTag: 'Keep the tag when a card leaves the deck',
-  tagNote: 'The tag is added when a card is created or moved into the deck, and removed when it leaves. Turning off auto-tagging does not remove tags from cards.',
+  tagNote: 'The tag is added when a card is created or moved into the deck and removed when it leaves unless Keep is on. Existing cards are not re-tagged. Turning auto-tagging off keeps existing assignments.',
   template: 'Template card', content: 'New card content', markdownPlaceholder: 'Markdown template for the new card body',
-  owner: 'Owner', effort: 'Effort', priority: 'Priority', high: 'High', medium: 'Medium', low: 'Low',
+  owner: 'Owner', effort: 'Effort', priority: 'Priority',
   templateNote: 'The template fills the empty body and unset properties of new cards in this deck.',
   sandboxOnly: 'This source is read-only.', saving: 'Saving…', save: 'Save',
 }, {
@@ -30,11 +34,11 @@ const text = defineText({
   saveFailed: 'Автоматизация не сохранена. Проверьте сообщение каталога и повторите.',
   catalogChanged: 'Каталог изменился. Черновик сохранён. Перечитайте настройки перед дальнейшим редактированием.',
   reload: 'Перечитать и отбросить черновик', close: 'Закрыть',
-  heading: 'Теги и шаблон колоды', autoTagging: 'Автотег', deckTag: 'Тег колоды', tagPlaceholder: 'имя тега',
+  heading: 'Теги и шаблон колоды', autoTagging: 'Автотег', clearTag: 'Выключить автотег', noTag: 'Автотег не задан', useTag: (name: string) => `Использовать «${name}»`,
   keepTag: 'Оставлять тег при выносе из колоды',
-  tagNote: 'Тег ставится карточкам при создании и переносе в колоду, при выносе снимается. Выключение автотега не снимает тег с карточек.',
+  tagNote: 'Тег ставится при создании и переносе в колоду; при выносе снимается, если не включено сохранение. Существующие карточки не перемечаются. Выключение автотега сохраняет назначения.',
   template: 'Шаблон карточки', content: 'Содержимое новых карточек', markdownPlaceholder: 'Markdown-шаблон тела новой карточки',
-  owner: 'Исполнитель', effort: 'Оценка', priority: 'Приоритет', high: 'Высокий', medium: 'Средний', low: 'Низкий',
+  owner: 'Исполнитель', effort: 'Оценка', priority: 'Приоритет',
   templateNote: 'Шаблон наполняет пустое тело и незаданные свойства новой карточки этой колоды.',
   sandboxOnly: 'Этот источник доступен только для чтения.', saving: 'Сохраняем…', save: 'Сохранить',
 });
@@ -48,11 +52,13 @@ export interface DeckAutomationSettings {
   templatePriority: CardPriority | null;
 }
 
-export interface DeckAutomationProps {
+interface DeckAutomationProps {
   draftKey: string;
   deck: CatalogDeck;
   members: CatalogMember[];
   tagNames: string[];
+  projectTags?: readonly ProjectTag[];
+  cards?: readonly Pick<CatalogCard, 'tags' | 'deckId'>[];
   manifestHash: string;
   pending: boolean;
   writable: boolean;
@@ -81,13 +87,21 @@ export function DeckAutomation(props: DeckAutomationProps) {
   return <DeckAutomationForm key={props.draftKey} {...props} />;
 }
 
-function DeckAutomationForm({ draftKey, deck, members, tagNames, manifestHash, pending, writable, onSave }: DeckAutomationProps) {
+function DeckAutomationForm({ draftKey, deck, members, tagNames, projectTags, cards, manifestHash, pending, writable, onSave }: DeckAutomationProps) {
   const t = useText(text);
+  const lang = useLang();
   const tagInputId = useId();
   const [open, setOpen] = useState(false);
+  const [tagQuery, setTagQuery] = useState('');
   const [draft, setDraft] = useState<AutomationDraft | null>(() => drafts.get(draftKey) ?? null);
   const values = draft ?? readSettings(deck, manifestHash);
   const { autoTag, autoTagKeep, templateMarkdown, templateOwner, effortText, templatePriority } = values;
+  const definitions = useMemo(() => projectTags ?? tagNames.map(name => ({ name, color: defaultTagColor })), [projectTags, tagNames]);
+  // 2026-11-11: the form stays mounted in the deck header with the dialog closed; these catalog passes must not repeat on every deck render.
+  const { tagChoices, deckCards } = useMemo(() => ({
+    tagChoices: collectProjectTags([...(cards ?? []), { tags: tagNames }, { tags: autoTag ? [autoTag] : [] }], definitions),
+    deckCards: cards?.filter(card => card.deckId === deck.id),
+  }), [cards, tagNames, autoTag, definitions, deck.id]);
   const stale = Boolean(draft && draft.manifestHash !== manifestHash);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<'invalidEffort' | 'saveFailed' | null>(null);
@@ -147,12 +161,14 @@ function DeckAutomationForm({ draftKey, deck, members, tagNames, manifestHash, p
         <div className="dialog-body">
         <Dialog.Description className="deck-settings-note">{t.noLaunch}</Dialog.Description>
         <div className="deck-settings-section">
-          <span className="deck-settings-section-title">{t.autoTagging}</span>
-          <label className="deck-settings-field">{t.deckTag}
-            <input id={tagInputId + '-input'} type="text" list={tagInputId} value={autoTag} maxLength={80} disabled={!writable || saving || pending}
-              onChange={event => changeField({ autoTag: event.target.value })} placeholder={t.tagPlaceholder} />
-          </label>
-          <datalist id={tagInputId}>{tagNames.map(name => <option key={name} value={name} />)}</datalist>
+          <div className="tag-auto-heading"><span className="deck-settings-section-title">{t.autoTagging}</span>
+            {autoTag ? <><TagBadge name={autoTag} definition={definitions.find(tag => tag.name === autoTag)} /><Button type="button" variant="ghost" size="icon" aria-label={t.clearTag} disabled={!writable || saving || pending} onClick={() => changeField({ autoTag: '' })}><X size={14} /></Button></> : <span className="tag-help">{t.noTag}</span>}
+          </div>
+          <TagSelectionList tags={tagChoices} definitions={definitions} selected={autoTag ? [autoTag] : []} query={tagQuery} onQueryChange={setTagQuery}
+            inputId={tagInputId + '-input'} autoFocus={false} onToggle={name => changeField({ autoTag: autoTag === name ? '' : name })} disabled={!writable || saving || pending}
+            assignedCards={deckCards} />
+          {validTagName(tagQuery.trim()) && !tagChoices.some(tag => tag.name === tagQuery.trim()) && <Button type="button" variant="ghost" size="sm" disabled={!writable || saving || pending}
+            onClick={() => { changeField({ autoTag: tagQuery.trim() }); setTagQuery(''); }}>{t.useTag(tagQuery.trim())}</Button>}
           <label className="deck-settings-check">
             <input type="checkbox" checked={autoTagKeep} disabled={!writable || saving || pending || autoTag.trim() === ''} onChange={event => changeField({ autoTagKeep: event.target.checked })} />
             {t.keepTag}
@@ -179,9 +195,9 @@ function DeckAutomationForm({ draftKey, deck, members, tagNames, manifestHash, p
             <label className="deck-settings-field">{t.priority}
               <select value={templatePriority} disabled={!writable || saving || pending} onChange={event => changeField({ templatePriority: event.target.value as CardPriority | '' })}>
                 <option value="">—</option>
-                <option value="high">{t.high}</option>
-                <option value="medium">{t.medium}</option>
-                <option value="low">{t.low}</option>
+                <option value="high">{priorityLabel('high', lang)}</option>
+                <option value="medium">{priorityLabel('medium', lang)}</option>
+                <option value="low">{priorityLabel('low', lang)}</option>
               </select>
             </label>
           </div>

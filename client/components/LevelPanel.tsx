@@ -41,6 +41,8 @@ interface LevelPanelProps {
   factsLoading?: boolean;
   onRefreshFacts?: () => Promise<void>;
   projectKey: string;
+  /** True when the loaded catalog has no decks: quests swap their «click a deck» wording for an action that exists (2026-11-11). */
+  withoutDecks?: boolean;
   onClose: (restoreFocus?: boolean) => void;
   /** Switch the top-bar tab, for «Show me» in a quest; the panel stays open. */
   onNavigate: (view: AppView) => void;
@@ -58,9 +60,10 @@ function questBody(body: string): ReactNode {
     part.length > 2 && part.startsWith('`') && part.endsWith('`') ? <code key={index}>{part.slice(1, -1)}</code> : part);
 }
 
-function QuestRow({ quest, isDone, hintOpen, onToggleHint, onNavigate, onClose }: {
+function QuestRow({ quest, isDone, withoutDecks, hintOpen, onToggleHint, onNavigate, onClose }: {
   quest: Quest<QuestTextKey>;
   isDone: boolean;
+  withoutDecks: boolean;
   hintOpen: boolean;
   onToggleHint: () => void;
   onNavigate: (view: AppView) => void;
@@ -73,7 +76,9 @@ function QuestRow({ quest, isDone, hintOpen, onToggleHint, onNavigate, onClose }
     <span className="level-quest-title">{strings[quest.title]}</span>
   </div>;
   const view = quest.view;
-  const target = quest.target;
+  // An empty project has no deck cover: the quest's no-decks wording points at creating one instead (2026-11-11).
+  const body = withoutDecks && quest.bodyWithoutDecks ? quest.bodyWithoutDecks : quest.body;
+  const target = withoutDecks && quest.targetWithoutDecks ? quest.targetWithoutDecks : quest.target;
   function showMe() {
     // Switch the tab only when the person is elsewhere: navigating remounts the view, which would close their open
     // card and deck — on the quest's own tab the ring alone is the answer (2026-11-05).
@@ -88,17 +93,18 @@ function QuestRow({ quest, isDone, hintOpen, onToggleHint, onNavigate, onClose }
       <span className="level-quest-title">{strings[quest.title]}</span>
     </button>
     {hintOpen && <div id={`level-hint-${quest.id}`} className="level-quest-hint">
-      <p>{questBody(strings[quest.body])}</p>
+      <p>{questBody(strings[body])}</p>
       {(view || target) && <Button variant="outline" size="sm" onClick={showMe}>{t.showMe}</Button>}
     </div>}
   </div>;
 }
 
-function ChapterSection({ chapter, status, done, folded, onToggleFold, openHints, recommendedQuest, onToggleHint, onNavigate, onClose }: {
+function ChapterSection({ chapter, status, done, folded, withoutDecks, onToggleFold, openHints, recommendedQuest, onToggleHint, onNavigate, onClose }: {
   chapter: Chapter<QuestTextKey>;
   status: ChapterStatus;
   done: ReadonlySet<string>;
   folded: boolean;
+  withoutDecks: boolean;
   onToggleFold: (fold: boolean) => void;
   openHints: Readonly<Record<string, boolean>>;
   recommendedQuest: string | undefined;
@@ -122,7 +128,7 @@ function ChapterSection({ chapter, status, done, folded, onToggleFold, openHints
       <span className="visually-hidden">{t.chapterProgress(questsDone, chapter.quests.length)}</span>
     </button>
     {!folded && <div className="level-chapter-quests">
-      {chapter.quests.map(quest => <QuestRow key={quest.id} quest={quest} isDone={done.has(quest.id)}
+      {chapter.quests.map(quest => <QuestRow key={quest.id} quest={quest} isDone={done.has(quest.id)} withoutDecks={withoutDecks}
         hintOpen={openHints[quest.id] ?? quest.id === recommendedQuest} onToggleHint={() => onToggleHint(quest.id)} onNavigate={onNavigate} onClose={onClose} />)}
     </div>}
   </section>;
@@ -138,7 +144,7 @@ function LockedChapter({ chapter }: { chapter: Chapter<QuestTextKey> }) {
   </div>;
 }
 
-export function LevelPanel({ projectKey, onClose, onNavigate, factsFailed, factsLoading, onRefreshFacts }: LevelPanelProps) {
+export function LevelPanel({ projectKey, withoutDecks = false, onClose, onNavigate, factsFailed, factsLoading, onRefreshFacts }: LevelPanelProps) {
   const lang = useLang();
   const t = useText(text);
   const titleRef = useRef<HTMLHeadingElement>(null);
@@ -182,7 +188,7 @@ export function LevelPanel({ projectKey, onClose, onNavigate, factsFailed, facts
         pending={factsLoading} onRetry={() => onRefreshFacts?.()} />
       <LoadingState variant="keep-data" active={factsLoading ?? false} />
       {chapters.map((chapter, index) => statuses[index] === 'locked' ? null
-        : <ChapterSection key={chapter.id} chapter={chapter} status={statuses[index]} done={done}
+        : <ChapterSection key={chapter.id} chapter={chapter} status={statuses[index]} done={done} withoutDecks={withoutDecks}
           folded={folds[chapter.id] ?? chapter.id !== recommendedChapter?.id}
           onToggleFold={fold => setFolds(current => ({ ...current, [chapter.id]: fold }))}
           openHints={openHints} recommendedQuest={recommendedQuest} onToggleHint={toggleHint} onNavigate={onNavigate} onClose={onClose} />)}

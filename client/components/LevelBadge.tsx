@@ -7,9 +7,10 @@ import { earnedXp, levelOf, totalXp, type Quest } from '../onboarding/model.ts';
 import { useQuestProgress } from '../onboarding/progress.ts';
 import { chapters } from '../onboarding/quests.ts';
 import type { AppView } from '../onboarding/signals.ts';
+import { useCatalog } from '../useCatalog.ts';
 import { LevelPanel, levelShare } from './LevelPanel.tsx';
 
-export interface LevelBadgeProps {
+interface LevelBadgeProps {
   snapshot: WorkspaceSnapshot;
   /** Workspace update counter: changes after every batch of file events. */
   refreshKey: number;
@@ -48,6 +49,9 @@ export function LevelBadge({ snapshot, refreshKey, onNavigate, open, onOpenChang
     setGain(previous => previous ? { total: previous.total + sum } : { total: sum });
   }, []);
   const { refreshFacts, factsFailed, factsLoading } = useQuestEngine(projectKey, refreshKey, onCompleted);
+  // The same per-source store the views read: while it is still loading the panel keeps the default wording, and a
+  // catalog with zero decks switches the first quest to the actions that create a deck (2026-11-11).
+  const { catalog } = useCatalog(snapshot, refreshKey);
 
   const progress = useQuestProgress(projectKey);
   const done = useMemo(() => new Set(Object.keys(progress)), [progress]);
@@ -97,7 +101,8 @@ export function LevelBadge({ snapshot, refreshKey, onNavigate, open, onOpenChang
       {gain !== null && <span className="level-badge-toast" role="status"
         onAnimationEnd={() => setGain(null)}>+{format(gain.total)} XP</span>}
     </button>
-    {panelOpen && <LevelPanel projectKey={projectKey} onClose={closePanel} onNavigate={onNavigate}
+    {panelOpen && <LevelPanel projectKey={projectKey} withoutDecks={catalog !== null && catalog.decks.length === 0}
+      onClose={closePanel} onNavigate={onNavigate}
       factsFailed={factsFailed} factsLoading={factsLoading} onRefreshFacts={refreshFacts} />}
   </>;
 }

@@ -11,6 +11,8 @@ import { useCatalog } from '../useCatalog.ts';
 import { failureMessage } from '../failure-message.ts';
 import { Button } from './ui/button.tsx';
 import { CardTags } from './CardTags.tsx';
+import { EffortIcon } from './EffortIcon.tsx';
+import { PriorityIcon } from './PriorityIcon.tsx';
 import { useSelectEscapeGuard } from '../select-escape.ts';
 import '../csv-import.css';
 
@@ -569,8 +571,8 @@ export function CsvImport({ snapshot, refreshKey, open, initialDeckId = null, on
                   <td><span className="csv-import-cell-title">{row.title || '—'}</span>{row.reason() && <small>{row.reason()}</small>}</td>
                   <td>{kindLabel(row.kind, lang)}</td>
                   <td>{row.owner ?? '—'}</td>
-                  <td>{row.effort == null ? '—' : amount(row.effort)}</td>
-                  <td>{row.priority ? priorityLabel(row.priority, lang) : '—'}</td>
+                  <td>{row.effort == null ? '—' : <><EffortIcon size={12} /> {amount(row.effort)}</>}</td>
+                  <td>{row.priority ? <><PriorityIcon priority={row.priority} size={12} /> {priorityLabel(row.priority, lang)}</> : '—'}</td>
                   <td>{row.state ? stateLabel(row.state, lang) : '—'}</td>
                   <td>{row.tags.length ? <CardTags tags={row.tags} definitions={view?.projectTags} compact /> : '—'}</td>
                   <td>{statusTitles[row.status]}</td>

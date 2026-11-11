@@ -28,7 +28,7 @@ interface GridWindow extends GridMetrics {
 interface RegisteredGrid extends GridMetrics { cards: CatalogCard[] }
 const virtualGrids = new WeakMap<HTMLElement, RegisteredGrid>();
 
-export interface VirtualCardNavigationEntry {
+interface VirtualCardNavigationEntry {
   cardId: string;
   rectangle: { left: number; top: number; width: number; height: number };
 }

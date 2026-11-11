@@ -4,12 +4,13 @@
 /* The band's base colour is a registered property, so every state change of a band flows instead of jumping. */
 @property --material-base { syntax: '<color>'; inherits: false; initial-value: #cdc8dc; }
 .deck-card > .deck-card-band, .card-preview-sheet > .card-preview-material-band { transition: --material-base 180ms var(--ease-out); }
+.deck-card-owner-medallion { transition: border-color 180ms var(--ease-out); }
 
-/* The preview's pressed Accept button keeps the completion feedback. */
-.card-preview-sheet.is-just-done .card-preview-state-actions .ui-button[aria-pressed="true"] svg { animation: done-icon-rise var(--motion-material) var(--ease-out) both; }
+/* The accepted Hero medallion and the preview's pressed Accept button keep the completion feedback. */
+.deck-card.is-just-done .deck-card-done-medallion svg, .card-preview-sheet.is-just-done .card-preview-state-actions .ui-button[aria-pressed="true"] svg { animation: done-icon-rise var(--motion-material) var(--ease-out) both; }
 @keyframes done-icon-rise { from { opacity: 0; scale: .25; translate: 0 50%; } }
 
 @media (prefers-reduced-motion: reduce) {
-  .card-preview-sheet.is-just-done .card-preview-state-actions .ui-button[aria-pressed="true"] svg { animation: none; }
-  .deck-card > .deck-card-band, .card-preview-sheet > .card-preview-material-band { transition: none; }
+  .deck-card.is-just-done .deck-card-done-medallion svg, .card-preview-sheet.is-just-done .card-preview-state-actions .ui-button[aria-pressed="true"] svg { animation: none; }
+  .deck-card > .deck-card-band, .card-preview-sheet > .card-preview-material-band, .deck-card-owner-medallion { transition: none; }
 }

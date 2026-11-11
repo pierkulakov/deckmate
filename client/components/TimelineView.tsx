@@ -54,7 +54,7 @@ const text = defineText({
   createMilestone: 'Create Milestone',
   cluster: (count: number, date: string) => `${count.toLocaleString(locale())} items from ${date}`,
   more: (count: number) => `+${count.toLocaleString(locale())}`,
-  accepted: 'Done', remainingEffort: 'Effort left',
+  remainingEffort: 'Effort left',
 }, {
   timeline: 'Timeline',
   milestone: (title: string) => `Milestone ${title}`,
@@ -86,7 +86,7 @@ const text = defineText({
     return `${count.toLocaleString(locale())} отметок с ${date}`;
   },
   more: (count: number) => `+${count.toLocaleString(locale())}`,
-  accepted: 'Принято', remainingEffort: 'Осталось по оценке',
+  remainingEffort: 'Осталось по оценке',
 });
 
 /** Ten pixels per day keep each ISO week cell 70 pixels wide. */
@@ -99,7 +99,7 @@ const dayWidth = 10;
 const band = { month: 8, rows: 30, row: 32, stripGap: 2, weekGap: 20, runsGap: 24, lane: 60, minRuns: 24 } as const;
 /** Width of a milestone or due marker on the axis (.timeline-milestone-marker in planning.css); closer marks in a row merge. */
 const markerWidth = 30;
-export type PlanningSaveResult = { ok: boolean; revisions?: CatalogView; message?: string };
+type PlanningSaveResult = { ok: boolean; revisions?: CatalogView; message?: string };
 export type SavePlanning = (action: PlanningEdit) => Promise<PlanningSaveResult>;
 function monthName(iso: string, lang: Lang) { return new Intl.DateTimeFormat(locale(lang), { month: 'long', timeZone: 'UTC' }).format(new Date(`${iso}T00:00:00Z`)); }
 /** The elapsed fraction of the day positions the shaded past's edge at the current hour. */
@@ -350,7 +350,7 @@ export function TimelineView({ snapshot, refreshKey, selectCurrentRun = false, o
       onPointerMove={event => { if (drag.current?.pointer === event.pointerId) event.currentTarget.scrollLeft = drag.current.left - (event.clientX - drag.current.start); }}
       onPointerUp={() => { drag.current = null; }} onPointerCancel={() => { drag.current = null; }} onLostPointerCapture={() => { drag.current = null; }}>
       <div className="timeline-canvas" style={{ width: model.width, height }}>
-        {model.months.map(date => <span key={date} className="timeline-month-label" style={{ left: offset(date), top: band.month, width: dayDistance(date, monthStart(date, 1)) * dayWidth }}>{monthName(date, lang)}<small>{date.slice(0, 4)}</small></span>)}
+        {model.months.map(date => <span key={date} className="timeline-month" style={{ left: offset(date), top: band.month, width: dayDistance(date, monthStart(date, 1)) * dayWidth }}><span className="timeline-month-label">{monthName(date, lang)}<small>{date.slice(0, 4)}</small></span></span>)}
         {model.months.map(date => <span key={`strip-${date}`} className="timeline-month-strip" style={{ left: offset(date), top: stripTop, width: dayDistance(date, monthStart(date, 1)) * dayWidth }} aria-hidden="true" />)}
         {model.weeks.map(date => <span key={date} className={`timeline-week-label${date <= today && today < addDays(date, 7) ? ' is-current' : ''}`} style={{ left: offset(date), top: weekTop, width: dayWidth * 7 }}>{isoWeek(date).toLocaleString(locale(lang))}</span>)}
         <span className="timeline-now-line" style={{ left: model.now, top: band.rows - 2 }} aria-hidden="true" />
@@ -393,7 +393,7 @@ export function TimelineView({ snapshot, refreshKey, selectCurrentRun = false, o
       const summary = metrics(cards.filter(card => card.milestone === milestone.id));
       return <article className="planning-overview-row" key={milestone.id}>
       <button className="planning-overview-title" onClick={() => choose({ kind: 'milestone', id: milestone.id })}><span className="planning-diamond" style={{ color: milestone.color }} /><strong className="planning-overview-name">{milestone.title}</strong><span>{formatPlanningDate(milestone.date, lang)}</span><small>{countdown(milestone.date, today, lang)}</small></button>
-      <div className="planning-count"><span>{t.accepted} <span className="page-number">{summary.done.toLocaleString(locale(lang))} / {summary.tasks.toLocaleString(locale(lang))}</span></span><span>{t.remainingEffort} <span className="page-number">{(summary.effort - summary.doneEffort).toLocaleString(locale(lang))}</span></span></div>
+      <div className="planning-count"><span>{stateLabel('done', lang)} <span className="page-number">{summary.done.toLocaleString(locale(lang))} / {summary.tasks.toLocaleString(locale(lang))}</span></span><span>{t.remainingEffort} <span className="page-number">{(summary.effort - summary.doneEffort).toLocaleString(locale(lang))}</span></span></div>
     </article>;
     })}{!milestones.length && (writable
       ? <EmptyState variant="first-run" title={t.noMilestones} art="milestone"

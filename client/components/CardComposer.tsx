@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent } from 'react';
-import { Gauge, Layers, SlidersHorizontal, Trash2, X } from 'lucide-react';
+import { SlidersHorizontal, Trash2, X } from 'lucide-react';
 import { deckAcceptsCard, newCardDeckId, type CardKind, type CardPriority, type CatalogDeck, type CatalogView } from '../../src/catalog-contracts.ts';
 import type { WorkspaceSnapshot } from '../../src/workspace-contracts.ts';
 import type { CatalogAction } from '../useCatalog.ts';
@@ -9,6 +9,8 @@ import { MemberOptions } from './JourneyPanel.tsx';
 import { CardEditForm, splitDraft } from './CardEditForm.tsx';
 import { Switch } from './CardOrdering.tsx';
 import { DeckPicker } from './DeckPicker.tsx';
+import { PriorityIcon } from './PriorityIcon.tsx';
+import { EffortIcon } from './EffortIcon.tsx';
 import { Button } from './ui/button.tsx';
 import { defineText, useLang, useText } from '../i18n.ts';
 import { moveFocus } from '../focus.ts';
@@ -366,8 +368,8 @@ export function CardComposer({ catalog, snapshot, initialDeckId, initialParentId
           </fieldset>
         </section>
         <footer className="card-preview-material-band card-composer-band">
-          <Button type="button" variant="ghost" size="sm" className="card-preview-property-shortcut" disabled={busy} aria-label={t.effortLabel(effort || t.notSet)} title={t.editEffort} onClick={() => toggleProperties('effort')}><span>{t.effort}</span><Gauge size={19} /><strong>{effort || '—'}</strong></Button>
-          <Button type="button" variant="ghost" size="sm" className="card-preview-property-shortcut" disabled={busy} aria-label={t.priorityLabel(priority ? priorityLabel(priority, lang) : t.notSet)} title={t.editPriority} onClick={() => toggleProperties('priority')}><span>{t.priority}</span><Layers size={18} /><strong>{priority ? priorityLabel(priority, lang) : '—'}</strong></Button>
+          <Button type="button" variant="ghost" size="sm" className="card-preview-property-shortcut" disabled={busy} aria-label={t.effortLabel(effort || t.notSet)} title={t.editEffort} onClick={() => toggleProperties('effort')}><span>{t.effort}</span><EffortIcon size={19} /><strong>{effort || '—'}</strong></Button>
+          <Button type="button" variant="ghost" size="sm" className="card-preview-property-shortcut" disabled={busy} aria-label={t.priorityLabel(priority ? priorityLabel(priority, lang) : t.notSet)} title={t.editPriority} onClick={() => toggleProperties('priority')}><span>{t.priority}</span><PriorityIcon priority={priority || null} size={18} /><strong>{priority ? priorityLabel(priority, lang) : '—'}</strong></Button>
         </footer>
       </div>
     </div>

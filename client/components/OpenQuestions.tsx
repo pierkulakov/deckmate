@@ -7,7 +7,8 @@ import { deckAcceptsCard, type CatalogCard, type CatalogOpenQuestion, type Catal
 import { resolveReference, shortReference } from '../../src/references.ts';
 import type { CatalogAction } from '../useCatalog.ts';
 import { Button } from './ui/button.tsx';
-import { defineText, textNow, useText } from '../i18n.ts';
+import { defineText, textNow, useLang, useText } from '../i18n.ts';
+import { kindLabel } from '../locales/common.ts';
 import { moveFocus } from '../focus.ts';
 import type { Root, RootContent } from 'mdast';
 import { openQuestionsOf } from '../../src/open-questions.ts';
@@ -47,7 +48,6 @@ const text = defineText({
   noPeople: 'No people in the registry',
   deck: 'Deck',
   noDecks: 'No decks for Task',
-  taskDeck: 'Task',
   mixedDeck: 'Mixed',
   raiseNote: 'A Task called “Decision” will be created: the selected person becomes its owner, the task appears in their Hand, and the link appears in the question item.',
   retryId: 'Retry ID is preserved',
@@ -84,7 +84,6 @@ const text = defineText({
   noPeople: 'Нет людей в реестре',
   deck: 'Колода',
   noDecks: 'Нет колод для Task',
-  taskDeck: 'Task',
   mixedDeck: 'Mixed',
   raiseNote: 'Создастся Task «Решение»: исполнитель — выбранный человек, задача появится в его Hand, а ссылка — в пункте вопроса.',
   retryId: 'ID повтора сохраняется',
@@ -160,6 +159,7 @@ function taskForReference(catalog: CatalogView, reference: string | null): Catal
 
 export function OpenQuestions({ card, catalog, writable, disabled, onEdit, onSelect, onActiveChange, source = 'sandbox' }: OpenQuestionsProps) {
   const t = useText(text);
+  const lang = useLang();
   const [raiseDraft, setRaiseDraft] = useState<RaiseDraft | null>(null);
   const [raiseSaving, setRaiseSaving] = useState(false);
   const [raiseChecking, setRaiseChecking] = useState(false);
@@ -397,7 +397,7 @@ export function OpenQuestions({ card, catalog, writable, disabled, onEdit, onSel
             <label><span>{t.deck}</span><select value={raiseDraft.deckId} disabled={locked || raiseChecking}
               onChange={event => changeRaise({ deckId: event.target.value })}>
               {availableDecks.length === 0 && <option value="">{t.noDecks}</option>}
-              {availableDecks.map(deck => <option key={deck.id} value={deck.id}>{deck.title} · {deck.kind === 'task' ? t.taskDeck : t.mixedDeck}</option>)}
+              {availableDecks.map(deck => <option key={deck.id} value={deck.id}>{deck.title} · {deck.kind === 'task' ? kindLabel('task', lang) : t.mixedDeck}</option>)}
             </select></label>
           </div>
           <p className="open-questions-dialog-note">{t.raiseNote}</p>

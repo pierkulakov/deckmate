@@ -1,18 +1,22 @@
 /* 2026-11-10: the shortcuts dialog joins the shared dialog grammar (client/surface.css): the frame, head and body are
    dialog-panel/dialog-head/dialog-body, the overlay is the shared --scrim, and only the keycap chips, the group rows
    and the AGPL foot stay here. Keycap chips are shared with the workspace switcher rows (WorkspaceProjects). */
+/* 2026-11-11: the panel takes its height from the list and only caps at 760 px, so a short screen's shortcuts leave
+   the working context visible; the head and foot stay pinned while the body scrolls. */
 
 .topbar-shortcuts { display: flex; align-items: center; flex: 0 0 auto; }
 .topbar-shortcuts:empty { display: none; }
 
 .shortcuts-panel-overlay { position: fixed; inset: 0; z-index: var(--z-help-overlay); background: var(--scrim); animation: backdrop-fade var(--motion-spring-firm) ease-out; }
 .shortcuts-panel { position: fixed; z-index: var(--z-help-panel); inset: 50% auto auto 50%; transform: translate(-50%, -50%);
-  display: flex; flex-direction: column; width: min(500px, calc(100vw - 32px)); height: min(760px, calc(100dvh - 32px));
+  display: flex; flex-direction: column; width: min(500px, calc(100vw - 32px)); max-height: min(760px, calc(100dvh - 32px));
   overflow: hidden; outline: none; animation: dialog-drop var(--motion-spring-firm) var(--ease-spring-firm); }
 .shortcuts-panel-heading { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
 .shortcuts-panel-caption { margin: 0; color: var(--muted); font-size: 12px; line-height: 16px; }
 .shortcuts-panel-close.ui-button { flex-shrink: 0; width: 32px; height: 32px; }
-.shortcuts-panel-body { flex: 1 1 0; min-height: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; }
+/* 2026-11-11: basis auto keeps the panel's own height at the list's height; the cap and min-height make only the
+   body shrink and scroll once the list outgrows max-height. */
+.shortcuts-panel-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; }
 /* Screen-specific caveats are quiet captions above the groups. */
 .shortcuts-panel-note { margin: 0 0 var(--space-2); color: var(--muted); font-size: 12px; line-height: 16px; overflow-wrap: anywhere; }
 /* Groups are the dialog's sections: panel-title headings, one hairline between groups. */

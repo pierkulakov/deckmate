@@ -27,7 +27,7 @@ const text = defineText({
   saving: 'Сохраняем…', save: 'Сохранить',
 });
 
-export interface DeckGuardiansProps {
+interface DeckGuardiansProps {
   deck: CatalogDeck;
   members: CatalogMember[];
   manifestHash: string;

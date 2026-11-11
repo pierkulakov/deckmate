@@ -7,6 +7,7 @@ import * as Dialog from '@radix-ui/react-dialog';
 import type { CatalogDeck, CatalogView } from '../../src/catalog-contracts.ts';
 import { cardTransferTargetIssue, type CardTransferBaseline } from '../card-transfer.ts';
 import { defineText, useText } from '../i18n.ts';
+import { priorityLabel } from '../locales/common.ts';
 import { Button } from './ui/button.tsx';
 import '../card-transfer.css';
 
@@ -15,7 +16,7 @@ export const cardDragText = defineText({
   drop: (value: string) => `Drop to set ${value}`, groups: 'Set card group',
   noDeck: 'No deck', cancel: 'Cancel', chooseDeck: 'Choose a deck for the dragged cards',
   sameDeck: 'All dragged cards are already here', incompatible: 'This deck cannot accept all dragged card types',
-  high: 'High', medium: 'Medium', low: 'Low', noPriority: 'No priority',
+  noPriority: 'No priority',
   handFor: (member: string) => `Add to ${member}’s hand`,
   promoteHeroTitle: 'Make Hero?',
   promoteHeroDescription: (deck: string) => `The card will become a Hero in “${deck}”. Its text, ID and links will be preserved; its Task state will be removed.`,
@@ -25,7 +26,7 @@ export const cardDragText = defineText({
   drop: (value: string) => `Отпустите, чтобы задать: ${value}`, groups: 'Группа карточек',
   noDeck: 'Без колоды', cancel: 'Отмена', chooseDeck: 'Выберите колоду для переносимых карточек',
   sameDeck: 'Все переносимые карточки уже здесь', incompatible: 'Колода не принимает все переносимые типы карточек',
-  high: 'Высокий', medium: 'Средний', low: 'Низкий', noPriority: 'Без приоритета',
+  noPriority: 'Без приоритета',
   handFor: (member: string) => `Добавить в Hand: ${member}`,
   promoteHeroTitle: 'Сделать Hero?',
   promoteHeroDescription: (deck: string) => `Карточка станет Hero в колоде «${deck}». Её текст, ID и ссылки сохранятся; состояние задачи будет убрано.`,
@@ -166,6 +167,6 @@ export function CardHeroPromotionConfirmation(props: Parameters<typeof CardHeroP
 
 export function CardGroupDropSurface({ title, groupKey }: { title: string; groupKey: string }) {
   const text = useText(cardDragText);
-  const priorities: Record<string, string> = { 'priority:high': text.high, 'priority:medium': text.medium, 'priority:low': text.low, 'priority:none': text.noPriority };
+  const priorities: Record<string, string> = { 'priority:high': priorityLabel('high'), 'priority:medium': priorityLabel('medium'), 'priority:low': priorityLabel('low'), 'priority:none': text.noPriority };
   return <div className="card-group-drop-surface" aria-hidden="true"><span>{text.drop(priorities[groupKey] ?? title)}</span></div>;
 }

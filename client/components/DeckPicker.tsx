@@ -23,7 +23,7 @@ const pickerText = defineText({
   deckLabel: (text: string) => `Колода: ${text}`,
 });
 
-export interface DeckPickerProps {
+interface DeckPickerProps {
   catalog: CatalogView; projectName?: string; source?: DataSource;
   decks: readonly CatalogDeck[]; current: string | null; noneLabel?: string;
   shown: CatalogDeck | undefined; text: string; hint?: string; disabled?: boolean;

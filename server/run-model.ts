@@ -1,6 +1,7 @@
 import type { CatalogCard, PlanningDistribution, PlanningHistoryPoint, PlanningStatistics, RunCarryOver, RunConfiguration, RunRecord } from '../src/catalog-contracts.ts';
 import { openDependencies } from '../src/dependency-contracts.ts';
 import { validPlanningCover } from '../src/planning-cover.ts';
+import { isoWeek } from '../src/iso-week.ts';
 import { boundedText, validDate } from './card-options.ts';
 import { defineText, serverText } from './i18n.ts';
 
@@ -12,7 +13,7 @@ const text = defineText({
   limit: 'Реестр Run заполнен (1000 периодов). Сохраните старую историю проекта отдельно перед расширением расписания.',
 });
 
-export function planningRecord(value: unknown): value is Record<string, unknown> {
+function planningRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value)
     && [Object.prototype, null].includes(Object.getPrototypeOf(value));
 }
@@ -86,11 +87,6 @@ export function validatePlanningStatistics(value: unknown): asserts value is Pla
   if (!Array.isArray(statistics.completedEffort) || statistics.completedEffort.length > 100_000 || statistics.completedEffort.some(item => !planningRecord(item) || !validDate(item.date) || !nonnegative(item.effort) || item.cardId !== undefined && typeof item.cardId !== 'string')) invalidPlanning('statistics.completedEffort');
 }
 
-function isoWeek(date: string): number {
-  const thursday = new Date(date + 'T00:00:00Z');
-  thursday.setUTCDate(thursday.getUTCDate() + 4 - (thursday.getUTCDay() || 7));
-  return Math.ceil(((thursday.getTime() - Date.UTC(thursday.getUTCFullYear(), 0, 1)) / 86_400_000 + 1) / 7);
-}
 export function runGoal(configuration: RunConfiguration, number: number, start: string): string {
   return configuration.labelTemplate.replaceAll('%RUN_NR%', String(number)).replaceAll('%CALENDAR_WEEK%', String(isoWeek(start)));
 }
@@ -150,6 +146,7 @@ export function capturePlanningStatistics(cards: CatalogCard[], now = new Date()
 }
 export const legacyRunCarryStates = new Set(['discussing', 'started', 'review']);
 export function shouldCarryCard(card: CatalogCard, choices: RunCarryOver, cardsById: ReadonlyMap<string, CatalogCard>): boolean {
+  if (card.state === 'wont-do') return false;
   if (card.kind !== 'task' || card.state === 'done' || card.archived || card.deleted) return false;
   if (card.state === 'review') return choices.review;
   const blocked = openDependencies(card.dependsOn, cardsById).length > 0;

@@ -4,19 +4,20 @@ import path from 'node:path';
 import { isDeepStrictEqual } from 'node:util';
 import { isMap, isScalar, isSeq, parse, parseDocument as parseYamlDocument, stringify, type YAMLMap, type YAMLSeq } from 'yaml';
 import { isMechanicPath, parseDocument } from '../src/markdown.ts';
+import { markdownParser } from '../src/markdown-model.ts';
 import { appendCardReport, readCardContent, readHeroSections, updateCardContent } from './card-content.ts';
 import type { CatalogCard, CatalogDeck, CatalogDeckManualOrder, CatalogDeckZone, CatalogEdit, CatalogMember, CatalogSpace, CatalogTrack, CatalogView, DeckKind } from '../src/catalog-contracts.ts';
 import { deckAcceptsCard, deckCanBeInbox, newCardDeckId } from '../src/catalog-contracts.ts';
-import { resolveMember } from '../src/members.ts';
-import { linkDecisionTask, openQuestionsOf, parseOpenQuestions, recordDecision } from '../src/open-questions.ts';
+import { memberIdForOwner, resolveMember } from '../src/members.ts';
+import { cardReportAuthor, linkDecisionTask, openQuestionsOf, parseOpenQuestions, recordDecision } from '../src/open-questions.ts';
 import { resolveReference, shortReference } from '../src/references.ts';
 import { containedFile } from './config.ts';
 import { parseCached } from './parse-cache.ts';
 import { assertCatalogCoverFile, isCatalogCoverPath, storeCatalogCover, type StoredCatalogCover } from './catalog-covers.ts';
-import { createManagedMarkdown, editNativeCard, editNativeCardParent, editNativeCardContent, editNativeCardProperties, nativeCardPath, readNativeCard, readNativeCards, readProjectMarkdown, replaceProjectMarkdown, validateNativeCardMetadata, type NativeCardFile, type NativeCardMetadata } from './native-cards.ts';
+import { createManagedMarkdown, editNativeCard, editNativeCardParent, editNativeCardProperties, nativeCardPath, patchManagedMarkdown, patchNativeCardFields, readNativeCard, readNativeCards, readProjectMarkdown, replaceProjectMarkdown, validateNativeCardMetadata, type NativeCardFile, type NativeCardMetadata } from './native-cards.ts';
 import { applyJourney, createJourney, readJourneys } from './journeys.ts';
 import { bundledJourneyTemplatesDirectory, journeyTemplateDirectories, readJourneyTemplates } from './journey-templates.ts';
-import { updateLegacyCardState } from './card-properties.ts';
+import { patchLegacyCardStates, updateLegacyCardState } from './card-properties.ts';
 import { validateOwner, validateEffort, validatePriority } from './card-property-validation.ts';
 import type { CardOptions } from '../src/bulk-contracts.ts';
 import { cardOptionsPath, prepareCardOptionsPatch, readCardOptions, sourceComments, type CardOptionsPatch } from './card-options.ts';
@@ -30,7 +31,7 @@ import { heroCountedTasks } from '../src/hero-done.ts';
 import { deckTypeChangeIssue } from '../src/deck-type-policy.ts';
 import { catalogFileChanged, currentCatalogSnapshot, readCatalogSnapshot } from './catalog-snapshot.ts';
 import { defineText, serverText, serverLang } from './i18n.ts';
-import { cardStates, cardStateWords, projectFormatLanguage, readCardState, writeCardState, writeMarker, type CardState, type FormatLanguage } from '../src/format-vocabulary.ts';
+import { cardStates, cardStateWords, markerWords, projectFormatLanguage, readCardState, writeCardState, writeMarker, type CardState, type FormatLanguage } from '../src/format-vocabulary.ts';
 
 const catalogText = defineText({
   invalidMembers: "Invalid project member list.",
@@ -111,6 +112,7 @@ const catalogText = defineText({
   returnReason: "The return reason must be one line of up to 500 characters.",
   returnReasonRequired: "Returning a card from review requires a nonempty reason.",
   returnFromReview: "A reason can only be recorded when returning a card from review.",
+  selfAcceptance: "An agent cannot accept its own work. Pass the card to an independent reviewer.",
   stateStage: "state",
   ownerStage: "Owner on start",
   handStage: "top of Hand",
@@ -259,6 +261,7 @@ const catalogText = defineText({
   returnReason: "Причина возврата — одна строка до 500 символов.",
   returnReasonRequired: "Для возврата карточки с приёмки нужна непустая причина.",
   returnFromReview: "Причина пишется только при возврате карточки с приёмки.",
+  selfAcceptance: "Агент не может принять собственную работу. Передайте карточку независимому рецензенту.",
   stateStage: "статус",
   ownerStage: "исполнитель по старту",
   handStage: "голова руки",
@@ -1943,12 +1946,23 @@ function validateHeroMark(catalog: CatalogView, hero: CatalogCard, state: CardSt
   if (tasks.length) throw new Error(serverText(catalogText).heroHasTasks(tasks.filter(task => task.state === 'done').length, tasks.length));
 }
 
-export function validateCardState(catalog: CatalogView, card: CatalogCard, edit: CardStateEdit, actorMemberId: string | null): void {
+export function validateCardState(catalog: CatalogView, card: CatalogCard, edit: CardStateEdit, actorMemberId: string | null, reporting = false): void {
   if (card.kind === 'hero') validateHeroMark(catalog, card, edit.state);
   else if (card.kind !== 'task') throw new Error(serverText(catalogText).stateTaskOnly);
   // A Hero without its done mark stores null; for the request it reads as not started.
   const current = card.state ?? 'not-started';
   if (edit.state === 'done' && current !== 'done') {
+    const members = catalog.members ?? [];
+    const actor = members.find(member => actorMemberId !== null ? member.id === actorMemberId : member.label === edit.acceptedBy?.trim());
+    if (actor?.kind === 'agent') {
+      const ownsCard = memberIdForOwner(card.owner, members) === actor.id || card.owner === actor.id;
+      // 2026-11-11: only earlier authorship distinguishes self-acceptance from an independent review.
+      const reportAuthors = markdownParser.parse(card.markdown).children.map(cardReportAuthor).filter(author => author !== null);
+      const isActorAuthor = (author: string) => author === actor.id || resolveMember(author, members) === actor.label;
+      const reported = reportAuthors.some(isActorAuthor);
+      const hasOtherWork = (Boolean(card.owner) && !ownsCard) || reportAuthors.some(author => !isActorAuthor(author));
+      if (ownsCard || reported || (reporting && !hasOtherWork)) throw new Error(serverText(catalogText).selfAcceptance);
+    }
     const refusal = guardianAcceptanceRefusal(catalog, card, actorMemberId, edit.acceptedBy);
     if (refusal) throw new Error(refusal);
   }
@@ -1961,7 +1975,8 @@ export function validateCardState(catalog: CatalogView, card: CatalogCard, edit:
   if (returnReason?.trim() && (current !== 'review' || edit.state === 'done')) throw new Error(serverText(catalogText).returnFromReview);
 }
 
-async function setCardAttributes(root: string, source: ManifestSource, edit: Extract<CatalogEdit, { action: 'set-card-state' | 'set-card-properties' }>, actorMemberId: string | null = null): Promise<string[]> {
+async function setCardAttributes(root: string, source: ManifestSource, edit: Extract<CatalogEdit, { action: 'set-card-state' | 'set-card-properties' }>,
+  actorMemberId: string | null = null, beforeReport?: CatalogCard): Promise<string[]> {
   if (!/^[0-9a-f]{64}$/u.test(edit.sourceHash)) throw new Error(serverText(catalogText).cardSourceHash);
   const catalog = await readProjectCatalog(root);
   if (catalog.manifestHash !== edit.manifestHash) throw new Error('CATALOG_CONFLICT');
@@ -1978,7 +1993,7 @@ async function setCardAttributes(root: string, source: ManifestSource, edit: Ext
     const stateEdit: CardStateEdit = { ...edit, state: requiredCardState(edit.state) };
     const state = stateEdit.state;
     const formatLanguage = manifestLanguage(source);
-    validateCardState(catalog, card, stateEdit, actorMemberId);
+    validateCardState(catalog, beforeReport ?? card, stateEdit, actorMemberId);
     // 2026-11-04: starting and accepting cards changes more than state; apply stages sequentially as for question decisions.
     const members = catalog.members ?? [];
     // Starting an unowned card assigns it to the requester identified by x-deckmate-actor;
@@ -1988,11 +2003,22 @@ async function setCardAttributes(root: string, source: ManifestSource, edit: Ext
     const startOwner = started && starter && !card.owner ? starter.label : null;
     const startHandMemberId = started && starter ? starter.id : null;
     let persistedManifestHash = edit.manifestHash;
+    let persistedSourceHash = edit.sourceHash;
+    const writeNativeProperties = async (changes: Partial<Pick<NativeCardMetadata, 'state' | 'owner'>>, beforePublish: () => Promise<void>) => {
+      const file = await readNativeCard(root, card.id);
+      if (!file || file.fileHash !== persistedSourceHash) throw new Error('CARD_CONFLICT');
+      // 2026-11-11: later stages may trust only our prepared bytes, never a freshly adopted external revision.
+      const nextHash = digest(patchNativeCardFields(file, changes, formatLanguage));
+      const changed = await editNativeCardProperties(root, card.id, persistedSourceHash, changes, beforePublish, formatLanguage);
+      persistedSourceHash = nextHash;
+      return changed;
+    };
     // The state write changes sourceHash; later stages check the manifest and persisted state instead.
     const verifyStateSaved = async () => {
       await verifyManifestHash(root, persistedManifestHash);
       const current = (await refreshProjectCatalog(root, await readProjectCatalog(root), [card.path, cardOptionsPath])).cards.find(candidate => candidate.id === card.id);
       if (!current || (current.state ?? 'not-started') !== state) throw new Error('CARD_CONFLICT');
+      if ((card.id.startsWith('card:') || started) && current.sourceHash !== persistedSourceHash) throw new Error('CARD_CONFLICT');
     };
     const writeOptions = async (changes: Record<string, CardOptionsPatch>): Promise<string[]> => {
       const options = await readCardOptions(root);
@@ -2008,8 +2034,14 @@ async function setCardAttributes(root: string, source: ManifestSource, edit: Ext
           // 2026-11-09: a saved state does not prove that Owner, Hand and acceptance date were saved too.
           const normalizeLegacyPlan = card.id.startsWith('task:') && state === 'not-started';
           if ((card.state ?? 'not-started') === state && !normalizeLegacyPlan) return [];
+          if (!card.id.startsWith('card:') && started) {
+            // 2026-11-11: start has no date or iteration input, so the shared patcher gives its exact saved revision.
+            const bytes = await readProjectMarkdown(root, card.path);
+            if (digest(bytes) !== persistedSourceHash) throw new Error('CARD_CONFLICT');
+            persistedSourceHash = digest(patchLegacyCardStates(bytes, [card], state, 0, formatLanguage));
+          }
           const changed = card.id.startsWith('card:')
-            ? await editNativeCardProperties(root, card.id, edit.sourceHash, { state: card.kind === 'hero' && state !== 'done' ? null : state }, verify, formatLanguage)
+            ? await writeNativeProperties({ state: card.kind === 'hero' && state !== 'done' ? null : state }, verify)
             : await updateLegacyCardState(root, card, state, verify, formatLanguage);
           return changed ? [card.path] : [];
         },
@@ -2019,9 +2051,7 @@ async function setCardAttributes(root: string, source: ManifestSource, edit: Ext
       title: serverText(catalogText).ownerStage,
       run: async () => {
         if (card.id.startsWith('card:')) {
-          const fresh = await readNativeCard(root, card.id);
-          if (!fresh) throw new Error('CARD_CONFLICT');
-          const changed = await editNativeCardProperties(root, card.id, fresh.fileHash, { owner: startOwner }, verifyStateSaved);
+          const changed = await writeNativeProperties({ owner: startOwner }, verifyStateSaved);
           return changed ? [card.path] : [];
         }
         const bytes = patchLegacyScalar(source, card.id, 'owner', startOwner);
@@ -2246,11 +2276,15 @@ async function readRuleCard(root: string, edit: DecisionEdit): Promise<{ card: C
 async function writeRuleDoc(root: string, card: CatalogCard, sourceHash: string, markdown: string, manifestHash: string): Promise<string[]> {
   const verifyManifest = () => verifyManifestHash(root, manifestHash);
   if (card.id.startsWith('card:')) {
-    const changed = await editNativeCardContent(root, card.id, sourceHash, { markdown }, verifyManifest);
-    return changed ? [card.path] : [];
+    const file = await readNativeCard(root, card.id);
+    if (!file || file.fileHash !== sourceHash) throw new Error('CARD_CONFLICT');
+    const bytes = patchManagedMarkdown(file, {}, markdown);
+    if (bytes.equals(file.bytes)) return [];
+    await replaceProjectMarkdown(root, card.path, sourceHash, bytes, verifyManifest);
+    return [card.path];
   }
   const content = await readCardContent(root, card.id);
-  return updateCardContent(root, { action: 'update-card-content', manifestHash, cardId: card.id, sourceHash, title: content.title, markdown }, verifyManifest);
+  return updateCardContent(root, { action: 'update-card-content', manifestHash, cardId: card.id, sourceHash, title: content.title, markdown }, verifyManifest, true);
 }
 
 /** 2026-11-05: the framing sentences of a decision Task's body, in the project's format language; both sections are named by their markers. */
@@ -2291,17 +2325,23 @@ async function raiseDecision(root: string, edit: RaiseDecisionEdit, source: Mani
   const bodyText = decisionTaskText[formatLanguage];
   const docReference = shortReference('c', rule.card.id);
   const item = rule.markdown.slice(question.start, question.end).trimEnd();
+  const taskMarkdown = `${bodyText.fromRule(`[${rule.card.title}](/r/${docReference})`, openQuestionsMarker)}\n\n${item}\n\n${bodyText.answerNote(decidedMarker)}\n`;
   const stages: Array<{ title: string; run: () => Promise<string[]> }> = [
     {
       title: serverText(catalogText).decisionStage,
       run: async () => {
         const existing = (await readProjectCatalog(root)).cards.find(candidate => candidate.id === edit.taskCardId);
         if (existing) {
-          if (existing.kind !== 'task' || existing.parentId !== rule.card.id) throw new Error(serverText(catalogText).decisionIdTaken(existing));
+          const matchingTitle = markerWords('decision').some(marker => existing.title === `${marker} ${questionTitle}`);
+          const linked = question.taskRef === taskReference;
+          const matchingBody = linked || (await readCardContent(root, existing.id)).markdown === taskMarkdown;
+          if (existing.kind !== 'task' || existing.parentId !== rule.card.id || (!linked && (!matchingTitle || !matchingBody))) {
+            throw new Error(serverText(catalogText).decisionIdTaken(existing));
+          }
           return [];
         }
         return createCard(root, { action: 'create-card', cardId: edit.taskCardId, kind: 'task', title: `${decisionMarker} ${questionTitle}`,
-          markdown: `${bodyText.fromRule(`[${rule.card.title}](/r/${docReference})`, openQuestionsMarker)}\n\n${item}\n\n${bodyText.answerNote(decidedMarker)}\n`,
+          markdown: taskMarkdown,
           deckId: edit.deckId, trackIds: [], parentId: rule.card.id, owner: rule.member.label, effort: null, priority: null, manifestHash: edit.manifestHash });
       },
     },
@@ -2387,11 +2427,11 @@ async function addCardReport(root: string, source: ManifestSource,
   if (card.sourceHash !== edit.sourceHash) throw new Error('CARD_CONFLICT');
   const stateEdit: CardStateEdit | null = edit.state === undefined ? null
     : { action: 'set-card-state', cardId: card.id, sourceHash: edit.sourceHash, manifestHash: edit.manifestHash, state: requiredCardState(edit.state) };
-  if (stateEdit) validateCardState(catalog, card, stateEdit, actor);
+  if (stateEdit) validateCardState(catalog, card, stateEdit, actor, true);
   const report = await appendCardReport(root, card.path, edit, actor, localIsoDate(), () => verifyManifestHash(root, edit.manifestHash));
   if (!stateEdit) return report.paths;
   try {
-    const statePaths = await setCardAttributes(root, source, { ...stateEdit, sourceHash: report.sourceHash }, actor);
+    const statePaths = await setCardAttributes(root, source, { ...stateEdit, sourceHash: report.sourceHash }, actor, card);
     return [...new Set([...report.paths, ...statePaths])];
   } catch (error) {
     // 2026-11-05: saved means state succeeded and a later Owner/Hand/date stage failed; preserve that partial result.
@@ -2409,7 +2449,7 @@ async function addCardReport(root: string, source: ManifestSource,
 /** Apply a catalog action and return rewritten project files for board rebuilding. */
 export async function editProjectCatalog(root: string, edit: CatalogEdit, actorMemberId: string | null = null,
   templateOptions: import('./project-templates.ts').ProjectTemplateOptions = {}): Promise<string[]> {
-  if (edit.action === 'bulk-edit-cards') return (await (await import('./catalog-bulk.ts')).editCatalogBulk(root, edit)).changedPaths;
+  if (edit.action === 'bulk-edit-cards') return (await (await import('./catalog-bulk.ts')).editCatalogBulk(root, edit, actorMemberId)).changedPaths;
   // 2026-11-05: tags have an independent registry; only tagsHash guards their contents.
   if (edit.action === 'save-project-tag') {
     const plan = await prepareProjectTag(root, edit.tagsHash, edit.tag);

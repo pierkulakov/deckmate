@@ -2,7 +2,6 @@
 // Shared by client and server: each module keeps its own strings next to its code, in both languages.
 
 export type Lang = 'en' | 'ru';
-export const langs: readonly Lang[] = ['en', 'ru'];
 export const defaultLang: Lang = 'en';
 /** The client stores the choice here as well, so server messages, journal lines and errors follow the switch. */
 export const langCookie = 'deckmate-lang';

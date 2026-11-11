@@ -99,7 +99,7 @@ const messages = defineText({
 // Writes target only the configured writable copy,
 // using the same directory and file guards as deck covers in catalog-covers.ts.
 
-export const cardAttachmentsDirectory = 'tasks/deckmate-assets/cards';
+const cardAttachmentsDirectory = 'tasks/deckmate-assets/cards';
 // Limit each attachment to 10 MB to bound storage and request sizes.
 export const maximumAttachmentBytes = 10 * 1024 * 1024;
 const registryFileName = 'attachments.md';
@@ -172,7 +172,7 @@ export function attachmentKey(cardId: string): string {
   return 'legacy-' + createHash('sha256').update(cardId).digest('hex').slice(0, 16);
 }
 
-export function isCardAttachmentPath(value: string, key: string): boolean {
+function isCardAttachmentPath(value: string, key: string): boolean {
   const match = attachmentPathPattern.exec(value);
   return match !== null && match[1] === key && !value.includes('..');
 }

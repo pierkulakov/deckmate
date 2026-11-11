@@ -2,7 +2,7 @@ import type { BoardScene } from './board-contracts.ts';
 import { defineText } from './i18n.ts';
 
 export const maximumBoardBytes = 20 * 1024 * 1024;
-export const maximumBoardElements = 5000;
+const maximumBoardElements = 5000;
 export const maximumBoardImageBytes = 5 * 1024 * 1024;
 export const boardImageMimeTypes: readonly string[] = ['image/png', 'image/jpeg', 'image/webp'];
 const maximumImageLength = Math.ceil(maximumBoardImageBytes / 3) * 4;

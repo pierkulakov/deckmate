@@ -64,14 +64,14 @@ export function validTagName(value: unknown): value is string {
     && value.trim() === value && !/[\u0000-\u001f\u007f]/u.test(value);
 }
 
-export function validTagCardId(value: unknown): value is string {
+function validTagCardId(value: unknown): value is string {
   // Same bounds as card option IDs: `card:<uuid>`, `task:<path>#<slice>` and friends.
   return typeof value === 'string' && value.length > 0 && value.length <= 1000
     && value.trim() === value && !/[\u0000-\u001f\u007f]/u.test(value);
 }
 
 const graphemeSegmenter = new Intl.Segmenter(undefined, { granularity: 'grapheme' });
-export function validTagEmoji(value: unknown): value is string {
+function validTagEmoji(value: unknown): value is string {
   if (typeof value !== 'string' || !value || value.length > 16) return false;
   const segments = Array.from(graphemeSegmenter.segment(value));
   return segments.length === 1;

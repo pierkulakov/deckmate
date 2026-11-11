@@ -12,10 +12,10 @@
 // guard, server lifetime). The native menu, dialogs and the installer stay human-checked.
 import { execFileSync, spawn, spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
-import { createServer, type AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { freePort } from './free-port.ts';
 import { connectToHeadlessBrowser, type HeadlessPage } from './layout-capture.ts';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -53,17 +53,6 @@ async function poll(condition: () => Promise<boolean>, what: string, timeoutMs: 
 async function launcherLoaded(): Promise<boolean> {
   // 2026-11-09: WebView2 changes the URL before the new document's bridge is ready.
   return (await page!.evaluate(`document.readyState === 'complete' && !!document.getElementById('launcher') && typeof window.deckmateDesktop === 'object'`)) === true;
-}
-
-function freePort(): Promise<number> {
-  return new Promise((resolve, reject) => {
-    const probe = createServer();
-    probe.once('error', reject);
-    probe.listen(0, '127.0.0.1', () => {
-      const { port } = probe.address() as AddressInfo;
-      probe.close(() => resolve(port));
-    });
-  });
 }
 
 /** node.exe processes whose command line mentions the demo projects or the server entry. */

@@ -44,7 +44,7 @@ const coverText = defineText({
 });
 
 
-export const catalogCoverDirectory = 'tasks/deckmate-assets/covers';
+const catalogCoverDirectory = 'tasks/deckmate-assets/covers';
 const maximumCoverBytes = 5 * 1024 * 1024;
 export interface StoredCatalogCover { relativePath: string; remove: () => Promise<void> }
 

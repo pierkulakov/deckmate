@@ -5,7 +5,7 @@ import type { ByteRange } from '../src/contracts.ts';
 import { shortReference } from '../src/references.ts';
 import { parseDocument } from '../src/markdown.ts';
 import { markdownParser } from '../src/markdown-model.ts';
-import { parseOpenQuestions } from '../src/open-questions.ts';
+import { cardReportAuthor, isCardSectionBoundary, parseOpenQuestions } from '../src/open-questions.ts';
 import { readHeroSections } from './card-content.ts';
 import { readManagedMarkdown, readNativeCard, readProjectMarkdown } from './native-cards.ts';
 import { readAgentHistory, type AgentHistory } from './agent-changes.ts';
@@ -44,8 +44,9 @@ export function sourceLines(bytes: Buffer): SourceLine[] {
   const lines: SourceLine[] = [];
   let start = 0;
   for (let offset = 0; offset < bytes.length; offset += 1) {
-    if (bytes[offset] !== 10) continue;
-    const contentEnd = offset > start && bytes[offset - 1] === 13 ? offset - 1 : offset;
+    if (bytes[offset] !== 10 && bytes[offset] !== 13) continue;
+    const contentEnd = offset;
+    if (bytes[offset] === 13 && bytes[offset + 1] === 10) offset += 1;
     lines.push({ line: lines.length + 1, text: bytes.subarray(start, contentEnd).toString('utf8'), start, end: offset + 1 });
     start = offset + 1;
   }
@@ -102,7 +103,7 @@ function wordKey(word: string): string {
   return normalized;
 }
 
-export function contextWords(text: string): Set<string> {
+function contextWords(text: string): Set<string> {
   return new Set((text.toLowerCase().match(/[\p{L}][\p{L}\p{N}_]*/gu) ?? [])
     .filter(word => word.length > 3 && !stopWords.has(word)).map(wordKey));
 }
@@ -125,13 +126,18 @@ export function selectContextLines(lines: SourceLine[], topic: string, options: 
 }
 
 function sectionsOf(lines: SourceLine[]): ContextSection[] {
-  const headings = lines.filter(line => /^##\s+/u.test(line.text));
+  const root = markdownParser.parse(lines.map(line => line.text).join('\n'));
+  const headings = root.children.filter(isCardSectionBoundary).map(node => {
+    const line = lines[node.position!.start.line - 1];
+    return { ...line, text: line.text.replace(/^\uFEFF/u, '').replace(/^#{1,4}\s+/u, '')
+      .replace(/[\s#*_]+$/u, '').replace(/^[*_]+/u, '') };
+  });
   const sections: ContextSection[] = [];
   if (!headings.length || headings[0].line > 1) {
     sections.push({ title: 'Introduction', from: 1, to: (headings[0]?.line ?? lines.length + 1) - 1, lines: [] });
   }
   for (const [index, heading] of headings.entries()) {
-    sections.push({ title: heading.text.replace(/^##\s+/u, ''), from: heading.line,
+    sections.push({ title: heading.text, from: heading.line,
       to: (headings[index + 1]?.line ?? lines.length + 1) - 1, lines: [] });
   }
   return sections.map(section => ({ ...section, lines: lines.slice(section.from - 1, section.to) }));
@@ -236,9 +242,8 @@ function reportBlocks(markdown: string): ReportBlock[] {
   const bomLength = markdown.startsWith('\uFEFF') ? 1 : 0;
   const nodes = (markdownParser.parse(markdown.slice(bomLength)) as Root).children;
   return nodes.flatMap((node, index) => {
-    if (node.type !== 'heading' || node.depth !== 4) return [];
+    if (cardReportAuthor(node) === null) return [];
     const start = bomLength + node.position!.start.offset!;
-    if (!/^#### Report \d{4}-\d{2}-\d{2} · /u.test(markdown.slice(start))) return [];
     const next = nodes.slice(index + 1).find(candidate => candidate.type === 'heading' && candidate.depth <= 4);
     const end = next ? bomLength + next.position!.start.offset! : markdown.length;
     return [{ start, end, markdown: markdown.slice(start, end) }];
@@ -256,22 +261,6 @@ function sourceReference(references: ReadNext[], relativePath: string, bytes: Bu
     references.push(nextReference(relativePath, bytes, from, to, title));
   }
   return `${relativePath}:${from}-${to}`;
-}
-
-function questionSections(bytes: Buffer): ContextSection[] {
-  const markdown = bytes.toString('utf8').replace(/^\uFEFF/u, '');
-  const nodes = (markdownParser.parse(markdown) as Root).children;
-  const lines = sourceLines(bytes);
-  return nodes.flatMap((node, index) => {
-    if (node.type !== 'heading' || node.depth !== 2) return [];
-    const title = markdown.slice(node.position!.start.offset!, node.position!.end.offset!)
-      .replace(/^##\s+/u, '').replace(/[\s#*_]+$/u, '').replace(/^[*_]+/u, '');
-    if (!isQuestionSectionTitle(title)) return [];
-    const next = nodes.slice(index + 1).find(candidate => candidate.type === 'heading' && candidate.depth <= 2);
-    const from = node.position!.start.line;
-    const to = next ? next.position!.start.line - 1 : lines.length;
-    return [{ title, from, to, lines: lines.slice(from - 1, to) }];
-  });
 }
 
 async function briefSupplements(catalog: CatalogView, root: string, card: CatalogCard, bytes: Buffer,
@@ -296,7 +285,7 @@ async function briefSupplements(catalog: CatalogView, root: string, card: Catalo
   const decisions = catalog.cards.filter(candidate => candidate.parentId === rule.id && candidate.kind === 'task'
     && decisionPrefixes.some(prefix => candidate.title.startsWith(prefix)) && !candidate.deleted);
   if (questions.length || decisions.length) {
-    const ruleSections = questionSections(ruleBytes);
+    const ruleSections = sectionsOf(sourceLines(ruleBytes));
     const questionLines = questions.map(question => ruleMarkdown.slice(question.start, question.end));
     const sources: string[] = [];
     for (const section of ruleSections.filter(section => isQuestionSectionTitle(section.title))) {

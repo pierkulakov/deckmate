@@ -12,6 +12,21 @@ import { appendSectionLine, parseOpenQuestions } from '../../src/open-questions.
 import { resolveReference, shortReference } from '../../src/references.ts';
 import { commandMember, type CommandContext, type CommandOptions } from './types.ts';
 import { markerWords, writeMarker, type FormatLanguage } from '../../src/format-vocabulary.ts';
+import { defineText, serverText } from '../../server/i18n.ts';
+
+const messages = defineText({
+  questionDoesNotBlock: 'The saved question does not block the source Task or remove it from next. Coordinate with the person to take the Task out of execution, and pause dependent work until an answer is saved.',
+  noRule: (toIgnored: boolean) => 'The card has no rule Doc: the question is in its own Open questions, and no Decision task was created'
+    + (toIgnored ? ', so --to was not used' : '') + '. Tell the person directly, or put the Task under its rule Doc.',
+  decisionLinkMissing: 'The link to the decision task is not saved yet; repeat ask with the same text.',
+  linkedTaskMissing: 'The linked task is not in the catalog.',
+}, {
+  questionDoesNotBlock: 'Сохранённый вопрос сам не блокирует исходную Task и не убирает её из next. Согласуйте с человеком вывод Task из исполнения и приостановите зависимую работу до сохранения ответа.',
+  noRule: (toIgnored: boolean) => 'У карточки нет Doc с правилами: вопрос сохранён в её собственном разделе Open questions, Decision Task не создана'
+    + (toIgnored ? ', поэтому --to не использован' : '') + '. Сообщите человеку напрямую или поместите Task под Doc с правилами.',
+  decisionLinkMissing: 'Ссылка на Decision Task ещё не сохранена; повторите ask с тем же текстом.',
+  linkedTaskMissing: 'Связанной Task нет в каталоге.',
+});
 
 function appendQuestion(markdown: string, text: string, eol: string, formatLanguage: FormatLanguage): string {
   // 2026-11-05: the question is plain text, so punctuation cannot create headings, links or nested items.
@@ -47,8 +62,10 @@ export async function run(context: CommandContext, positionals: string[], option
   let questionIndex = questions.findIndex(question => question.text === text);
   const existing = questions[questionIndex];
   const link = (taskRef: string | null) => `/r/${taskRef ?? shortReference('c', target.id)}?source=${context.source}`;
+  const warnings = [serverText(messages).questionDoesNotBlock];
+  if (!rule) warnings.push(serverText(messages).noRule(options.has('to')));
   if (existing && (!rule || existing.taskRef)) {
-    console.log(JSON.stringify({ question: text, link: link(existing.taskRef), existing: true, writes: 0 }, null, 2));
+    console.log(JSON.stringify({ question: text, link: link(existing.taskRef), existing: true, writes: 0, warnings }, null, 2));
     return;
   }
   const memberId = options.get('to') ?? context.catalog.members?.find(member => member.kind === 'human')?.id;
@@ -58,7 +75,6 @@ export async function run(context: CommandContext, positionals: string[], option
     .find(Boolean) ?? context.catalog.decks.find(candidate => deckAcceptsCard(candidate.kind, 'task'));
   if (rule && member?.kind !== 'human') throw new Error('ask --to: the recipient must be a member with kind: human; add a person to the registry.');
   if (rule && !deck) throw new Error('ask: a decision needs a Task or Mixed deck.');
-  const warnings: string[] = [];
   const bytes = await readProjectMarkdown(context.root, target.path);
   const native = target.id.startsWith('card:');
   const newlineSource = native && !content.markdown.includes('\r\n') ? bytes.subarray(0, bytes.indexOf(10) + 1) : bytes;
@@ -106,13 +122,9 @@ export async function run(context: CommandContext, positionals: string[], option
     // A saved-stage warning is not proof that the final link exists; report only the persisted result.
     const fresh = await readCardContent(context.root, target.id);
     taskRef = parseOpenQuestions(fresh.markdown).questions?.find(question => question.text === text)?.taskRef ?? null;
-    if (!taskRef) warnings.push('The link to the decision task is not saved yet; repeat ask with the same text.');
+    if (!taskRef) warnings.push(serverText(messages).decisionLinkMissing);
     const catalog = await readProjectCatalog(context.root);
-    if (taskRef && !resolveReference(catalog.cards, 'c', taskRef)) warnings.push('The linked task is not in the catalog.');
-  } else {
-    // 2026-11-06: without a rule Doc nobody receives a Decision task, so the agent must not wait for one in silence.
-    warnings.push('The card has no rule Doc: the question is in its own Open questions, and no Decision task was created'
-      + (options.has('to') ? ', so --to was not used' : '') + '. Tell the person directly, or put the Task under its rule Doc.');
+    if (taskRef && !resolveReference(catalog.cards, 'c', taskRef)) warnings.push(serverText(messages).linkedTaskMissing);
   }
   console.log(JSON.stringify({ question: text, link: link(taskRef), existing: false, warnings }, null, 2));
 }

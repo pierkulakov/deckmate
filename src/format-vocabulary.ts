@@ -49,7 +49,7 @@ export function cardStateWords(state: CardState): string[] {
  * Markdown markers the format recognizes: the open-questions section of a Doc, the decision task title, a workflow assignment,
  * the section of recorded answers in a rule Doc, and the lessons section of a Journey step (the last two since 2026-11-05).
  */
-export const formatMarkers = {
+const formatMarkers = {
   openQuestions: { en: 'Open questions', ru: 'Открыто' },
   decision: { en: 'Decision:', ru: 'Решение:' },
   assignment: { en: 'Assignment:', ru: 'Задание:' },

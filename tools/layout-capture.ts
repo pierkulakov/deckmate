@@ -13,20 +13,21 @@
 // 2026-11-09: every CDP request has a deadline, error replies reject, and a dead socket fails all waiting calls —
 // a browser that stops answering ends the run instead of hanging it forever.
 import { spawn, type ChildProcess } from 'node:child_process';
-import { environmentValue } from '../server/environment.ts';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { findBrowser, missingBrowserReason } from './browser-environment.ts';
 
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
-/** The first Edge/Chrome on this machine; DECKMATE_BROWSER (or legacy FREETION_BROWSER) overrides the list. */
+/** The first Edge/Chrome on this machine; DECKMATE_BROWSER (or legacy FREETION_BROWSER, or a generic BROWSER)
+ * overrides the list. 2026-11-11: temporary wrapper over the one shared discovery (tools/browser-environment.ts);
+ * openHeadlessBrowser callers pass requireBrowser()'s result as browserPath. */
 export function findHeadlessBrowser(): string {
-  const browsers = [environmentValue('BROWSER'), 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe', 'C:/Program Files/Google/Chrome/Application/chrome.exe', '/usr/bin/google-chrome', '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'];
-  const browser = browsers.find(candidate => candidate && existsSync(candidate));
-  if (!browser) throw new Error('No Edge/Chrome found; set DECKMATE_BROWSER.');
+  const browser = findBrowser();
+  if (!browser) throw new Error(missingBrowserReason);
   return browser;
 }
 
@@ -48,8 +49,8 @@ type PageChannel = Omit<HeadlessPage, 'close'>;
 const REQUEST_TIMEOUT_MS = 30_000;
 
 /** Polls a CDP endpoint on 127.0.0.1:<port> until it exposes a page target.
- * 2026-11-09: a wall-clock deadline and a 2 s abort per /json/list request (the pattern of
- * tests/browser-target.ts, waitForPageTarget) — an endpoint that never answers fails fast. */
+ * 2026-11-09: a wall-clock deadline and a 2 s abort per /json/list request keep an endpoint that never answers
+ * from holding startup indefinitely. */
 async function pageTargetUrl(port: number, timeoutMs = 45_000, launchFailure?: () => Error | undefined): Promise<string> {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {

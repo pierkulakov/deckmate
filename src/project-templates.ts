@@ -4,11 +4,11 @@ import { defaultLang, defineText, type Lang } from './i18n.ts';
 import { validateProjectTag } from './project-tags.ts';
 import { parseTemplateLocales } from './template-locales.ts';
 
-export const projectTemplateIcons = ['layers', 'code', 'palette', 'gamepad', 'audio', 'bug', 'book', 'image', 'tasks', 'users', 'box', 'activity', 'swords', 'flag'] as const;
-export const projectTemplateRoles = ['design', 'art', 'animation', 'audio', 'code', 'qa', 'ui'] as const;
+const projectTemplateIcons = ['layers', 'code', 'palette', 'gamepad', 'audio', 'bug', 'book', 'image', 'tasks', 'users', 'box', 'activity', 'swords', 'flag'] as const;
+const projectTemplateRoles = ['design', 'art', 'animation', 'audio', 'code', 'qa', 'ui'] as const;
 // 2026-11-07: the keys of skills/deckmate/genres/*.md; the starter templates reference them, and tests check that every file exists.
-export const projectTemplateGenres = ['rts', 'tactics', 'shooter', '4x', 'rpg', 'platformer', 'action', 'adventure', 'puzzle', 'roguelike', 'simulation', 'sports', 'strategy', 'survival'] as const;
-export const projectTemplateCategories = ['games', 'software'] as const satisfies readonly ProjectTemplateCategory[];
+const projectTemplateGenres = ['rts', 'tactics', 'shooter', '4x', 'rpg', 'platformer', 'action', 'adventure', 'puzzle', 'roguelike', 'simulation', 'sports', 'strategy', 'survival'] as const;
+const projectTemplateCategories = ['games', 'software'] as const satisfies readonly ProjectTemplateCategory[];
 const spaceKinds: readonly SpaceKind[] = ['gdd', 'tasks', 'knowledge', 'qa', 'custom'];
 const identifierPattern = /^[a-z0-9-]{1,40}$/u;
 const colorPattern = /^#[0-9a-f]{6}$/iu;

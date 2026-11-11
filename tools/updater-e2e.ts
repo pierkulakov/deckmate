@@ -5,10 +5,11 @@ import assert from 'node:assert/strict';
 import { execFileSync, spawn, type ChildProcess } from 'node:child_process';
 import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:http';
-import { createServer as createProbe, type AddressInfo } from 'node:net';
+import { type AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { freePort } from './free-port.ts';
 import { connectToHeadlessBrowser, type HeadlessPage } from './layout-capture.ts';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -171,7 +172,7 @@ async function bounded<T>(promise: Promise<T>, what: string, ms = 15000): Promis
   }
 }
 
-// 2026-11-09: freePort/poll are private to desktop-smoke.ts; keep only the small setup primitives.
+// 2026-11-09: poll stays private to desktop-smoke.ts; the port probe is the shared tools/free-port.ts (2026-11-11).
 async function poll(condition: () => boolean | Promise<boolean>, what: string, ms = 20000): Promise<void> {
   const deadline = Date.now() + ms;
   while (Date.now() < deadline) {
@@ -180,17 +181,6 @@ async function poll(condition: () => boolean | Promise<boolean>, what: string, m
     await sleep(150);
   }
   throw new Error(`Timed out: ${what}`);
-}
-
-function freePort(): Promise<number> {
-  return new Promise((resolve, reject) => {
-    const probe = createProbe();
-    probe.once('error', reject);
-    probe.listen(0, '127.0.0.1', () => {
-      const { port } = probe.address() as AddressInfo;
-      probe.close(error => error ? reject(error) : resolve(port));
-    });
-  });
 }
 
 function powershell(args: string[]): string {

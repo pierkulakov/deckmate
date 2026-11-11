@@ -91,5 +91,4 @@ const result = {
 await mkdir(path.join(workspace, '.deckmate'), { recursive: true });
 await writeFile(path.join(workspace, '.deckmate', 'check-results.json'), JSON.stringify(result, null, 2) + '\n');
 console.log(JSON.stringify(result, null, 2));
-// 2026-11-04: editor browser probes were removed after selecting Milkdown for the client on 2026-11-03.
 console.log('PASS: parser, byte preservation and board oracle.');

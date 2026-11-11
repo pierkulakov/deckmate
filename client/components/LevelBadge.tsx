@@ -15,6 +15,8 @@ export interface LevelBadgeProps {
   refreshKey: number;
   /** Switch the top-bar tab, for «Show me» in a quest. */
   onNavigate: (view: AppView) => void;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
 }
 
 const text = defineText({
@@ -24,13 +26,15 @@ const text = defineText({
 });
 
 /** The top-bar level badge (2026-11-05): a small card with the level number and a thin bar to the next level.
- * Holds the quest engine, the panel's open state, the «+XP» toast and the level-up pop of the card itself. */
-export function LevelBadge({ snapshot, refreshKey, onNavigate }: LevelBadgeProps) {
+ * Holds the quest engine, the «+XP» toast and the level-up pop of the card itself. */
+export function LevelBadge({ snapshot, refreshKey, onNavigate, open, onOpenChange }: LevelBadgeProps) {
   const lang = useLang();
   const t = useText(text);
   const projectKey = snapshot.projectName;
   const badgeRef = useRef<HTMLButtonElement>(null);
-  const [panelOpen, setPanelOpen] = useState(false);
+  const [localOpen, setLocalOpen] = useState(false);
+  const panelOpen = open ?? localOpen;
+  const setPanelOpen = onOpenChange ?? setLocalOpen;
   // One toast per burst: several quests at once show the sum; a later burst adds to a still-visible toast.
   const [gain, setGain] = useState<{ total: number } | null>(null);
   // Counts level rises and never resets: the card <span> is never replaced (2026-11-05). A keyed remount
@@ -76,13 +80,13 @@ export function LevelBadge({ snapshot, refreshKey, onNavigate }: LevelBadgeProps
   }
 
   function togglePanel() {
-    if (panelOpen) { setPanelOpen(false); return; }
+    if (panelOpen) { closePanel(); return; }
     void refreshFacts(); // opening the panel is one of the facts refresh points (engine.ts)
     setPanelOpen(true);
   }
-  function closePanel() {
+  function closePanel(restoreFocus = true) {
     setPanelOpen(false);
-    moveFocus(badgeRef.current);
+    if (restoreFocus) moveFocus(badgeRef.current);
   }
 
   return <>

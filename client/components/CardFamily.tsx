@@ -1,6 +1,6 @@
 import { readStoredValue } from '../storage.ts';
 import { failureMessage } from '../failure-message.ts';
-import { useCallback, useEffect, useId, useMemo, useRef, useState, Fragment, type CSSProperties, type PointerEvent, type ReactNode } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useId, useMemo, useRef, useState, Fragment, type CSSProperties, type PointerEvent, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import { DndContext, DragOverlay, KeyboardSensor, PointerSensor, closestCenter, useSensor, useSensors, type CollisionDetection, type DragEndEvent } from '@dnd-kit/core';
@@ -8,7 +8,7 @@ import { SortableContext, arrayMove, sortableKeyboardCoordinates, useSortable, v
 import { ArrowDownUp, Check, Crown, Filter, Gauge, GripVertical, History as HistoryIcon, Layers, Link2, LoaderCircle, LockKeyhole, LockOpen, NotebookText, Plus, Search, X } from 'lucide-react';
 import type { DeckActivityEvent } from '../../src/activity-contracts.ts';
 import type { CatalogCard, CatalogMember, CatalogView } from '../../src/catalog-contracts.ts';
-import { dependencyCycle, openDependencies, waitingCards, type CardHistoryCreated, type SetCardDependenciesEdit } from '../../src/dependency-contracts.ts';
+import { dependencyCycle, openDependencies, waitingCards, type CardHistoryCreated } from '../../src/dependency-contracts.ts';
 import type { DataSource } from '../../src/workspace-contracts.ts';
 import { orderSubCards } from '../catalog-lookups.ts';
 import { cardOrdering, groupAndSortCards, laneOrderOf, type CardOrdering } from '../catalog-ordering.ts';
@@ -18,7 +18,7 @@ import { Button } from './ui/button.tsx';
 import { CardOwnerAvatar, CardQuickSettings, type CardQuickSettingsTab } from './CardQuickSettings.tsx';
 import { CardFamilyComposer, type CreateFamilyCardAction } from './CardFamilyComposer.tsx';
 import { DependencyStateBadge } from './DependencyWarning.tsx';
-import { CardTags, TagGlyphs, TagTitlePrefix } from './CardTags.tsx';
+import { CardTags, TagTitlePrefix } from './CardTags.tsx';
 import '../card-family.css';
 import '../card-dependencies.css';
 import '../card-history.css';
@@ -683,6 +683,8 @@ export function CardFamilyPanel({ hero, card, children, openedId, catalog, disab
   onReorder?: (cardIds: string[]) => Promise<boolean>;
   onRefresh?: () => Promise<void>;
 }) {
+  const [mobileTarget, setMobileTarget] = useState<HTMLElement | null>(null);
+  useLayoutEffect(() => { setMobileTarget(document.querySelector('.card-preview-mobile-family-content')); }, [openedId]);
   const [search, setSearch] = useState('');
   const t = useText(text);
   const lang = useLang();
@@ -885,7 +887,7 @@ export function CardFamilyPanel({ hero, card, children, openedId, catalog, disab
   if (activeChildren.length) emptyMessage = t.emptyFiltered;
   else if (canContainChildren) emptyMessage = t.emptyCreate;
 
-  return <aside ref={panel} className="card-family-panel" aria-label={t.panel}>
+  const content = <aside ref={panel} className="card-family-panel" aria-label={t.panel}>
     <div className="card-family-parent-heading"><h2>{hero?.kind === 'doc' ? t.parentDoc : t.heroCardHeading}</h2>
       {writable && onChooseParent && (!hero || hero.id !== card.id) && <div className="card-family-parent-actions">
         {parentPicker ? <Button type="button" variant="outline" size="sm" disabled={pending || !onCancelParentPicker} title={t.closeParent} onClick={onCancelParentPicker}>{t.cancel}</Button>
@@ -981,6 +983,7 @@ export function CardFamilyPanel({ hero, card, children, openedId, catalog, disab
     {ownerCard && onEdit && <CardQuickSettings key={ownerCard.id} card={catalog.cards.find(candidate => candidate.id === ownerCard.id) ?? ownerCard} catalog={catalog} source={source}
       tab={settingsTab} onTabChange={setSettingsTab} anchor={ownerTrigger.current} disabled={pending || !writable} onEdit={onEdit} onClose={closeOwner} />}
   </aside>;
+  return mobileTarget ? createPortal(content, mobileTarget) : content;
 }
 
 function SortableSubCard({ card, hero, current, deckName, disabled, writable, canReorder, showHandle, confirming, members = [], cardsById, catalog, onOpen, onOwner, onDependencies, onDetach, onConfirm, onCancel }: {
@@ -1035,7 +1038,7 @@ function SortableSubCard({ card, hero, current, deckName, disabled, writable, ca
             {card.deckId === null && <span className="card-family-row-no-deck">{t.noDeck}</span>}
             {(runName || milestoneLabel) && <span className="card-family-row-planning">
               {runName && <span title={runTitle}>{runName}</span>}
-              {runName && milestoneLabel && <span className="card-family-row-planning-separator" aria-hidden="true">·</span>}
+              {runName && milestoneLabel && <span aria-hidden="true">·</span>}
               {milestoneLabel && <span title={t.milestoneOf(milestoneLabel) + (milestone ? '' : ' · ' + t.notInRegistry)} aria-label={t.milestoneOf(milestoneLabel)}>{milestoneLabel}</span>}
             </span>}
             <DependencyGate card={card} cardsById={cardsById} disabled={disabled} onReveal={onDependencies} />
@@ -1061,6 +1064,7 @@ export function CardFamilyPopover({ hero, children: allChildren, disabled, membe
   onOpenChange?: (open: boolean) => void;
 }) {
   const [open, setOpen] = useState(false);
+  const [side, setSide] = useState<'right' | 'bottom'>('right');
   const t = useText(text);
   const lang = useLang();
   const trigger = useRef<HTMLButtonElement>(null);
@@ -1074,13 +1078,15 @@ export function CardFamilyPopover({ hero, children: allChildren, disabled, membe
   useEffect(() => { openChange.current?.(open && !unavailable); }, [open, unavailable]);
   useEffect(() => () => openChange.current?.(false), []);
   function select(card: CatalogCard) { setOpen(false); onOpen(card, trigger.current ?? undefined); }
-  return <DropdownMenu.Root modal={false} open={open && !unavailable} onOpenChange={setOpen}>
+  return <DropdownMenu.Root modal={false} open={open && !unavailable} onOpenChange={next => {
+    if (next) setSide(window.matchMedia('(max-width: 600px)').matches ? 'bottom' : 'right');
+    setOpen(next);
+  }}>
     <DropdownMenu.Trigger asChild><button ref={trigger} type="button" className="card-family-trigger" disabled={unavailable} aria-label={t.parentStrip(hero.title)}>
       <span className="card-material-glare" aria-hidden="true" />
-      {/* The Hero strip uses its tag emoji instead of a kind icon; the Sub Card's tags stay before its title. */}
-      <span><TagGlyphs tags={hero.tags} definitions={projectTags} />{hero.title}</span>
+      <span>{hero.title}</span>
     </button></DropdownMenu.Trigger>
-    <DropdownMenu.Portal><DropdownMenu.Content className="card-family-popover" side="right" align="start" sideOffset={6} collisionPadding={12} aria-label={t.subCardsOf(hero.title)}>
+    <DropdownMenu.Portal><DropdownMenu.Content className="card-family-popover" side={side} align="start" sideOffset={6} collisionPadding={12} aria-label={t.subCardsOf(hero.title)}>
       <DropdownMenu.Arrow className="card-family-popover-arrow" width={12} height={7} />
       <DropdownMenu.Item className="card-family-popover-hero" onSelect={() => select(hero)}>{hero.kind === 'doc' ? <NotebookText size={15} /> : <Crown size={15} />}<strong><TagTitlePrefix tags={hero.tags} definitions={projectTags} />{hero.title}</strong>{tasks.length > 0 && <progress value={accepted} max={tasks.length} aria-label={t.taskProgress(accepted, tasks.length)} />}<CardTags tags={hero.tags} definitions={projectTags} compact /></DropdownMenu.Item>
       <DropdownMenu.Label className="card-family-popover-label"><strong>{t.subCardsCount(children.length)}</strong><span>{t.acceptedCount(accepted)}</span></DropdownMenu.Label>

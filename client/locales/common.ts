@@ -13,7 +13,7 @@ const states = defineText({
   'wont-do': "Won't do",
 }, {
   inbox: 'Входящие',
-  'not-started': 'План',
+  'not-started': 'Не начата',
   discussing: 'Обсуждаем',
   'in-iteration': 'Итерация',
   started: 'В работе',

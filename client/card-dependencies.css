@@ -27,9 +27,9 @@
 .card-dependencies { margin-top: 12px; padding: 12px; border: 1px solid var(--line); border-radius: var(--glass-radius); background: var(--canvas); animation: family-reveal 150ms ease-out; }
 .card-dependencies-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 4px; }
 .card-dependencies-heading h3 { min-width: 0; margin: 0; font-size: 12px; font-weight: 600; line-height: 18px; overflow-wrap: anywhere; }
-.card-dependencies-note { margin: 4px 0 8px; color: var(--warning-ink); font-size: 11px; line-height: 1.5; }
+.card-dependencies-note { margin: 4px 0 8px; color: var(--warning-ink); font-size: 12px; line-height: 1.5; }
 .card-dependencies-group { margin-top: 10px; }
-.card-dependencies-group > h4 { display: flex; align-items: baseline; gap: 6px; margin: 0 0 6px; color: var(--muted); font-size: 10px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; }
+.card-dependencies-group > h4 { display: flex; align-items: baseline; gap: 6px; margin: 0 0 6px; color: var(--muted); font-size: 12px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; }
 .card-dependencies-group > h4 span { font: 10px 'Geist Mono', monospace; font-weight: 400; }
 .card-dependencies-rows { display: grid; gap: 4px; }
 .card-dependencies-row { display: flex; align-items: center; gap: 7px; min-width: 0; padding: 6px 8px; border: 1px solid var(--line); border-radius: var(--control-radius); background: var(--surface); }
@@ -39,10 +39,10 @@
 .card-dependencies-row .ui-button { flex-shrink: 0; width: 22px; height: 22px; min-height: 22px; padding: 3px; color: var(--muted); }
 .card-dependencies-row .ui-button:hover:not(:disabled) { color: var(--danger); background: var(--hover); }
 .dependency-state { display: inline-flex; flex-shrink: 0; align-items: center; }
-.dependency-state-none { color: var(--muted); font-size: 10px; }
-.card-dependencies-empty { margin: 0; color: var(--muted); font-size: 11px; line-height: 1.5; }
+.dependency-state-none { color: var(--muted); font-size: 12px; }
+.card-dependencies-empty { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.5; }
 .card-dependencies-add { margin-top: 6px; }
-.card-dependencies-add .ui-button { min-height: 25px; padding: 3px 8px; color: var(--muted); font-size: 11px; }
+.card-dependencies-add .ui-button { min-height: 25px; padding: 3px 8px; color: var(--muted); font-size: 12px; }
 .card-dependencies-search { display: flex; align-items: center; gap: 6px; margin-top: 6px; border: var(--control-hairline) solid var(--control-field-line); border-radius: var(--control-radius); padding: 0 8px; color: var(--muted); background: var(--control-field); }
 .card-dependencies-search:focus-within { border-color: var(--focus); }
 .card-dependencies-search input { width: 100%; min-width: 0; border: 0; outline: 0; padding: 7px 0; background: transparent; color: var(--ink); font: inherit; font-size: 12px; }
@@ -50,15 +50,15 @@
 .card-dependencies-option { display: flex; align-items: center; gap: 7px; min-width: 0; padding: 6px 8px; border: 1px solid var(--line); border-radius: var(--control-radius); background: var(--surface); color: var(--ink); text-align: left; font-size: 12px; cursor: pointer; }
 .card-dependencies-option:hover:not(:disabled) { border-color: var(--button-line); background: var(--hover); }
 .card-dependencies-option strong { flex: 1 1 auto; min-width: 0; font-weight: 400; overflow-wrap: anywhere; }
-.card-dependencies-option small { flex-shrink: 0; color: var(--muted); font-size: 10px; }
-.card-dependencies-notice { margin: 8px 0 0; padding: 7px 9px; border: 1px solid var(--line); border-radius: var(--glass-radius); background: var(--surface); color: var(--ink); font-size: 11px; line-height: 1.5; overflow-wrap: anywhere; }
+.card-dependencies-option small { flex-shrink: 0; color: var(--muted); font-size: 12px; }
+.card-dependencies-notice { margin: 8px 0 0; padding: 7px 9px; border: 1px solid var(--line); border-radius: var(--glass-radius); background: var(--surface); color: var(--ink); font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; }
 
 /* The warning lists unfinished incoming dependencies and offers Continue Anyway or Cancel. */
 .dependency-warning { display: flex; flex-direction: column; gap: 8px; margin: 10px 0 0; padding: 10px; border: 1px solid var(--danger); border-radius: var(--glass-radius); background: var(--warning-bg); color: var(--warning-ink); }
 .dependency-warning-title { display: flex; align-items: start; gap: var(--space-2); margin: 0; font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; }
 .dependency-warning-title svg { flex-shrink: 0; margin-top: 2px; }
 .dependency-warning-list { margin: 0; padding: 0; list-style: none; display: grid; gap: 4px; max-height: 150px; overflow: auto; scrollbar-width: thin; }
-.dependency-warning-list li { display: flex; flex-direction: column; gap: 2px; padding: 5px 7px; border-radius: var(--control-radius); background: color-mix(in srgb, var(--surface) 55%, transparent); font-size: 11px; line-height: 1.5; }
+.dependency-warning-list li { display: flex; flex-direction: column; gap: 2px; padding: 5px 7px; border-radius: var(--control-radius); background: color-mix(in srgb, var(--surface) 55%, transparent); font-size: 12px; line-height: 1.5; }
 .dependency-warning-list strong { font-weight: 500; overflow-wrap: anywhere; }
 .dependency-warning-list span { color: var(--muted); overflow-wrap: anywhere; }
 .dependency-warning-note { color: var(--muted); }
@@ -66,3 +66,9 @@
 .dependency-warning-actions .ui-button { min-height: var(--space-10); height: auto; white-space: normal; }
 
 @media (prefers-reduced-motion: reduce) { .card-dependencies { animation: none; } }
+@media (pointer: coarse) {
+  .card-family-card-tools .ui-button, .dependency-gate, .card-family-card-tools .dependency-gate, .card-family-row-details .dependency-gate,
+  .card-dependencies :is(button, input), .card-dependencies-add .ui-button { min-width: var(--control-target-touch); min-height: var(--control-target-touch); height: auto; }
+  .card-dependencies-row > .dependency-card-title { min-height: var(--control-target-touch); }
+  .card-dependencies-row .ui-button { width: var(--control-target-touch); height: var(--control-target-touch); min-height: var(--control-target-touch); }
+}

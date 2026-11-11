@@ -52,7 +52,12 @@ function optimisticCatalog(view: CatalogView, action: CatalogAction | null): Cat
   const state = action.action === 'set-card-state' ? readCardState(action.state) : undefined;
   if (action.action === 'set-card-state' && !state) return view;
   const patch = action.action === 'set-card-state' ? { state: state! } : { owner: action.owner, effort: action.effort, priority: action.priority };
-  return { ...view, cards: view.cards.map(card => card.id === action.cardId ? { ...card, ...patch } : card) };
+  return { ...view, cards: view.cards.map(card => {
+    if (card.id !== action.cardId) return card;
+    const updated = { ...card, ...patch };
+    if (card.kind === 'hero' && state === 'not-started') updated.state = null;
+    return updated;
+  }) };
 }
 
 // 2026-11-06: fetch rejects with a TypeError ("Failed to fetch") when the server is gone; the browser's own wording means
@@ -149,7 +154,7 @@ export class CatalogStore {
         this.publish({ error: null });
         if (previous && previous !== result) emitSignal({ type: 'catalog-observed', before: previous, after: result });
       } catch (failure) {
-        if (epoch !== this.writeEpoch) continue;
+        if (epoch !== this.writeEpoch || revision !== this.revision) continue;
         this.publish({ error: failureMessage(failure) });
         return;
       }

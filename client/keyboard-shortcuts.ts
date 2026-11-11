@@ -192,7 +192,7 @@ const digitCodes = ['Digit0', 'Digit1', 'Digit2', 'Digit3', 'Digit4', 'Digit5', 
 
 // Group order is General, screen-specific groups, then Search. Labels describe Deckmate behavior;
 // key combinations and contexts follow common board-tool shortcuts (2026-11-05).
-export const SHORTCUT_GROUPS: readonly ShortcutGroup[] = [
+const SHORTCUT_GROUPS: readonly ShortcutGroup[] = [
   {
     id: 'general',
     get title() { return textNow(text).general; },
@@ -444,7 +444,7 @@ export function resolveHoveredCardShortcut(event: KeyboardEvent, root: ParentNod
  * The callback checks card availability/pending state and returns true only after accepting the action.
  * Mutations still use the existing catalog API with hashes and its confirmation flows.
  */
-export function dispatchHoveredCardShortcut(event: KeyboardEvent, options: {
+function dispatchHoveredCardShortcut(event: KeyboardEvent, options: {
   root: ParentNode; writable: boolean; onShortcut: (shortcut: HoveredCardShortcut) => boolean;
 }): boolean {
   const shortcut = resolveHoveredCardShortcut(event, options.root);

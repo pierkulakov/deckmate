@@ -6,7 +6,7 @@
   display: flex; flex-direction: column; width: min(1100px, calc(100vw - 40px)); height: min(820px, calc(100dvh - 48px));
   overflow: hidden; animation: dialog-drop var(--motion-spring-firm) var(--ease-spring-firm); }
 /* The head wraps the tools under the title on a phone; .dialog-head carries the row, padding and hairline. */
-.project-template-header { flex-wrap: wrap; }
+.project-template-header { flex: 0 0 auto; flex-wrap: wrap; }
 .project-template-heading { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .project-template-heading p { margin: 0; max-width: 56ch; color: var(--muted); font-size: 12px; line-height: 16px; overflow-wrap: anywhere; }
 .project-template-tools { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); margin-inline-start: auto; }
@@ -39,7 +39,13 @@
 .project-template-counts { display: flex; flex-wrap: wrap; gap: 6px 14px; margin-top: auto; padding-top: 3px; color: var(--muted); font-size: 12px; line-height: 16px; }
 .project-template-counts > span { display: inline-flex; align-items: center; gap: 5px; }
 .project-template-details { font-size: 14px; line-height: 1.5; overflow-wrap: anywhere; }
+.project-template-details summary { margin: var(--space-4) 0 var(--space-2); color: var(--muted); font-size: 12px; line-height: 16px; cursor: pointer; }
 .project-template-details p { margin: 0 0 10px; }
+.project-template-note + .project-template-note { margin-top: var(--space-2); }
+.project-template-change { display: none; }
+.project-template-change.ui-button, .project-template-message.ui-button { font-size: 12px; line-height: 16px; }
+.project-template-message.ui-button { align-self: flex-start; }
+.project-template-plan > .project-template-error { margin-bottom: var(--space-3); }
 .project-template-note { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; }
 .project-template-plan-group { margin-top: var(--space-4); }
 .project-template-plan-group h4 { display: flex; align-items: center; gap: 6px; margin: 0 0 var(--space-2); font-size: 13px; font-weight: 600; }
@@ -51,8 +57,8 @@
 .project-template-plan-group li small { flex-shrink: 0; color: var(--muted); font-size: 12px; }
 .project-template-plan-group li p { margin: 4px 0 0; color: var(--muted); font-size: 12px; }
 /* The footer rows mirror .dialog-foot's metrics (client/surface.css) because they stack several rows, not one. */
-.project-template-footer { display: flex; flex-direction: column; flex: 0 0 auto; gap: var(--space-3); max-height: 40%;
-  overflow-y: auto; padding: var(--space-3) var(--space-4); border-top: 1px solid var(--line); }
+.project-template-footer { display: flex; flex-direction: column; flex: 0 0 auto; gap: var(--space-3);
+  padding: var(--space-3) var(--space-4); border-top: 1px solid var(--line); }
 .project-template-footer-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-3) var(--space-4); }
 .project-template-samples { display: flex; align-items: flex-start; gap: 10px; cursor: pointer; }
 .project-template-samples input { flex-shrink: 0; margin-top: 3px; }
@@ -60,7 +66,7 @@
 .project-template-samples small { display: block; margin-top: 3px; color: var(--muted); font-size: 12px; line-height: 1.35; }
 .project-template-actions { display: flex; flex-shrink: 0; gap: var(--space-2); }
 .project-template-error { margin: 0; padding: 10px 12px; border-radius: var(--glass-radius); background: var(--warning-bg); color: var(--warning-ink); font-size: 12px; line-height: 1.45; overflow-wrap: anywhere; }
-/* ErrorState's banner carries the page's own 20px bottom margin; inside a stacked footer it would open a gap. */
+/* ErrorState's page margin would add an extra gap inside the pane. */
 .project-template-state { margin: 0; }
 .project-template-stale { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; color: var(--warning-ink); font-size: 13px; }
 /* 2026-11-10: the first-project starting block is a flat panel like the pulse bar under it; Deck.tsx owns the markup,
@@ -91,9 +97,15 @@
   .project-template-tools { margin-inline-start: auto; }
   .project-template-shelf { flex: 1; }
   .project-template-body { display: flex; flex-direction: column; gap: var(--space-3); overflow-y: auto; }
-  .project-template-pane { overflow: visible; }
+  .project-template-pane { flex: 0 0 auto; min-height: auto; overflow: visible; }
   .project-template-pane > .glass-panel { min-height: 0; }
+  .project-template-change.ui-button { display: inline-flex; }
   .project-template-footer-row { align-items: stretch; flex-direction: column; gap: var(--space-3); }
   .project-template-actions { justify-content: flex-end; }
   .project-template-start { align-items: flex-start; flex-direction: column; gap: var(--space-3); padding: var(--space-4); }
+}
+@media (pointer: coarse) {
+  .project-template-shelves.control-segmented > .project-template-shelf { min-width: var(--control-target-touch, 44px); min-height: var(--control-target-touch, 44px); }
+  .project-template-change.ui-button, .project-template-message.ui-button { min-height: var(--control-target-touch, 44px); }
+  .project-template-details summary { min-height: var(--control-target-touch, 44px); }
 }

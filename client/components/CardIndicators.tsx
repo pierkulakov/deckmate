@@ -2,15 +2,14 @@ import type { CSSProperties, ReactNode } from 'react';
 import { Bell, Hand as HandIcon, Link2, Trash2 } from 'lucide-react';
 import type { CatalogCard, CatalogMember, CatalogView } from '../../src/catalog-contracts.ts';
 import { localIsoDate } from '../../src/catalog-hand.ts';
+import { openDependencies } from '../../src/dependency-contracts.ts';
 import type { CardTileLookups } from '../card-tile-equality.ts';
-import { defineText, locale, useLang, useText } from '../i18n.ts';
+import { currentLang, defineText, formatNumber, locale, useLang, useText, type Lang } from '../i18n.ts';
 import { stateLabel } from '../locales/common.ts';
 import { workdaysUntil } from '../planning-metrics.ts';
 import { runLabel } from '../run-label.ts';
+import { memberForOwner } from './CardOwnerAvatar.tsx';
 import '../card-indicators.css';
-
-// server/card-options.ts projects these planning fields onto CatalogCard; the shared bulk type does not include them yet.
-type CardWithHandOrder = CatalogCard & { handOrder?: Record<string, number> };
 
 type DueTone = 'urgent' | 'soon' | 'later';
 type RunPhase = 'past' | 'current' | 'future' | 'unknown';
@@ -31,6 +30,10 @@ const text = defineText({
   cardProperties: 'Card properties',
   deleted: 'In Trash',
   due: (date: string, label: string) => `Due: ${date} · ${label}`,
+  notStarted: 'Not started', archived: 'Archived',
+  waiting: (count: string) => `Waiting: ${count}`,
+  questions: (count: string) => `Questions: ${count}`,
+  dueShort: (date: string) => `Due ${date}`, dueToday: 'Today', dueOverdue: 'Overdue',
 }, {
   past: 'прошлый', current: 'текущий', future: 'будущий', unknown: 'нет в реестре',
   overdue: 'просрочен', today: 'сегодня',
@@ -48,6 +51,10 @@ const text = defineText({
   cardProperties: 'Свойства карточки',
   deleted: 'В корзине',
   due: (date: string, label: string) => `Срок: ${date} · ${label}`,
+  notStarted: 'Не начата', archived: 'В архиве',
+  waiting: (count: string) => `Ждёт ${count}`,
+  questions: (count: string) => `Вопросов: ${count}`,
+  dueShort: (date: string) => `До ${date}`, dueToday: 'Сегодня', dueOverdue: 'Просрочено',
 });
 
 function parseDay(iso: string): Date {
@@ -62,8 +69,52 @@ function dueDetails(iso: string, today: string, t: typeof text.en, formatDate: (
   return { tone: 'later', label: formatDate(iso) };
 }
 
+/** Lifecycle and attention share one place; the accessible name also retains the underlying workflow and full date. */
+export function cardFaceStatus(card: CatalogCard, lookups: CardTileLookups, lang: Lang = currentLang(), today = localIsoDate()) {
+  const t = text[lang];
+  const state = card.state ?? 'not-started';
+  let workflow = '';
+  if (card.kind === 'task') workflow = state === 'not-started' ? t.notStarted : stateLabel(state, lang);
+  if (card.deleted || card.archived) {
+    const label = card.deleted ? t.deleted : t.archived;
+    return { label, workflow, attention: true, questions: '', due: '', dueTitle: '', urgent: false, accessible: [label, workflow].filter(Boolean).join(', ') };
+  }
+  const blocked = openDependencies([...new Set(card.dependsOn ?? [])], lookups.cardById).length;
+  const questionCount = card.kind === 'doc' ? card.openQuestions?.length ?? 0 : 0;
+  const questions = questionCount ? t.questions(formatNumber(questionCount, 0, lang)) : '';
+  let label = workflow;
+  if (questions) label = questions;
+  if (blocked) label = t.waiting(formatNumber(blocked, 0, lang));
+  let due = '', dueTitle = '', urgent = false;
+  if (card.kind === 'task' && card.dueDate && state !== 'done' && state !== 'wont-do') {
+    const formatDate = (iso: string) => new Intl.DateTimeFormat(locale(lang), { year: 'numeric', month: '2-digit', day: '2-digit' }).format(parseDay(iso));
+    const details = dueDetails(card.dueDate, today, t, formatDate);
+    dueTitle = t.due(formatDate(card.dueDate), details.label);
+    urgent = details.tone === 'urgent';
+    if (card.dueDate < today) due = t.dueOverdue;
+    else if (card.dueDate === today) due = t.dueToday;
+    else if (details.tone === 'soon') due = t.dueShort(new Intl.DateTimeFormat(locale(lang), { month: '2-digit', day: '2-digit' }).format(parseDay(card.dueDate)));
+  }
+  return { label, workflow, attention: Boolean(blocked || questions), questions: blocked ? questions : '', due, dueTitle, urgent,
+    accessible: [...new Set([workflow, label, questions, dueTitle].filter(Boolean))].join(', ') };
+}
+
+export function CardFaceStatus({ status, hideWorkflow = false, children }: {
+  status: ReturnType<typeof cardFaceStatus>; hideWorkflow?: boolean; children?: ReactNode;
+}) {
+  const label = hideWorkflow && !status.attention ? '' : status.label;
+  if (!label && !status.due && !children) return null;
+  return <span className="card-face-status">
+    <span className="card-face-status-row">
+      {label && <span className="card-face-state" title={status.accessible}>{label}</span>}{!status.due && children}
+    </span>
+    {status.questions && <span className="card-face-state">{status.questions}</span>}
+    {status.due && <span className="card-face-status-row"><span className={'card-face-due' + (status.urgent ? ' is-urgent' : '')} title={status.dueTitle}>{status.due}</span>{children}</span>}
+  </span>;
+}
+
 function RunGlyph() {
-  return <svg className="card-run-glyph" viewBox="0 0 16 16" aria-hidden="true">
+  return <svg viewBox="0 0 16 16" aria-hidden="true">
     <rect className="card-run-body" x="2" y="2.5" width="12" height="11" rx="2.5" />
     <path className="card-run-detail" d="M2.5 6h11M5 1.8v2M11 1.8v2" />
   </svg>;
@@ -87,12 +138,14 @@ function PlanningIndicator({ tab, className, title, actionLabel, style, disabled
     onPointerDown={event => event.stopPropagation()} onClick={event => { event.stopPropagation(); onOpen(event.currentTarget); }}>{children}</button>;
 }
 
-export function CardIndicators({ card, lookups, members, catalog, currentMemberId, variant, onQuickSettings, quickSettingsDisabled, onDependencies, dependenciesDisabled }: {
+export function CardIndicators({ card, lookups, members, catalog, currentMemberId, handPositions, variant, onQuickSettings, quickSettingsDisabled, onDependencies, dependenciesDisabled }: {
   card: CatalogCard;
   lookups: CardTileLookups;
   members: CatalogMember[];
   catalog?: Pick<CatalogView, 'runs' | 'milestones'>;
   currentMemberId?: string;
+  /** 2026-11-11: one-based positions from the visible Hands; persisted handOrder is a sparse sorting key. */
+  handPositions?: Readonly<Record<string, number>>;
   variant: 'tile' | 'table' | 'preview';
   onQuickSettings?: (tab: 'run' | 'milestone', anchor: HTMLButtonElement) => void;
   quickSettingsDisabled?: boolean;
@@ -101,20 +154,20 @@ export function CardIndicators({ card, lookups, members, catalog, currentMemberI
 }) {
   const t = useText(text);
   const lang = useLang();
+  if (variant === 'tile') return <CardFaceStatus status={cardFaceStatus(card, lookups, lang)} />;
   const numberFormat = new Intl.NumberFormat(locale(lang));
   const dateFormat = new Intl.DateTimeFormat(locale(lang), { year: 'numeric', month: '2-digit', day: '2-digit' });
   const formatDate = (iso: string) => dateFormat.format(parseDay(iso));
   const today = localIsoDate();
-  const handOrder = (card as CardWithHandOrder).handOrder ?? {};
   const handMemberIds = [...new Set(card.handMemberIds ?? [])];
   const defaultMemberId = currentMemberId ?? members.find(member => member.kind === 'human')?.id ?? members[0]?.id ?? '';
-  const ownerMemberId = members.find(member => member.label === card.owner)?.id ?? '';
+  const ownerMemberId = memberForOwner(card.owner, members)?.id ?? '';
   let primaryHandId = handMemberIds.includes(defaultMemberId) ? defaultMemberId : '';
   if (!primaryHandId && handMemberIds.includes(ownerMemberId)) primaryHandId = ownerMemberId;
   if (!primaryHandId && handMemberIds.length) {
     primaryHandId = handMemberIds.reduce((best, memberId) => {
-      const bestSlot = handOrder[best] ?? Number.MAX_SAFE_INTEGER;
-      const candidateSlot = handOrder[memberId] ?? Number.MAX_SAFE_INTEGER;
+      const bestSlot = handPositions?.[best] ?? Number.MAX_SAFE_INTEGER;
+      const candidateSlot = handPositions?.[memberId] ?? Number.MAX_SAFE_INTEGER;
       return candidateSlot < bestSlot ? memberId : best;
     });
   }
@@ -124,7 +177,7 @@ export function CardIndicators({ card, lookups, members, catalog, currentMemberI
   const isAccepted = (cardId: string) => lookups.cardById.get(cardId)?.state === 'done';
   const incomingAccepted = incoming.filter(isAccepted).length;
   const outgoingAccepted = outgoing.filter(isAccepted).length;
-  const incomingOpen = incoming.length - incomingAccepted;
+  const incomingOpen = openDependencies(incoming, lookups.cardById).length;
   const hasGate = incoming.length > 0 || outgoing.length > 0;
   const run = catalog?.runs?.find(candidate => candidate.id === card.run);
   const milestone = catalog?.milestones?.find(candidate => candidate.id === card.milestone);
@@ -143,11 +196,12 @@ export function CardIndicators({ card, lookups, members, catalog, currentMemberI
     if (!run.configurationId && run.goal) runTitle += ` · ${run.goal}`;
   }
   const due = card.dueDate ? dueDetails(card.dueDate, today, t, formatDate) : null;
-  const primarySlot = handOrder[primaryHandId];
+  const primarySlot = handPositions?.[primaryHandId];
   const handTitle = t.hands(handMemberIds.map(memberId => {
     const label = members.find(member => member.id === memberId)?.label ?? memberId;
-    const slot = handOrder[memberId];
-    return `${label} · ${slot === undefined ? t.noSlot : t.slot(numberFormat.format(slot + 1))}`;
+    if (!handPositions) return label;
+    const slot = handPositions[memberId];
+    return `${label} · ${slot === undefined ? t.noSlot : t.slot(numberFormat.format(slot))}`;
   }).join('; '));
   const milestoneCounts = milestone ? lookups.milestoneProgress.get(milestone.id) : undefined;
   const milestoneTitle = milestone
@@ -166,7 +220,7 @@ export function CardIndicators({ card, lookups, members, catalog, currentMemberI
       onOpen={onQuickSettings ? anchor => onQuickSettings('milestone', anchor) : undefined}><MilestoneGlyph filled={Boolean(milestone && milestone.date >= today)} /></PlanningIndicator>}
     {primaryHandId && <span className={`card-indicator card-hand-indicator${primaryHandId === defaultMemberId ? ' is-mine' : ' is-foreign'}`} role="img" title={handTitle} aria-label={handTitle}>
       <HandIcon fill={primaryHandId === defaultMemberId ? 'currentColor' : 'none'} aria-hidden="true" />
-      {primarySlot !== undefined && <strong>{numberFormat.format(primarySlot + 1)}</strong>}
+      {primarySlot !== undefined && <strong>{numberFormat.format(primarySlot)}</strong>}
     </span>}
     {hasGate && <Gate type={onDependencies ? 'button' : undefined} disabled={onDependencies ? dependenciesDisabled : undefined} onClick={onDependencies} className={`card-indicator card-gate-indicator${incomingOpen > 0 ? ' is-blocked' : ''}${onDependencies ? ' card-indicator-button' : ''}`} role={onDependencies ? undefined : 'img'} title={gateTitle} aria-label={gateTitle}>
       <span className="card-gate-numbers"><span>{dependencyCount(incoming.length, numberFormat)}</span><Link2 aria-hidden="true" /><span>{dependencyCount(outgoing.length, numberFormat)}</span></span>

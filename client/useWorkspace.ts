@@ -65,7 +65,10 @@ export function useWorkspace() {
     }
   }, []);
 
-  useEffect(() => { setFailure(null); setSnapshot(null); void refresh(source); }, [source, refresh]);
+  useEffect(() => {
+    setFailure(null); setSnapshot(null); void refresh(source);
+    return () => { generation.current += 1; };
+  }, [source, refresh]);
   useEffect(() => {
     if (previousLang.current === lang) return;
     previousLang.current = lang;

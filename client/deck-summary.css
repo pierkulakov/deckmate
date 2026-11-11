@@ -16,47 +16,48 @@
 .deck-overview-intro.has-description p { padding-left: var(--space-3); border-left: 2px solid color-mix(in srgb, var(--overview-accent, var(--accent)) 62%, var(--line)); }
 .deck-overview-intro p { flex: 1; min-width: 0; margin: 0; font-size: 14px; line-height: 20.6px; white-space: pre-wrap; overflow-wrap: anywhere; }
 .deck-overview .deck-overview-collapse { flex-shrink: 0; width: 30px; height: 30px; padding: 4px; color: var(--muted); }
-/* Deck metrics show six 19×20 state chips with 6 px color bars, priority icons with 3 px share bars (up to 32 px), effort and completion, a 5 px progress bar, card count and owner columns above avatars. */
-.deck-overview-stats { --overview-track: var(--line); --overview-bar: var(--muted); font-variant-numeric: tabular-nums; }
+/* 2026-11-11: labels carry meaning on touch and without color; bars only supplement the counts. */
+.deck-overview-stats { --overview-track: var(--line); font-variant-numeric: tabular-nums; }
 .deck-overview .deck-overview-empty { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.6; }
 .deck-overview-empty p { margin: 0; }
-.deck-overview-row { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 12px; }
-.deck-overview-states { display: flex; gap: 5px; }
+.deck-overview-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: var(--space-4); }
+.deck-overview-states { display: grid; gap: var(--space-2); }
 /* 2026-11-07: the state bars share the status badge tokens from styles.css (previously a private palette without a dark
    branch); the accepted progress takes the accepted-metal both themes already use for accepted counters. */
-.deck-overview-state { --state-color: var(--status-planned); display: flex; flex-direction: column; width: 19px; }
-.deck-overview-state strong { display: grid; place-items: center; height: 20px; color: var(--ink); font: 500 11px/16px 'Geist Mono', monospace; }
-.deck-overview-state.is-empty strong { color: var(--muted); font-weight: 400; }
-.deck-overview-state::after { content: ""; height: 6px; border-radius: 1px; background: var(--state-color); }
+.deck-overview-state { --state-color: var(--status-planned); display: grid; grid-template-columns: 6px minmax(0, 1fr) auto; align-items: center; gap: var(--space-2); font-size: 13px; line-height: 18px; }
+.deck-overview-state strong { color: var(--ink); font: 500 12px/18px 'Geist Mono', monospace; }
+.deck-overview-state.is-empty { color: var(--muted); }
+.deck-overview-state::before { content: ""; width: 6px; height: 6px; border-radius: var(--control-radius); background: var(--state-color); }
 .deck-overview-state.state-accepted { --state-color: var(--status-accepted); }
 .deck-overview-state.state-review { --state-color: var(--status-review); }
 .deck-overview-state.state-working { --state-color: var(--status-working); }
 .deck-overview-state.state-iteration { --state-color: var(--status-iteration); }
 .deck-overview-state.state-discuss { --state-color: var(--status-discuss); }
 .deck-overview-state.state-cancelled { --state-color: var(--status-cancelled); }
-.deck-overview-priorities { display: flex; gap: 22px; padding-top: 2px; color: var(--muted); }
-.deck-overview-priority { display: flex; flex-direction: column; align-items: center; gap: 4px; min-width: 18px; }
-.deck-overview-priority > i { display: block; height: 3px; border-radius: var(--control-radius); background: var(--overview-bar); }
-.deck-overview-effort { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 18px; color: var(--ink); font-size: 12px; font-weight: 500; }
+.deck-overview-priorities { display: grid; align-content: start; gap: var(--space-2); color: var(--muted); }
+.deck-overview-priority { display: grid; grid-template-columns: 16px minmax(0, 1fr) auto; align-items: center; gap: var(--space-2); font-size: 13px; line-height: 18px; }
+.deck-overview-priority strong, .deck-overview-owner strong { color: var(--ink); font: 500 12px/18px 'Geist Mono', monospace; }
+.deck-overview-effort { display: flex; align-items: center; gap: var(--space-2); margin-top: var(--space-4); color: var(--ink); font-size: 13px; font-weight: 500; }
 .deck-overview-effort > span { display: inline-flex; align-items: center; gap: 4px; }
 .deck-overview-effort svg { color: var(--muted); }
-.deck-overview-effort strong { font: 500 11px/16px 'Geist Mono', monospace; }
+.deck-overview-effort strong, .deck-overview-accepted strong { font: 500 12px/18px 'Geist Mono', monospace; }
+.deck-overview-accepted { margin: var(--space-2) 0 0; font-size: 13px; line-height: 18px; }
 .deck-overview-progress { display: block; appearance: none; width: 100%; height: 5px; margin: 6px 0 0; border: 0; border-radius: var(--control-radius); overflow: hidden; background: var(--overview-track); }
 .deck-overview-progress::-webkit-progress-bar { background: var(--overview-track); border-radius: var(--control-radius); }
 .deck-overview-progress::-webkit-progress-value { background: var(--accepted-metal); border-radius: var(--control-radius); }
 .deck-overview-progress::-moz-progress-bar { background: var(--accepted-metal); border-radius: var(--control-radius); }
 .deck-overview-count { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 8px; color: var(--ink); font-size: 12px; }
 .deck-overview-count svg { color: var(--muted); }
-.deck-overview-count strong { font-weight: 700; }
+.deck-overview-count strong { font-weight: 600; }
 .deck-overview-count > span { color: var(--muted); }
-.deck-overview-owners { display: flex; align-items: flex-end; gap: 6px; min-height: 104px; margin: 16px -16px 0; padding: 16px 16px 0; border-top: 1px solid var(--glass-seam); overflow-x: auto; scrollbar-width: thin; }
-.deck-overview-owner { display: flex; flex-direction: column; align-items: center; gap: 4px; flex: 0 0 auto; }
-.deck-overview-owner > i { display: block; width: 4px; border-radius: var(--control-radius); background: var(--overview-bar); }
+.deck-overview-owners { display: grid; gap: var(--space-2); margin-top: var(--space-4); padding-top: var(--space-4); border-top: 1px solid var(--glass-seam); }
+.deck-overview-owner { display: grid; grid-template-columns: 24px minmax(0, 1fr) auto; align-items: center; gap: var(--space-2); min-width: 0; font-size: 13px; line-height: 18px; }
+.deck-overview-owner > span { overflow-wrap: anywhere; }
 .deck-overview-owner .card-owner-avatar { width: 24px; height: 24px; }
 .deck-overview-unassigned { display: grid; place-items: center; width: 24px; height: 24px; border-radius: 50%; background: var(--ground); color: var(--ink); font-size: 12px; font-weight: 500; }
-.deck-overview-note { margin: 10px 0 0; color: var(--muted); font-size: 11px; line-height: 1.5; }
+.deck-overview-note { margin: 10px 0 0; color: var(--muted); font-size: var(--text-help-size); line-height: var(--text-help-leading); }
 .deck-overview-tracks { display: flex; flex-wrap: wrap; gap: 4px 10px; }
-.deck-overview-tracks button { display: inline-flex; align-items: center; gap: 5px; max-width: 100%; padding: 4px 0; border: 0; border-radius: var(--control-radius); background: none; color: var(--muted); font-size: 11px; font-weight: 500; letter-spacing: .01em; text-align: left; }
+.deck-overview-tracks button { display: inline-flex; align-items: center; gap: 5px; max-width: 100%; padding: 4px 0; border: 0; border-radius: var(--control-radius); background: none; color: var(--muted); font-size: var(--text-help-size); font-weight: 500; letter-spacing: .01em; text-align: left; }
 .deck-overview-tracks button svg { flex-shrink: 0; }
 .deck-overview-tracks button span { overflow-wrap: anywhere; }
 /* 2026-11-06: the panel scrolls and clips 2 px left of the tracks; a ring at offset 0 stays whole. */
@@ -72,4 +73,8 @@
 @media (hover: hover) { .deck-overview-files button:hover:not(:disabled) { color: var(--ink); text-decoration: underline; text-underline-offset: 3px; } }
 @media (max-width: 760px) {
   .deck-overview { position: static; max-height: none; overflow: visible; margin-bottom: 12px; padding: 0 0 16px; }
+}
+@media (pointer: coarse) {
+  .deck-overview :is(button, summary) { min-height: var(--control-target-touch); min-width: var(--control-target-touch); }
+  .deck-overview-tracks, .deck-overview-files > div { gap: var(--space-2); }
 }

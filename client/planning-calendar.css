@@ -24,12 +24,12 @@
 .planning-calendar-panel-header h2 { flex: 1; min-width: 0; overflow-wrap: anywhere; }
 .planning-calendar-setup { min-height: 24px; display: inline-flex; align-items: center; gap: 4px; height: 24px; padding: 0 8px; font-size: 12px; line-height: 16px; cursor: pointer; }
 .planning-calendar-close { display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; width: 24px; height: 24px; min-height: 24px; padding: 0; cursor: pointer; }
-.planning-calendar-close:hover:not(:disabled) { background: var(--hover); }
+@media (hover: hover) { .planning-calendar-close:hover:not(:disabled) { background: var(--hover); } }
 /* 2026-11-06: plain header buttons press 1px like the shared .ui-button; translate leaves any transform alone. */
 .planning-calendar-setup:active:not(:disabled), .planning-calendar-close:active:not(:disabled) { translate: 0 1px; }
 .planning-calendar-panel .error-banner { margin: 8px 12px; }
 .planning-calendar-years { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-gutter: stable; }
-.planning-calendar-year h3 { display: flex; align-items: flex-end; height: 80px; margin: 0; padding: 12px 16px; color: var(--calendar-header-ink); font-size: 22px; font-weight: 700; line-height: 28px; }
+.planning-calendar-year h3 { display: flex; align-items: flex-end; height: 64px; margin: 0; padding: var(--space-3) var(--space-4); color: var(--calendar-header-ink); font: 600 22px/28px 'Geist Mono', monospace; }
 .planning-calendar-months { display: grid; grid-template-columns: 1fr 1fr; gap: 1px; padding-bottom: 1px; }
 .planning-calendar-month { display: flex; justify-content: center; padding: 16px 0; background: var(--calendar-month); box-shadow: 0 0 0 1px var(--calendar-ring); }
 .planning-calendar-month.is-past { background: var(--calendar-month-past); box-shadow: 0 0 0 1px var(--calendar-ring-past); }
@@ -40,8 +40,8 @@
 .planning-calendar-month.is-current h4 { color: var(--calendar-name-current); }
 .planning-calendar-month table { width: 264px; margin-left: -19px; border-collapse: collapse; table-layout: fixed; }
 .planning-calendar-month thead td { width: 19px; }
-.planning-calendar-month thead th { height: 10px; padding: 0 0 0; color: var(--calendar-weekday); font-size: 10px; font-weight: 700; line-height: 10px; text-align: center; text-transform: uppercase; }
-.planning-calendar-month tbody th { padding: 0 8px 0 0; color: var(--calendar-week-number); font-size: 10px; font-weight: 700; line-height: 10px; text-align: right; opacity: var(--calendar-week-number-fade); font-variant-numeric: tabular-nums; }
+.planning-calendar-month thead th { height: 16px; padding: 0; color: var(--calendar-weekday); font-size: 12px; font-weight: 600; line-height: 16px; text-align: center; }
+.planning-calendar-month tbody th { padding: 0 6px 0 0; color: var(--calendar-week-number); font: 12px/16px 'Geist Mono', monospace; text-align: right; opacity: var(--calendar-week-number-fade); font-variant-numeric: tabular-nums; }
 .planning-calendar-month td { position: relative; width: 35px; height: 35px; padding: 0; color: var(--calendar-day); font-size: 14px; line-height: 35px; text-align: center; font-variant-numeric: tabular-nums; }
 .planning-calendar-month tr.is-current-week > td { background: var(--calendar-week-band); }
 /* 2026-11-06: 35 px cells land on half pixels at 150 % zoom and every other seam showed the month through the band;
@@ -51,14 +51,19 @@
 .planning-calendar-month td.is-today { color: var(--calendar-today); font-weight: 700; }
 .planning-calendar-day { position: relative; display: block; width: 100%; height: 100%; padding: 0; border: 0; border-radius: 4px; background: transparent; color: inherit; font: inherit; line-height: inherit; }
 button.planning-calendar-day { cursor: pointer; }
-.planning-calendar-add { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; border-radius: 4px; background: var(--calendar-add); color: var(--calendar-add-ink); opacity: 0; transition: opacity var(--motion-feedback) var(--ease-out); }
-button.planning-calendar-day:hover:not(:disabled) .planning-calendar-add, button.planning-calendar-day:focus-visible .planning-calendar-add { opacity: 1; }
+.planning-calendar-add { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; border-radius: 4px; background: var(--calendar-add); color: var(--calendar-add-ink); opacity: 0; transition: opacity var(--control-hover-duration) ease-out; }
+@media (hover: hover) { button.planning-calendar-day:hover:not(:disabled) .planning-calendar-add { opacity: 1; } }
+button.planning-calendar-day:focus-visible .planning-calendar-add { opacity: 1; }
 button.planning-calendar-day:disabled { cursor: wait; }
 /* Milestone dates are tiles in the Milestone's color with a 16/700 number: light, or dark --hero-ink on light colors. */
-.planning-calendar-milestone { display: block; width: 35px; height: 35px; padding: 0; border: 0; border-radius: 3px; color: var(--calendar-tile-ink); font-size: 16px; font-weight: 700; line-height: 1.1; text-shadow: 0 1px 1px color-mix(in srgb, var(--sidebar) 60%, transparent); cursor: pointer; transition: filter var(--motion-feedback) var(--ease-out); }
-.planning-calendar-milestone.is-dark-ink { color: var(--hero-ink); text-shadow: none; }
-.planning-calendar-milestone:hover:not(:disabled) { filter: brightness(1.12); }
-.planning-calendar-milestone:active:not(:disabled) { filter: brightness(.96); }
+.planning-calendar-milestone { position: relative; display: block; width: 35px; height: 35px; padding: 0; border: 0; border-radius: var(--control-radius); color: var(--calendar-tile-ink); font: 600 16px/1.1 'Geist Mono', monospace; cursor: pointer; }
+.planning-calendar-milestone.is-dark-ink { color: var(--hero-ink); }
+/* 2026-11-11: arbitrary saved colors need a full-contrast fallback where the brand inks both miss 4.5:1. */
+.planning-calendar-milestone.is-contrast-dark { color: oklch(from var(--hero-ink) 0 0 h); }
+.planning-calendar-milestone.is-contrast-light { color: oklch(from var(--overlay-ink) 1 0 h); }
+@media (hover: hover) { .planning-calendar-milestone:hover:not(:disabled) { box-shadow: inset 0 0 0 2px currentColor; } }
+.planning-calendar-milestone:active:not(:disabled) { translate: 0 1px; }
+.planning-calendar-cluster-count { position: absolute; right: -3px; top: -5px; min-width: 16px; padding: 1px 3px; border-radius: var(--control-radius); background: var(--canvas); color: var(--ink); font: 12px/16px 'Geist Mono', monospace; }
 .planning-calendar-milestone:disabled { cursor: wait; }
 .planning-calendar-milestone.is-movable { cursor: grab; touch-action: none; }
 /* A carried Milestone: the tile stays as a faint mark at its old day, a solid copy follows the pointer above everything,
@@ -73,11 +78,11 @@ button.planning-calendar-day:disabled { cursor: wait; }
 .planning-milestone-card { z-index: 130; display: flex; flex-direction: column; gap: 12px; width: 340px; max-width: calc(100vw - 24px); padding: 12px 0 0; border-radius: 4px; background: var(--planning-popover); color: var(--ink); box-shadow: var(--deck-settings-shadow, var(--shadow)); font-size: 12px; }
 .planning-milestone-card > section { display: flex; flex-direction: column; gap: 8px; padding: 0 12px; }
 .planning-milestone-card header { display: flex; align-items: center; gap: 8px; min-width: 0; }
-.planning-milestone-card header strong { flex: 1; min-width: 0; overflow: hidden; font-size: 14px; text-overflow: ellipsis; white-space: nowrap; }
-.planning-milestone-card-tag { flex-shrink: 0; padding: 2px 6px; border-radius: 3px; background: var(--planning-popover-band); color: var(--muted); font-size: 11px; font-weight: 700; }
+.planning-milestone-card header strong { flex: 1; min-width: 0; font-size: 14px; overflow-wrap: anywhere; }
+.planning-milestone-card-tag { flex-shrink: 0; padding: 2px 6px; border-radius: var(--control-radius); background: var(--planning-popover-band); color: var(--muted); font-size: 12px; font-weight: 500; }
 .planning-milestone-card p { display: flex; align-items: baseline; gap: 8px; margin: 0; }
-.planning-milestone-card p > span { color: var(--muted); font-size: 11px; font-weight: 700; text-transform: uppercase; }
-.planning-milestone-card p > small { margin-left: auto; color: var(--muted); font-size: 11px; }
+.planning-milestone-card p > span { color: var(--muted); font-size: 12px; }
+.planning-milestone-card p > small { margin-left: auto; color: var(--muted); font-size: 12px; }
 .planning-milestone-card .planning-progress { border-radius: 3px; }
 .planning-milestone-card-count { color: var(--muted); }
 .planning-milestone-card > footer { padding: 8px 12px; border-radius: 0 0 4px 4px; background: var(--planning-popover-band); color: var(--muted); line-height: 1.4; }
@@ -89,4 +94,13 @@ button.planning-calendar-day:disabled { cursor: wait; }
   .planning-calendar-panel-header h2 { grid-column: 1; white-space: normal; }
   .planning-calendar-setup { grid-column: 1; grid-row: 2; justify-self: start; min-height: 32px; }
   .planning-calendar-close { grid-column: 2; grid-row: 1; width: 32px; height: 32px; }
+}
+@media (pointer: coarse) {
+  .planning-calendar-months { grid-template-columns: minmax(0, 1fr); }
+  .planning-calendar-month-body { width: calc(7 * var(--control-target-touch, 44px)); }
+  .planning-calendar-month table { width: calc(7 * var(--control-target-touch, 44px) + 19px); }
+  .planning-calendar-month td, .planning-calendar-milestone { width: var(--control-target-touch, 44px); height: var(--control-target-touch, 44px); }
+  .planning-calendar-setup, .planning-calendar-close { min-height: var(--control-target-touch, 44px); height: auto; }
+  .planning-calendar-close { width: var(--control-target-touch, 44px); }
+  .planning-calendar-panel-header { grid-template-columns: minmax(0, 1fr) var(--control-target-touch, 44px); }
 }

@@ -35,21 +35,21 @@ interface StepSelection {
   clickStep: (id: string, event: MouseEvent<HTMLButtonElement>) => void;
 }
 
-// The whole step card drags with the pointer; the grip supports keyboard sorting and appears on focus.
+// Touch dragging starts on the grip so the card face can still scroll the page.
 function SortableStep({ step, decks, disabled, dragged, selection, metrics, onOpen }: {
   step: CatalogJourneyStep; decks: CatalogDeck[]; disabled: boolean; dragged: RefObject<boolean>; selection: StepSelection | null; metrics?: JourneyStepMetrics; onOpen: (id: string) => void;
 }) {
   const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging } = useSortable({ id: step.id, disabled, data: { zoneId: step.zoneId, kind: 'step' } });
   const t = useText(text);
   const chosen = selection?.chosenIds.has(step.id) ?? false;
-  return <div ref={setNodeRef} className={'journey-sortable-step' + (isDragging ? ' is-dragging' : '')} style={{ transform: transform ? `translate3d(${transform.x}px, ${transform.y}px, 0)` : undefined, transition }} onPointerDown={listeners?.onPointerDown as PointerEventHandler | undefined}>
-    <JourneyMiniCard title={step.title} effort={step.effort} priority={step.priority} deckTitle={decks.find(deck => deck.id === step.deckId)?.title ?? ''} selected={selection ? chosen : undefined} badge={<JourneyStepMetricsBadge metrics={metrics} />} onClick={event => {
+  return <div ref={setNodeRef} className={'journey-sortable-step' + (isDragging ? ' is-dragging' : '')} style={{ transform: transform ? `translate3d(${transform.x}px, ${transform.y}px, 0)` : undefined, transition }} onPointerDown={event => { if (event.pointerType === 'mouse') listeners?.onPointerDown?.(event); }}>
+    <JourneyMiniCard title={step.title} effort={step.effort} priority={step.priority} deckTitle={decks.find(deck => deck.id === step.deckId)?.title ?? ''} selected={selection && selection.chosenIds.size > 0 ? chosen : undefined} badge={<JourneyStepMetricsBadge metrics={metrics} />} onClick={event => {
       // The click that ends a pointer drag lands on the dragged card; it must neither open the step sheet nor change the selection.
       if (dragged.current) return;
       if (selection) selection.clickStep(step.id, event); else onOpen(step.id);
     }} />
-    {selection && <input type="checkbox" className="journey-step-select" checked={chosen} aria-label={t.selectStep(journeyStepLabel(step.title))} title={t.selectStep(journeyStepLabel(step.title))} onPointerDown={event => event.stopPropagation()} onChange={() => selection.toggleStep(step.id)} />}
-    <button type="button" ref={setActivatorNodeRef} className="journey-drag-handle" {...attributes} onKeyDown={listeners?.onKeyDown as KeyboardEventHandler | undefined} aria-label={t.moveStep(journeyStepLabel(step.title))} disabled={disabled}><GripVertical size={13} /></button>
+    {selection && <label className="journey-step-select" onPointerDown={event => event.stopPropagation()}><input type="checkbox" checked={chosen} aria-label={t.selectStep(journeyStepLabel(step.title))} title={t.selectStep(journeyStepLabel(step.title))} onChange={() => selection.toggleStep(step.id)} /></label>}
+    <button type="button" ref={setActivatorNodeRef} className="journey-drag-handle" {...attributes} onPointerDown={listeners?.onPointerDown as PointerEventHandler | undefined} onKeyDown={listeners?.onKeyDown as KeyboardEventHandler | undefined} aria-label={t.moveStep(journeyStepLabel(step.title))} disabled={disabled}><GripVertical size={13} /></button>
   </div>;
 }
 

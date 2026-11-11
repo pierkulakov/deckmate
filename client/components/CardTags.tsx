@@ -1,7 +1,7 @@
 import { Fragment } from 'react';
 import * as Tooltip from '@radix-ui/react-tooltip';
 import { ArrowUpRight } from 'lucide-react';
-import { tagDecoration, tagIconDataUrl, type ProjectTag } from '../../src/project-tags.ts';
+import { tagIconDataUrl, type ProjectTag } from '../../src/project-tags.ts';
 import { defineText, useText } from '../i18n.ts';
 import '../card-tags.css';
 
@@ -63,25 +63,16 @@ export function TagTitlePrefix({ tags = [], definitions = [] }: { tags?: readonl
   </Tooltip.Content></Tooltip.Portal></Tooltip.Root></Tooltip.Provider>;
 }
 
-function pieBackground(tags: readonly ProjectTag[]) {
-  if (tags.length === 1) return tags[0].color;
-  const step = 100 / tags.length;
-  return `conic-gradient(${tags.map((tag, index) => `${tag.color} ${index * step}% ${(index + 1) * step}%`).join(', ')})`;
-}
-
-/** Color dot inside card buttons; it is not a tab stop because the card button carries the tag names. */
-export function TagColorIndicator({ tags = [], definitions = [] }: { tags?: readonly string[]; definitions?: readonly ProjectTag[] }) {
+/** One quiet line on a tile; the opener and the open card retain every tag name. */
+export function CardTagSummary({ tags = [], definitions = [], sharedTags = [] }: { tags?: readonly string[]; definitions?: readonly ProjectTag[]; sharedTags?: readonly string[] }) {
   const t = useText(text);
-  // Only color-decorated tags make the dot; emoji and icon tags show their glyph instead.
-  const colored = resolveProjectTags(tags, definitions).filter(tag => tagDecoration(tag) === 'color');
-  if (!colored.length) return null;
-  return <Tooltip.Provider delayDuration={200}><Tooltip.Root><Tooltip.Trigger asChild>
-    <span className="card-tag-pie" style={{ background: pieBackground(colored) }}
-      aria-label={t.tagged(colored.map(tag => tag.name).join(', '))} />
-  </Tooltip.Trigger><Tooltip.Portal><Tooltip.Content className="card-project-tags" side="top" sideOffset={6}>
-    <span className="card-project-tags-title">{t.projectTags}</span>
-    {colored.map(tag => <TagBadge key={tag.name} name={tag.name} definition={tag} />)}
-  </Tooltip.Content></Tooltip.Portal></Tooltip.Root></Tooltip.Provider>;
+  const names = [...new Set(tags)].filter(name => !sharedTags.includes(name));
+  if (!names.length) return null;
+  const first = names[0];
+  const label = definitions.some(tag => tag.name === first) ? first : '#' + first;
+  return <span className="card-tag-summary" title={t.tagged(names.join(', '))} aria-label={t.tagged(names.join(', '))}>
+    <span>{label}</span>{names.length > 1 && <span className="tag-overflow" aria-label={t.more(names.length - 1)}>+{names.length - 1}</span>}
+  </span>;
 }
 
 export function CardTags({ tags = [], definitions = [], compact = false, maxVisible, cardsById, onOpenCard, onEditTags, disabled = false }: {

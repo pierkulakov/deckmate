@@ -48,7 +48,7 @@ export function journeyDraft(journey: CatalogJourney | null, deck: CatalogDeck, 
 }
 
 export function normalizedDraft(draft: JourneyDraft): JourneyDraft {
-  return { ...draft, title: draft.title.trim(), zones: draft.zones.map(zone => ({ ...zone, title: zone.title.trim() })), steps: draft.steps.map(step => ({ ...step, title: step.title.trim() })) };
+  return { ...draft, title: draft.title.trim(), zones: draft.zones.map(zone => ({ ...zone, title: zone.title.trim() })), steps: visibleSteps(draft).map(step => ({ ...step, title: step.title.trim() })) };
 }
 
 export function sameDraft(left: JourneyDraft, right: JourneyDraft): boolean {
@@ -96,7 +96,8 @@ export function nextJourneyId(prefix: string, existing: { id: string }[]): strin
 }
 
 export function visibleSteps(draft: JourneyDraft): CatalogJourneyStep[] {
-  return draft.zones.flatMap(zone => draft.steps.filter(step => step.zoneId === zone.id));
+  const ordered = draft.zones.flatMap(zone => draft.steps.filter(step => (step.zoneId ?? 'default') === zone.id));
+  return [...ordered, ...draft.steps.filter(step => !draft.zones.some(zone => zone.id === (step.zoneId ?? 'default')))];
 }
 
 // 2026-11-04: after an explicit conflict decision, replay only local field changes;

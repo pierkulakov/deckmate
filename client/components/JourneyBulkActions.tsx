@@ -66,7 +66,7 @@ export function JourneyBulkActions(props: {
   const duplicateBlocked = disabled || targets.length === 0 || targets.every(target => target.disabled);
   return <header className="journey-bulk-heading" aria-label={t.actions} aria-busy={disabled}>
     <strong className="journey-bulk-count" aria-live="polite" title={t.selectedTitle(count, total)}><span>{t.count(count)}</span>{t.selected(count)}</strong>
-    <Button variant="ghost" size="sm" className="journey-bulk-all" disabled={disabled || count >= total} onClick={onSelectAll} aria-keyshortcuts="Control+A Meta+A" title={t.selectAllTitle}>{t.selectAll}</Button>
+    <Button variant="ghost" size="sm" disabled={disabled || count >= total} onClick={onSelectAll} aria-keyshortcuts="Control+A Meta+A" title={t.selectAllTitle}>{t.selectAll}</Button>
     <span className="journey-bulk-divider" aria-hidden="true" />
     <div className="journey-bulk-buttons" role="group" aria-label={t.selectionActions}>
       {count >= 2 && <Button variant="ghost" size="sm" disabled={disabled} onClick={onChain} title={t.chainTitle}><Link2 size={14} />{t.chain}</Button>}

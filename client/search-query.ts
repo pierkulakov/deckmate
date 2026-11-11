@@ -3,7 +3,7 @@
 // property filters effort:/priority:/run:/milestone:/hand:/due:, content scopes t:/sub:, and navigation tokens $ID / gd: / gc:.
 // Pure matching lives here; overlay UI, filter pills and keyboard handling stay in GlobalSearch.tsx.
 import { resolveReference } from '../src/references.ts';
-import { localIsoDate } from '../src/catalog-hand.ts';
+import { isOwnedByMember, localIsoDate } from '../src/catalog-hand.ts';
 import { boardColumns, type CardKind, type CardPriority, type CatalogCard, type CatalogDeck, type CatalogMember, type CatalogView, type MilestoneRecord, type RunRecord } from '../src/catalog-contracts.ts';
 import type { SliceStatus } from '../src/workspace-contracts.ts';
 import { defineText, textNow } from './i18n.ts';
@@ -59,11 +59,14 @@ function plusDays(iso: string, days: number): string {
 }
 
 /** Match an owner by the stored label or by a member ID/alias that resolves to that label. */
-function ownerMatches(owner: string | null, term: string, members: CatalogMember[]): boolean {
-  if (!owner) return false;
-  if (owner.toLocaleLowerCase('ru').includes(term)) return true;
-  return members.some(member => member.label === owner
-    && [member.id, member.label, ...member.aliases].some(alias => alias.toLocaleLowerCase('ru').includes(term)));
+function ownerMatcher(term: string, members: CatalogMember[]): (owner: string | null) => boolean {
+  const normalized = (value: string) => value.trim().toLocaleLowerCase('ru');
+  // 2026-11-11: IDs identify one member even when another label or alias contains the same text.
+  const id = members.find(member => normalized(member.id) === term);
+  const exact = id ? [id] : members.filter(member => [member.label, ...member.aliases].some(name => normalized(name) === term));
+  if (exact.length) return owner => exact.length === 1 && isOwnedByMember(owner, exact[0]);
+  return owner => Boolean(owner && (normalized(owner).includes(term) || members.some(member => isOwnedByMember(owner, member)
+    && [member.id, member.label, ...member.aliases].some(alias => normalized(alias).includes(term)))));
 }
 
 /** Search navigation target: an exact card, a deck title prefix, or an ambiguous short reference. */
@@ -95,7 +98,7 @@ export interface NavToken extends TokenSpan {
   term: string;
 }
 
-/** One query filter; `value` is the lowercase text after its prefix. */
+/** One query filter; `value` is lowercase except for canonical references in `sub:`. */
 export interface FilterToken extends TokenSpan {
   kind: FilterKind;
   value: string;
@@ -129,7 +132,8 @@ export function parseSearch(raw: string): SearchToken[] {
     const body = negated ? value.slice(1) : value;
     if (!body) continue;
     if (!negated && body.length > 1 && body.startsWith('$')) {
-      tokens.push({ ...span, kind: 'nav', navKind: 'card-ref', term: body.slice(1) });
+      const reference = rawToken.slice(1);
+      tokens.push({ ...span, kind: 'nav', navKind: 'card-ref', term: reference.includes(':') ? reference : body.slice(1) });
       continue;
     }
     if (!negated && body.startsWith('gd:') && body.length > 3) {
@@ -144,7 +148,7 @@ export function parseSearch(raw: string): SearchToken[] {
       // Each alternative after '|' can have its own '#'; strip it consistently.
       const alternatives = body.slice(1).split('|').map(part => part.replace(/^#/u, '')).filter(Boolean);
       if (!alternatives.length) continue;
-      tokens.push({ ...span, kind: 'tag', value: body.slice(1), ...(alternatives.length > 1 ? { alternatives } : {}), negated });
+      tokens.push({ ...span, kind: 'tag', value: alternatives.join('|'), ...(alternatives.length > 1 ? { alternatives } : {}), negated });
       continue;
     }
     if (body.startsWith('@') && body.length > 1) {
@@ -155,7 +159,9 @@ export function parseSearch(raw: string): SearchToken[] {
     const prefix = body.slice(0, body.indexOf(':') + 1);
     const filterKind = prefix ? valueFilters.get(prefix.slice(0, -1)) : undefined;
     if (filterKind && body.length > prefix.length) {
-      tokens.push({ ...span, kind: filterKind, value: body.slice(prefix.length), negated });
+      let filterValue = body.slice(prefix.length);
+      if (filterKind === 'sub' && filterValue.includes(':')) filterValue = rawToken.slice(prefix.length + Number(negated));
+      tokens.push({ ...span, kind: filterKind, value: filterValue, negated });
       continue;
     }
     tokens.push({ ...span, kind: 'word', value: body, negated });
@@ -197,13 +203,14 @@ function subParents(reachable: CatalogCard[], term: string): Set<string> {
     if (resolved) return new Set([resolved.id]);
   } catch { /* An ambiguous short reference matches nothing, just like an unknown deck. */ }
   const parents = new Set<string>();
-  for (const card of reachable) if (card.title.toLocaleLowerCase('ru').startsWith(term)) parents.add(card.id);
+  const titlePrefix = term.toLocaleLowerCase('ru');
+  for (const card of reachable) if (card.title.toLocaleLowerCase('ru').startsWith(titlePrefix)) parents.add(card.id);
   return parents;
 }
 
 /** Match CardIndicators: an ended Run is past, one not yet started is future, and all others are current. */
 function runPhase(run: RunRecord, today: string): 'past' | 'current' | 'future' {
-  if (run.end < today) return 'past';
+  if (run.finishedAt || run.end < today) return 'past';
   if (run.start > today) return 'future';
   return 'current';
 }
@@ -247,8 +254,8 @@ function matcherFor(token: FilterToken, context: SearchContext): ((card: Catalog
     }
     case 'owner': {
       if (token.none) return (card) => (card.owner == null) !== token.negated;
-      const has = (card: CatalogCard) => ownerMatches(card.owner, token.value, context.members);
-      return (card) => has(card) !== token.negated;
+      const matches = ownerMatcher(token.value, context.members);
+      return (card) => matches(card.owner) !== token.negated;
     }
     case 'deck': {
       const deckIds = new Set(context.decks.filter(deck => deck.title.toLocaleLowerCase('ru').startsWith(token.value)).map(deck => deck.id));
@@ -270,9 +277,9 @@ function matcherFor(token: FilterToken, context: SearchContext): ((card: Catalog
     }
     case 'effort': {
       // effort:3 is exact; effort:3+ means at least 3; effort:3- means at most 3.
-      const match = /^(\d+)([+-]?)$/u.exec(token.value);
+      const match = /^(\d+(?:\.\d+)?|\.\d+)([+-]?)$/u.exec(token.value);
       // Unknown values match nothing in a positive filter and everything in a negated filter.
-      if (!match) return token.negated ? () => true : () => false;
+      if (!match || !Number.isFinite(Number(match[1]))) return () => token.negated;
       const target = Number(match[1]);
       const pass = (card: CatalogCard) => {
         if (card.effort == null) return false;

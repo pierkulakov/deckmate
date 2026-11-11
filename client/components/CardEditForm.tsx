@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode, type RefObject } from 'react';
+import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode, type RefObject } from 'react';
+import { createPortal } from 'react-dom';
 import { FileText, Image, LoaderCircle, Paperclip } from 'lucide-react';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import type { CardAttachment, CatalogView } from '../../src/catalog-contracts.ts';
@@ -44,17 +45,20 @@ export function composeDraft(title: string, markdown: string): string {
   return title + '\n\n' + markdown;
 }
 
-export function splitDraft(text: string): { title: string; markdown: string } {
+export function splitDraft(text: string, originalMarkdown?: string): { title: string; markdown: string } {
   const newline = text.search(/\r?\n/u);
   const first = newline < 0 ? text : text.slice(0, newline);
-  const rest = newline < 0 ? '' : text.slice(newline).replace(/^(?:[ \t]*\r?\n)+/u, '');
-  return { title: first.replace(/^#{1,6}[ \t]+/u, '').trim(), markdown: rest };
+  // 2026-11-11: only the title break and the editor's separator belong to the form; subsequent blank lines are body bytes.
+  const rest = newline < 0 ? '' : text.slice(newline).replace(/^\r?\n(?:\r?\n)?/u, '');
+  // 2026-11-11: textarea input normalizes CRLF; a title-only edit must still send the original body bytes.
+  const unchangedBody = originalMarkdown !== undefined && rest.replace(/\r\n/gu, '\n') === originalMarkdown.replace(/\r\n/gu, '\n');
+  return { title: first.replace(/^#{1,6}[ \t]+/u, '').trim(), markdown: unchangedBody ? originalMarkdown : rest };
 }
 
 // Cards and Journey steps share the same text editor:
 // hint row, one monospace Markdown box with the «/», «$», «#», «@» menus, footer Preview · Cancel Esc · Save Ctrl+Enter.
 export function CardEditForm({ draft, onDraftChange, catalog, source, path, cardId, writable, busy, saving = false, blocked = false,
-  saveLabel, textLabel, maxLength, hintActions, notice, cancelButton = true, confirmStrip, children, onSave, onCancel }: {
+  saveLabel, textLabel, maxLength, hintActions, notice, cancelButton = true, confirmStrip, footerTarget, children, onSave, onCancel }: {
   draft: string;
   onDraftChange: (value: string) => void;
   catalog: CatalogView;
@@ -77,6 +81,7 @@ export function CardEditForm({ draft, onDraftChange, catalog, source, path, card
   cancelButton?: boolean;
   /** A pending discard question: the strip stands in place of the footer, and the text waits for the answer. */
   confirmStrip?: ReactNode;
+  footerTarget?: HTMLElement | null;
   /** Shown between the hint row and the text box. */
   children?: ReactNode;
   onSave: () => void;
@@ -86,6 +91,7 @@ export function CardEditForm({ draft, onDraftChange, catalog, source, path, card
   const t = useText(text);
   const resolvedSaveLabel = saveLabel ?? t.save;
   const formRef = useRef<HTMLFormElement>(null);
+  const formId = useId();
   const editorRef = useRef<EditorCommandHandle>(null);
   useTextFitsCard(formRef, draft, preview);
   const parts = splitDraft(draft);
@@ -105,7 +111,13 @@ export function CardEditForm({ draft, onDraftChange, catalog, source, path, card
     if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') { event.preventDefault(); onSave(); }
   }
 
-  return <form ref={formRef} className="card-edit" onKeyDown={handleKeyDown} onSubmit={event => { event.preventDefault(); onSave(); }}>
+  const footer = confirmStrip ?? <footer className="card-edit-footer">
+    <button type="button" className="card-edit-link" disabled={busy || !draft.trim()} aria-pressed={preview} onClick={() => setPreview(value => !value)}>{preview ? t.edit : t.preview}</button>
+    {cancelButton && <button type="button" className="card-edit-link is-cancel" disabled={busy} onClick={onCancel}>{t.cancel} <kbd>Esc</kbd></button>}
+    <span className="card-edit-save-group"><span className="card-edit-save-hint"><kbd>Ctrl</kbd>+<kbd>Enter</kbd></span>
+      <button type="submit" form={formId} className="card-edit-save" disabled={!writable || busy || blocked || !parts.title}>{saving ? <><LoaderCircle size={14} className="spin" aria-hidden="true" /><span className="visually-hidden">{resolvedSaveLabel}</span></> : resolvedSaveLabel}</button></span>
+  </footer>;
+  return <form id={formId} ref={formRef} className="card-edit" onKeyDown={handleKeyDown} onSubmit={event => { event.preventDefault(); onSave(); }}>
     <div className="card-edit-hint-row"><div className="card-edit-hints"><span className="card-edit-hint">{t.commandHintStart}<kbd>/</kbd> <kbd>Enter</kbd>{t.commandHintEnd}</span>
       {cardId && path && <AttachmentInsertMenu key={`${source}:${cardId}`} source={source} cardId={cardId} disabled={textDisabled || preview}
         onInsert={attachment => editorRef.current?.insert(attachmentMarkdown(path, attachment))} onFocusText={() => editorRef.current?.focus()} />}
@@ -120,13 +132,7 @@ export function CardEditForm({ draft, onDraftChange, catalog, source, path, card
         : <EditorCommandMenu ref={editorRef} value={draft} onChange={onDraftChange} catalog={catalog} disabled={textDisabled} label={textLabel} maxLength={maxLength} />}
     </div>
     {notice && <p className="card-content-notice" role="status">{notice}</p>}
-    {confirmStrip ?? <footer className="card-edit-footer">
-      {/* Empty text has nothing to preview, so Preview stays disabled. */}
-      <button type="button" className="card-edit-link" disabled={busy || !draft.trim()} aria-pressed={preview} onClick={() => setPreview(value => !value)}>{preview ? t.edit : t.preview}</button>
-      {cancelButton && <button type="button" className="card-edit-link is-cancel" disabled={busy} onClick={onCancel}>{t.cancel} <kbd>Esc</kbd></button>}
-      <span className="card-edit-save-group"><span className="card-edit-save-hint"><kbd>Ctrl</kbd>+<kbd>Enter</kbd></span>
-        <button type="submit" className="card-edit-save" disabled={!writable || busy || blocked || !parts.title}>{saving ? <><LoaderCircle size={14} className="spin" aria-hidden="true" /><span className="visually-hidden">{resolvedSaveLabel}</span></> : resolvedSaveLabel}</button></span>
-    </footer>}
+    {footerTarget ? createPortal(footer, footerTarget) : footer}
   </form>;
 }
 

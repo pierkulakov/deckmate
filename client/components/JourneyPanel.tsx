@@ -12,20 +12,24 @@ import { failureMessage } from '../failure-message.ts';
 import { readFreshCatalog } from '../catalog-store.ts';
 import { Button } from './ui/button.tsx';
 import { EmptyState } from './EmptyState.tsx';
-import { defineText, locale, useText, type Lang } from '../i18n.ts';
+import { defineText, formatNumber, locale, useText } from '../i18n.ts';
+import { currentSourceLabels } from '../source-access.ts';
+import { journeyDraft, visibleSteps } from './JourneyDraft.tsx';
 import '../journey-apply.css';
 import '../catalog-reference.css';
 
-function numberValue(value: number, lang: Lang): string {
-  return new Intl.NumberFormat(locale(lang)).format(value);
-}
+export const journeyIntroductionText = defineText({
+  explanation: 'A Journey is a set of steps for creating Sub Cards. Assigning an agent does not start it automatically.',
+}, {
+  explanation: 'Journey — набор шагов для создания Sub Cards. Назначение агента не запускает его автоматически.',
+});
 
 const text = defineText({
-  count: (count: number) => numberValue(count, 'en'),
+  count: (count: number) => formatNumber(count, 3, 'en'),
   agents: 'Agents',
   humans: 'Humans',
   applyJourney: 'Apply Journey',
-  startJourney: 'Start Journey',
+  startJourney: 'Create cards from Journey',
   heroCards: 'Hero Cards',
   noJourney: 'No Journey yet',
   createJourney: 'Create Journey',
@@ -34,9 +38,9 @@ const text = defineText({
   selectAll: 'Select all',
   defaultSteps: 'Default steps',
   journeySteps: 'Journey steps',
-  stepNumber: (number: number) => `Step ${numberValue(number, 'en')}`,
+  stepNumber: (number: number) => `Step ${formatNumber(number, 3, 'en')}`,
   applied: 'Applied',
-  dependencies: (count: number) => `${numberValue(count, 'en')} ${new Intl.PluralRules(locale('en')).select(count) === 'one' ? 'dependency' : 'dependencies'}`,
+  dependencies: (count: number) => `${formatNumber(count, 3, 'en')} ${new Intl.PluralRules(locale('en')).select(count) === 'one' ? 'dependency' : 'dependencies'}`,
   taskCard: 'Task Card',
   chooseDeck: 'Choose Deck',
   stepTitle: (title: string) => `Step: ${title}`,
@@ -44,8 +48,8 @@ const text = defineText({
   notSelected: 'Not selected',
   targetDeck: 'Target Deck',
   dependsOn: 'Depends on: ',
-  newCards: (count: number, applied: number) => `${numberValue(count, 'en')} new ${new Intl.PluralRules(locale('en')).select(count) === 'one' ? 'card' : 'cards'}${applied ? ` · ${numberValue(applied, 'en')} already applied` : ''}`,
-  createCards: (count: number) => `Create ${numberValue(count, 'en')} ${new Intl.PluralRules(locale('en')).select(count) === 'one' ? 'Card' : 'Cards'}`,
+  newCards: (count: number, applied: number) => `${formatNumber(count, 3, 'en')} new ${new Intl.PluralRules(locale('en')).select(count) === 'one' ? 'card' : 'cards'}${applied ? ` · ${formatNumber(applied, 3, 'en')} already applied` : ''}`,
+  createCards: (count: number) => `Create ${formatNumber(count, 3, 'en')} ${new Intl.PluralRules(locale('en')).select(count) === 'one' ? 'Card' : 'Cards'}`,
   cancel: 'Cancel',
   copied: 'Copied',
   copyError: 'Could not copy; the link is available nearby.',
@@ -58,20 +62,23 @@ const text = defineText({
   noJourneyDescription: 'Create a sequence of steps for this deck. The Journey turns them into Sub Cards of your Hero Card.',
   journeyUnavailable: 'Journey unavailable — choose another',
   alreadyAppliedDetails: ' — already created; show details',
-  selectStepDetails: ' — select the step and show details',
   showDetails: ' — show details',
+  selectStep: (title: string) => `Select step ${title}`,
+  deselectedDependencies: (titles: string) => `Dependent steps also deselected: ${titles}.`,
+  existingVersions: (versions: string) => `This Hero already has cards from this Journey: ${versions}.`,
+  newVersion: (count: string) => `This version creates a separate set: ${count}. Existing cards will not change.`,
+  sameVersion: 'Cards from this version already exist. Reapplying does not create duplicates.',
   allStepsCreated: 'All steps of this Journey have already been created. No duplicate cards will appear.',
   deckUnavailable: 'Deck unavailable',
   requiredSteps: ' Required steps are selected together.',
   stepInstruction: 'Step instructions',
   validTargets: 'Every selected step needs an existing Task or Mixed Deck. Select a step and set its Target Deck.',
-  readOnlySandbox: 'Template preview. Cards can be created in the sandbox.',
 }, {
-  count: (count: number) => numberValue(count, 'ru'),
+  count: (count: number) => formatNumber(count, 3, 'ru'),
   agents: 'Агенты',
   humans: 'Люди',
   applyJourney: 'Применить Journey',
-  startJourney: 'Запустить Journey',
+  startJourney: 'Создать карточки по Journey',
   heroCards: 'Hero Cards',
   noJourney: 'Journey ещё нет',
   createJourney: 'Создать Journey',
@@ -80,12 +87,12 @@ const text = defineText({
   selectAll: 'Выбрать все',
   defaultSteps: 'Основные шаги',
   journeySteps: 'Шаги Journey',
-  stepNumber: (number: number) => `Шаг ${numberValue(number, 'ru')}`,
+  stepNumber: (number: number) => `Шаг ${formatNumber(number, 3, 'ru')}`,
   applied: 'Применено',
   dependencies: (count: number) => {
     const rule = new Intl.PluralRules(locale('ru')).select(count);
     const noun = { one: 'зависимость', few: 'зависимости', many: 'зависимостей', zero: 'зависимостей', two: 'зависимости', other: 'зависимости' }[rule]!;
-    return `${numberValue(count, 'ru')} ${noun}`;
+    return `${formatNumber(count, 3, 'ru')} ${noun}`;
   },
   taskCard: 'Task Card',
   chooseDeck: 'Выбрать колоду',
@@ -97,12 +104,12 @@ const text = defineText({
   newCards: (count: number, applied: number) => {
     const rule = new Intl.PluralRules(locale('ru')).select(count);
     const noun = { one: 'новая карточка', few: 'новые карточки', many: 'новых карточек', zero: 'новых карточек', two: 'новые карточки', other: 'новые карточки' }[rule]!;
-    return `${numberValue(count, 'ru')} ${noun}${applied ? ` · уже применено ${numberValue(applied, 'ru')}` : ''}`;
+    return `${formatNumber(count, 3, 'ru')} ${noun}${applied ? ` · уже применено ${formatNumber(applied, 3, 'ru')}` : ''}`;
   },
   createCards: (count: number) => {
     const rule = new Intl.PluralRules(locale('ru')).select(count);
     const noun = { one: 'карточку', few: 'карточки', many: 'карточек', zero: 'карточек', two: 'карточки', other: 'карточки' }[rule]!;
-    return `Создать ${numberValue(count, 'ru')} ${noun}`;
+    return `Создать ${formatNumber(count, 3, 'ru')} ${noun}`;
   },
   cancel: 'Отмена',
   copied: 'Скопировано',
@@ -116,14 +123,17 @@ const text = defineText({
   noJourneyDescription: 'Создайте последовательность шагов для этой колоды. Journey превратит их в Sub Cards вашей Hero Card.',
   journeyUnavailable: 'Journey недоступен — выберите другой',
   alreadyAppliedDetails: ' — уже создана; показать подробности',
-  selectStepDetails: ' — выбрать шаг и показать подробности',
   showDetails: ' — показать подробности',
+  selectStep: (title: string) => `Выбрать шаг ${title}`,
+  deselectedDependencies: (titles: string) => `Также снят выбор зависимых шагов: ${titles}.`,
+  existingVersions: (versions: string) => `У Hero уже есть карточки этого Journey: ${versions}.`,
+  newVersion: (count: string) => `Эта версия создаст отдельный набор: ${count}. Существующие карточки не изменятся.`,
+  sameVersion: 'Карточки этой версии уже есть. Повторное применение не создаст дубликаты.',
   allStepsCreated: 'Все шаги этого Journey уже созданы. Повторные карточки не появятся.',
   deckUnavailable: 'Колода недоступна',
   requiredSteps: ' Необходимые шаги выбираются вместе.',
   stepInstruction: 'Инструкция шага',
   validTargets: 'Для каждого выбранного шага нужна существующая Task или Mixed Deck. Выберите шаг и укажите целевую колоду.',
-  readOnlySandbox: 'Просмотр шаблона. Создать карточки можно в sandbox.',
 });
 
 type EditCatalog = (action: CatalogAction) => Promise<boolean>;
@@ -180,6 +190,7 @@ function stepSelection(journey: CatalogJourney, requested: Set<string>, applied:
 export function ApplyJourneyPanel({ catalog, card, source, pending, writable, onEdit, onClose, onManageJourney }: { catalog: CatalogView; card: CatalogCard; source: DataSource; pending: boolean; writable: boolean; onEdit: EditCatalog; onClose: () => void; onManageJourney?: () => void }) {
   const journeys = (catalog.journeys ?? []).filter(journey => journey.deckId === card.deckId);
   const t = useText(text);
+  const introduction = useText(journeyIntroductionText);
   const [journeyId, setJourneyId] = useState(journeys[0]?.id ?? '');
   const journey = journeys.find(candidate => candidate.id === journeyId);
   const applyBlocked = useJourneyApplyBlocked(journey);
@@ -190,6 +201,7 @@ export function ApplyJourneyPanel({ catalog, card, source, pending, writable, on
   const [inspectedId, setInspectedId] = useState(journeys[0]?.steps[0]?.id ?? '');
   const [applying, setApplying] = useState(false);
   const [applyError, setApplyError] = useState('');
+  const [selectionNotice, setSelectionNotice] = useState('');
   const applyingRef = useRef(false);
   const detailsId = useId();
   const busy = pending || applying;
@@ -199,13 +211,16 @@ export function ApplyJourneyPanel({ catalog, card, source, pending, writable, on
   const availableCount = journey?.steps.filter(step => !applied.has(step.id)).length ?? 0;
   const allSelected = availableCount > 0 && selected.size === availableCount;
   const stepTitle = (step: CatalogJourneyStep) => journeyStepTitle(step.title, card.title);
+  const journeyDeck = catalog.decks.find(deck => deck.id === journey?.deckId);
+  const orderedSteps = journey && journeyDeck ? visibleSteps(journeyDraft(journey, journeyDeck, catalog.formatLanguage)) : journey?.steps ?? [];
+  const versions = [...new Set(catalog.cards.filter(candidate => candidate.parentId === card.id && candidate.journey && candidate.journey.journeyId === journey?.id).map(candidate => candidate.journey!.version))].sort((a, b) => a - b);
 
   function chooseJourney(id: string) {
     if (busy) return;
     const next = journeys.find(candidate => candidate.id === id);
     const existing = new Set(catalog.cards.filter(candidate => candidate.journey && candidate.parentId === card.id && candidate.journey.journeyId === id && candidate.journey.version === next?.version).map(candidate => candidate.journey!.stepId));
     setJourneyId(id); setAssignments({}); setSelectedIds(new Set(next?.steps.filter(step => !existing.has(step.id)).map(step => step.id) ?? []));
-    setInspectedId(next?.steps[0]?.id ?? ''); setApplyError('');
+    setInspectedId(next?.steps[0]?.id ?? ''); setApplyError(''); setSelectionNotice('');
   }
   function toggleStep(id: string, checked: boolean) {
     if (!journey || busy || !writable || applied.has(id)) return;
@@ -219,7 +234,9 @@ export function ApplyJourneyPanel({ catalog, card, source, pending, writable, on
         for (const step of journey.steps) if (next.has(step.id) && step.dependsOn.some(dependency => !next.has(dependency) && !applied.has(dependency))) { next.delete(step.id); removed = true; }
       }
     }
+    const removed = journey.steps.filter(step => step.id !== id && selected.has(step.id) && !next.has(step.id)).map(stepTitle);
     setSelectedIds(stepSelection(journey, next, applied));
+    setSelectionNotice(removed.length ? t.deselectedDependencies(removed.join(', ')) : '');
     setApplyError('');
   }
   async function apply() {
@@ -237,26 +254,28 @@ export function ApplyJourneyPanel({ catalog, card, source, pending, writable, on
   }
   if (card.kind !== 'hero') return null;
   return <section className="journey-apply journey-apply-picker" aria-label={t.applyJourney} aria-busy={busy}>
-    <header className="journey-picker-heading"><div><h3 className="dialog-title">{t.startJourney}</h3><p>{journeys.length ? <>{t.chooseCards}<strong>{card.title}</strong>.</> : <>{t.journeyForDeck}<strong>{catalog.decks.find(deck => deck.id === card.deckId)?.title ?? t.heroCards}</strong>.</>}</p></div></header>
+    <header className="journey-picker-heading"><div><h3 className="dialog-title">{t.startJourney}</h3><p>{journeys.length ? <>{t.chooseCards}<strong>{card.title}</strong>.</> : <>{t.journeyForDeck}<strong>{catalog.decks.find(deck => deck.id === card.deckId)?.title ?? t.heroCards}</strong>.</>}</p><p>{introduction.explanation}</p></div></header>
+    <div className="journey-picker-scroll">
     {journeys.length === 0 ? <EmptyState variant="first-run" className="journey-picker-empty" art="journey" title={t.noJourney} message={t.noJourneyDescription} action={writable && onManageJourney ? { label: t.createJourney, disabled: busy, onClick: onManageJourney } : undefined} /> : <>
       <div className="journey-picker-controls"><label className="catalog-field">{t.journey}<select className="control-field" value={journeyId} disabled={busy} onChange={event => chooseJourney(event.target.value)}>{!journey && <option value={journeyId}>{t.journeyUnavailable}</option>}{journeys.map(item => <JourneyOption key={item.id} journey={item} />)}</select></label>
-        {writable && journey && <Button type="button" variant="ghost" size="sm" disabled={busy || availableCount === 0} onClick={() => { setSelectedIds(allSelected ? new Set() : new Set(journey.steps.filter(step => !applied.has(step.id)).map(step => step.id))); setApplyError(''); }}>{allSelected ? t.deselectAll : t.selectAll}</Button>}
+        {writable && journey && <Button type="button" variant="ghost" size="sm" disabled={busy || availableCount === 0} onClick={() => { setSelectedIds(allSelected ? new Set() : new Set(journey.steps.filter(step => !applied.has(step.id)).map(step => step.id))); setApplyError(''); setSelectionNotice(''); }}>{allSelected ? t.deselectAll : t.selectAll}</Button>}
       </div>
       {journey && <><JourneyOperationBadge journey={journey} /><JourneyOperationNotice key={journey.id} journey={journey} catalog={catalog} source={source} writable={writable} disabled={busy} onEdit={onEdit} onBusyChange={setApplying} /></>}
+      {journey && versions.length > 0 && <p className="journey-picker-note">{t.existingVersions(versions.map(version => `v${version}`).join(', '))} {versions.includes(journey.version) ? t.sameVersion : t.newVersion(t.newCards(selected.size, 0))}</p>}
       {journey && <><div className="journey-picker-group-title panel-head"><span className="panel-title">{t.defaultSteps}</span><small className="panel-count">{t.count(journey.steps.length)}</small></div>
-        <div className="journey-picker-grid" aria-label={t.journeySteps}>{journey.steps.map((step, index) => {
+        <div className="journey-picker-grid" aria-label={t.journeySteps}>{orderedSteps.map((step, index) => {
           const alreadyApplied = applied.has(step.id);
           const checked = alreadyApplied || selected.has(step.id);
           const target = catalog.decks.find(deck => deck.id === (assignments[step.id] ?? step.deckId));
-          return <button key={step.id} type="button" className={'journey-step-card' + (alreadyApplied ? ' is-applied' : '') + (inspected?.id === step.id ? ' is-inspected' : '')} disabled={busy} aria-pressed={checked} aria-controls={detailsId}
-            aria-label={stepTitle(step) + (alreadyApplied ? t.alreadyAppliedDetails : writable ? t.selectStepDetails : t.showDetails)} title={stepTitle(step)}
-            onClick={() => { setInspectedId(step.id); toggleStep(step.id, !checked); }}>
-            <span className="journey-step-card-top"><span>{t.stepNumber(index + 1)}</span><span className="journey-step-card-check" aria-hidden="true">{checked && <Check size={11} strokeWidth={2.5} />}</span></span>
+          return <div key={step.id} className="journey-step-choice"><button type="button" className={'journey-step-card' + (checked ? ' is-selected' : '') + (inspected?.id === step.id ? ' is-inspected' : '')} disabled={busy} aria-current={inspected?.id === step.id ? 'true' : undefined} aria-controls={detailsId}
+            aria-label={stepTitle(step) + (alreadyApplied ? t.alreadyAppliedDetails : t.showDetails)} title={stepTitle(step)} onClick={() => setInspectedId(step.id)}>
+            <span className="journey-step-card-top"><span>{t.stepNumber(index + 1)}</span></span>
             <strong>{stepTitle(step)}</strong>
             <span className="journey-step-card-status">{alreadyApplied ? <><Check size={11} />{t.applied}</> : step.dependsOn.length > 0 ? <><Link2 size={11} />{t.dependencies(step.dependsOn.length)}</> : t.taskCard}</span>
             <span className="journey-step-card-deck"><Layers size={12} aria-hidden="true" /><span>{target?.title ?? t.chooseDeck}</span></span>
-          </button>;
+          </button>{writable && <label className="journey-step-card-selection"><input type="checkbox" aria-label={t.selectStep(stepTitle(step))} checked={checked} disabled={busy || alreadyApplied} onChange={event => toggleStep(step.id, event.target.checked)} /></label>}</div>;
         })}</div>
+        {selectionNotice && <p className="journey-picker-selection-notice journey-picker-note" role="status">{selectionNotice}</p>}
         {availableCount === 0 && <p className="journey-picker-note" role="status">{t.allStepsCreated}</p>}
         {inspected && <section id={detailsId} className="journey-picker-details glass-panel" aria-label={t.stepTitle(stepTitle(inspected))}>
           <header className="panel-head"><h4 className="panel-title">{stepTitle(inspected)}</h4><span>{applied.has(inspected.id) ? t.applied : selected.has(inspected.id) ? t.selected : t.notSelected}</span></header>
@@ -268,9 +287,10 @@ export function ApplyJourneyPanel({ catalog, card, source, pending, writable, on
         </section>}
       </>}
       {!validTargets && selected.size > 0 && <p className="journey-picker-error" role="alert">{t.validTargets}</p>}
-      {!writable && <p className="journey-picker-note">{t.readOnlySandbox}</p>}
+      {!writable && <p className="journey-picker-note">{currentSourceLabels().projectReadOnly}</p>}
     </>}
     {applyError && <p className="journey-picker-error" role="alert">{applyError}</p>}
+    </div>
     <footer className="journey-picker-footer dialog-foot"><span role="status">{journey ? t.newCards(selected.size, applied.size) : ''}</span><Button type="button" variant="ghost" disabled={busy} onClick={onClose}>{t.cancel}</Button>{journey && writable && <Button type="button" className="action-mint" title={applyBlocked} disabled={!!applyBlocked || busy || selected.size === 0 || !validTargets} onClick={() => void apply()}>{busy ? <LoaderCircle size={14} className="spin" /> : <Plus size={14} />}{t.createCards(selected.size)}</Button>}</footer>
   </section>;
 }

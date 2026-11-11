@@ -1,4 +1,4 @@
-import { useEffect, useId, useMemo, useState } from 'react';
+import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import * as Dialog from '@radix-ui/react-dialog';
 import { Check, Layers, LoaderCircle, Minus, Plus, RefreshCw, Route, X } from 'lucide-react';
 import type { ProjectTemplate, ProjectTemplateCategory, ProjectTemplatePlan, ProjectTemplatePlanItem } from '../../src/catalog-contracts.ts';
@@ -11,6 +11,7 @@ import { readStoredValue } from '../storage.ts';
 import { failureMessage } from '../failure-message.ts';
 import { navigateTabs } from '../tab-navigation.ts';
 import { templateText } from '../../src/template-text.ts';
+import { moveFocus } from '../focus.ts';
 import { EmptyState } from './EmptyState.tsx';
 import { ErrorState } from './ErrorState.tsx';
 import { LoadingState } from './LoadingState.tsx';
@@ -53,6 +54,9 @@ const text = defineText({
   apply: 'Apply',
   applying: 'Applying…',
   noChanges: 'This structure is already in your project.',
+  details: 'Template details (original language)',
+  changeTemplate: 'Change template',
+  showMessage: 'Show message',
   // 2026-11-10: card counters are label + Geist Mono value pairs (client/surface.css .page-number), like the pulse.
   decksLabel: 'decks',
   journeysLabel: 'Journeys',
@@ -91,6 +95,9 @@ const text = defineText({
   apply: 'Применить',
   applying: 'Применяем…',
   noChanges: 'Эта структура уже есть в вашем проекте.',
+  details: 'Подробнее о шаблоне (язык оригинала)',
+  changeTemplate: 'Сменить шаблон',
+  showMessage: 'Показать сообщение',
   decksLabel: 'Колоды',
   journeysLabel: 'Journey',
 });
@@ -147,11 +154,12 @@ function PlanGroup({ status, items }: { status: ProjectTemplatePlanItem['status'
   </section>;
 }
 
-export function ProjectTemplates({ snapshot, refreshKey, onClose, onApplied, testCopy }: {
+export function ProjectTemplates({ snapshot, refreshKey, onClose, onApplied, testCopy, onCloseAutoFocus }: {
   snapshot: WorkspaceSnapshot;
   refreshKey: number;
   onClose: () => void;
   onApplied: () => void;
+  onCloseAutoFocus?: (event: Event) => void;
   /** 2026-11-05: App's own source switch and texts, so the window stays open on the test copy and the wording lives once. */
   testCopy: { notice: string; action: string; open: () => void };
 }) {
@@ -161,6 +169,10 @@ export function ProjectTemplates({ snapshot, refreshKey, onClose, onApplied, tes
   const amount = (value: number) => formatNumber(value, 2, lang);
   const catalog = useCatalog(snapshot, refreshKey);
   const shelfTabsId = useId();
+  const opener = useRef<HTMLElement | null>(null);
+  const body = useRef<HTMLDivElement>(null);
+  const browser = useRef<HTMLElement>(null);
+  const planPane = useRef<HTMLElement>(null);
   const [templates, setTemplates] = useState<ProjectTemplate[]>([]);
   const [selectedId, setSelectedId] = useState('');
   const [samples, setSamples] = useState(false);
@@ -228,6 +240,25 @@ export function ProjectTemplates({ snapshot, refreshKey, onClose, onApplied, tes
     try { localStorage.setItem(shelfStorageKey, category); } catch { /* Without localStorage the tab lasts until the picker closes. */ }
   }
 
+  function revealPane(which: 'browser' | 'plan') {
+    if (!window.matchMedia('(max-width: 640px)').matches) return;
+    requestAnimationFrame(() => {
+      const scroller = body.current;
+      const pane = which === 'browser' ? browser.current : planPane.current;
+      if (!scroller || !pane) return;
+      scroller.scrollTo({ top: scroller.scrollTop + pane.getBoundingClientRect().top - scroller.getBoundingClientRect().top, behavior: 'instant' });
+      moveFocus(pane.querySelector<HTMLElement>(which === 'browser' ? '.project-template-option[aria-pressed="true"]' : 'h3'), { preventScroll: true });
+    });
+  }
+
+  function revealPlanMessage() {
+    const message = planPane.current?.querySelector<HTMLElement>('.project-template-error')
+      ?? planPane.current?.querySelector<HTMLElement>('.project-template-state button');
+    if (!message) return;
+    message.scrollIntoView({ block: 'nearest', behavior: 'instant' });
+    moveFocus(message, { preventScroll: true });
+  }
+
   async function apply() {
     if (!currentPlan || !selected || !catalog.catalog || busy || planning || stale || !canWrite || changes === 0) return;
     setApplying(true);
@@ -250,7 +281,13 @@ export function ProjectTemplates({ snapshot, refreshKey, onClose, onApplied, tes
 
   return <Dialog.Root open onOpenChange={open => { if (!open && !busy) onClose(); }}><Dialog.Portal>
     <Dialog.Overlay className="dialog-overlay" />
-    <Dialog.Content className="project-template-picker dialog-panel" aria-busy={busy}>
+    <Dialog.Content className="project-template-picker dialog-panel" aria-busy={busy}
+      onOpenAutoFocus={() => { opener.current = document.activeElement instanceof HTMLElement ? document.activeElement : null; }}
+      onCloseAutoFocus={onCloseAutoFocus ?? (event => {
+        event.preventDefault();
+        const target = opener.current;
+        moveFocus(target?.isConnected && target !== document.body ? target : document.querySelector<HTMLElement>('.mission-control-trigger'), { preventScroll: true });
+      })}>
       <header className="project-template-header dialog-head">
         <div className="project-template-heading">
           <Dialog.Title className="dialog-title">{t.title}</Dialog.Title>
@@ -263,17 +300,17 @@ export function ProjectTemplates({ snapshot, refreshKey, onClose, onApplied, tes
               aria-selected={shelf === category} className="project-template-shelf" disabled={busy}
               onClick={() => chooseShelf(category)}>{t[category]}</button>)}
           </div>
-          <Dialog.Close asChild><Button variant="ghost" size="icon" className="project-template-close" disabled={busy} aria-label={t.close}><X size={17} /></Button></Dialog.Close>
+          <Dialog.Close asChild><Button variant="ghost" size="icon" disabled={busy} aria-label={t.close}><X size={17} /></Button></Dialog.Close>
         </div>
       </header>
-      <div className="project-template-body" role="tabpanel" id={`${shelfTabsId}-panel`} aria-labelledby={`${shelfTabsId}-${shelf}`} tabIndex={0}>
+      <div ref={body} className="project-template-body" role="tabpanel" id={`${shelfTabsId}-panel`} aria-labelledby={`${shelfTabsId}-${shelf}`} tabIndex={0}>
         <div className="project-template-pane">
-          <section className="project-template-browser glass-panel" aria-label={t.choose} aria-busy={loading}>
+          <section ref={browser} className="project-template-browser glass-panel" aria-label={t.choose} aria-busy={loading}>
             <div className="panel-head">
               <h3 className="panel-title">{t[shelf]}</h3>
               <span className="panel-count">{amount(shelfTemplates.length)}</span>
             </div>
-            {loading && <LoadingState variant="skeleton" className="project-template-loading" message={t.loading} />}
+            {loading && <LoadingState variant="skeleton" message={t.loading} />}
             {!loading && loadError && <ErrorState variant="banner" className="project-template-state" message={loadError}
               onRetry={() => setReload(value => value + 1)} pending={loading} />}
             {!loading && !loadError && templates.length === 0 && <EmptyState message={t.empty} />}
@@ -282,7 +319,7 @@ export function ProjectTemplates({ snapshot, refreshKey, onClose, onApplied, tes
               const localized = templateText(template, lang);
               return <button type="button" key={template.id}
                 className="project-template-option" aria-pressed={selectedId === template.id} disabled={busy || loading}
-                onClick={() => { setSelectedId(template.id); setApplyMessage(''); }}>
+                onClick={() => { setSelectedId(template.id); setApplyMessage(''); revealPane('plan'); }}>
                 <span className="project-template-option-title"><strong>{localized.title}</strong>{selectedId === template.id && <Check size={17} aria-hidden="true" />}</span>
                 <span className="project-template-description">{localized.description}</span>
                 <span className="project-template-counts">
@@ -294,28 +331,31 @@ export function ProjectTemplates({ snapshot, refreshKey, onClose, onApplied, tes
           </section>
         </div>
         <div className="project-template-pane">
-          <aside className="project-template-plan glass-panel" aria-label={t.plan} aria-busy={planning}>
+          <aside ref={planPane} className="project-template-plan glass-panel" aria-label={t.plan} aria-busy={planning}>
+            {(applyMessage || catalog.error) && <p className="project-template-error" role="alert" tabIndex={-1}>{applyMessage || catalog.error}</p>}
             {selected && selectedText ? <>
-              <div className="panel-head"><h3 className="panel-title">{selectedText.title}</h3></div>
-              {selected.details && <div className="project-template-details"><Markdown tree={details} source={snapshot.source} path={`assets/project-templates/${selected.id}.md`} /></div>}
+              <div className="panel-head"><h3 className="panel-title" tabIndex={-1}>{selectedText.title}</h3>
+                <Button variant="ghost" size="sm" className="project-template-change" onClick={() => revealPane('browser')}>{t.changeTemplate}</Button></div>
+              <p className="project-template-note">{selectedText.description}</p>
               <p className="project-template-note">{t.additive}</p>
-              {!planError && planning && <LoadingState variant="skeleton" className="project-template-loading" message={t.loadingPlan} />}
+              {!planError && planning && <LoadingState variant="skeleton" message={t.loadingPlan} />}
               {planError && <ErrorState variant="banner" className="project-template-state" message={planError}
                 onRetry={() => setPlanRevision(value => value + 1)} pending={planning} />}
-              {currentPlan && !planning && <div className="project-template-plan-items">
+              {currentPlan && !planning && <div>
                 {(['create', 'resume', 'reuse', 'skip'] as const).map(status => <PlanGroup key={status} status={status} items={items.filter(item => item.status === status)} />)}
               </div>}
+              {selected.details && <details className="project-template-details"><summary>{t.details}</summary><Markdown tree={details} source={snapshot.source} path={`assets/project-templates/${selected.id}.md`} /></details>}
             </> : !loading && !loadError && shelfTemplates.length > 0 && <EmptyState message={t.select} />}
           </aside>
         </div>
       </div>
       <footer className="project-template-footer">
-        {(applyMessage || catalog.error) && <p className="project-template-error" role="alert">{applyMessage || catalog.error}</p>}
         {!canWrite && <div className="project-template-stale">
           <p className="project-template-note">{originalReadOnly ? testCopy.notice : t.readOnly}</p>
           {originalReadOnly && <Button variant="outline" size="sm" onClick={testCopy.open}>{testCopy.action}</Button>}
         </div>}
         {stale && <div className="project-template-stale" role="status"><span>{t.stale}</span><Button variant="outline" size="sm" disabled={busy || planning} onClick={() => { setApplyMessage(''); setPlanRevision(value => value + 1); }}><RefreshCw size={13} />{t.refreshPlan}</Button></div>}
+        {(applyMessage || catalog.error || planError) && <Button variant="ghost" size="sm" className="project-template-message" onClick={revealPlanMessage}>{t.showMessage}</Button>}
         <div className="project-template-footer-row">
           <label className="project-template-samples"><input type="checkbox" checked={samples} disabled={busy || !selected?.samples.length} onChange={event => setSamples(event.target.checked)} />
             <span><strong>{t.samples}</strong><small>{t.samplesHint}</small></span></label>

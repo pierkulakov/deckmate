@@ -4,8 +4,6 @@
 :root { --planning-mint: var(--card-highlight); --planning-mint-text: color-mix(in srgb, var(--card-highlight) 65%, var(--ink)); --planning-idle: var(--muted); --planning-run-fill: var(--accent); --planning-run-ink: var(--surface); --planning-run-tone: 50%; }
 :root.dark { --planning-mint: var(--mint-edge); --planning-mint-text: var(--mint-edge); --planning-idle: var(--tab-idle); --planning-run-fill: var(--violet-fill); --planning-run-ink: var(--violet-fill-ink); --planning-run-tone: 100%; }
 .planning-view.planning-parity { --shelf-inset: var(--space-6); padding: 20px 24px 56px 16px; min-width: 0; }
-/* 2026-11-10: toolbar actions remain in the shared app bar to preserve navigation and focus. */
-.topbar-view-actions { display: contents; }
 .timeline-actions { display: flex; align-items: center; gap: 8px; }
 .timeline-actions .ui-button { width: 30px; height: 30px; min-height: 30px; padding: 0; border-radius: var(--control-radius); }
 /* 2026-11-10: the Timeline's creating action is the shared mint line and label (the Foil Rule), like Create space and Journey. */
@@ -17,26 +15,31 @@
 .planning-create-menu [role='menuitem'] { display: flex; align-items: center; min-height: 34px; padding: 7px 10px; border-radius: 4px; outline: none; font-size: 13px; cursor: pointer; }
 .planning-create-menu [role='menuitem'][data-highlighted] { background: var(--hover); }
 .planning-create-menu [role='menuitem']:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
-.planning-parity select { max-width: 100%; padding: 6px 10px; border: 1px solid var(--control-line); border-radius: var(--control-radius); background: var(--ground); color: var(--ink); font: inherit; }
-.timeline-scroll:focus-visible { outline: 2px solid var(--focus); outline-offset: 3px; }
+.planning-parity select { max-width: 100%; padding: 6px 10px; font: inherit; }
+.timeline-scroll:focus-visible { outline: 2px solid var(--focus); }
 /* 2026-11-06: the scale runs edge to edge under the top bar, where an outer ring was cut on the left and top. */
 .timeline-scroll:focus-visible { outline-offset: -2px; }
 .planning-parity .notice, .planning-parity .error-banner { margin: 10px 24px; }
 .timeline-scope-panel { margin-top: var(--space-4); padding: 0; }
 .planning-collection { min-width: 0; }
-.planning-collection-header { display: flex; align-items: center; flex-wrap: wrap; gap: 12px 24px; min-height: 65px; padding: 12px 24px; }
-.planning-collection-header > div:first-child { min-width: 0; }
+.planning-collection-header { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: start; gap: var(--space-2) var(--space-4); padding: var(--space-3) var(--space-4); }
+.planning-collection-title { min-width: 0; }
 .planning-collection-header h2 { margin: 0; font-size: 17px; font-weight: 600; line-height: 24px; overflow-wrap: anywhere; }
 .planning-collection-header p { margin: 3px 0 0; color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
-.planning-count { flex-shrink: 0; font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.planning-count { display: flex; flex-wrap: wrap; gap: var(--space-2) var(--space-4); grid-column: 1 / -1; font-size: 12px; line-height: 18px; color: var(--muted); }
+.planning-count .page-number { color: var(--ink); }
+.planning-collection-tools { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); padding: var(--space-3) var(--space-4); }
+.planning-scope-menu { position: relative; }
+.planning-scope-menu > summary { display: flex; align-items: center; justify-content: center; width: 32px; height: 32px; padding: 0; list-style: none; cursor: pointer; }
+.planning-scope-menu > summary::-webkit-details-marker { display: none; }
+.planning-scope-menu-body { position: absolute; z-index: 6; right: 0; top: calc(100% + var(--space-1)); padding: var(--space-2); border: 1px solid var(--line); border-radius: var(--glass-radius); background: var(--surface); box-shadow: var(--shadow); }
 /* 2026-11-10: the active filter uses the shared mark instead of a filled chip. */
-.planning-mine { flex-shrink: 0; height: 24px; margin-left: auto; padding: 0 7px; border: .67px solid var(--control-line); border-radius: var(--control-radius); background: transparent; color: var(--button-ink, var(--accent)); font-size: 12px; font-weight: 500; line-height: 14px; cursor: pointer; }
+.planning-mine { flex-shrink: 0; min-height: 30px; padding: 0 8px; font-size: 12px; cursor: pointer; }
 @media (hover: hover) { .planning-mine:hover { border-color: var(--button-line); background: var(--hover); } .planning-mine[aria-pressed="true"]:hover { border-color: var(--mark); background: var(--mark-tint-strong); } }
 /* 2026-11-06: plain buttons of the plan press 1px like the shared .ui-button. */
 .planning-mine:active:not(:disabled), .planning-overview-title:active:not(:disabled) { translate: 0 1px; }
-.planning-mine + .planning-search { margin-left: 0; }
 .planning-mine[aria-pressed="true"] { border-color: var(--mark); background: var(--mark-tint); color: var(--mark); }
-.planning-search { border: var(--control-hairline) solid var(--control-field-line); border-radius: var(--control-radius); background: var(--control-field); display: flex; align-items: center; gap: 8px; width: min(350px, 30vw); margin-left: auto; padding: 5px 9px; color: var(--muted); }
+.planning-search { border: var(--control-hairline) solid var(--control-field-line); border-radius: var(--control-radius); background: var(--control-field); display: flex; align-items: center; gap: var(--space-2); flex: 1; min-width: 120px; max-width: 350px; min-height: 30px; margin-left: auto; padding: 5px 9px; color: var(--muted); }
 .planning-search:focus-within { border-color: var(--focus); box-shadow: inset 0 0 0 1px var(--focus); }
 .planning-search input { width: 100%; min-width: 0; border: 0; outline: 0; color: var(--ink); background: transparent; font-size: 12px; }
 .planning-search input::placeholder { color: var(--muted); }
@@ -44,28 +47,21 @@
 /* 2026-11-05: segments carry the shared status classes (.status-* in styles.css), as the Stats bars and badges do; accepted keeps the card band's metal. */
 .planning-progress > span { height: 100%; background: currentColor; }
 .planning-progress > .status-accepted { background: var(--accepted-metal); }
-.planning-collection-body { display: flex; gap: 24px; align-items: flex-start; padding: 20px 24px 32px 12px; }
+.planning-collection-body { display: flex; gap: var(--space-4); align-items: flex-start; padding: var(--space-3) var(--space-4) var(--space-6) var(--space-3); }
 .planning-rail { width: 36px; flex-shrink: 0; }
 .planning-details { width: min(31vw, 440px); flex-shrink: 0; min-width: 260px; }
 .planning-cards { flex: 1; min-width: 0; }
-.planning-order { display: flex; gap: 16px; align-items: center; justify-content: space-between; margin-bottom: 16px; color: var(--muted); font-size: 12px; }
+.planning-order { display: flex; flex-wrap: wrap; gap: var(--space-2) var(--space-4); align-items: center; margin-bottom: var(--space-4); color: var(--muted); font-size: 12px; }
 .planning-card-group { padding: 0 0 24px; min-height: 64px; }
-.planning-card-group h3 { display: flex; gap: 12px; margin: 0 0 14px; font-size: 12px; font-weight: 400; color: var(--muted); }
-.planning-card-group h3 span { font-variant-numeric: tabular-nums; }
+.planning-card-group h3 { display: flex; flex-wrap: wrap; gap: var(--space-2); margin: 0 0 var(--space-4); font-size: 12px; font-weight: 400; color: var(--muted); }
+.planning-card-group h3 > span:first-child { overflow-wrap: anywhere; }
+.planning-group-effort { display: inline-flex; align-items: baseline; flex-wrap: wrap; gap: 4px 8px; font-size: 12px; line-height: 18px; }
+.planning-group-effort .page-number { white-space: nowrap; }
 .planning-card-grid { display: grid; grid-template-columns: repeat(auto-fill, var(--tile-width)); gap: var(--tile-gap); }
 .planning-card-grid > div { min-width: 0; }
-/* 2026-11-06: light mode fills the bar with the pale doc band, so it takes the page ink; the done-band white read at 1.7:1. */
-.planning-selection { display: flex; align-items: center; gap: 12px; min-height: 44px; padding: 0 16px; background: var(--mint, var(--doc-metal)); color: var(--mint-ink, var(--ink)); }
-.planning-selection > span { flex-shrink: 0; font-size: 12px; white-space: nowrap; }
-.planning-selection .bulk-actions { flex: 1; }
-.planning-selection > .ui-button { flex-shrink: 0; }
-/* 2026-11-05: the shared dark ghost hover made dots unreadable on mint bars. These buttons keep the bar's ink and tint hover and open-menu backgrounds with it. */
-.planning-selection .ui-button { color: inherit; background: transparent; }
-.planning-selection .ui-button:hover:not(:disabled), .planning-selection .ui-button[data-state="open"] { background: color-mix(in srgb, var(--mint-ink, currentColor) 14%, transparent); color: inherit; }
-.planning-selection .ui-button:focus-visible { outline: 2px solid var(--mint-ink, currentColor); outline-offset: 1px; }
 .planning-stats-summary { display: grid; grid-template-columns: 1fr 1fr; gap: 14px 18px; margin: 0 0 16px; }
-.planning-stats-summary dt { margin-bottom: 5px; color: var(--muted); font-size: 11px; }
-.planning-stats-summary dd { margin: 0; font-size: 17px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.planning-stats-summary dt { margin-bottom: 5px; color: var(--muted); font-size: 12px; line-height: 16px; }
+.planning-stats-summary dd { margin: 0; font: 600 17px/24px 'Geist Mono', monospace; font-variant-numeric: tabular-nums; }
 .planning-stats-summary dd span { color: var(--planning-mint-text); font-size: 12px; margin-left: 8px; }
 .planning-stats-progress { display: block; width: 100%; height: 6px; border: 0; border-radius: 3px; overflow: hidden; background: var(--line); accent-color: var(--accepted-metal); }
 .planning-stats-progress::-webkit-progress-bar { background: var(--line); }
@@ -73,18 +69,16 @@
 .planning-stats-section { margin-top: 22px; }
 .planning-stats-section h3 { font-size: 12px; font-weight: 600; margin: 0 0 12px; }
 .planning-stat-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 5px 12px; margin-bottom: 12px; }
-.planning-stat-label { min-width: 0; overflow: hidden; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
-.planning-stat-value { color: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+.planning-stat-label { min-width: 0; font-size: 12px; overflow-wrap: anywhere; }
+.planning-stat-value { color: var(--muted); font: 12px/18px 'Geist Mono', monospace; font-variant-numeric: tabular-nums; }
 .planning-stat-bar { grid-column: 1 / -1; height: 5px; width: 100%; }
 .planning-stat-remaining { display: block; height: 100%; background: var(--planning-idle); border-radius: 3px; overflow: hidden; }
 .planning-stat-remaining[class*='status-'] { background: currentColor; }
 .planning-stat-done { display: block; height: 100%; background: var(--accepted-metal); }
-.planning-stat-note { grid-column: 1 / -1; font-size: 11px; color: var(--muted); line-height: 1.5; }
-/* The dark axis band uses #322f40 and 8 px padding: month 14/400, uppercase year 10/700 with a 7 px gap, and a 24 px date strip fading to the page.
-   ISO week cells are 70×16 with 11/400 text, #645c7e top/right edges and radius 4 4 0 0; the current week is mint #4cc9b0.
-   A #bababa multiply layer dims the past up to the current hour. Today's label ends at a 4 px mint edge and reserves 34 px so its marker cannot cover the date. Both scroll edges fade over 48 px. */
-:root { --timeline-axis-ink: var(--muted); --timeline-week-edge: var(--line); --timeline-week-current: var(--planning-mint-text); --timeline-past: #ebe6f0; --timeline-now-fade: color-mix(in srgb, var(--canvas) 70%, var(--muted)); --timeline-plate: var(--accent-soft); --timeline-plate-edge: color-mix(in srgb, var(--accent) 62%, var(--line)); --timeline-plate-ink: var(--ink); --timeline-plate-title: var(--ink); }
-:root.dark { --timeline-axis-ink: #e3dff0; --timeline-week-edge: #645c7e; --timeline-week-current: #4cc9b0; --timeline-past: #bababa; --timeline-now-fade: var(--panel-box-line); --timeline-plate: #381d4e; --timeline-plate-edge: var(--button-line); --timeline-plate-ink: var(--button-ink); --timeline-plate-title: #faf8ff; }
+.planning-stat-note { grid-column: 1 / -1; font-size: 12px; color: var(--muted); line-height: 1.45; }
+/* 2026-11-11: the multiply shade preserves elapsed time without introducing separate text or edge colors. */
+:root { --timeline-axis-ink: var(--ink); --timeline-week-edge: var(--line); --timeline-week-current: var(--planning-mint-text); --timeline-past: #ebe6f0; --timeline-now-fade: color-mix(in srgb, var(--canvas) 70%, var(--muted)); }
+:root.dark { --timeline-past: #bababa; --timeline-now-fade: var(--panel-box-line); }
 .timeline-axis-panel { padding: 0; overflow: hidden; }
 .timeline-band { position: relative; overflow: hidden; border-radius: inherit; }
 .timeline-band::before, .timeline-band::after { content: ""; position: absolute; z-index: 5; top: 8px; bottom: 18px; width: 48px; pointer-events: none; }
@@ -95,12 +89,12 @@
 .timeline-canvas { position: relative; user-select: none; }
 .timeline-past { position: absolute; inset: 0 auto 0 0; background: var(--timeline-past); mix-blend-mode: multiply; pointer-events: none; }
 .timeline-month-label { position: absolute; display: flex; align-items: baseline; gap: 7px; padding-left: 7px; overflow: hidden; color: var(--timeline-axis-ink); font-size: 14px; line-height: 18px; white-space: nowrap; text-transform: capitalize; }
-.timeline-month-label small { font-size: 10px; font-weight: 700; line-height: 10px; }
+.timeline-month-label small { font: 500 12px/16px 'Geist Mono', monospace; }
 .timeline-month-strip { position: absolute; height: 24px; background: linear-gradient(var(--canvas), var(--sidebar)); }
-.timeline-week-label { position: absolute; height: 16px; border-top: .67px solid var(--timeline-week-edge); border-right: .67px solid var(--timeline-week-edge); border-radius: 4px 4px 0 0; background: var(--canvas); color: var(--timeline-axis-ink); font-size: 11px; line-height: 15px; text-align: center; font-variant-numeric: tabular-nums; }
+.timeline-week-label { position: absolute; height: 18px; border-top: var(--control-hairline) solid var(--timeline-week-edge); border-right: var(--control-hairline) solid var(--timeline-week-edge); border-radius: var(--glass-radius) var(--glass-radius) 0 0; background: var(--canvas); color: var(--timeline-axis-ink); font: 12px/16px 'Geist Mono', monospace; text-align: center; font-variant-numeric: tabular-nums; }
 .timeline-week-label.is-current { color: var(--timeline-week-current); }
 .timeline-now { position: absolute; z-index: 3; width: 130px; height: 24px; transform: translateX(calc(-100% + 2px)); background: linear-gradient(90deg, transparent, var(--timeline-now-fade)); pointer-events: none; }
-.timeline-now > span { display: block; height: 20px; padding-right: 34px; border-right: 4px solid var(--planning-mint); border-radius: 0 4px 4px 0; background: var(--canvas); color: var(--ink); font-size: 11px; font-weight: 700; line-height: 20px; text-align: right; white-space: nowrap; }
+.timeline-now > span { display: block; height: 20px; padding-right: 34px; border-right: 4px solid var(--planning-mint); border-radius: 0 var(--glass-radius) var(--glass-radius) 0; background: var(--canvas); color: var(--ink); font-size: 12px; font-weight: 600; line-height: 20px; text-align: right; white-space: nowrap; }
 .timeline-milestone-marker, .timeline-due-marker { position: absolute; z-index: 4; transform: translateX(-50%); display: flex; align-items: center; justify-content: center; width: 30px; height: 30px; border: 0; padding: 0; background: transparent; cursor: pointer; }
 .timeline-milestone-marker > span { width: 21px; height: 21px; border: 2px solid color-mix(in srgb, currentColor 60%, var(--ink)); border-radius: 4px; transform: rotate(45deg); background: currentColor; }
 .timeline-milestone-marker.is-past > span { background: var(--canvas); border-color: currentColor; }
@@ -109,20 +103,22 @@
    carries a mint «+N» and opens a list. Today is also a thin mint line from below the month names to the bottom, under the Run bars. */
 .timeline-mark { display: contents; }
 /* 2026-11-06: light text on the light-mode mint reached 3.2:1; the deeper mint text tone carries it at 5.4:1 (the same mint in dark). */
-.timeline-milestone-marker .timeline-cluster-count, .timeline-due-marker .timeline-cluster-count { position: absolute; top: -6px; right: -9px; min-width: 18px; padding: 0 4px; border-radius: var(--control-radius); background: var(--planning-mint-text); color: var(--planning-cluster-ink); font: 500 11px/16px 'Geist Mono', monospace; text-align: center; }
+.timeline-milestone-marker .timeline-cluster-count, .timeline-due-marker .timeline-cluster-count { position: absolute; top: -6px; right: -9px; min-width: 18px; padding: 0 4px; border-radius: var(--control-radius); background: var(--planning-mint-text); color: var(--planning-cluster-ink); font: 500 12px/16px 'Geist Mono', monospace; text-align: center; }
 /* 2026-11-10: mint-ink on the light theme's deep teal read at 1.6:1; white reads at 5.5:1. The dark mint keeps mint-ink. */
-:root { --planning-cluster-ink: #ffffff; } :root.dark { --planning-cluster-ink: var(--mint-ink); }
+:root { --planning-cluster-ink: var(--count-face); } :root.dark { --planning-cluster-ink: var(--mint-ink); }
 .timeline-now-line { position: absolute; bottom: 0; width: 2px; margin-left: -1px; background: var(--planning-mint); opacity: .6; pointer-events: none; }
 .timeline-cluster-menu [role='menuitem'] { gap: 8px; }
-.timeline-cluster-menu [role='menuitem'] small { margin-left: auto; padding-left: 16px; color: var(--muted); font-size: 11px; }
+.timeline-cluster-menu [role='menuitem'] small { margin-left: auto; padding-left: var(--space-4); color: var(--muted); font-size: 12px; }
+.timeline-cluster-menu [role='menuitem'] > span { overflow-wrap: anywhere; }
 .timeline-due-marker { color: var(--muted); }
 .timeline-due-marker.is-overdue { color: var(--danger); }
 .timeline-due-marker.is-soon { color: var(--warning-ink); }
-.timeline-due-marker small { position: absolute; top: -5px; right: -5px; min-width: 14px; padding: 0 3px; background: var(--sidebar); border-radius: 3px; font-size: 10px; }
+.timeline-due-marker small { position: absolute; top: -5px; right: -5px; min-width: 14px; padding: 0 3px; background: var(--sidebar); border-radius: var(--control-radius); font: 12px/16px 'Geist Mono', monospace; }
 .timeline-due-marker[aria-pressed='true'] { outline: 2px solid var(--planning-mint); border-radius: 4px; }
-.timeline-run { position: absolute; display: flex; align-items: center; gap: 12px; height: 36px; min-width: 28px; padding: 0 12px 6px; overflow: hidden; border: 1px solid var(--line); border-radius: 5px; background: var(--planning-run-fill); color: var(--planning-run-ink); text-align: left; }
+.timeline-run { position: absolute; display: flex; align-items: center; justify-content: center; height: 36px; min-width: 28px; padding: 0 6px 6px; overflow: hidden; border: 1px solid var(--line); border-radius: var(--glass-radius); background: var(--planning-run-fill); color: var(--planning-run-ink); text-align: center; }
 .timeline-run > span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; font-weight: 600; }
-.timeline-run > small { flex-shrink: 0; margin-left: auto; font-size: 11px; font-variant-numeric: tabular-nums; }
+.timeline-lane-label { position: absolute; left: 0; width: 100%; height: 16px; color: var(--muted); font-size: 12px; line-height: 16px; pointer-events: none; }
+.timeline-lane-label > span { position: sticky; left: var(--space-3); padding: 0 var(--space-2); background: var(--canvas); }
 /* 2026-11-05: the strip in a bar has its own dark groove, and its segments stay apart from the violet fill in both themes. */
 .timeline-run .planning-progress { position: absolute; bottom: 0; left: 0; background: color-mix(in srgb, var(--sidebar) 70%, transparent); }
 .timeline-run:not(.is-past) .planning-progress > span:not(.status-accepted) { background: color-mix(in srgb, currentColor var(--planning-run-tone), var(--planning-run-ink)); }
@@ -131,67 +127,74 @@
 .timeline-run.is-active:where(:not([aria-pressed='true'])) { outline: 1px dashed var(--planning-mint); outline-offset: 1px; }
 .timeline-run.is-past { background: var(--accent-soft); color: var(--ink); }
 .planning-overview { margin-top: var(--space-4); padding: var(--space-4) var(--shelf-inset); }
-.planning-overview-row { display: grid; grid-template-columns: 180px minmax(0, 1fr); gap: 24px; padding: 20px 0; border-bottom: 1px solid var(--line); }
-.planning-overview-title { display: flex; flex-direction: column; align-items: flex-start; gap: 9px; padding: 0; background: transparent; border: 0; color: var(--ink); text-align: left; }
+.planning-overview-row { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: var(--space-2) var(--space-6); padding: var(--space-4) 0; border-bottom: 1px solid var(--line); }
+.planning-overview-row:last-child { border-bottom: 0; }
+.planning-overview-title { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); padding: 0; background: transparent; border: 0; color: var(--ink); text-align: left; }
 .planning-overview-title .planning-overview-name { font-size: 16px; overflow-wrap: anywhere; }
 /* 2026-11-06: the title opens its Milestone, so it answers the pointer as the Hand's Run names do. */
-.planning-overview-title:hover .planning-overview-name { color: var(--focus); text-decoration: underline; }
+@media (hover: hover) { .planning-overview-title:hover .planning-overview-name { color: var(--focus); text-decoration: underline; } }
 .planning-overview-title > span:not(.planning-diamond), .planning-overview-title small { font-size: 12px; color: var(--muted); }
-.planning-overview-row .planning-stats { display: grid; grid-template-columns: repeat(5, minmax(110px, 1fr)); gap: 24px; }
-.planning-overview-row .planning-stats-summary { display: flex; flex-direction: column; gap: 10px; }
-.planning-overview-row .planning-stats-progress { display: none; }
-.planning-overview-row .planning-stats-section { margin: 0; }
 .planning-diamond { display: inline-block; width: 12px; height: 12px; margin: 3px; border: 1px solid currentColor; border-radius: 2px; background: currentColor; transform: rotate(45deg); flex-shrink: 0; }
-.planning-calendar-overlay { position: fixed; inset: 0; z-index: 110; background: color-mix(in srgb, var(--sidebar) 75%, transparent); animation: backdrop-fade var(--motion-spring-firm) ease-out; }
-.planning-calendar { position: fixed; z-index: 111; top: 50%; left: 50%; transform: translate(-50%, -50%); width: min(840px, calc(100vw - 32px)); max-height: calc(100dvh - 32px); overflow: auto; padding: 22px; border: 1px solid var(--line); border-radius: var(--glass-radius); background: var(--canvas); color: var(--ink); animation: dialog-drop var(--motion-spring-firm) var(--ease-spring-firm); }
-.planning-calendar > header { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
-.planning-calendar h2 { margin: 0; font-size: 20px; }
-.planning-calendar > p { margin: 8px 0 20px; color: var(--muted); font-size: 12px; }
+.planning-calendar-overlay { position: fixed; inset: 0; z-index: 110; background: var(--scrim); animation: backdrop-fade var(--motion-spring-firm) ease-out; }
+.planning-calendar { position: fixed; z-index: 111; top: 50%; left: 50%; transform: translate(-50%, -50%); display: flex; flex-direction: column; width: min(840px, calc(100vw - 24px)); max-height: calc(100dvh - 24px); overflow: hidden; animation: dialog-drop var(--motion-spring-firm) var(--ease-spring-firm); }
+.planning-calendar > .dialog-head { flex: 0 0 auto; }
+.planning-calendar > .dialog-body { min-height: 0; overflow: auto; }
+.planning-calendar > .dialog-foot { flex: 0 0 auto; }
+.planning-calendar .dialog-description { margin: 0 0 var(--space-4); color: var(--muted); font-size: 12px; line-height: 1.45; }
+.planning-run-settings > .dialog-body { display: flex; flex-direction: column; padding: 0; overflow: hidden; }
+.planning-run-settings .dialog-description { margin: var(--space-4) var(--space-4) 0; }
+.planning-run-settings .run-configuration-form { display: flex; flex-direction: column; min-height: 0; margin: 0; }
+.planning-run-settings .planning-form-content { padding: var(--space-4); }
+.planning-run-settings .dialog-foot { flex: 0 0 auto; margin-top: 0; }
 /* Timeline creation and Milestone header actions, 2026-11-05. */
 .planning-scope-actions { display: flex; flex-shrink: 0; align-items: center; gap: 8px; }
-.planning-scope-actions button[aria-pressed='true'] { color: var(--planning-mint-text); background: var(--accent-soft); }
-.planning-calendar-editing, .planning-delete-dialog { width: min(480px, calc(100vw - 32px)); }
+.planning-calendar-editing, .planning-delete-dialog { width: min(560px, calc(100vw - 24px)); }
 .planning-create-form fieldset { display: flex; flex-direction: column; gap: 18px; padding: 0; margin: 0; border: 0; min-width: 0; }
 .planning-create-form label:not(.planning-checkbox) { display: flex; flex-direction: column; gap: 6px; font-size: 13px; }
-.planning-create-form input:not([type='checkbox']) { width: 100%; min-width: 0; height: 36px; padding: 6px 10px; border: 1px solid var(--control-line); border-radius: var(--control-radius); background: var(--ground); color: var(--ink); font: inherit; }
+.planning-create-form :where(input:not([type='checkbox'])) { width: 100%; min-width: 0; height: 36px; padding: 6px 10px; font: inherit; }
 .planning-form-dates { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
 .planning-checkbox { display: flex; flex-direction: row; align-items: center; gap: 8px; min-width: 0; color: var(--ink); font-size: 13px; cursor: pointer; }
 .planning-checkbox:has(input:disabled) { color: var(--muted); cursor: default; }
 .planning-checkbox input:disabled { cursor: default; }
 .planning-form-note { margin: -12px 0 0; color: var(--muted); font-size: 12px; }
-.planning-create-form footer, .planning-delete-dialog footer { display: flex; justify-content: flex-end; gap: 8px; margin-top: 24px; }
-/* The soft outlined save belongs to the centered settings dialog; inside an anchored popover the form keeps the primary button (2026-11-06). */
-.planning-calendar .planning-create-form button[type='submit'] { background: var(--accent-soft); color: var(--ink); border-color: var(--focus); }
-.planning-calendar .planning-create-form button[type='submit']:hover:not(:disabled) { background: var(--hover); }
+.planning-create-form footer { margin-top: var(--space-4); }
 .planning-delete-dialog h2 { overflow-wrap: anywhere; }
-.planning-delete-confirm { color: var(--danger); }
 .planning-calendar .error-banner { margin: 0 0 16px; }
 .planning-diamond.is-past { background: transparent; }
 /* 2026-11-10: the selection placeholder is a shared empty state on the same glass as the axis. */
 .timeline-nothing { margin-top: var(--space-4); }
 .timeline-nothing h2 { overflow-wrap: anywhere; }
-.timeline-run, .timeline-milestone-marker, .timeline-due-marker { transition: filter var(--motion-feedback) var(--ease-out); }
-.timeline-run:hover:not(:disabled), .timeline-milestone-marker:hover:not(:disabled), .timeline-due-marker:hover:not(:disabled) { filter: brightness(1.12); }
+@media (hover: hover) { .timeline-run:hover:not(:disabled), .timeline-milestone-marker:hover:not(:disabled), .timeline-due-marker:hover:not(:disabled) { filter: brightness(1.12); } }
 .timeline-run:active:not(:disabled), .timeline-milestone-marker:active:not(:disabled), .timeline-due-marker:active:not(:disabled) { filter: brightness(.96); }
 .timeline-run:focus-visible, .timeline-milestone-marker:focus-visible, .timeline-due-marker:focus-visible { outline: 2px solid var(--focus); outline-offset: 3px; }
 @media (max-width: 1100px) {
   .planning-details { width: 280px; min-width: 0; }
   .planning-collection-body { gap: 16px; }
-  .planning-overview-row .planning-stats { grid-template-columns: repeat(2, minmax(100px, 1fr)); }
 }
 @media (max-width: 760px) {
   .planning-view.planning-parity { --shelf-inset: var(--space-3); padding: 16px 12px 40px; }
-  .planning-collection-header { padding: 12px 16px; flex-wrap: wrap; gap: 12px; }
-  .planning-collection-header > div:first-child { flex-basis: 100%; }
+  .planning-collection-header { padding: var(--space-3); }
   .planning-collection-header h2, .planning-collection-header p { white-space: normal; overflow-wrap: anywhere; }
-  .planning-search { width: 100%; margin-left: 0; }
-  .planning-collection-body { display: grid; grid-template-columns: 32px minmax(0, 1fr); padding: 16px 12px; }
+  .planning-collection-title p, .planning-collection-header .planning-count > span + span { display: none; }
+  .planning-collection-tools { padding: var(--space-3); }
+  .planning-collection-tools > .ui-button { flex-basis: auto; margin-right: auto; }
+  .planning-search { flex-basis: calc(100% - 120px); margin-left: 0; }
+  .planning-collection-body { display: grid; grid-template-columns: 32px minmax(0, 1fr); padding: var(--space-3); gap: var(--space-3); }
   .planning-details { width: 100%; }
   .planning-cards { grid-column: 2; }
   .planning-collection-body > .planning-cards:nth-child(2) { grid-row: 1; }
-  .planning-overview { padding: 16px; }
-  .planning-overview-row { grid-template-columns: 1fr; }
+  .planning-overview { padding: var(--space-4); }
   .planning-overview-title { flex-direction: row; flex-wrap: wrap; align-items: center; }
   .planning-order { flex-wrap: wrap; }
-  .planning-calendar { padding: 12px; }
+}
+@media (pointer: coarse) {
+  .timeline-actions .ui-button, .planning-scope-menu > summary, .planning-scope-actions .ui-button { min-width: var(--control-target-touch, 44px); min-height: var(--control-target-touch, 44px); height: auto; }
+  .planning-collection-tools :is(.ui-button, .planning-mine, .planning-search), .planning-rail .ui-button, .planning-create-menu [role='menuitem'] { min-height: var(--control-target-touch, 44px); }
+  .planning-rail, .planning-rail .ui-button { width: var(--control-target-touch, 44px); }
+  .planning-rail { gap: var(--space-2); }
+  .planning-collection-body { column-gap: var(--space-2); }
+  .planning-calendar :is(.ui-button, .control-field, .planning-checkbox) { min-height: var(--control-target-touch, 44px); }
+}
+@media (max-width: 760px) and (pointer: coarse) {
+  .planning-collection-body { grid-template-columns: var(--control-target-touch, 44px) minmax(0, 1fr); }
 }

@@ -3,18 +3,18 @@
 // The figure redraws from the catalog on every revision, so the title, state and owner are always live.
 import { ArrowUpRight } from 'lucide-react';
 import type { CardPriority, CatalogCard, CatalogView } from '../../src/catalog-contracts.ts';
-import { StatusBadge } from './StatusMenu.tsx';
-import { CardTags, TagTitlePrefix } from './CardTags.tsx';
+import { CardFaceStatus, cardFaceStatus } from './CardIndicators.tsx';
+import { CardTagSummary } from './CardTags.tsx';
+import type { CardTileLookups } from '../card-tile-equality.ts';
 import { defineText, locale, textNow, useLang, useText } from '../i18n.ts';
 import { kindLabel, priorityLabel } from '../locales/common.ts';
 
 const text = defineText({
   missing: 'Card not found',
   openCard: (title: string) => `Open card ${title}`,
-  noState: 'No status',
   open: 'Open',
   iteration: (iteration: string) => `Iteration ${iteration}`,
-  effort: 'Effort',
+  effortShort: (effort: string) => `Est. ${effort}`,
   effortValue: (effort: string) => `Effort: ${effort}`,
   priorityValue: (priority: CardPriority) => `Priority: ${priorityLabel(priority, 'en')}`,
   lane: 'Card lane',
@@ -23,10 +23,9 @@ const text = defineText({
 }, {
   missing: 'Карточка не найдена',
   openCard: (title: string) => `Открыть карточку ${title}`,
-  noState: 'Без статуса',
   open: 'Открыть',
   iteration: (iteration: string) => `Итерация ${iteration}`,
-  effort: 'Оценка',
+  effortShort: (effort: string) => `Оц. ${effort}`,
   effortValue: (effort: string) => `Оценка: ${effort}`,
   priorityValue: (priority: CardPriority) => `Приоритет: ${priorityLabel(priority, 'ru')}`,
   lane: 'Строка карточки',
@@ -72,12 +71,13 @@ type Props = {
   cardId: string;
   view: VisionCardView;
   catalog: CatalogView | null;
+  lookups: CardTileLookups;
   /** True while Excalidraw hands pointer events to the embeddable (activated by a click on the node center). */
   interactive: boolean;
   onOpen: (cardId: string) => void;
 };
 
-export default function VisionCardNode({ card, cardId, view, catalog, interactive, onOpen }: Props) {
+export default function VisionCardNode({ card, cardId, view, catalog, lookups, interactive, onOpen }: Props) {
   const t = useText(text);
   const lang = useLang();
   const numbers = new Intl.NumberFormat(locale(lang));
@@ -89,44 +89,47 @@ export default function VisionCardNode({ card, cardId, view, catalog, interactiv
   }
   const owner = memberLabel(catalog, card.owner);
   const deck = card.deckId ? catalog?.decks.find(candidate => candidate.id === card.deckId) : undefined;
+  const status = cardFaceStatus(card, lookups, lang);
+  const description = [kindLabel(card.kind, lang), status.accessible, owner, card.effort != null ? t.effortValue(numbers.format(card.effort)) : '', ...(card.tags ?? [])].filter(Boolean).join(', ');
   const openCard = () => { onOpen(cardId); };
   return <div className={`deckmate-vision-card is-${view} kind-${card.kind}`} style={{ pointerEvents }} onClick={openCard} role={interactive ? 'button' : undefined} tabIndex={interactive ? 0 : -1}
-    aria-label={interactive ? t.openCard(card.title) : card.title} onKeyDown={event => { if (interactive && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); openCard(); } }}>
+    aria-label={`${interactive ? t.openCard(card.title) : card.title}, ${description}`} onKeyDown={event => { if (interactive && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); event.stopPropagation(); openCard(); } }}>
     {view === 'lane' && <>
       <span className="deckmate-card-kind" aria-hidden="true">{kindLabel(card.kind, lang)}</span>
-      <span className="vision-lane-main"><strong className="deckmate-card-title" title={card.title}><TagTitlePrefix tags={card.tags} definitions={catalog?.projectTags} />{card.title}</strong>
-        <CardTags tags={card.tags} definitions={catalog?.projectTags} compact maxVisible={1} /></span>
-      {card.state ? <StatusBadge state={card.state} /> : <span className="deckmate-card-muted">{t.noState}</span>}
-      {owner && <span className="deckmate-card-owner" title={owner}>{owner}</span>}
+      <span className="vision-lane-main"><strong className="deckmate-card-title" title={card.title}>{card.title}</strong>
+        <span className="deckmate-card-meta">{owner && <span className="deckmate-card-owner" title={owner}>{owner}</span>}<CardTagSummary tags={card.tags} definitions={catalog?.projectTags} /></span></span>
+      <CardFaceStatus status={status} />
     </>}
     {view === 'mini' && <>
       <div className="deckmate-card-head">
         <span className="deckmate-card-kind" aria-hidden="true">{kindLabel(card.kind, lang)}</span>
-        <strong className="deckmate-card-title" title={card.title}><TagTitlePrefix tags={card.tags} definitions={catalog?.projectTags} />{card.title}</strong>
+        <strong className="deckmate-card-title" title={card.title}>{card.title}</strong>
       </div>
       <div className="deckmate-card-meta">
-        {card.state ? <StatusBadge state={card.state} /> : <span className="deckmate-card-muted">{t.noState}</span>}
-        {owner && <span className="deckmate-card-owner" title={owner}>{owner}</span>}
-        {card.effort != null && card.effort > 0 && <span className="deckmate-card-effort" title={t.effort}>{numbers.format(card.effort)}</span>}
+        <CardFaceStatus status={status} />
       </div>
-      <CardTags tags={card.tags} definitions={catalog?.projectTags} compact maxVisible={2} />
+      <div className="deckmate-card-meta">
+        {owner && <span className="deckmate-card-owner" title={owner}>{owner}</span>}
+        {card.effort != null && <span className="deckmate-card-effort" title={t.effortValue(numbers.format(card.effort))}>{t.effortShort(numbers.format(card.effort))}</span>}
+        <CardTagSummary tags={card.tags} definitions={catalog?.projectTags} />
+      </div>
     </>}
     {view === 'full' && <>
       <div className="deckmate-card-head">
         <span className="deckmate-card-kind" aria-hidden="true">{kindLabel(card.kind, lang)}</span>
-        <strong className="deckmate-card-title" title={card.title}><TagTitlePrefix tags={card.tags} definitions={catalog?.projectTags} />{card.title}</strong>
+        <strong className="deckmate-card-title" title={card.title}>{card.title}</strong>
         {interactive && <span className="deckmate-card-open"><ArrowUpRight size={12} />{t.open}</span>}
       </div>
       <div className="deckmate-card-meta">
-        {card.state ? <StatusBadge state={card.state} /> : <span className="deckmate-card-muted">{t.noState}</span>}
+        <CardFaceStatus status={status} />
         {deck && <span className="deckmate-card-deck" title={deck.title}>{deck.title}</span>}
         {owner && <span className="deckmate-card-owner" title={owner}>{owner}</span>}
       </div>
       {textExcerpt(card.markdown) && <p className="deckmate-card-excerpt">{textExcerpt(card.markdown)}</p>}
-      <CardTags tags={card.tags} definitions={catalog?.projectTags} compact maxVisible={2} />
+      <CardTagSummary tags={card.tags} definitions={catalog?.projectTags} />
       <div className="deckmate-card-properties">
         {card.priority && <span>{t.priorityValue(card.priority)}</span>}
-        {card.effort != null && card.effort > 0 && <span>{t.effortValue(numbers.format(card.effort))}</span>}
+        {card.effort != null && <span>{t.effortValue(numbers.format(card.effort))}</span>}
         {card.iteration != null && <span>{t.iteration(numbers.format(card.iteration))}</span>}
       </div>
     </>}

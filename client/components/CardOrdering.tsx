@@ -53,6 +53,8 @@ const text = defineText({
   uiCompact: "Compact",
   uiHideEmpty: "Hide empty",
   uiTable: "Table",
+  uiCards: "Cards",
+  uiView: "View",
   uiDefaultView: "Default view",
   uiReset: "Reset",
   uiSave: "Save"
@@ -102,14 +104,12 @@ const text = defineText({
   uiCompact: "Компактно",
   uiHideEmpty: "Скрыть пустые",
   uiTable: "Таблица",
+  uiCards: "Карточки",
+  uiView: "Представление",
   uiDefaultView: "Вид по умолчанию",
   uiReset: "Сбросить",
   uiSave: "Сохранить"
 });
-
-
-// Ordering panel:
-// rows with two direction buttons, the Tags row, one-tap orders, switches, then the deck's Default View.
 
 
 const tagScopes = [
@@ -218,6 +218,10 @@ export function CardOrdering({ value, onChange, disabled = false, inDeck = false
     </div>
     <fieldset className="card-ordering-body" disabled={disabled}>
       <legend className="visually-hidden">{t.uiOrdering}</legend>
+      {view && onViewChange && <div className="control-segmented" role="group" aria-label={t.uiView}>
+        {([{ id: 'cards', label: t.uiCards }, { id: 'table', label: t.uiTable }] as const).map(layout =>
+          <button key={layout.id} type="button" style={{ flex: 1 }} aria-pressed={view === layout.id} onClick={() => onViewChange(layout.id)}>{layout.label}</button>)}
+      </div>}
       <div className="card-ordering-blocks">
         <div className="card-ordering-rows">
           {directionRows.map(row => <div key={row.key} className="card-ordering-row">
@@ -270,7 +274,6 @@ export function CardOrdering({ value, onChange, disabled = false, inDeck = false
           <Switch label={t.uiCompact} checked={value.compact && canCompact(value.order)} disabled={!canCompact(value.order)} hint={t.compactHint}
             onChange={checked => onChange({ ...value, compact: checked })} />
           {inDeck && onHideEmpty && <Switch label={t.uiHideEmpty} checked={hideEmpty} disabled={!manual} hint={t.hideEmptyHint} onChange={onHideEmpty} />}
-          {view && onViewChange && <Switch label={t.uiTable} checked={view === 'table'} onChange={checked => onViewChange(checked ? 'table' : 'cards')} />}
         </div>
       </div>
       {defaultView && <div className="card-ordering-default" role="group" aria-label={t.uiDefaultView}>

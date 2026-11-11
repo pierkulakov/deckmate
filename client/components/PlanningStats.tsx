@@ -1,4 +1,5 @@
 import { defineText, locale, useLang, useText } from '../i18n.ts';
+import { useState } from 'react';
 import { priorityLabel, stateLabel } from '../locales/common.ts';
 import type { CatalogCard, CatalogView, PlanningDistribution, PlanningHistoryPoint, RunRecord } from '../../src/catalog-contracts.ts';
 import { boardColumns } from '../../src/catalog-contracts.ts';
@@ -32,6 +33,10 @@ const text = defineText({
   noHistory: 'No saved daily observations. Past dates are not reconstructed.',
   historyData: 'Show recorded values', historyDate: 'Date', historyRemaining: 'Remaining', historyTotal: 'Total',
   chart: (start: string, end: string) => `Remaining tasks from ${start} to ${end}`,
+  tasks: 'Tasks', effort: 'Known Effort', units: 'Burndown units',
+  effortBurndown: 'Burndown · remaining known Effort',
+  effortChart: (start: string, end: string) => `Remaining known Effort from ${start} to ${end}`,
+  estimatesNote: 'Only known Effort is counted; tasks without estimates are excluded.',
 }, {
   distribution: (label: string, done: string, total: string) => `${label}: принято ${done} из ${total}`,
   noPriority: "Без приоритета",
@@ -57,6 +62,10 @@ const text = defineText({
   noHistory: 'Сохранённых дневных наблюдений нет. Прошлые даты не восстанавливаются.',
   historyData: 'Показать записанные значения', historyDate: 'Дата', historyRemaining: 'Осталось', historyTotal: 'Всего',
   chart: (start: string, end: string) => `Оставшиеся задачи с ${start} по ${end}`,
+  tasks: 'Задачи', effort: 'Известная оценка', units: 'Единицы сгорания',
+  effortBurndown: 'Сгорание · осталось по известной оценке',
+  effortChart: (start: string, end: string) => `Остаток известной оценки с ${start} по ${end}`,
+  estimatesNote: 'Учитывается только известная оценка; задачи без оценки исключены.',
 });
 
 function DistributionRow({ label, total, done, maximum, note, state }: {
@@ -102,38 +111,45 @@ function taskDistribution(cards: CatalogCard[], getKey: (card: CatalogCard) => s
 function Burndown({ history }: { history: PlanningHistoryPoint[] }) {
   const t = useText(text);
   const lang = useLang();
+  const [unit, setUnit] = useState<'tasks' | 'effort'>('tasks');
   const points = [...new Map(history.map(point => [point.date, point])).values()].sort((first, second) => first.date.localeCompare(second.date));
   const first = points[0];
   const last = points.at(-1);
   if (!first || !last) return <figure className="planning-burndown"><h3>{t.burndown}</h3><p className="planning-stat-note">{t.noHistory}</p></figure>;
   const amount = (value: number) => new Intl.NumberFormat(locale(lang)).format(value);
-  const maximum = Math.max(1, ...points.map(point => point.tasks - point.done));
+  const remaining = (point: PlanningHistoryPoint) => unit === 'effort' ? point.effort - point.doneEffort : point.tasks - point.done;
+  const total = (point: PlanningHistoryPoint) => unit === 'effort' ? point.effort : point.tasks;
+  const maximum = Math.max(1, ...points.map(remaining));
   const span = Math.max(1, dayDistance(first.date, last.date));
   const horizontal = (point: PlanningHistoryPoint) => 26 + dayDistance(first.date, point.date) / span * 270;
-  const vertical = (point: PlanningHistoryPoint) => 112 - (point.tasks - point.done) / maximum * 96;
+  const vertical = (point: PlanningHistoryPoint) => 112 - remaining(point) / maximum * 96;
+  const units = unit === 'effort' ? t.effort : t.tasks;
   return <figure className="planning-burndown">
-    <h3>{t.burndown}</h3>
-    <svg viewBox="0 0 310 130" role="img" aria-label={t.chart(first.date, last.date)}>
+    <h3>{unit === 'effort' ? t.effortBurndown : t.burndown}</h3>
+    <div className="control-segmented planning-burndown-units" role="group" aria-label={t.units}>
+      <button type="button" aria-label={t.tasks} aria-pressed={unit === 'tasks'} onClick={() => setUnit('tasks')}>{t.tasks}</button>
+      <button type="button" aria-label={t.effort} aria-pressed={unit === 'effort'} onClick={() => setUnit('effort')}>{t.effort}</button>
+    </div>
+    <svg viewBox="0 0 310 130" role="img" aria-label={unit === 'effort' ? t.effortChart(first.date, last.date) : t.chart(first.date, last.date)}>
       <line className="planning-burndown-axis" x1="26" y1="16" x2="26" y2="112" />
       <line className="planning-burndown-axis" x1="26" y1="112" x2="296" y2="112" />
       <text className="planning-burndown-label" x="20" y="20" textAnchor="end">{amount(maximum)}</text>
       <text className="planning-burndown-label" x="20" y="115" textAnchor="end">{amount(0)}</text>
       <polyline className="planning-burndown-line" points={points.map(point => `${horizontal(point)},${vertical(point)}`).join(' ')} />
-      {points.map(point => <circle key={point.date} className="planning-burndown-point" cx={horizontal(point)} cy={vertical(point)} r="3"><title>{`${point.date}: ${amount(point.tasks - point.done)}`}</title></circle>)}
+      {points.map(point => <circle key={point.date} className="planning-burndown-point" cx={horizontal(point)} cy={vertical(point)} r="3"><title>{`${point.date}: ${amount(remaining(point))} · ${units}`}</title></circle>)}
     </svg>
     <figcaption><span>{formatPlanningDate(first.date, lang)}</span><span>{formatPlanningDate(last.date, lang)}</span></figcaption>
     <p className="planning-stat-note">{t.observed}</p>
-    <details><summary>{t.historyData}</summary><table className="planning-history-table"><thead><tr><th scope="col">{t.historyDate}</th><th scope="col">{t.historyRemaining}</th><th scope="col">{t.historyTotal}</th></tr></thead>
-      <tbody>{points.map(point => <tr key={point.date}><td>{point.date}</td><td>{amount(point.tasks - point.done)}</td><td>{amount(point.tasks)}</td></tr>)}</tbody></table></details>
+    {unit === 'effort' && <p className="planning-stat-note">{t.estimatesNote}</p>}
+    <details><summary>{t.historyData}</summary><table className="planning-history-table"><caption>{units}</caption><thead><tr><th scope="col">{t.historyDate}</th><th scope="col">{t.historyRemaining}</th><th scope="col">{t.historyTotal}</th></tr></thead>
+      <tbody>{points.map(point => <tr key={point.date}><td>{point.date}</td><td>{amount(remaining(point))}</td><td>{amount(total(point))}</td></tr>)}</tbody></table></details>
   </figure>;
 }
 
 /** Finished Runs use their immutable completion snapshot, not cards remaining after carry-over (2026-11-05). */
-export function PlanningStats({ cards, catalog, comparisonTotal, comparisonEffort, run, milestoneId, history }: {
+export function PlanningStats({ cards, catalog, run, milestoneId, history }: {
   cards: CatalogCard[];
   catalog: CatalogView;
-  comparisonTotal?: number;
-  comparisonEffort?: number;
   run?: RunRecord;
   milestoneId?: string;
   history?: PlanningHistoryPoint[];
@@ -144,7 +160,7 @@ export function PlanningStats({ cards, catalog, comparisonTotal, comparisonEffor
   const tasks = cards.filter(card => card.kind === 'task' && !card.archived && !card.deleted);
   const snapshot = run?.finishedAt ? run.statistics : undefined;
   const summary = snapshot ? { ...snapshot, percent: snapshot.tasks ? Math.round(snapshot.done / snapshot.tasks * 100) : 0 } : metrics(tasks);
-  const maximum = Math.max(comparisonTotal ?? 0, summary.tasks);
+  const maximum = summary.tasks;
   const states = snapshot?.states ?? taskDistribution(tasks, card => card.state ?? 'not-started');
   const owners = snapshot?.owners ?? taskDistribution(tasks, card => card.owner ?? '');
   const decks = snapshot?.decks ?? taskDistribution(tasks, card => card.deckId ?? '', true);
@@ -188,7 +204,7 @@ export function PlanningStats({ cards, catalog, comparisonTotal, comparisonEffor
         {decks.map(row => {
           const title = catalog.decks.find(deck => deck.id === row.key)?.title ?? t.noDeck;
           return <DistributionRow key={row.key} label={title} total={row.total} done={row.done}
-            maximum={Math.max(comparisonEffort ?? 0, summary.effort)} note={t.remaining(amount(row.total - row.done), row.unestimated ? amount(row.unestimated) : '')} />;
+            maximum={summary.effort} note={t.remaining(amount(row.total - row.done), row.unestimated ? amount(row.unestimated) : '')} />;
         })}
       </section>
     </>}

@@ -10,6 +10,8 @@ import { PlanningColorField, planningColors } from './PlanningColors.tsx';
 import { ConfirmStrip } from './ConfirmStrip.tsx';
 import type { SavePlanning } from './TimelineView.tsx';
 import { Button } from './ui/button.tsx';
+import { validPlanningCover } from '../../src/planning-cover.ts';
+import { failureMessage } from '../failure-message.ts';
 
 const text = defineText({
   projectSpecific: 'Only for this project',
@@ -24,6 +26,14 @@ const text = defineText({
   discard: 'Discard the unsaved changes?',
   keepEditing: 'Keep editing',
   discardChanges: 'Discard changes',
+  failed: 'Could not save the Milestone. Your draft is kept; try again.',
+  conflict: 'The file changed. Load the saved Milestone before editing again. Your draft is kept here.',
+  loadSaved: 'Load saved Milestone',
+  missing: 'This Milestone was removed. Your draft is kept; close the form to return.',
+  details: 'Description and cover', description: 'Description', cover: 'Cover image',
+  coverHint: 'Project-relative image path or HTTPS URL.',
+  coverInvalid: 'Use an HTTPS image URL or a project-relative path without “..”.',
+  cancel: 'Cancel',
 }, {
   projectSpecific: 'Только для проекта',
   projectHint: 'Milestone проекта виден только с ним; без отметки Milestone глобальный.',
@@ -37,6 +47,14 @@ const text = defineText({
   discard: 'Отменить несохранённые изменения?',
   keepEditing: 'Продолжить правку',
   discardChanges: 'Отменить изменения',
+  failed: 'Не удалось сохранить Milestone. Черновик сохранён; повторите действие.',
+  conflict: 'Файл изменился. Загрузите сохранённый Milestone перед новой правкой. Черновик остался в форме.',
+  loadSaved: 'Загрузить сохранённый Milestone',
+  missing: 'Milestone удалён. Черновик сохранён; закройте форму для возврата.',
+  details: 'Описание и обложка', description: 'Описание', cover: 'Обложка',
+  coverHint: 'Путь к изображению внутри проекта или HTTPS-ссылка.',
+  coverInvalid: 'Укажите HTTPS-ссылку или путь внутри проекта без «..».',
+  cancel: 'Отмена',
 });
 
 /**
@@ -102,18 +120,27 @@ export function PlanningPopover({ anchor, placement, wide, title, closeLabel, di
 }
 
 /** One form creates a Milestone at a date or edits the clicked one: project scope, title, date and color. */
-export function MilestoneForm({ date, milestone, catalog, pending, onSave, onDirtyChange, onDone }: {
+export function MilestoneForm({ date, milestone, catalog, pending, onSave, onDirtyChange, onDone, details = false, onCancel }: {
   date: string; milestone?: MilestoneRecord; catalog: CatalogView; pending: boolean;
   onSave: SavePlanning; onDirtyChange: (dirty: boolean) => void; onDone: (id: string) => void;
+  details?: boolean; onCancel?: () => void;
 }) {
   const t = useText(text);
   const [id] = useState(() => milestone?.id ?? `milestone-${crypto.randomUUID()}`);
-  const initial = useRef({ title: milestone?.title ?? '', date: milestone?.date ?? date, color: milestone?.color ?? planningColors[0], projectSpecific: milestone?.projectSpecific ?? false });
+  const valuesOf = (record?: MilestoneRecord) => ({ title: record?.title ?? '', date: record?.date ?? date, color: record?.color ?? planningColors[0],
+    projectSpecific: record?.projectSpecific ?? false, description: record?.description ?? '', cover: record?.cover ?? '' });
+  const initial = useRef(valuesOf(milestone));
+  const base = useRef(milestone);
+  const saving = useRef(false);
   const [value, setValue] = useState(initial.current);
   const [revision, setRevision] = useState(catalog.milestonesHash ?? '');
   const [validation, setValidation] = useState(false);
+  const [conflict, setConflict] = useState<CatalogView | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const missing = Boolean(milestone && !(conflict ?? catalog).milestones?.some(record => record.id === id));
   const dirty = JSON.stringify(value) !== JSON.stringify(initial.current);
   useEffect(() => { onDirtyChange(dirty); }, [dirty, onDirtyChange]);
+  useEffect(() => () => onDirtyChange(false), [onDirtyChange]);
   useDesktopDirty(dirty);
   useEffect(() => {
     if (!dirty) return;
@@ -125,16 +152,34 @@ export function MilestoneForm({ date, milestone, catalog, pending, onSave, onDir
 
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (pending) return;
+    if (pending || saving.current || conflict || missing) return;
     if (!value.title.trim()) { setValidation(true); return; }
     setValidation(false);
-    const record: MilestoneRecord = { ...milestone, id, title: value.title.trim(), date: value.date, color: value.color, projectSpecific: value.projectSpecific };
-    const result = await onSave(milestone ? { action: 'update-milestone', milestone: record, milestonesHash: revision } : { action: 'create-milestone', milestone: record, milestonesHash: revision });
-    if (result.ok) onDone(id);
-    else if (result.revisions) setRevision(result.revisions.milestonesHash ?? '');
+    if (!validPlanningCover(value.cover.trim())) { setError(t.coverInvalid); return; }
+    const record: MilestoneRecord = { ...base.current, ...value, id, title: value.title.trim(), cover: value.cover.trim() };
+    saving.current = true;
+    setError(null);
+    try {
+      const result = await onSave(milestone ? { action: 'update-milestone', milestone: record, milestonesHash: revision } : { action: 'create-milestone', milestone: record, milestonesHash: revision });
+      if (result.ok) onDone(id);
+      else { setError(result.message ?? t.failed); if (result.revisions) setConflict(result.revisions); }
+    } catch (failure) { setError(failureMessage(failure, t.failed)); }
+    finally { saving.current = false; }
+  }
+
+  function loadSaved() {
+    if (!conflict || pending || missing) return;
+    const saved = conflict.milestones?.find(record => record.id === id);
+    // 2026-11-11: the revision and its fields advance together; a retry can never authorize an old draft against new bytes.
+    base.current = saved;
+    initial.current = valuesOf(saved);
+    setValue(initial.current);
+    setRevision(conflict.milestonesHash ?? '');
+    setConflict(null); setError(null);
   }
 
   return <form className="planning-popover-form" onSubmit={event => void submit(event)}>
+    <div className="planning-form-content">
     <fieldset disabled={pending}>
       <div className="planning-popover-band"><Switch label={t.projectSpecific} hint={t.projectHint} checked={value.projectSpecific} onChange={checked => update('projectSpecific', checked)} /></div>
       <div className="planning-popover-columns">
@@ -144,10 +189,23 @@ export function MilestoneForm({ date, milestone, catalog, pending, onSave, onDir
         </div>
         <div>
           <div className="planning-underline-field"><span>{t.color}</span><PlanningColorField label={t.color} value={value.color} onChange={color => update('color', color)} /></div>
-          {validation && <p className="error-banner" role="alert">{t.titleRequired}</p>}
-          <Button type="submit" className="planning-popover-submit" disabled={pending || Boolean(milestone && !dirty)}>{pending ? t.saving : milestone ? t.save : t.create}</Button>
         </div>
       </div>
+      <details className="planning-milestone-details" open={details || undefined}><summary>{t.details}</summary>
+        <label className="planning-underline-field">{t.description}<textarea className="control-field" rows={5} maxLength={10000} value={value.description} onChange={event => update('description', event.target.value)} /></label>
+        <label className="planning-underline-field">{t.cover}<input className="control-field" maxLength={2000} value={value.cover} onChange={event => update('cover', event.target.value)} /><small>{t.coverHint}</small></label>
+      </details>
     </fieldset>
+    </div>
+    <div className="planning-form-feedback">
+      {validation && <p className="error-banner" role="alert">{t.titleRequired}</p>}
+      {error && <p className="error-banner" role="alert">{error}</p>}
+      {(conflict || missing) && <p className="planning-stat-note">{missing ? t.missing : t.conflict}</p>}
+      {conflict && !missing && <Button type="button" size="sm" variant="outline" disabled={pending} onClick={loadSaved}>{t.loadSaved}</Button>}
+    </div>
+    <footer className="dialog-foot">
+      {onCancel && <Button type="button" variant="ghost" disabled={pending} onClick={onCancel}>{t.cancel}</Button>}
+      <Button type="submit" className="planning-popover-submit" disabled={pending || Boolean(conflict) || missing || Boolean(milestone && !dirty)}>{pending ? t.saving : milestone ? t.save : t.create}</Button>
+    </footer>
   </form>;
 }

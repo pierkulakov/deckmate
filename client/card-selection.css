@@ -1,13 +1,12 @@
-/* 2026-11-03: selection takes the deck toolbar slot exactly, in one row; 2026-11-05: the whole 53px height of the slot, no strips above and below.
-   Bulk buttons fold into the existing More menu by the bar's own width, not the viewport. */
+/* 2026-11-11: selection uses the deck toolbar slot; overflow follows the bar's width rather than the viewport. */
 .deck-open-toolbar.is-selection { align-items: stretch; padding: 0; gap: 0; border-bottom: 0; }
-.deck-open-toolbar.is-selection > .card-selection-bar { height: auto; }
+.deck-open-toolbar.is-selection .deck-selection-slot > .card-selection-bar { height: 100%; align-content: center; border-radius: 0; }
 /* 2026-11-10: selection retains its green identity on one flat face; the shared palette supplies the face and edge. */
-.card-selection-toolbar.card-selection-bar { --selection-ink: #f1fff9; --selection-muted: #d5f5e9; display: flex; align-items: center; gap: 14px; width: 100%; min-width: 0; height: 44px; min-height: 44px; margin: 0; padding: 5px 12px; border: 0; border-radius: var(--glass-radius); background: color-mix(in srgb, var(--mint-ink) 55%, var(--check-on-face)); color: var(--selection-ink); box-shadow: inset 0 0 0 1px var(--line); }
-.card-selection-core, .card-selection-buttons { display: flex; flex: 0 1 auto; align-items: center; gap: 7px; min-width: 0; }
-.card-selection-count { flex: 0 1 auto; min-width: 0; margin: 0 3px 0 5px; overflow: hidden; color: var(--selection-ink); font-size: 12px; line-height: 18px; font-weight: 500; white-space: nowrap; text-overflow: ellipsis; }
-.card-selection-count > span { font-variant-numeric: tabular-nums; }
-.card-selection-bar .ui-button { flex-shrink: 0; min-height: 30px; height: 30px; border-color: transparent; border-radius: var(--control-radius); color: var(--selection-muted); background: transparent; box-shadow: none; transition: background-color var(--motion-feedback), border-color var(--motion-feedback), color var(--motion-feedback), transform var(--motion-feedback) var(--ease-out); }
+.card-selection-toolbar.card-selection-bar { --selection-ink: var(--check-on-mark); --selection-muted: var(--check-on-mark); --focus: var(--check-on-mark); display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); width: 100%; min-width: 0; min-height: 44px; margin: 0; padding: var(--space-2) var(--space-3); border: 0; border-radius: var(--glass-radius); background: color-mix(in srgb, var(--mint-ink) 55%, var(--check-on-face)); color: var(--selection-ink); }
+.card-selection-core, .card-selection-buttons { display: flex; flex: 0 1 auto; align-items: center; gap: var(--space-2); min-width: 0; }
+.card-selection-count { flex: 0 0 auto; margin: 0; color: var(--selection-ink); font-size: 13px; line-height: 20px; font-weight: 500; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.card-selection-count > span { font-family: 'Geist Mono', monospace; font-size: 12px; }
+.card-selection-bar .ui-button { flex-shrink: 0; min-height: 30px; height: 30px; border-color: transparent; border-radius: var(--control-radius); color: var(--selection-muted); background: transparent; box-shadow: none; }
 .card-selection-bar .button-size-icon { width: 30px; min-width: 30px; padding: 6px; }
 /* 2026-11-10: the bar's actions belong to the bar; a lilac Select all rectangle clashed with the green.
    Ghost buttons use the bar's ink, a fill of that ink on hover, and a light line of it when on. */
@@ -17,20 +16,18 @@
   .card-selection-bar .ui-button:hover:not(:disabled) { border-color: transparent; background: color-mix(in srgb, var(--selection-ink) 14%, transparent); color: var(--selection-ink); }
   .card-selection-bar .ui-button:is([data-state="open"], [data-active], [aria-pressed="true"]):hover:not(:disabled) { border-color: color-mix(in srgb, var(--selection-ink) 60%, transparent); background: color-mix(in srgb, var(--selection-ink) 24%, transparent); color: var(--selection-ink); }
 }
-.card-selection-bar .ui-button:focus-visible { outline: 2px solid var(--selection-ink); outline-offset: -2px; }
+.card-selection-bar .ui-button:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 .card-selection-bar .ui-button:disabled { color: var(--selection-muted); opacity: .5; }
 .card-selection-divider { align-self: center; flex-shrink: 0; width: 1px; height: 22px; margin-inline: 7px; background: color-mix(in srgb, var(--selection-muted) 21%, transparent); }
-.card-selection-status { display: block; flex: 1; min-width: 0; overflow: hidden; color: var(--selection-ink); font-size: 11px; line-height: 18px; white-space: nowrap; text-overflow: ellipsis; }
+.card-selection-status { display: block; flex: 1 1 220px; min-width: 0; color: var(--selection-ink); font-size: 12px; line-height: 16px; overflow-wrap: anywhere; }
 .card-selection-status:empty { display: none; }
-@container selection-bar (max-width: 400px) {
-  .card-selection-core, .card-selection-buttons { gap: 3px; }
-  .card-selection-count { margin-inline: 2px; font-size: 11px; }
-  .card-selection-bar .card-selection-all { padding-inline: 6px; }
+@container selection-bar (max-width: 520px) {
+  .card-selection-bar .card-selection-all, .card-selection-bar .card-selection-copy { display: none; }
   .card-selection-divider { display: none; }
 }
-.card-selection-menu { z-index: 150; width: min(320px, calc(100vw - 24px)); max-height: min(420px, var(--radix-dropdown-menu-content-available-height)); padding: 8px; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; border: 1px solid var(--line); border-radius: var(--glass-radius); color: var(--ink); background: var(--surface); box-shadow: var(--shadow); transform-origin: var(--radix-dropdown-menu-content-transform-origin); animation: overlay-pop var(--motion-spring-quick) var(--ease-spring-quick); }
+.card-selection-menu { z-index: 150; width: min(320px, calc(100vw - 24px)); max-height: min(420px, var(--radix-dropdown-menu-content-available-height)); padding: var(--space-2); overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; transform-origin: var(--radix-dropdown-menu-content-transform-origin); animation: overlay-pop var(--motion-spring-quick) var(--ease-spring-quick); }
 .card-selection-menu-heading { padding: 6px 8px 3px; font-size: 13px; font-weight: 600; }
-.card-selection-menu-hint { margin: 0; padding: 0 8px 8px; color: var(--muted); font-size: 11px; line-height: 1.5; }
+.card-selection-menu-hint { margin: 0; padding: 0 var(--space-2) var(--space-2); color: var(--muted); font-size: 12px; line-height: 16px; }
 .card-selection-menu-group { padding: 12px 8px 4px; color: var(--muted); font-size: 11px; font-weight: 500; }
 /* 2026-11-06: deck and track menu items share the More menu's 32 px rows and disabled fade (bulk-actions.css), the same bar's menus. */
 .card-selection-menu-item { display: flex; align-items: center; gap: 9px; min-height: 32px; padding: 6px 8px; border-radius: var(--control-radius); outline: none; color: var(--ink); font-size: 12px; font-weight: 500; letter-spacing: .01em; line-height: 1.5; cursor: pointer; user-select: none; }
@@ -38,6 +35,11 @@
 .card-selection-menu-item > span { flex: 1; min-width: 0; overflow-wrap: anywhere; }
 .card-selection-menu-item[data-highlighted] { background: var(--hover); color: var(--ink); box-shadow: inset 0 0 0 1px var(--focus); }
 .card-selection-menu-item[data-disabled] { opacity: .45; cursor: default; }
-.card-selection-menu-error { margin: 8px 0 0; padding: 9px 8px; border-top: 1px solid var(--line); color: var(--warning-ink); font-size: 11px; line-height: 1.5; }
+.card-selection-menu-error { margin: var(--space-2) 0 0; padding: var(--space-2); border-top: 1px solid var(--line); color: var(--warning-ink); font-size: 12px; line-height: 16px; overflow-wrap: anywhere; }
 @media (max-width: 600px) { .card-selection-toolbar.card-selection-bar { gap: 6px; padding-inline: 7px; } }
+@media (pointer: coarse) {
+  .card-selection-bar .ui-button { width: var(--control-target-touch, 44px); min-width: var(--control-target-touch, 44px); height: var(--control-target-touch, 44px); min-height: var(--control-target-touch, 44px); }
+  .card-selection-bar .card-selection-all { width: auto; }
+  .card-selection-menu-item { min-height: var(--control-target-touch, 44px); }
+}
 @media (prefers-reduced-motion: reduce) { .card-selection-menu { animation: none; } .card-selection-bar .ui-button { transition: none; } }

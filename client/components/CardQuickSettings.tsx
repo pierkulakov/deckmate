@@ -12,6 +12,9 @@ import { defineText, textNow, useText } from '../i18n.ts';
 import { priorityLabel } from '../locales/common.ts';
 import { orderedRunChoices, runChoiceLabel } from '../run-label.ts';
 import { AgentQueueHint } from './AgentQueueHint.tsx';
+import { JourneyPriorityIcon } from './JourneyMiniCard.tsx';
+import { navigateTabs } from '../tab-navigation.ts';
+import { moveFocus } from '../focus.ts';
 import '../card-quick-settings.css';
 
 const text = defineText({
@@ -60,7 +63,7 @@ function choicesFor(tab: CardQuickSettingsTab, card: CatalogCard, catalog: Catal
   }
   if (tab === 'run') return [none, ...orderedRunChoices(catalog.runs ?? []).map(run => ({ key: run.id, label: runChoiceLabel(run) }))];
   if (tab === 'milestone') return [none, ...(catalog.milestones ?? []).slice().sort((first, second) => Number(second.date >= today) - Number(first.date >= today) || first.date.localeCompare(second.date)).map(milestone => ({ key: milestone.id, label: milestone.title }))];
-  if (tab === 'priority') return cardPriorityOptions.map(option => ({ key: option.value ?? '', label: option.value ? priorityLabel(option.value) : t.none, icon: <Layers size={16} strokeWidth={option.value === 'high' ? 2.5 : 1.5} /> }));
+  if (tab === 'priority') return cardPriorityOptions.map(option => ({ key: option.value ?? '', label: option.value ? priorityLabel(option.value) : t.none, icon: <span aria-hidden="true"><JourneyPriorityIcon priority={option.value} /></span> }));
   // 2026-11-05: the catalog has no project scale; keep a stored custom estimate selectable as well.
   const efforts = new Set<number>(cardEffortPresets);
   if (card.effort != null) efforts.add(card.effort);
@@ -97,6 +100,8 @@ export function CardQuickSettings({ card, catalog, source, projectName, tab, onT
   const [error, setError] = useState('');
   const inFlight = useRef(false);
   const mounted = useRef(true);
+  const tabList = useRef<HTMLDivElement>(null);
+  const keyboardTabChange = useRef(false);
   const id = useId();
   const current = catalog.cards.find(candidate => candidate.id === card.id);
   const value = current ?? card;
@@ -107,6 +112,12 @@ export function CardQuickSettings({ card, catalog, source, projectName, tab, onT
   useEffect(() => { onSavingChange?.(saving); }, [saving, onSavingChange]);
   useEffect(() => () => onSavingChange?.(false), [onSavingChange]);
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
+  useEffect(() => {
+    // 2026-11-11: a newly mounted search focuses itself; arrow navigation must keep focus with the selected tab.
+    if (!keyboardTabChange.current) return;
+    keyboardTabChange.current = false;
+    moveFocus(tabList.current?.querySelector<HTMLButtonElement>('[aria-selected="true"]'));
+  }, [tab]);
 
   async function choose(key: string) {
     if (unavailable || propertyUnavailable || inFlight.current) return;
@@ -124,20 +135,17 @@ export function CardQuickSettings({ card, catalog, source, projectName, tab, onT
   function changeTab(next: CardQuickSettingsTab) { if (!saving) { setError(''); onTabChange(next); } }
 
   return <QuickSettingsPopover anchor={opener} busy={saving} onClose={onClose}>
-    <div className="card-quick-settings" data-tab={tab} onKeyDown={event => {
-      if (event.nativeEvent.isComposing || event.ctrlKey || event.metaKey || event.altKey) return;
-      if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
-      event.preventDefault(); event.stopPropagation();
-      const index = tabs.findIndex(item => item.id === tab);
-      changeTab(tabs[(index + (event.key === 'ArrowLeft' ? -1 : 1) + tabs.length) % tabs.length].id);
-    }}>
-      <div className="card-quick-tabs" role="tablist" aria-label={t.quickSettings}>
+    <div className="card-quick-settings" data-tab={tab}>
+      <div ref={tabList} className="card-quick-tabs" role="tablist" aria-label={t.quickSettings} onKeyDown={event => {
+        navigateTabs(event);
+        keyboardTabChange.current = event.defaultPrevented;
+      }}>
         {tabs.map(item => <button key={item.id} type="button" role="tab" id={id + '-' + item.id} aria-label={t[item.id]} title={t[item.id]}
           aria-controls={id + '-panel'} aria-selected={tab === item.id} tabIndex={tab === item.id ? 0 : -1} disabled={saving}
           onClick={() => changeTab(item.id)}><item.icon size={16} aria-hidden="true" /></button>)}
       </div>
       <div id={id + '-panel'} role="tabpanel" aria-labelledby={id + '-' + tab} className="card-quick-panel">
-        <QuickSettingsList key={tab} title={t[selectedTab.id]} titleAs={Dialog.Title} tabs choices={choicesFor(tab, value, catalog, source, projectName)}
+        <QuickSettingsList key={tab} title={t[selectedTab.id]} titleAs={Dialog.Title} choices={choicesFor(tab, value, catalog, source, projectName)}
           current={currentChoice(tab, value, catalog)} disabled={unavailable || propertyUnavailable} searchDisabled={unavailable} onChoose={key => void choose(key)} />
       </div>
       {propertyUnavailable && <p className="card-quick-message">{t.docProperties}</p>}

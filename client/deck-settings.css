@@ -1,5 +1,4 @@
-/* Edit Deck: the settings column stays 344 px; since 2026-11-05 the window is 1000 × 560 so covers get a roomy grid.
-   Extra settings scroll inside the left column. */
+/* 2026-11-11: settings and cover choices share one scrollport; the common save footer follows both columns. */
 /* 2026-11-06: Edit Deck enters like the other dialogs (CSV import, members, templates): the backdrop fades, the window drops. */
 .deck-settings-overlay { position: fixed; inset: 0; z-index: 180; background: var(--deck-settings-scrim); animation: backdrop-fade var(--motion-spring-firm) ease-out; }
 .deck-settings-dialog { position: fixed; z-index: 181; left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(1000px, calc(100vw - 32px)); height: min(560px, calc(100dvh - 32px)); overflow: hidden; animation: dialog-drop var(--motion-spring-firm) var(--ease-spring-firm); }
@@ -7,11 +6,11 @@
 .deck-settings-modal-heading { display: flex; flex: 0 0 auto; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 16px 12px 24px; }
 
 .deck-settings-modal-heading .ui-button { width: 32px; height: 32px; min-height: 32px; padding: 0; color: var(--button-ink, var(--ink)); }
-.deck-settings-layout { display: grid; grid-template-columns: 344px minmax(0, 1fr); flex: 1; min-height: 0; }
+.deck-settings-layout { display: grid; grid-template-columns: 344px minmax(0, 1fr); align-items: start; flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-gutter: stable; }
 .deck-settings-main { display: flex; flex-direction: column; min-height: 0; }
-.deck-settings-fields { flex: 1; min-height: 0; overflow-y: auto; padding: 12px 24px 0; scrollbar-gutter: stable; }
+.deck-settings-fields { flex: 1; min-height: 0; padding: 12px 24px 16px; }
 .deck-settings-form fieldset { display: grid; gap: 12px; min-width: 0; margin: 0; padding: 0; border: 0; }
-.deck-settings-label { color: var(--muted); font-size: 11px; line-height: 14px; font-weight: 500; letter-spacing: .01em; text-transform: uppercase; }
+.deck-settings-label { color: var(--muted); font-size: var(--text-help-size); line-height: var(--text-help-leading); font-weight: 500; letter-spacing: .01em; }
 .deck-settings-dialog .deck-settings-form .catalog-field { gap: 6px; color: var(--muted); font-weight: 500; }
 .deck-settings-dialog .deck-settings-form .catalog-field :is(input, select, textarea) { border: var(--control-hairline) solid var(--control-field-line); border-radius: var(--control-radius); background: var(--control-field); color: var(--ink); caret-color: var(--ink); }
 .deck-settings-dialog .deck-settings-form .catalog-field :is(input, select, textarea):focus { border-color: var(--focus); box-shadow: inset 0 0 0 1px var(--focus); }
@@ -27,11 +26,11 @@
 .deck-settings-preview.is-cover-draggable:active { cursor: grabbing; }
 .deck-settings-preview.is-cover-draggable:hover { box-shadow: 0 0 0 1px var(--tile-highlight); }
 /* 2026-11-06: the hint takes the whole width beside the preview; at 100 px "· ↑ ↓" fell onto a line of its own. */
-.deck-settings-position-help { position: absolute; left: 155px; right: 0; top: 30px; color: var(--muted); font-size: 11px; line-height: 16px; text-wrap: pretty; }
+.deck-settings-position-help { position: absolute; left: 155px; right: 0; top: 30px; color: var(--muted); font-size: var(--text-help-size); line-height: var(--text-help-leading); text-wrap: pretty; }
 /* 2026-11-10: the row keeps the 28px picker's height while the picker is hidden, so switching it on or off never moves
    the fields below. */
 .deck-settings-color { display: flex; align-items: center; gap: 4px 8px; min-height: 28px; }
-.deck-settings-color-toggle { display: flex; align-items: center; gap: 8px; min-width: 0; min-height: 24px; color: var(--muted); font-size: 11px; font-weight: 500; letter-spacing: .01em; cursor: pointer; }
+.deck-settings-color-toggle { display: flex; align-items: center; gap: 8px; min-width: 0; min-height: 24px; color: var(--muted); font-size: var(--text-help-size); font-weight: 500; letter-spacing: .01em; cursor: pointer; }
 .deck-settings-color-toggle input { appearance: none; position: relative; flex: 0 0 28px; width: 28px; height: 12px; border: 0; border-radius: 8px; margin: 0; background: var(--toggle-off); cursor: pointer; transition: background-color var(--motion-feedback) var(--ease-out); }
 .deck-settings-color-toggle input::after { content: ''; position: absolute; width: 16px; height: 16px; top: -2px; left: 0; border: 1px solid var(--line); border-radius: 50%; background: var(--toggle-knob, var(--surface)); transition: left var(--motion-feedback) var(--ease-out); }
 .deck-settings-color-toggle input:checked { background: var(--toggle-on, var(--accent)); }
@@ -39,7 +38,7 @@
 /* 2026-11-08: an outline on hover read as a focus ring after a mouse click; hover only lifts the track, keyboard focus keeps the ring. */
 @media (hover: hover) { .deck-settings-color-toggle input:hover:not(:disabled) { filter: brightness(1.15); } }
 .deck-settings-color-toggle input:disabled { opacity: .5; cursor: default; }
-.deck-settings-color-picker { display: flex; flex-shrink: 0; align-items: center; gap: 4px; font-size: 11px; color: var(--muted); }
+.deck-settings-color-picker { display: flex; flex-shrink: 0; align-items: center; gap: 4px; font-size: var(--text-help-size); color: var(--muted); }
 .deck-settings-color-picker input { width: 32px; height: 28px; min-height: 28px; padding: 2px; border-radius: var(--control-radius); cursor: pointer; }
 @media (hover: hover) { .deck-settings-color-picker input:hover:not(:disabled) { border-color: var(--button-line); } }
 .deck-settings-color-picker input:disabled { opacity: .5; cursor: default; }
@@ -48,15 +47,14 @@
 @media (hover: hover) { .deck-settings-form summary:hover { color: var(--focus); } }
 .deck-settings-more > fieldset, .deck-move-settings > fieldset { padding-block: 10px; }
 .deck-settings-inbox { display: grid; grid-template-columns: 16px 15px 1fr; align-items: center; gap: 6px; color: var(--muted); font-size: 12px; font-weight: 500; cursor: pointer; }
-.deck-settings-inbox > span { grid-column: 2 / -1; color: var(--muted); font-size: 11px; line-height: 16px; }
+.deck-settings-inbox > span { grid-column: 2 / -1; color: var(--muted); font-size: var(--text-help-size); line-height: var(--text-help-leading); }
 /* 2026-11-08: decks without Tasks cannot be the Inbox; the reason replaces the hint and the row reads as locked. */
 .deck-settings-inbox:has(input:disabled) { cursor: default; }
 /* 2026-11-08: only the dead checkbox and its icon fade; the reason must keep 4.5:1 in both themes (D07). */
 .deck-settings-inbox:has(input:disabled) > :is(input, svg) { opacity: .55; }
 .deck-move-settings { border-top: 1px solid var(--line); padding-top: 4px; }
-.deck-move-settings fieldset > button { justify-self: start; }
 .deck-settings-form .catalog-form-help { margin: 8px 0; font-size: 12px; line-height: 18px; }
-.deck-settings-modal-actions { display: block; flex-shrink: 0; padding: 12px 16px; }
+.deck-settings-modal-actions { display: block; flex-shrink: 0; padding: var(--space-3) var(--space-4) max(var(--space-3), env(safe-area-inset-bottom)); background: var(--surface); }
 .deck-settings-modal-actions > div { display: flex; justify-content: flex-end; flex-wrap: wrap; align-items: center; gap: 8px; }
 .deck-settings-modal-actions .ui-button { height: 30px; min-height: 30px; font-size: 14px; font-weight: 500; }
 .deck-settings-modal-actions button[type="submit"] { width: auto; padding-inline: 12px; font-size: 14px; font-weight: 600; }
@@ -69,19 +67,19 @@
 @media (hover: hover) { .deck-settings-picker-heading [role="tab"][aria-selected="true"]:hover:not(:disabled) { background: var(--mark-tint-strong); } }
 /* 2026-11-06: the panels keep 5 px around the covers for the pressed outline; the content steps out by the same 5 px,
    so the cover grid starts on the heading's left line instead of 5 px inside it. */
-.deck-settings-picker-content { flex: 1; min-height: 0; margin-inline: -5px; overflow-y: auto; scrollbar-gutter: stable; overscroll-behavior: contain; }
+.deck-settings-picker-content { flex: 1; min-height: 0; margin-inline: -5px; }
 .deck-settings-picker-content [role="tabpanel"] { min-height: 100%; padding: 5px; }
 /* Covers as a picture grid: the picture is the choice, its name lives in the tooltip and the label (2026-11-05). */
 .deck-art-library { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(128px, 100%), 1fr)); gap: 8px; }
 .deck-art-option { display: block; width: 100%; aspect-ratio: 10 / 7; padding: 0; overflow: hidden; border: 0; border-radius: var(--control-radius); background: var(--ground); }
-.deck-art-option .deck-art-image { display: block; width: 100%; height: 100%; object-fit: cover; image-rendering: pixelated; transition: transform 180ms var(--ease-out, ease-out), filter 180ms ease; }
+.deck-art-option .deck-art-image { display: block; width: 100%; height: 100%; object-fit: cover; image-rendering: pixelated; transition: transform var(--control-hover-duration) var(--ease-out), filter var(--control-hover-duration) ease-out; }
 .deck-art-option:hover:not(:disabled) .deck-art-image { transform: scale(1.04); filter: brightness(1.06); }
 /* 2026-11-07: the attribution belongs to the library, outside its scrolling pictures. */
 .deck-settings-picker-footer { display: flex; flex: 0 0 auto; align-items: center; flex-wrap: wrap; gap: 8px 16px; min-height: 39px; margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--line); }
 .deck-art-credit { display: inline-flex; align-items: center; flex: 0 1 auto; gap: 6px; margin: 0 0 0 auto; color: var(--muted); font-size: 12px; line-height: 16px; }
 .deck-art-credit svg { flex-shrink: 0; width: 16px; height: 16px; color: var(--muted); }
 .deck-art-credit strong { font-weight: 600; }
-.deck-art-option[aria-pressed="true"] { outline: 2px solid var(--mint-edge, var(--accent)); outline-offset: 2px; }
+.deck-art-option[aria-pressed="true"] { outline: 2px solid var(--mark); outline-offset: 2px; }
 .deck-settings-upload { justify-items: center; align-content: center; min-height: 235px; padding: 24px 12px !important; text-align: center; color: var(--muted); }
 .deck-settings-upload > svg { color: var(--button-ink, var(--ink)); }
 .deck-settings-upload p { margin: 0; font-size: 12px; line-height: 18px; }
@@ -96,13 +94,19 @@
   .deck-settings-picker-heading { flex-wrap: wrap; }
 }
 @media (max-width: 540px) {
-  .deck-settings-dialog { height: calc(100dvh - 24px); width: calc(100vw - 24px); overflow-y: auto; }
-  .deck-settings-form { height: auto; min-height: 100%; }
+  .deck-settings-dialog { height: calc(100dvh - 24px); width: calc(100vw - 24px); }
   .deck-settings-layout { display: flex; flex-direction: column; }
   .deck-settings-main { flex: none; }
   .deck-settings-fields { flex: none; overflow: visible; }
-  .deck-settings-picker { flex: none; height: 420px; min-height: 0; }
+  .deck-settings-picker { flex: none; min-height: 0; }
   .deck-art-library { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .deck-settings-position-help { display: block; }
   .deck-settings-picker-heading { flex-wrap: nowrap; }
+}
+@media (pointer: coarse) {
+  .deck-settings-dialog .deck-settings-form .catalog-field :is(input:not([type="checkbox"]), select), .deck-settings-color { min-height: var(--control-target-touch); }
+  .deck-settings-color-picker input { min-width: var(--control-target-touch); }
+  .deck-settings-form :is(.ui-button, summary, .deck-settings-color-toggle), .deck-settings-picker-heading [role="tab"] { min-height: var(--control-target-touch, 44px); }
+  .deck-settings-modal-heading .ui-button { width: var(--control-target-touch, 44px); }
+  .deck-settings-inbox { min-height: var(--control-target-touch, 44px); }
 }

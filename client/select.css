@@ -11,18 +11,18 @@
 
   select:not([multiple]):is(:not([size]), [size="0"], [size="1"])::picker(select) {
     appearance: base-select;
-    margin-block: 4px;
+    margin-block: var(--space-1);
     min-width: anchor-size(width);
     max-width: max(anchor-size(width), min(360px, 100vw - 16px));
     max-height: min(320px, 50dvh);
     overflow: auto;
-    padding: 4px;
+    padding: var(--space-1);
     border: 1px solid var(--line);
     border-radius: var(--glass-radius);
     background: var(--surface);
     color: var(--ink);
     box-shadow: var(--shadow);
-    font: 400 14px var(--font-sans);
+    font: 400 14px/20px var(--font-sans);
     scrollbar-width: thin;
     scrollbar-color: var(--line) transparent;
     animation: overlay-pop var(--motion-spring-quick) var(--ease-spring-quick);
@@ -30,7 +30,7 @@
 
   select:not([multiple]):is(:not([size]), [size="0"], [size="1"]) option {
     min-height: 32px;
-    padding: 6px 10px;
+    padding: var(--space-1) var(--space-2);
     border-radius: var(--control-radius);
     background: transparent;
     color: var(--ink);
@@ -41,9 +41,12 @@
   }
   /* 2026-11-10: inside the picker the highlighted row is the focus indicator; the global ring around a row inside a
      framed list looked like a second frame. */
-  select:not([multiple]):is(:not([size]), [size="0"], [size="1"]) option:is(:hover, :focus, :focus-visible) { outline: none; background: var(--hover); }
+  select:not([multiple]):is(:not([size]), [size="0"], [size="1"]) option:is(:focus, :focus-visible):not(:disabled) { outline: none; background: var(--hover); }
+  @media (hover: hover) {
+    select:not([multiple]):is(:not([size]), [size="0"], [size="1"]) option:hover:not(:disabled) { background: var(--hover); }
+  }
   select:not([multiple]):is(:not([size]), [size="0"], [size="1"]) option:disabled { color: var(--muted); opacity: .55; cursor: default; }
-  select:not([multiple]):is(:not([size]), [size="0"], [size="1"]) option::checkmark { color: var(--focus); margin-inline-end: 8px; }
+  select:not([multiple]):is(:not([size]), [size="0"], [size="1"]) option::checkmark { color: var(--focus); margin-inline-end: var(--space-2); }
   select:not([multiple]):is(:not([size]), [size="0"], [size="1"])::picker-icon {
     content: '';
     width: 12px;
@@ -56,8 +59,9 @@
   select:not([multiple]):is(:not([size]), [size="0"], [size="1"]):open::picker-icon { rotate: 180deg; }
   /* 2026-11-10: retain the old external chevron only as a fallback in older engines. */
   .journey-catalog-role-select > svg:last-child { display: none; }
-  .journey-catalog-role-select select option { background: transparent; }
-  .journey-catalog-role-select select option:is(:hover, :focus) { background: var(--hover); }
+  @media (pointer: coarse) {
+    select:not([multiple]):is(:not([size]), [size="0"], [size="1"]) option { min-height: var(--control-target-touch); }
+  }
   @media (prefers-reduced-motion: reduce) {
     select:not([multiple]):is(:not([size]), [size="0"], [size="1"])::picker(select) { animation: none; }
     select:not([multiple]):is(:not([size]), [size="0"], [size="1"])::picker-icon { transition: none; }

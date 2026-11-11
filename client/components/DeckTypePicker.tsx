@@ -19,6 +19,7 @@ const text = defineText({
   notSaved: 'The type was not saved. Check the catalog message and try again.',
   saving: (label: string) => 'Saving type ' + label + '…', pending: 'The catalog is saving another change. Type selection will be available afterward.',
   type: (label: string) => 'Deck type: ' + label, change: ' · change', heading: 'Set deck type',
+  blocked: (count: number) => `${count} incompatible cards · select for details`,
   examples: (names: string, rest: string) => 'For example: ' + names + rest + '.',
   remaining: (count: number) => ' and ' + new Intl.NumberFormat('en-US').format(count) + ' more',
   trash: ' · Trash', archive: ' · Archive',
@@ -34,6 +35,7 @@ const text = defineText({
   notSaved: 'Тип не сохранён. Проверьте сообщение каталога и повторите.',
   saving: (label: string) => 'Сохраняем тип ' + label + '…', pending: 'Каталог сохраняет другое изменение. Выбор станет доступен после него.',
   type: (label: string) => 'Тип колоды: ' + label, change: ' · изменить', heading: 'Выбрать тип колоды',
+  blocked: (count: number) => `Несовместимых карточек: ${count} · выберите для подробностей`,
   examples: (names: string, rest: string) => 'Например: ' + names + rest + '.',
   remaining: (count: number) => ' и ещё ' + new Intl.NumberFormat('ru-RU').format(count),
   trash: ' · корзина', archive: ' · архив',
@@ -96,7 +98,7 @@ export function DeckTypePicker({ deck, cards, journeys, pending, writable, manif
     kind === deck.kind ? null : deckTypeChangeIssue(deck.id, kind, cards, journeys, lang)])), [deck.id, deck.kind, cards, journeys, lang]);
   let errorMessage = '';
   if (error && 'key' in error) errorMessage = t[error.key];
-  else if (error && 'kind' in error) errorMessage = options[error.kind].label + ': ' + (issues.get(error.kind) ?? '');
+  else if (error && 'kind' in error) errorMessage = options[error.kind].label + ': ' + (issues.get(error.kind) ?? '') + ' ' + incompatibleExamples(deck.id, error.kind, cards);
   else if (error) errorMessage = error.message;
 
   function changeOpen(next: boolean) {
@@ -143,6 +145,7 @@ export function DeckTypePicker({ deck, cards, journeys, pending, writable, manif
       <DropdownMenu.Content className="deck-type-menu dialog-panel" align="start" sideOffset={8} collisionPadding={12} aria-labelledby={headingId} aria-busy={saving !== null}
         onEscapeKeyDown={event => { if (saving) event.preventDefault(); }}>
         <DropdownMenu.Label id={headingId} className="deck-type-heading dialog-head dialog-title">{t.heading}</DropdownMenu.Label>
+        <p className="deck-type-current">{t.type(current.label)}</p>
         <DropdownMenu.RadioGroup className="deck-type-options" value={deck.kind}>
           {deckTypeOrder.map(kind => <DeckTypeTile key={kind} option={options[kind]} deckId={deck.id} cards={cards}
             issue={issues.get(kind) ?? null} saving={saving === kind}
@@ -158,8 +161,9 @@ export function DeckTypePicker({ deck, cards, journeys, pending, writable, manif
 }
 
 function DeckTypeTile({ option, deckId, cards, issue, saving, unavailable, onChoose }: { option: DeckTypeOption; deckId: string; cards: CatalogCard[]; issue: string | null; saving: boolean; unavailable: boolean; onChoose: () => void }) {
+  const t = useText(text);
   const id = useId();
-  const examples = issue ? incompatibleExamples(deckId, option.kind, cards) : '';
+  const blocked = issue ? cards.filter(card => card.deckId === deckId && !deckAcceptsCard(option.kind, card.kind)).length : 0;
   const describedBy = [id + '-description', id + '-accepts', issue ? id + '-issue' : ''].filter(Boolean).join(' ');
   // Blocked tiles stay focusable with aria-disabled, so keyboard and screen reader users reach the reason.
   return <DropdownMenu.RadioItem value={option.kind} textValue={option.label} className={'deck-type-option' + (issue ? ' is-blocked' : '')}
@@ -169,9 +173,9 @@ function DeckTypeTile({ option, deckId, cards, issue, saving, unavailable, onCho
       <span id={id + '-title'} className="deck-type-option-title">{option.label}<option.Icon size={16} aria-hidden="true" /></span>
       <span className="deck-type-radio" aria-hidden="true">{saving && <LoaderCircle size={13} className="spin" />}</span>
     </span>
-    <span id={id + '-description'} className="deck-type-option-description">{option.description}</span>
+    <span id={id + '-description'} className="visually-hidden">{option.description}</span>
     <span id={id + '-accepts'} className="deck-type-option-accepts">{option.accepts}</span>
-    {issue && <span id={id + '-issue'} className="deck-type-option-issue"><TriangleAlert size={13} aria-hidden="true" /><span>{issue}{examples && ' ' + examples}</span></span>}
+    {issue && <span id={id + '-issue'} className="deck-type-option-issue"><TriangleAlert size={13} aria-hidden="true" /><span>{blocked ? t.blocked(blocked) : issue}</span></span>}
   </DropdownMenu.RadioItem>;
 }
 

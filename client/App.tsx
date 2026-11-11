@@ -15,16 +15,19 @@ import { Notifications } from './components/Notifications.tsx';
 import { DocumentPreviewProvider } from './components/DocumentPreview.tsx';
 import { ProjectTile } from './RecentProjects.tsx';
 import { WorkspaceProjects } from './WorkspaceProjects.tsx';
-import { desktopBoard, useDesktopDirty } from './desktop-bridge.ts';
+import { desktopBoard, hasWorkspace, useDesktopDirty } from './desktop-bridge.ts';
 import './workspace.css';
 import { DeckmateMark } from './components/DeckmateMark.tsx';
 import { matchShortcut, shortcutTargetBlocked } from './keyboard-shortcuts.ts';
-import { viewNavigation, type View } from './app-navigation.ts';
+import { cardNavigation, viewNavigation, type View } from './app-navigation.ts';
 import { afterFirstScreen, browserWarmupEnvironment, WarmupQueue } from './first-screen-warmup.ts';
 import { preparedNavigation, preparedResource, type PreparedResource } from './prepared-resource.ts';
 import { warmInterfaceFonts, warmVisibleImages } from './warmup-assets.ts';
 import { prepareEntrance } from './prepared-motion.ts';
 import { currentSourceLabels, readOnlyAccess } from './source-access.ts';
+import { ErrorState } from './components/ErrorState.tsx';
+import { moveFocus } from './focus.ts';
+import { useSelectEscapeGuard } from './select-escape.ts';
 
 const deckResource = preparedResource(() => import('./components/Deck.tsx').then(module => ({ default: module.Deck })));
 const handResource = preparedResource(() => import('./components/Hand.tsx').then(module => ({ default: module.Hand })));
@@ -57,7 +60,6 @@ const text = defineText({
   stoppedTitle: 'Deckmate is stopped',
   stoppedDescription: 'To return, start it again from its shortcut or with npx deckmate.',
   loading: 'Opening page…',
-  retryLoad: 'Reload',
   project: 'Project',
   liveChanges: 'Changes appear immediately',
   disconnected: 'No connection to the server',
@@ -87,7 +89,6 @@ const text = defineText({
   stoppedTitle: 'Deckmate остановлен',
   stoppedDescription: 'Чтобы вернуться, запустите его снова ярлыком или командой npx deckmate.',
   loading: 'Открываем страницу…',
-  retryLoad: 'Повторить загрузку',
   project: 'Проект',
   liveChanges: 'Изменения видны сразу',
   disconnected: 'Нет связи с сервером',
@@ -126,6 +127,7 @@ function WorkspaceFailure() {
 }
 
 export default function App() {
+  useSelectEscapeGuard();
   const workspace = useWorkspace();
   const [navigation] = useState(preparedNavigation);
   const warmup = useRef<WarmupQueue | null>(null);
@@ -156,7 +158,59 @@ export default function App() {
     return () => { cancel(); warmup.current?.dispose(); warmup.current = null; };
   }, [workspace.snapshot?.source]);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [globalPanel, setGlobalPanel] = useState<'notifications' | 'level' | null>(null);
+  function changeGlobalPanel(panel: 'notifications' | 'level', open: boolean) {
+    // A departing surface can dismiss after the next one has already received focus.
+    setGlobalPanel(current => {
+      if (open) return panel;
+      return current === panel ? null : current;
+    });
+  }
+  const menuTrigger = useRef<HTMLButtonElement>(null);
+  const panelOpener = useRef<HTMLElement | null>(null);
+  function openPanel(resource: PreparedResource<unknown>, show: () => void, opener = document.activeElement) {
+    panelOpener.current = opener instanceof HTMLElement ? opener : null;
+    navigation.run(resource, show);
+  }
+  const restorePanelFocus = useCallback((event: Event) => {
+    event.preventDefault();
+    const opener = panelOpener.current;
+    moveFocus(opener?.isConnected && opener !== document.body ? opener : menuTrigger.current, { preventScroll: true });
+  }, []);
+  const [narrowHeader, setNarrowHeader] = useState(() => matchMedia('(max-width: 860px)').matches);
+  const [phoneHeader, setPhoneHeader] = useState(() => matchMedia('(max-width: 480px)').matches);
+  // 2026-11-11: the portal target survives responsive relocation, preserving open planning forms and their anchors.
+  const [viewActions] = useState(() => {
+    const slot = document.createElement('div');
+    slot.id = 'topbar-view-actions';
+    slot.className = 'topbar-view-actions';
+    return slot;
+  });
+  const attachViewActions = useCallback((host: HTMLDivElement | null) => { host?.append(viewActions); }, [viewActions]);
+  const topbar = useRef<HTMLElement>(null);
+  useEffect(() => {
+    const narrow = matchMedia('(max-width: 860px)'), phone = matchMedia('(max-width: 480px)');
+    const update = () => { setNarrowHeader(narrow.matches); setPhoneHeader(phone.matches); };
+    narrow.addEventListener('change', update); phone.addEventListener('change', update);
+    return () => { narrow.removeEventListener('change', update); phone.removeEventListener('change', update); };
+  }, []);
+  useLayoutEffect(() => {
+    const header = topbar.current;
+    if (!header) return;
+    const update = () => document.documentElement.style.setProperty('--topbar-height', `${header.getBoundingClientRect().height}px`);
+    update();
+    const observer = new ResizeObserver(update);
+    observer.observe(header);
+    return () => { observer.disconnect(); document.documentElement.style.removeProperty('--topbar-height'); };
+  }, []);
   const [navigationKey, setNavigationKey] = useState(0);
+  const focusAfterNavigation = useRef(false);
+  const main = useRef<HTMLElement>(null);
+  useLayoutEffect(() => {
+    if (!focusAfterNavigation.current) return;
+    focusAfterNavigation.current = false;
+    moveFocus(main.current, { preventScroll: true });
+  }, [navigationKey]);
   const [editing, setEditing] = useState(false);
   useEffect(() => { navigation.cancel(); }, [navigation, editing, workspace.source]);
   const [stopped, setStopped] = useState(false);
@@ -180,9 +234,9 @@ export default function App() {
     setEditing(value);
   }, [navigation]);
   const snapshot = workspace.snapshot;
-  // 2026-11-09: with the Desktop bridge the current project row wears the same tile as the project list below it;
-  // in a browser there is no bridge and the row keeps its plain avatar.
+  // 2026-11-11: workspace rows already include the current project, so its summary needs no repeated tile.
   const board = desktopBoard();
+  const workspaceAvailable = Boolean(board && hasWorkspace(board));
   // The browser tab names the project first, so several open projects tell apart (2026-11-05).
   const projectName = snapshot?.projectName.trim();
   useEffect(() => { document.title = projectName ? `${projectName} — Deckmate` : 'Deckmate'; }, [projectName]);
@@ -240,13 +294,24 @@ export default function App() {
     return () => window.removeEventListener('keydown', switchTab);
   }, [editing, navigate]);
   function openCard(id: string) {
+    if (editing) return;
     navigation.run(deckResource, () => {
-      history.replaceState(null, '', `/?view=deck&catalogSource=${workspace.source}&scope=all&card=${encodeURIComponent(id)}`);
+      const destination = cardNavigation(location.href, id, workspace.source);
+      if (destination.href !== location.href) history.pushState(null, '', destination);
       startTransition(() => {
         setLegacySprint(false);
         setView('deck');
         setNavigationKey(value => value + 1);
       });
+    });
+  }
+  function openDeck(id: string) {
+    if (editing) return;
+    navigation.run(deckResource, () => {
+      const query = new URLSearchParams({ view: 'deck', catalogSource: workspace.source, deck: id });
+      history.pushState(null, '', `/?${query}`);
+      focusAfterNavigation.current = true;
+      startTransition(() => { setLegacySprint(false); setView('deck'); setNavigationKey(value => value + 1); });
     });
   }
   function selectSource(source: DataSource) {
@@ -264,9 +329,10 @@ export default function App() {
 
   function renderContent() {
     if (stopped) return <div className="empty-state"><Power size={28} /><h1>{t.stoppedTitle}</h1><p>{t.stoppedDescription}</p></div>;
-    if (!snapshot) return <div className="loading-state" aria-live="polite"><LoaderCircle className="spin" size={22} /><p>{t.loading}</p><Button variant="ghost" onClick={() => void workspace.refresh()}>{t.retryLoad}</Button></div>;
-    if (view === 'deck') return <Deck snapshot={snapshot} refreshKey={workspace.updatedAt} onEditing={onEditing} onStartFromTemplate={() => navigation.run(templatesResource, () => setTemplatesOpen(true))} onImportCsv={deckId => navigation.run(csvResource, () => { setImportDeckId(deckId); setImportOpen(true); })} />;
-    if (view === 'hand') return <Hand key={snapshot.source} snapshot={snapshot} refreshKey={workspace.updatedAt} onOpenCard={openCard} onOpenMembers={() => navigation.run(membersResource, () => setMembersOpen(true))} />;
+    if (!snapshot && workspace.failure) return <ErrorState message={workspace.failure.message} onRetry={async () => { workspace.clearFailure(); await workspace.refresh(); }} />;
+    if (!snapshot) return <div className="loading-state" aria-live="polite"><LoaderCircle className="spin" size={22} /><p>{t.loading}</p></div>;
+    if (view === 'deck') return <Deck snapshot={snapshot} refreshKey={workspace.updatedAt} onEditing={onEditing} onStartFromTemplate={() => openPanel(templatesResource, () => setTemplatesOpen(true))} onImportCsv={deckId => openPanel(csvResource, () => { setImportDeckId(deckId); setImportOpen(true); })} />;
+    if (view === 'hand') return <Hand key={snapshot.source} snapshot={snapshot} refreshKey={workspace.updatedAt} onOpenCard={openCard} onOpenMembers={() => openPanel(membersResource, () => setMembersOpen(true))} />;
     if (view === 'timeline') return <TimelineView key={snapshot.source} snapshot={snapshot} refreshKey={workspace.updatedAt} selectCurrentRun={legacySprint} onOpenCard={openCard} onEditing={onEditing} />;
     // 2026-11-06: no fallback text: Vision shows its own «Opening board…» plate in the canvas; a second one here sat above the toolbar
     // line without the spinner, so the same words jumped down when the chunk arrived.
@@ -274,42 +340,47 @@ export default function App() {
   }
 
   const readOnly = snapshot && !snapshot.writable ? readOnlyAccess(snapshot) : null;
+  const tabNavigation = <nav className="global-tabs" aria-label={t.projectSections}>{tabs.map(tab => <button key={tab} disabled={editing} className={view === tab ? 'selected' : ''} aria-current={view === tab ? 'page' : undefined} onPointerEnter={() => preload(viewResources[tab])} onFocus={() => preload(viewResources[tab])} onClick={() => navigate(tab)}>{t[tab]}</button>)}</nav>;
   return <DocumentPreviewProvider><div className="app-shell global-shell" data-event-latency={workspace.eventLatency} data-updated-at={workspace.updatedAt} data-rendered-at={renderedAt}>
     <Dialog.Root open={sidebarOpen} onOpenChange={open => { if (!open) navigation.cancel(); setSidebarOpen(open); }}>
       <Dialog.Portal><Dialog.Overlay ref={prepareEntrance} className="mission-control-overlay" />
-        <Dialog.Content ref={prepareEntrance} className="mission-control" aria-describedby={undefined} onEscapeKeyDown={event => {
+        <Dialog.Content ref={prepareEntrance} className="mission-control" aria-describedby={undefined}
+          onCloseAutoFocus={event => { event.preventDefault(); if (!membersOpen && !importOpen && !templatesOpen) moveFocus(menuTrigger.current, { preventScroll: true }); }} onEscapeKeyDown={event => {
           if (document.querySelector('.mission-control [role="menu"][data-state="open"]')) event.preventDefault();
         }}>
           <header className="mission-control-head dialog-head"><DeckmateMark /><Dialog.Title className="dialog-title">Deckmate</Dialog.Title><span className="mission-control-version page-number">v{__DECKMATE_VERSION__}</span>
             <Dialog.Close asChild><Button variant="ghost" size="icon" aria-label={t.closeMenu}><X size={17} /></Button></Dialog.Close></header>
           <section className="mission-control-project" aria-label={t.project}><h2>{t.project}</h2>
-            <div className="mission-control-project-row">{board
-              ? <ProjectTile name={snapshot?.projectName ?? 'Deckmate'} />
-              : <span className="mission-control-avatar" aria-hidden="true">{snapshot?.projectName.slice(0, 1) ?? 'D'}</span>}
+            <div className={`mission-control-project-row${workspaceAvailable ? ' is-workspace-summary' : ''}`}>
+              {!workspaceAvailable && board && <ProjectTile name={snapshot?.projectName ?? 'Deckmate'} />}
+              {!board && <span className="mission-control-avatar" aria-hidden="true">{snapshot?.projectName.slice(0, 1) ?? 'D'}</span>}
               <div><strong title={snapshot?.projectName ?? t.project}>{snapshot?.projectName ?? t.project}</strong><span>{!snapshot ? '' : snapshot.editMode === 'direct' ? t.modeDirect
                 : snapshot.editMode === 'sandbox' ? (workspace.source === 'sandbox' ? sourceLabels.testCopy : sourceLabels.original) + ' · ' + (snapshot.writable ? sourceLabels.editable : sourceLabels.readOnly)
                 : t.modeReadOnly}</span></div></div>
             <WorkspaceProjects open={sidebarOpen} disabled={editing} />
           </section>
           <nav className="mission-control-menu" aria-label={t.appMenu}>
-            <button type="button" disabled={editing || !snapshot} onPointerEnter={() => preload(templatesResource)} onFocus={() => preload(templatesResource)} onClick={() => navigation.run(templatesResource, () => { setSidebarOpen(false); setTemplatesOpen(true); })}><Layers size={18} aria-hidden="true" /><span>{t.projectTemplates}</span></button>
-            <button type="button" disabled={editing} onPointerEnter={() => preload(membersResource)} onFocus={() => preload(membersResource)} onClick={() => navigation.run(membersResource, () => { setSidebarOpen(false); setMembersOpen(true); })}><UserRound size={18} aria-hidden="true" /><span>{t.members}<small>{t.membersCaption}</small></span></button>
-            <button type="button" disabled={editing} onPointerEnter={() => preload(csvResource)} onFocus={() => preload(csvResource)} onClick={() => navigation.run(csvResource, () => { setSidebarOpen(false); setImportDeckId(null); setImportOpen(true); })}><FileUp size={18} aria-hidden="true" /><span>{t.importCsv}<small>{t.importCaption}</small></span></button>
+            <button type="button" disabled={editing || !snapshot} onPointerEnter={() => preload(templatesResource)} onFocus={() => preload(templatesResource)} onClick={event => openPanel(templatesResource, () => { setSidebarOpen(false); setTemplatesOpen(true); }, event.currentTarget)}><Layers size={18} aria-hidden="true" /><span>{t.projectTemplates}</span></button>
+            <button type="button" disabled={editing || !snapshot} onPointerEnter={() => preload(membersResource)} onFocus={() => preload(membersResource)} onClick={event => openPanel(membersResource, () => { setSidebarOpen(false); setMembersOpen(true); }, event.currentTarget)}><UserRound size={18} aria-hidden="true" /><span>{t.members}<small>{t.membersCaption}</small></span></button>
+            <button type="button" disabled={editing || !snapshot} onPointerEnter={() => preload(csvResource)} onFocus={() => preload(csvResource)} onClick={event => openPanel(csvResource, () => { setSidebarOpen(false); setImportDeckId(null); setImportOpen(true); }, event.currentTarget)}><FileUp size={18} aria-hidden="true" /><span>{t.importCsv}<small>{t.importCaption}</small></span></button>
             <button type="button" onClick={() => { setLang(lang === 'en' ? 'ru' : 'en'); emitSignal({ type: 'preference', name: 'language' }); }}><Languages size={18} aria-hidden="true" /><span>{t.otherLanguage}<small>{t.interfaceLanguage}</small></span></button>
             <button type="button" onClick={() => { setSidebarOpen(false); void workspace.refresh(); }}><RefreshCw size={18} aria-hidden="true" /><span>{t.refreshPage}</span></button>
             <button type="button" className="is-destructive" disabled={editing} onClick={() => { setSidebarOpen(false); void workspace.shutdown().then(closed => { if (closed) setStopped(true); }); }}><Power size={18} aria-hidden="true" /><span>{t.stop}</span></button>
+            {phoneHeader && <button type="button" onClick={changeTheme}>{dark ? <Sun size={18} /> : <Moon size={18} />}<span>{dark ? t.lightTheme : t.darkTheme}</span></button>}
           </nav>
-          <footer className={`mission-control-foot is-${workspace.connection}`}><span className="server-status-dot" aria-hidden="true" />{workspace.connected ? t.liveChanges : t.disconnected}</footer>
+          <footer className={`mission-control-foot is-${workspace.connection}`}>{phoneHeader ? <ServerStatus connection={workspace.connection} snapshot={snapshot} updatedAt={workspace.updatedAt} /> : <><span className="server-status-dot" aria-hidden="true" />{workspace.connected ? t.liveChanges : t.disconnected}</>}</footer>
         </Dialog.Content></Dialog.Portal>
     </Dialog.Root>
-    {/* DOM order is the visual order, so Tab walks rail → tabs → actions; the notification corner is fixed and comes after the page. */}
-    <div className="workspace"><header className="topbar global-topbar"><div className="breadcrumb"><Button variant="ghost" size="icon" className="mission-control-trigger" aria-label={t.openMenu} aria-haspopup="dialog" aria-expanded={sidebarOpen} onClick={() => setSidebarOpen(true)}><DeckmateMark /></Button><ServerStatus connection={workspace.connection} snapshot={snapshot} updatedAt={workspace.updatedAt} /></div>
-      <nav className="global-tabs" aria-label={t.projectSections}>{tabs.map(tab => <button key={tab} disabled={editing} className={view === tab ? 'selected' : ''} aria-current={view === tab ? 'page' : undefined} onPointerEnter={() => preload(viewResources[tab])} onFocus={() => preload(viewResources[tab])} onClick={() => navigate(tab)}>{t[tab]}</button>)}</nav><div className="topbar-actions">
-      <div id="topbar-view-actions" className="topbar-view-actions" />
-      {snapshot ? <GlobalSearch snapshot={snapshot} refreshKey={workspace.updatedAt} onOpenCard={openCard} />
+    {/* 2026-11-11: narrow navigation follows the tools in both reading and keyboard order. */}
+    <div className="workspace"><header ref={topbar} className="topbar global-topbar"><div className="breadcrumb"><Button ref={menuTrigger} variant="ghost" size="icon" className="mission-control-trigger" aria-label={t.openMenu} aria-haspopup="dialog" aria-expanded={sidebarOpen} onClick={() => setSidebarOpen(true)}><DeckmateMark /></Button>{!phoneHeader && <ServerStatus connection={workspace.connection} snapshot={snapshot} updatedAt={workspace.updatedAt} />}</div>
+      {!narrowHeader && tabNavigation}<div className="topbar-actions">
+      {!phoneHeader && <div className="topbar-view-slot" ref={attachViewActions} />}
+      {snapshot ? <GlobalSearch snapshot={snapshot} refreshKey={workspace.updatedAt} onOpenCard={openCard} onOpenDeck={openDeck} disabled={editing} />
         : <div className="global-search" inert aria-hidden="true"><div className="global-search-field control-field"><input disabled /></div></div>}
       {snapshot ? <QuickCapture snapshot={snapshot} refreshKey={workspace.updatedAt} onOpenCard={openCard} />
         : <Button variant="ghost" size="icon" className="quick-capture-trigger" disabled aria-hidden="true" style={{ visibility: 'hidden' }} />}
+      {snapshot && !stopped && <Notifications key={snapshot.source} snapshot={snapshot} refreshKey={workspace.updatedAt} onOpenCard={openCard}
+        open={globalPanel === 'notifications'} onOpenChange={open => changeGlobalPanel('notifications', open)} />}
       {/* 2026-11-10: only sandbox projects have a source switch; an empty reserved slot would leave a permanent gap in direct projects. */}
       {snapshot?.editMode === 'sandbox' && <DropdownMenu.Root><DropdownMenu.Trigger className={`source-switch ${workspace.source === 'sandbox' ? 'sandbox' : ''}`} aria-label={workspace.source === 'sandbox' ? sourceLabels.testCopy : sourceLabels.original} disabled={editing}><GitBranch size={14} /><span>{workspace.source === 'sandbox' ? sourceLabels.testCopy : sourceLabels.original}</span><ChevronDown size={12} /></DropdownMenu.Trigger>
         <DropdownMenu.Portal><DropdownMenu.Content ref={prepareEntrance} className="dropdown" align="end" sideOffset={8}><DropdownMenu.Label className="dropdown-label">{sourceLabels.source}</DropdownMenu.Label>
@@ -318,22 +389,23 @@ export default function App() {
             <DropdownMenu.RadioItem value="live" className="dropdown-item">{sourceLabels.original}<span className="menu-caption">{sourceLabels.readOnly}</span><DropdownMenu.ItemIndicator className="menu-check"><Check size={14} /></DropdownMenu.ItemIndicator></DropdownMenu.RadioItem>
           </DropdownMenu.RadioGroup>
         </DropdownMenu.Content></DropdownMenu.Portal></DropdownMenu.Root>}
-      <div id="topbar-shortcuts" className="topbar-shortcuts button-size-icon" style={{ display: 'flex' }} />
-      <Button variant="ghost" size="icon" aria-label={dark ? t.lightTheme : t.darkTheme} onClick={changeTheme}>{dark ? <Sun size={17} /> : <Moon size={17} />}</Button>
-      {snapshot ? <LevelBadge snapshot={snapshot} refreshKey={workspace.updatedAt} onNavigate={navigate} />
+      <div id="topbar-shortcuts" className="topbar-shortcuts button-size-icon" />
+      {!phoneHeader && <Button variant="ghost" size="icon" aria-label={dark ? t.lightTheme : t.darkTheme} onClick={changeTheme}>{dark ? <Sun size={17} /> : <Moon size={17} />}</Button>}
+      {snapshot ? <LevelBadge snapshot={snapshot} refreshKey={workspace.updatedAt} onNavigate={navigate}
+        open={globalPanel === 'level'} onOpenChange={open => changeGlobalPanel('level', open)} />
         : <span className="level-badge" inert aria-hidden="true" style={{ visibility: 'hidden' }}><span className="level-badge-card" /><span className="level-badge-bar" /></span>}
-    </div></header>
+    </div>{narrowHeader && tabNavigation}</header>
+      {phoneHeader && <div className="workspace-view-actions" ref={attachViewActions} />}
       {readOnly && <div className="readonly-banner">{readOnly.description}{readOnly.action && <button onClick={() => selectSource('sandbox')}>{readOnly.action}</button>}</div>}
-      {workspace.failure && !editing && !stopped && <div className="error-banner" role="alert">{workspace.failure.message}<Button variant="ghost" size="sm" onClick={() => { workspace.clearFailure(); void workspace.refresh(); }}>{t.refresh}</Button></div>}
-      <main className="workspace-main board-main">
+      {snapshot && workspace.failure && !editing && !stopped && <div className="error-banner" role="alert">{workspace.failure.message}<Button variant="ghost" size="sm" onClick={() => { workspace.clearFailure(); void workspace.refresh(); }}>{t.refresh}</Button></div>}
+      <main ref={main} tabIndex={-1} className="workspace-main board-main">
         <WorkspaceBoundary key={`${view}-${workspace.source}-${navigationKey}`}><Suspense fallback={<div className="loading-state" role="status" style={{ width: '100%', height: '100%' }}><LoaderCircle className="spin" size={22} /><p>{t.loading}</p></div>}>{renderContent()}</Suspense></WorkspaceBoundary>
       </main>
-      {snapshot && !stopped && <Notifications snapshot={snapshot} refreshKey={workspace.updatedAt} onOpenCard={openCard} />}
     </div>
     <WorkspaceBoundary><Suspense fallback={null}>
-    {snapshot && (membersOpen || mountedPanels.members) && <MembersEditor snapshot={snapshot} refreshKey={workspace.updatedAt} open={membersOpen} onOpenChange={setMembersOpen} />}
-    {snapshot && (importOpen || mountedPanels.csv) && <CsvImport snapshot={snapshot} refreshKey={workspace.updatedAt} open={importOpen} initialDeckId={importDeckId} onOpenChange={setImportOpen} />}
-    {snapshot && templatesOpen && <ProjectTemplates key={snapshot.source} snapshot={snapshot} refreshKey={workspace.updatedAt} onClose={() => setTemplatesOpen(false)} onApplied={() => { setTemplatesOpen(false); navigate('deck'); }}
+    {snapshot && (membersOpen || mountedPanels.members) && <MembersEditor snapshot={snapshot} refreshKey={workspace.updatedAt} open={membersOpen} onOpenChange={setMembersOpen} onCloseAutoFocus={restorePanelFocus} />}
+    {snapshot && (importOpen || mountedPanels.csv) && <CsvImport snapshot={snapshot} refreshKey={workspace.updatedAt} open={importOpen} initialDeckId={importDeckId} onOpenChange={setImportOpen} onCloseAutoFocus={restorePanelFocus} />}
+    {snapshot && templatesOpen && <ProjectTemplates key={snapshot.source} snapshot={snapshot} refreshKey={workspace.updatedAt} onClose={() => setTemplatesOpen(false)} onApplied={() => { setTemplatesOpen(false); navigate('deck'); }} onCloseAutoFocus={restorePanelFocus}
       testCopy={{ notice: readOnly?.description || sourceLabels.originalReadOnly, action: readOnly?.action || sourceLabels.openTestCopy, open: () => selectSource('sandbox') }} />}
     </Suspense></WorkspaceBoundary>
   </div></DocumentPreviewProvider>;

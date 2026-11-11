@@ -1,6 +1,6 @@
 /* 2026-11-10: Open cards and New Card share a compact picker; its popover follows the dialog surface. */
 .deck-picker { display: flex; align-items: center; gap: 12px; min-width: 0; }
-.deck-picker-pill, .deck-picker-open { display: inline-flex; align-items: center; gap: 4px; min-width: 0; height: 24px; border-radius: var(--control-radius); background: transparent; color: var(--button-ink, var(--ink)); font-size: 12px; font-weight: 500; line-height: 14px; letter-spacing: .01em; white-space: nowrap; transition: background-color var(--motion-feedback), border-color var(--motion-feedback), color var(--motion-feedback), transform var(--motion-feedback) var(--ease-out); }
+.deck-picker-pill, .deck-picker-open { display: inline-flex; align-items: center; gap: 4px; min-width: 0; height: 24px; border-radius: var(--control-radius); background: transparent; color: var(--button-ink, var(--ink)); font-size: 12px; font-weight: 500; line-height: 14px; letter-spacing: .01em; white-space: nowrap; }
 .deck-picker-pill { max-width: 100%; padding: 0 3px; border: var(--control-hairline) solid var(--control-line); }
 .deck-picker-pill > svg, .deck-picker-open > svg { flex-shrink: 0; }
 /* 2026-11-10: the picker sits flush with the scrolling card panel edge, which would clip an outer ring on the left. */
@@ -35,15 +35,14 @@
 .deck-choice-space { position: sticky; top: 0; z-index: 1; display: flex; flex: 0 0 36px; align-items: flex-end; gap: 4px; padding-bottom: 4px; background: var(--deck-choice-bg); color: var(--ink); font-size: 12px; font-weight: 600; line-height: 14px; letter-spacing: .12px; text-transform: uppercase; white-space: nowrap; }
 .deck-choice-space > span { flex-shrink: 0; }
 .deck-choice-space > span:last-child { flex-shrink: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-.deck-choice-option { display: flex; flex: 0 0 36px; align-items: center; gap: 8px; min-width: 0; padding: 0 8px; border-radius: var(--control-radius); color: var(--ink); font-size: 14px; font-weight: 500; letter-spacing: .01em; line-height: 16px; cursor: pointer; transition: background-color var(--motion-feedback), color var(--motion-feedback), box-shadow var(--motion-feedback); }
-/* 2026-11-10: keep the picker's green identity as a flat tint and edge; keyboard navigation follows the same mark. */
-.deck-choice-option[data-active="true"], .deck-choice-option[data-current="true"] { background: color-mix(in srgb, var(--toggle-on, var(--accent)) 16%, transparent); box-shadow: inset 0 0 0 var(--control-hairline) var(--toggle-on, var(--accent)); }
-@media (hover: hover) { .deck-choice-option:is([data-active="true"], [data-current="true"]):hover:not([aria-disabled]) { background: color-mix(in srgb, var(--toggle-on, var(--accent)) 26%, transparent); } }
+.deck-choice-option { display: flex; flex: 0 0 36px; align-items: center; gap: 8px; min-width: 0; padding: 0 8px; border-radius: var(--control-radius); color: var(--ink); font-size: 14px; font-weight: 500; letter-spacing: .01em; line-height: 16px; cursor: pointer; }
+/* 2026-11-11: the current choice and keyboard highlight share the control selection mark. */
+.deck-choice-option[data-active="true"], .deck-choice-option[data-current="true"] { background: var(--mark-tint); color: var(--mark); box-shadow: inset 0 0 0 var(--control-hairline) var(--mark); }
+@media (hover: hover) { .deck-choice-option:is([data-active="true"], [data-current="true"]):hover:not([aria-disabled]) { background: var(--mark-tint-strong); } }
 .deck-choice-option[aria-disabled] { cursor: default; opacity: .5; }
 .deck-choice-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .deck-choice-kind { flex-shrink: 0; }
 .deck-choice-current { flex-shrink: 0; margin-left: auto; color: inherit; font-size: 12px; line-height: 14px; }
-.deck-choice-empty { margin: 8px 0; color: var(--muted); font-size: 12px; line-height: 1.6; }
 .deck-choice-hint { flex-shrink: 0; margin: 0; padding: 0 16px 8px; color: var(--edit-hint); font-size: 12px; line-height: 20px; }
 .deck-choice-confirm { height: 24px; margin: -3px 0; padding: 0 8px; border: 0; border-radius: var(--control-radius); background: transparent; color: var(--button-ink, var(--ink)); font-size: 12px; font-weight: 500; line-height: 14px; letter-spacing: .01em; vertical-align: middle; }
 @media (hover: hover) { .deck-choice-confirm:hover:not(:disabled) { background: var(--hover); } }
@@ -52,3 +51,10 @@
 /* 2026-11-10: keyboard focus uses the shared app ring. */
 .deck-choice-hint kbd { display: inline-block; min-width: 0; height: auto; padding: 1px 2px; border: var(--control-hairline) solid var(--control-line); border-radius: var(--control-radius); background: transparent; color: inherit; font-family: 'Geist Mono', monospace; font-size: 10px; font-weight: 500; line-height: 10px; text-transform: uppercase; box-shadow: none; }
 .deck-choice-confirm { min-width: 58px; }
+@media (pointer: coarse) {
+  .deck-picker-pill, .deck-picker-open, .deck-choice-search, .deck-choice-option, .deck-choice-confirm { min-height: var(--control-target-touch); }
+  .deck-picker-pill, .deck-picker-open { min-width: var(--control-target-touch); }
+  .deck-choice-option { flex-basis: var(--control-target-touch); }
+  .deck-choice-list, .deck-choice-group { gap: var(--space-2); }
+  .deck-choice-confirm { margin-block: 0; }
+}

@@ -172,7 +172,7 @@
 :root.dark .deck-table-row:is([data-state="planned"], [data-state="discuss"], [data-state="iteration"], [data-state="cancelled"]) .deck-table-state { opacity: .5; }
 .deck-table-owner { display: inline-flex; }
 .deck-table-owner .card-owner-avatar { width: 20px; height: 20px; font-size: 8px; }
-.deck-table-row .card-transfer-handle { width: 22px; height: 22px; padding: 3px; color: var(--row-meta); opacity: 0; transition: opacity var(--motion-feedback); }
+.deck-table-row .card-transfer-handle { --control-opacity-duration: var(--motion-feedback); width: 22px; height: 22px; padding: 3px; color: var(--row-meta); opacity: 0; }
 .deck-table-row:hover .card-transfer-handle, .deck-table-row .card-transfer-handle:focus-visible { opacity: 1; }
 
 /* 2026-11-10: the pointer-drag face is a card, not a lane row — it keeps the card corner of card-transfer.css instead

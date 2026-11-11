@@ -26,6 +26,7 @@ const text = defineText({
   projectTags: 'Project tags',
   personalTag: 'Personal tag',
   media: 'Images and videos in the text',
+  emoji: 'Emoji',
   formatSelection: 'Format selected text',
   newTag: 'New tag: keep typing and finish with a space.',
   noMedia: 'There are no images or videos in the text yet. Paste a file or drag it into the field.',
@@ -46,6 +47,7 @@ const text = defineText({
   projectTags: 'Теги проекта',
   personalTag: 'Личный тег',
   media: 'Картинки и видео в тексте',
+  emoji: 'Эмодзи',
   formatSelection: 'Форматирование выделенного текста',
   newTag: 'Новый тег: продолжайте ввод и завершите пробелом.',
   noMedia: 'В тексте ещё нет картинок и видео. Вставьте файл из буфера или перетащите его в поле.',
@@ -234,7 +236,7 @@ export function EditorCommandMenu({ value, onChange, catalog, disabled, label: t
   }
 
   const visible = active && position !== null;
-  const labels = { card: t.cards, member: t.members, command: t.commands, tag: t.projectTags, emoji: 'Emoji', media: t.media };
+  const labels = { card: t.cards, member: t.members, command: t.commands, tag: t.projectTags, emoji: t.emoji, media: t.media };
   const label = trigger ? labels[trigger.kind] : t.commands;
   const emptyMessage = trigger?.kind === 'media' ? t.noMedia : undefined;
   return <>

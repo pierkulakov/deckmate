@@ -20,7 +20,7 @@ import { collectProjectTags, defaultTagColor, maxTagIconLength, sanitizeTagSvg, 
 import type { CatalogAction } from '../useCatalog.ts';
 import { tagEmojis } from '../tag-emoji.ts';
 import { Button } from './ui/button.tsx';
-import { CardTags, TagBadge, TagColorIndicator } from './CardTags.tsx';
+import { CardTags, TagBadge, CardTagSummary } from './CardTags.tsx';
 import { defineText, textNow, useText } from '../i18n.ts';
 import { navigateTabs } from '../tab-navigation.ts';
 import { moveFocus } from '../focus.ts';
@@ -39,7 +39,7 @@ const text = defineText({
   nameHelp: 'The name is kept so existing assignments stay in place.', tagColor: 'Tag color', color: (color: string) => 'Color ' + color,
   customColor: 'Custom tag color', icon: 'Icon', iconType: 'Icon type', emoji: 'Emoji', icons: 'Icons', customSvg: 'Custom SVG',
   decoration: 'Decoration', decorationNone: 'None', decorationColor: 'Color', iconColor: 'Icon color',
-  decorationHelp: 'Cards with this tag get the chosen decoration: a color dot, or an emoji or icon before the title.',
+  decorationHelp: 'Decoration is shared across the project. Card tiles use a compact text label for tags.',
   pickEmoji: 'Choose an emoji.', pickIcon: 'Choose an icon or upload an SVG.',
   findEmoji: 'Find emoji', emojiPlaceholder: 'Find emoji: star…', emojiName: (emoji: string) => 'Emoji ' + emoji,
   findIcon: 'Find an icon', iconPlaceholder: 'Find an icon by name…', lucideIcons: 'Lucide icons', iconName: (name: string) => 'Icon ' + name,
@@ -61,7 +61,7 @@ const text = defineText({
   nameHelp: 'Название сохраняется, чтобы существующие назначения оставались на месте.', tagColor: 'Цвет тега', color: (color: string) => 'Цвет ' + color,
   customColor: 'Свой цвет тега', icon: 'Значок', iconType: 'Тип значка', emoji: 'Эмодзи', icons: 'Иконки', customSvg: 'Свой SVG',
   decoration: 'Оформление', decorationNone: 'Нет', decorationColor: 'Цвет', iconColor: 'Цвет значка',
-  decorationHelp: 'Карточки с этим тегом получают выбранное оформление: цветную точку, эмодзи или значок перед названием.',
+  decorationHelp: 'Оформление общее для проекта. На плитках карточек теги показаны компактной текстовой подписью.',
   pickEmoji: 'Выберите эмодзи.', pickIcon: 'Выберите иконку или загрузите SVG.',
   findEmoji: 'Найти эмодзи', emojiPlaceholder: 'Найти эмодзи: star или звезда…', emojiName: (emoji: string) => 'Эмодзи ' + emoji,
   findIcon: 'Найти иконку', iconPlaceholder: 'Найти иконку по имени…', lucideIcons: 'Иконки Lucide', iconName: (name: string) => 'Иконка ' + name,
@@ -137,7 +137,7 @@ export function TagSelectionList({ tags, definitions = [], selected, query, onQu
   const t = useText(text);
   const definitionsByName = new Map(definitions.map(tag => [tag.name, tag]));
   const matching = tags.filter(tag => tag.name.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()));
-  return <div className="tag-selection">
+  return <div>
     <label className="tag-search"><Search size={15} aria-hidden="true" /><span className="visually-hidden">{t.findTag}</span><input type="search" autoFocus value={query} disabled={disabled} onChange={event => onQueryChange(event.target.value)} placeholder={t.tagPlaceholder} /></label>
     <div className="tag-choice-list" role="group" aria-label={t.allTags}>
       {matching.slice(0, 100).map(tag => <div className="tag-choice-row" key={tag.name}>
@@ -180,6 +180,7 @@ export function TagPicker({ card, catalog, disabled, onEdit, onOpenChange, onOpe
   const inputId = useId();
   const cardInputId = useId();
   const iconPanelId = useId();
+  const formId = useId();
   const tags = useMemo(() => collectProjectTags(catalog.cards, catalog.projectTags), [catalog.cards, catalog.projectTags]);
   const cardsById = useMemo(() => new Map(catalog.cards.map(item => [item.id, item])), [catalog.cards]);
   const current = catalog.cards.find(item => item.id === card.id) ?? card;
@@ -269,18 +270,19 @@ export function TagPicker({ card, catalog, disabled, onEdit, onOpenChange, onOpe
     <CardTags tags={current.tags} definitions={catalog.projectTags} cardsById={cardsById} onOpenCard={onOpenCard} />
     <Dialog.Root open={open} onOpenChange={changeOpen}>
       <Dialog.Trigger asChild><Button type="button" variant="ghost" size="sm" className="card-tag-open" disabled={disabled} title={t.configureTags}><Tags size={14} />{t.configureTags}</Button></Dialog.Trigger>
-      <Dialog.Portal><Dialog.Overlay className="card-journey-overlay" /><Dialog.Content className="tag-picker-dialog" aria-busy={busy}
+      <Dialog.Portal><Dialog.Overlay className="card-journey-overlay" /><Dialog.Content className="tag-picker-dialog dialog-panel" aria-busy={busy}
         onEscapeKeyDown={event => { if (busy) event.preventDefault(); }} onPointerDownOutside={event => { if (busy || draft) event.preventDefault(); }}>
-        <header className="tag-picker-heading"><div><Dialog.Title>{draft ? (draft.existing ? t.configure : t.newTag) : t.cardTags}</Dialog.Title><Dialog.Description>{draft ? t.description : current.title}</Dialog.Description></div>
+        <header className="tag-picker-heading dialog-head"><div><Dialog.Title className="dialog-title">{draft ? (draft.existing ? t.configure : t.newTag) : t.cardTags}</Dialog.Title><Dialog.Description>{draft ? t.description : current.title}</Dialog.Description></div>
           <Button type="button" variant="ghost" size="icon" disabled={busy} aria-label={t.close} onClick={() => changeOpen(false)}><X size={17} /></Button></header>
-        {draft ? <form className="tag-editor" onSubmit={event => { event.preventDefault(); void saveDefinition(); }}>
+        <div className="tag-picker-body dialog-body">
+        {draft ? <form id={formId} className="tag-editor" onSubmit={event => { event.preventDefault(); void saveDefinition(); }}>
           <Button type="button" variant="ghost" size="sm" disabled={busy} onClick={() => { setDraft(null); setMessage(null); }}><ArrowLeft size={14} />{t.allTags}</Button>
           <fieldset disabled={unavailable}>
             <label>{t.name}<input value={draft.name} maxLength={80} readOnly={draft.existing} onChange={event => setDraft({ ...draft, name: event.target.value })} required autoFocus={!draft.existing} /></label>
             {draft.existing && <p className="tag-help">{t.nameHelp}</p>}
             <section className="tag-icon-editor" aria-label={t.decoration}>
               <div className="tag-icon-heading"><span>{t.decoration}</span></div>
-              <div className="tag-icon-tabs tag-decoration-choices" role="radiogroup" aria-label={t.decoration}>
+              <div className="tag-icon-tabs" role="radiogroup" aria-label={t.decoration}>
                 {decorations.map(choice => <button type="button" role="radio" aria-checked={decoration === choice} className="tag-icon-tab" key={choice} tabIndex={decoration === choice ? 0 : -1} onClick={() => chooseDecoration(choice)}
                   onKeyDown={event => {
                     const step = { ArrowRight: 1, ArrowDown: 1, ArrowLeft: -1, ArrowUp: -1 }[event.key];
@@ -333,14 +335,15 @@ export function TagPicker({ card, catalog, disabled, onEdit, onOpenChange, onOpe
               {!cardQuery.trim() && !catalog.cards.some(item => !item.deleted && !item.archived) && <EmptyState message={t.emptyCards} />}
               <p className="tag-help">{t.cardHelp}</p>
             </div>
-            <div className="tag-preview"><span>{t.preview}</span><CardTags tags={[draft.name || t.tag]} definitions={[{ name: draft.name || t.tag, color: draft.color, emoji: draft.emoji, iconSvg: draft.iconSvg }]} /><TagColorIndicator tags={[draft.name || t.tag]} definitions={[{ name: draft.name || t.tag, color: draft.color, emoji: draft.emoji, iconSvg: draft.iconSvg }]} /></div>
+            <div className="tag-preview"><span>{t.preview}</span><CardTags tags={[draft.name || t.tag]} definitions={[{ name: draft.name || t.tag, color: draft.color, emoji: draft.emoji, iconSvg: draft.iconSvg }]} /><CardTagSummary tags={[draft.name || t.tag]} definitions={[{ name: draft.name || t.tag, color: draft.color, emoji: draft.emoji, iconSvg: draft.iconSvg }]} /></div>
           </fieldset>
           {conflict && <div className="tag-conflict" role="alert">{t.conflict}<Button type="button" variant="outline" size="sm" disabled={busy} onClick={() => setDraft({ ...draft, hash: catalog.tagsHash ?? '' })}>{t.useCurrent}</Button></div>}
-          <footer className="tag-editor-actions"><Button type="button" variant="ghost" disabled={busy} onClick={() => setDraft(null)}>{t.cancel}</Button><Button type="submit" disabled={unavailable || conflict || !validTagName(draft.name.trim())}>{busy && <LoaderCircle size={14} className="spin" />}{draft.existing ? t.save : t.create}</Button></footer>
         </form> : <><TagSelectionList tags={tags} definitions={catalog.projectTags} selected={current.tags ?? []} query={query} onQueryChange={setQuery} onToggle={name => void toggle(name)} onConfigure={configure} disabled={unavailable} />
           <Button type="button" variant="ghost" size="sm" className="tag-create" disabled={unavailable} onClick={() => configure()}><Plus size={15} />{t.create}{validTagName(query.trim()) && !tags.some(tag => tag.name === query.trim()) ? ' «' + query.trim() + '»' : ''}</Button>
         </>}
         {message && <p className="tag-feedback" role="status">{'key' in message ? t[message.key] : message.message}</p>}
+        </div>
+        {draft && <footer className="tag-editor-actions dialog-foot"><Button type="button" variant="ghost" disabled={busy} onClick={() => setDraft(null)}>{t.cancel}</Button><Button type="submit" form={formId} disabled={unavailable || conflict || !validTagName(draft.name.trim())}>{busy && <LoaderCircle size={14} className="spin" />}{draft.existing ? t.save : t.create}</Button></footer>}
       </Dialog.Content></Dialog.Portal>
     </Dialog.Root>
   </div>;

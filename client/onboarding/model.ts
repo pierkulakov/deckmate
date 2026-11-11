@@ -29,7 +29,7 @@ export interface Chapter<Key extends string = string> {
 export type ChapterStatus = 'done' | 'open' | 'locked';
 
 /** Finished chapters stay open, and so do the first three unfinished ones; each finished chapter opens the next. */
-export const openChapterLimit = 3;
+const openChapterLimit = 3;
 
 export function chapterStatuses(chapters: readonly Chapter[], done: ReadonlySet<string>): ChapterStatus[] {
   let unfinished = 0;
@@ -40,12 +40,13 @@ export function chapterStatuses(chapters: readonly Chapter[], done: ReadonlySet<
   });
 }
 
-/** Quests this signal completes. Quests of locked chapters wait: they count only after their chapter opens. */
+/** Record real actions independently of chapter visibility; a pre-existing fact is not an action. */
 export function questsCompletedBy(signal: OnboardingSignal, chapters: readonly Chapter[], done: ReadonlySet<string>): Quest[] {
-  const statuses = chapterStatuses(chapters, done);
-  return chapters.flatMap((chapter, index) => statuses[index] === 'open'
-    ? chapter.quests.filter(quest => !done.has(quest.id) && quest.done(signal))
-    : []);
+  const statuses = signal.type === 'facts' ? chapterStatuses(chapters, done) : null;
+  return chapters.flatMap((chapter, index) => {
+    if (statuses && statuses[index] !== 'open') return [];
+    return chapter.quests.filter(quest => !done.has(quest.id) && quest.done(signal));
+  });
 }
 
 export function totalXp(chapters: readonly Chapter[]): number {
@@ -70,7 +71,7 @@ export interface LevelProgress {
 const levelShares = [0, 0.06, 0.16, 0.32, 0.52, 0.75, 1];
 
 /** Thresholds rounded to 10 XP; the last one is exactly the total, so the top level means «all quests done». */
-export function levelThresholds(total: number): number[] {
+function levelThresholds(total: number): number[] {
   return levelShares.map((share, index) => index === levelShares.length - 1 ? total : Math.round(total * share / 10) * 10);
 }
 

@@ -2,7 +2,7 @@
    Its layer sits above card dialogs (111) and below editor menus (150–160). */
 .card-focus-mode { position: fixed; inset: 0; z-index: 120; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; background: var(--canvas); color: var(--ink); }
 .card-focus-mode:focus { outline: none; }
-.card-focus-mode-back, .card-focus-mode-screen { position: fixed; top: 16px; display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; padding: 0; border: var(--control-hairline) solid transparent; border-radius: var(--control-radius); background: transparent; color: var(--muted); cursor: pointer; transition: background-color var(--motion-feedback), color var(--motion-feedback); }
+.card-focus-mode-back, .card-focus-mode-screen { position: fixed; top: 16px; display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; padding: 0; border: var(--control-hairline) solid transparent; border-radius: var(--control-radius); background: transparent; color: var(--muted); cursor: pointer; }
 .card-focus-mode-back { left: 16px; border-color: var(--control-line); }
 .card-focus-mode-screen { right: 24px; }
 /* 2026-11-06: the 20 px marks keep their look, but the pointer target grows to 32 px around them. */
@@ -20,4 +20,68 @@
 .card-focus-mode .card-edit-box { margin: 0; padding: 0; border: 0; border-radius: 0; background: transparent; }
 
 @media (max-width: 640px) { .card-focus-mode-column { width: calc(100% - 32px); padding-top: 48px; } }
+
+/* 2026-11-11: a phone opens the existing focus layer with its compact context and panel rail. */
+.card-focus-mode:has(.card-preview-layout) { z-index: 80; overflow: hidden; }
+.card-focus-mode:has(.card-preview-layout) > .card-focus-mode-column { width: 100%; height: 100%; padding: 0; }
+.card-focus-mode:has(.card-preview-layout) > .card-focus-mode-back { z-index: 10; top: 12px; left: 12px; width: 28px; height: 28px; }
+.card-focus-mode:has(.card-preview-layout) > .card-focus-mode-screen { display: none; }
+.card-focus-mode .card-preview-layout { height: 100%; }
+.card-focus-mode .card-preview.has-action-rail { display: flex; flex-direction: column; gap: 0; height: 100%; max-height: none; border-radius: 0; overflow: hidden; }
+.card-focus-mode .card-preview-main { display: flex; flex: 1; flex-direction: column; width: 100%; min-height: 0; height: auto; padding: 0; }
+.card-focus-mode .card-preview-header { position: absolute; inset: 8px 12px auto 48px; min-height: 36px; margin: 0; background: var(--canvas); }
+.card-focus-mode .card-preview-context { flex: 1; flex-wrap: nowrap; overflow: hidden; }
+.card-focus-mode .card-preview-context .deck-picker-pill { max-width: 100%; }
+.card-focus-mode .card-preview-action-rail { order: -1; position: static; flex-direction: row; flex: none; width: 100%; gap: var(--space-2); padding: 48px 12px 4px; }
+.card-focus-mode .card-preview-action-rail .ui-button { width: 36px; height: 36px; }
+.card-focus-mode .card-preview-parent { flex: none; width: calc(100% - 24px); margin: 0 12px 8px; border-radius: var(--control-radius); }
+.card-focus-mode .card-preview-parent > span:not(.card-material-glare) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.card-focus-mode .card-preview-sheet { flex: 1; min-height: 0; border-radius: 0; box-shadow: none; }
+.card-focus-mode .card-preview-panels { flex: 1 1 auto; overflow-y: auto; scrollbar-gutter: auto; }
+.card-focus-mode .card-preview-focus { display: none; }
+.card-focus-mode .card-preview .card-edit-box { margin: 0 12px; padding: 8px; border: var(--control-hairline) solid var(--edit-line); border-radius: var(--control-radius); background: var(--edit-bg); }
+.card-focus-mode .card-preview .card-edit-text { min-height: 360px; }
+.card-focus-mode .card-preview .card-edit-footer { margin: 0; padding-inline: 12px; }
+.card-focus-mode .card-preview .card-preview-dock-actions > .card-edit-footer { padding: 0; }
+.card-focus-mode .card-preview .card-edit-hint-row { padding-inline: 12px; }
+.card-focus-mode .card-preview .card-edit-save-hint, .card-focus-mode .card-preview .card-edit-link kbd { display: none; }
+.card-focus-mode .card-preview .card-edit-footer { flex-wrap: nowrap; gap: var(--space-1); }
+.card-focus-mode .card-preview .card-edit-link { padding-inline: var(--space-1); }
+.card-focus-mode .card-preview-layout > .card-properties-slot,
+.card-preview-mobile-family-slot { position: absolute; z-index: 8; inset: var(--card-mobile-panel-top, 88px) 0 0; width: 100%; max-width: none; height: auto; margin: 0; padding: var(--space-4); overflow-y: auto; overscroll-behavior: contain; border: 0; border-radius: var(--glass-radius); background: var(--canvas); box-shadow: none; }
+.card-preview-mobile-family-slot[hidden] { display: none; }
+.card-preview-mobile-family-content > .card-family-panel { width: 100%; max-width: none; padding: 0; border: 0; box-shadow: none; }
+
+@media (max-width: 760px) {
+  /* New Card shares the same full-height sheet and editor; its own Properties swap stays inside it. */
+  .card-preview.card-composer.has-action-rail { position: fixed; z-index: 80; inset: 0; display: flex; flex-direction: column; gap: 0; width: 100%; height: 100dvh; max-height: none; padding: 0; border-radius: 0; background: var(--canvas); overflow: hidden; }
+  .card-preview.card-composer > .card-composer-main { flex: 1; height: auto; padding-top: 0; }
+  .card-composer .card-edit-text { min-height: 360px; }
+  .card-composer .card-preview-header { position: absolute; inset: 8px 12px auto; min-height: 36px; margin: 0; background: var(--canvas); }
+  .card-composer .card-preview-action-rail { order: -1; position: static; flex: none; flex-direction: row; width: 100%; padding: 48px 12px 4px; }
+  .card-composer .card-preview-action-rail .ui-button { width: 36px; height: 36px; }
+  .card-composer .card-preview-sheet { border-radius: 0; box-shadow: none; }
+  .card-composer .card-edit-save-hint { display: none; }
+}
+@media (pointer: coarse) {
+  .card-focus-mode:has(.card-preview-layout) { --card-mobile-panel-top: 108px; }
+  .card-focus-mode:has(.card-preview-layout) > .card-focus-mode-back { top: var(--space-2); width: var(--control-target-touch); height: var(--control-target-touch); }
+  .card-focus-mode:has(.card-preview-layout) > .card-focus-mode-back::before { content: none; }
+  .card-focus-mode .card-preview-header { left: 64px; min-height: var(--control-target-touch); }
+  .card-focus-mode .card-preview-context :is(.deck-picker-pill, .deck-picker-open) { min-height: var(--control-target-touch); }
+  .card-focus-mode .card-preview-action-rail { padding-top: 60px; }
+  .card-focus-mode .card-preview-action-rail .ui-button,
+  .card-focus-mode .card-preview :is(.card-edit-save, .card-edit-link, .card-content-edit-action),
+  .card-focus-mode .card-preview-state-actions .ui-button,
+  .card-focus-mode .card-preview-subcards-actions .ui-button,
+  .card-focus-mode .open-question-actions .ui-button { min-height: var(--control-target-touch, 44px); height: auto; }
+  .card-focus-mode .card-preview-action-rail .ui-button,
+  .card-focus-mode .card-preview-state-actions .ui-button,
+  .card-focus-mode .card-preview-subcards-actions .ui-button { min-width: var(--control-target-touch, 44px); }
+  .card-focus-mode :is(.card-state-buttons, .card-preview-state-actions, .open-question-actions) { gap: var(--space-2); }
+}
+@media (max-width: 760px) and (pointer: coarse) {
+  .card-composer :is(.card-edit-save, .card-edit-link, .card-preview-action-rail .ui-button) { min-height: var(--control-target-touch, 44px); height: auto; }
+  .card-composer .card-preview-action-rail .ui-button { min-width: var(--control-target-touch, 44px); }
+}
 @media (prefers-reduced-motion: reduce) { .card-focus-mode-back, .card-focus-mode-screen { transition: none; } }

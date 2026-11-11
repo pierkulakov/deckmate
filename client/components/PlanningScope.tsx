@@ -1,7 +1,7 @@
 import { defineText, locale, useLang, useText } from '../i18n.ts';
 import { kindLabel, priorityLabel, stateLabel } from '../locales/common.ts';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowDownWideNarrow, Info, Pencil, Pin, PinOff, Plus, Search, Trash2, X } from 'lucide-react';
+import { ArrowDownWideNarrow, Info, MoreHorizontal, Pencil, Pin, PinOff, Plus, Search, Trash2 } from 'lucide-react';
 import * as Dialog from '@radix-ui/react-dialog';
 import type { CatalogCard, CatalogView, MilestoneRecord, RunRecord } from '../../src/catalog-contracts.ts';
 import type { BulkChange } from '../../src/bulk-contracts.ts';
@@ -14,13 +14,15 @@ import { CatalogCardTile } from './CatalogCardTile.tsx';
 import { memberForOwner } from './CardOwnerAvatar.tsx';
 import { MilestoneForm, PlanningPopover } from './PlanningPopover.tsx';
 import { useConfirmStrip } from './ConfirmStrip.tsx';
-import { BulkActions } from './BulkActions.tsx';
+import { SelectionToolbar, useCardSelection } from './CardSelection.tsx';
 import { CardComposer } from './CardComposer.tsx';
 import { PlanningStats } from './PlanningStats.tsx';
 import { PlanningDetails } from './PlanningDetails.tsx';
 import { RunControls } from './RunControls.tsx';
 import { statusClass } from './StatusMenu.tsx';
 import { metrics } from '../planning-metrics.ts';
+import { planningGroupings, usePlanningPreference, type PlanningGrouping } from '../planning-preferences.ts';
+import { moveFocus } from '../focus.ts';
 import { orderedRunChoices, runChoiceLabel } from '../run-label.ts';
 import { Button } from './ui/button.tsx';
 import type { SavePlanning } from './TimelineView.tsx';
@@ -44,18 +46,19 @@ const text = defineText({
   closeEdit: "Close",
   myCards: "My cards",
   myCardsHint: "Show only the cards you own",
-  counts: (count: number, done: string, tasks: string) => `${new Intl.NumberFormat(locale("en")).format(count)} ${new Intl.PluralRules(locale("en")).select(count) === "one" ? "card" : "cards"} · ${done}/${tasks} done`,
   search: "Search cards in plan",
   searchPlaceholder: "Search cards…",
-  selected: (count: string) => `${count} selected`,
-  clearSelection: "Clear card selection",
+  accepted: 'Done', remainingEffort: 'Effort left',
+  groupEffort: 'Known Effort · done / total', unestimated: 'Without estimates',
+  effortShort: 'Effort',
   attachFailed: "Card created, but the assignment was not saved.",
   attaching: "Assigning the created card…",
   retry: "Retry assignment",
   actions: "Plan actions",
   addToPlan: "Add card to plan",
   addCard: "Add card",
-  information: "Description and stats",
+  information: "Details and statistics",
+  backToCards: 'Back to cards',
   grouping: "Grouping",
   groupingCards: "Group cards in plan",
   state: "State",
@@ -91,18 +94,19 @@ const text = defineText({
   closeEdit: "Закрыть",
   myCards: "Мои карточки",
   myCardsHint: "Показать только ваши карточки",
-  counts: (count: number, done: string, tasks: string) => `Карточек: ${new Intl.NumberFormat(locale("ru")).format(count)} · ${done}/${tasks} принято`,
   search: "Поиск карточек в плане",
   searchPlaceholder: "Поиск карточек…",
-  selected: (count: string) => `${count} выбрано`,
-  clearSelection: "Снять выбор карточек",
+  accepted: 'Принято', remainingEffort: 'Осталось по оценке',
+  groupEffort: 'Известная оценка · принято / всего', unestimated: 'Без оценки',
+  effortShort: 'Оценка',
   attachFailed: "Карточка создана, но привязка не сохранилась.",
   attaching: "Привязываем созданную карточку…",
   retry: "Повторить привязку",
   actions: "Действия плана",
   addToPlan: "Добавить карточку в план",
   addCard: "Добавить карточку",
-  information: "Описание и статистика",
+  information: "Сведения и статистика",
+  backToCards: 'К карточкам',
   grouping: "Группировка",
   groupingCards: "Группировка карточек плана",
   state: "Состояние",
@@ -127,7 +131,16 @@ const text = defineText({
 
 export type PlanningTarget = { kind: 'run' | 'milestone' | 'dueDate'; id: string };
 export type PlanningPlan = { kind: 'run'; record: RunRecord } | { kind: 'milestone'; record: MilestoneRecord };
-type Grouping = 'manual' | 'state' | 'priority' | 'owner' | 'deck' | 'run' | 'milestone';
+function GroupEffort({ cards }: { cards: CatalogCard[] }) {
+  const t = useText(text);
+  const lang = useLang();
+  const summary = metrics(cards);
+  const amount = (value: number) => new Intl.NumberFormat(locale(lang)).format(value);
+  return <span className="planning-group-effort" title={t.groupEffort} aria-label={`${t.groupEffort}: ${amount(summary.doneEffort)} / ${amount(summary.effort)}; ${t.unestimated}: ${amount(summary.unestimated)}`}>
+    <span>{t.effortShort}</span> <span className="page-number">{amount(summary.doneEffort)} / {amount(summary.effort)}</span>
+    {summary.unestimated > 0 && <span>{t.unestimated}: <span className="page-number">{amount(summary.unestimated)}</span></span>}
+  </span>;
+}
 
 export function PlanningProgress({ cards }: { cards: CatalogCard[] }) {
   const t = useText(text);
@@ -154,7 +167,11 @@ export function PlanningScope({ title, subtitle, target, retainedPlan, cards, ca
   const t = useText(text);
   const lang = useLang();
   const amount = (value: number) => new Intl.NumberFormat(locale(lang)).format(value);
-  const [information, setInformation] = useState(true);
+  const preferenceKey = `deckmate-planning:${JSON.stringify([catalog.rootIdentity, snapshot.source, target?.kind ?? 'dueDate', target?.id ?? title])}`;
+  const [informationPreference, setInformationPreference] = usePlanningPreference(`${preferenceKey}:information`, ['open', 'closed'], 'closed');
+  const information = informationPreference === 'open';
+  const setInformation = (value: boolean) => setInformationPreference(value ? 'open' : 'closed');
+  const informationButton = useRef<HTMLButtonElement>(null);
   const [composing, setComposing] = useState(false);
   const [composerDirty, setComposerDirty] = useState(false);
   const [detailsDirty, setDetailsDirty] = useState(false);
@@ -167,9 +184,8 @@ export function PlanningScope({ title, subtitle, target, retainedPlan, cards, ca
   const [editDirty, setEditDirty] = useState(false);
   // Closing the edit form with changes asks through the strip in the popover instead of window.confirm (2026-11-05).
   const editStrip = useConfirmStrip();
-  const [grouping, setGrouping] = useState<Grouping>('manual');
+  const [grouping, setGrouping] = usePlanningPreference(`${preferenceKey}:grouping`, planningGroupings, 'manual');
   const [ordering, setOrdering] = useState(false);
-  const [selected, setSelected] = useState<string[]>([]);
   const [createdId, setCreatedId] = useState<string | null>(null);
   const [attachFailed, setAttachFailed] = useState(false);
   const [deletion, setDeletion] = useState<CatalogView | null>(null);
@@ -178,12 +194,11 @@ export function PlanningScope({ title, subtitle, target, retainedPlan, cards, ca
   const viewer = currentMember(catalog.members ?? []);
   const visible = useMemo(() => activeCards.filter(card => (!mine || Boolean(viewer) && memberForOwner(card.owner ?? null, catalog.members ?? [])?.id === viewer?.id)
     && [card.title, card.owner, card.version].join(' ').toLocaleLowerCase('ru').includes(query.trim().toLocaleLowerCase('ru'))), [activeCards, query, mine, viewer, catalog.members]);
-  const selection = visible.filter(card => selected.includes(card.id));
   const lookups = useMemo(() => buildCatalogLookups(catalog.cards, catalog.subCardOrder), [catalog]);
-  const summary = metrics(activeCards);
   const savedRun = target?.kind === 'run' ? catalog.runs?.find(item => item.id === target.id) : undefined;
   const savedMilestone = target?.kind === 'milestone' ? catalog.milestones?.find(item => item.id === target.id) : undefined;
   const run = savedRun ?? (retainedPlan?.kind === 'run' ? retainedPlan.record : undefined);
+  const summary = run?.finishedAt && run.statistics ? run.statistics : metrics(activeCards);
   const milestone = savedMilestone ?? (retainedPlan?.kind === 'milestone' ? retainedPlan.record : undefined);
   const missingPlan = Boolean(target && !savedRun && !savedMilestone);
   const writable = snapshot.source === 'sandbox' && snapshot.writable;
@@ -249,10 +264,19 @@ export function PlanningScope({ title, subtitle, target, retainedPlan, cards, ca
       if (grouping === 'owner') return value || t.noOwner;
       return t.cards;
     }
-    return [...grouped].map(([value, items]) => ({ value, label: label(value), cards: items }));
-  }, [visible, grouping, catalog, lang, t]);
+    return [...grouped].filter(([, items]) => items.length || !query.trim() && !mine)
+      .map(([value, items]) => ({ value, label: label(value), cards: items }));
+  }, [visible, grouping, catalog, lang, t, query, mine]);
 
-  function toggle(id: string) { setSelected(previous => previous.includes(id) ? previous.filter(value => value !== id) : [...previous, id]); }
+  const orderedIds = groups.flatMap(group => group.cards.map(card => card.id));
+  const selectionState = useCardSelection(orderedIds, preferenceKey, pending || draftOpen || runControlsOpen || Boolean(createdId));
+  const selection = visible.filter(card => selectionState.selectedIds.has(card.id));
+
+  function closeInformation() {
+    setInformation(false);
+    moveFocus(informationButton.current);
+    informationButton.current?.scrollIntoView({ block: 'nearest' });
+  }
 
   async function pinMilestone() {
     if (mutationDisabled || target?.kind !== 'milestone' || !onPlanningEdit) return;
@@ -287,16 +311,16 @@ export function PlanningScope({ title, subtitle, target, retainedPlan, cards, ca
 
   return <section className="planning-collection" aria-label={title}>
     <header className="planning-collection-header">
-      <div><h2 title={title}>{title}</h2><p title={subtitle}>{subtitle}</p></div>
-      {target?.kind === 'milestone' && onPlanningEdit && <div className="planning-scope-actions">
+      <div className="planning-collection-title"><h2 title={title}>{title}</h2><p title={subtitle}>{subtitle}</p></div>
+      {onPlanningEdit && (milestone || run) && <details className="planning-scope-menu"><summary className="control control-ghost" aria-label={t.actions} title={t.actions}><MoreHorizontal size={18} /></summary><div className="planning-scope-menu-body">
+      {target?.kind === 'milestone' && <div className="planning-scope-actions">
         <Button variant="ghost" size="icon" disabled={mutationDisabled && !editAnchor} aria-label={t.editMilestone} title={t.editMilestone} aria-pressed={Boolean(editAnchor)} onClick={event => { if (editAnchor) { if (!editDirty) setEditAnchor(null); } else setEditAnchor(event.currentTarget); }}><Pencil size={18} /></Button>
         <Button variant="ghost" size="icon" disabled={mutationDisabled} aria-label={pinned ? t.unpin : t.pin} title={pinned ? t.unpin : t.pin} aria-pressed={pinned} onClick={() => void pinMilestone()}>{pinned ? <PinOff size={18} /> : <Pin size={18} />}</Button>
         <Button variant="ghost" size="icon" disabled={mutationDisabled} aria-label={t.deleteMilestone} title={t.deleteMilestone} onClick={() => setDeletion(catalog)}><Trash2 size={18} /></Button>
       </div>}
       {run && onPlanningEdit && <RunControls catalog={catalog} run={run} pending={pending} writable={writable && !draftOpen && !createdId && !missingPlan} onSave={onPlanningEdit} onDeleted={onDeleted} onOpenChange={setRunControlsOpen} onDirtyChange={setRunControlsDirty} />}
-      <span className="planning-count">{t.counts(activeCards.length, amount(summary.done), amount(summary.tasks))}</span>
-      {target && <button type="button" className="planning-mine" aria-pressed={mine} title={t.myCardsHint} onClick={() => setMine(value => !value)}>{t.myCards}</button>}
-      <label className="planning-search"><Search size={15} /><input aria-label={t.search} placeholder={t.searchPlaceholder} value={query} onChange={event => setQuery(event.target.value)} /></label>
+      </div></details>}
+      <div className="planning-count"><span>{t.accepted} <span className="page-number">{amount(summary.done)} / {amount(summary.tasks)}</span></span><span>{t.remainingEffort} <span className="page-number">{amount(summary.effort - summary.doneEffort)}</span></span></div>
     </header>
     {editAnchor && milestone && onPlanningEdit && <PlanningPopover anchor={editAnchor} placement="below" wide={false} title={t.editMilestoneTitle} closeLabel={t.closeEdit} dirty={editDirty} pending={pending}
       onClose={closeMilestoneEdit}
@@ -306,12 +330,19 @@ export function PlanningScope({ title, subtitle, target, retainedPlan, cards, ca
         onDone={() => { setEditDirty(false); setEditAnchor(null); }} />
     </PlanningPopover>}
     <PlanningProgress cards={activeCards} />
-    {selection.length > 0 && <div className="planning-selection"><span>{t.selected(amount(selection.length))}</span><BulkActions cards={selection} catalog={catalog} source={snapshot.source} pending={pending || draftOpen} onAction={change => apply(change)} /><Button variant="ghost" size="icon" aria-label={t.clearSelection} onClick={() => setSelected([])}><X size={16} /></Button></div>}
+    <div className="planning-collection-tools">
+      <Button ref={informationButton} variant="outline" size="sm" aria-label={t.information} aria-expanded={information} aria-pressed={information} disabled={detailsDirty} onClick={() => setInformation(!information)}><Info size={16} />{t.information}</Button>
+      <label className="planning-search"><Search size={15} /><input aria-label={t.search} placeholder={t.searchPlaceholder} value={query} onChange={event => setQuery(event.target.value)} /></label>
+      {target && <button type="button" className="planning-mine control" aria-pressed={mine} title={t.myCardsHint} onClick={() => setMine(value => !value)}>{t.myCards}</button>}
+    </div>
+    <SelectionToolbar selectedCards={selection} catalog={catalog} source={snapshot.source} totalShown={visible.length} pending={mutationDisabled}
+      writable={writable} onClear={selectionState.clear} onSelectAll={selectionState.selectAllShown} onAction={change => apply(change)}
+      onMove={deckId => onEdit({ action: 'bulk-assign-deck', cards: selection.map(card => ({ cardId: card.id, sourceHash: card.sourceHash })), deckId })}
+      onAddTrack={trackId => onEdit({ action: 'bulk-add-track', cards: selection.map(card => ({ cardId: card.id, sourceHash: card.sourceHash })), trackId })} />
     {createdId && <div className="notice" role="status">{attachFailed ? t.attachFailed : t.attaching}{attachFailed && <Button size="sm" variant="outline" disabled={pending} onClick={() => void attachCreated()}>{t.retry}</Button>}</div>}
     <div className="planning-collection-body">
       <nav className="planning-rail deck-action-rail" aria-label={t.actions}>
         {target && <Button variant="ghost" size="icon" aria-label={t.addToPlan} title={t.addCard} disabled={mutationDisabled || composing || !catalog.decks.length} onClick={() => setComposing(true)}><Plus size={18} /></Button>}
-        <Button variant="ghost" size="icon" aria-label={t.information} title={t.information} aria-pressed={information} disabled={detailsDirty} onClick={() => setInformation(value => !value)}><Info size={18} /></Button>
         <Button variant="ghost" size="icon" aria-label={t.grouping} title={t.grouping} aria-pressed={ordering} onClick={() => setOrdering(value => !value)}><ArrowDownWideNarrow size={18} /></Button>
       </nav>
       {(information || composing) && <aside className="planning-details">
@@ -319,18 +350,19 @@ export function PlanningScope({ title, subtitle, target, retainedPlan, cards, ca
           {run && <PlanningDetails plan={{ kind: 'run', record: run }} catalog={catalog} source={snapshot.source} writable={writable} pending={pending} onSave={onPlanningEdit} onDirtyChange={setDetailsDirty} />}
           {milestone && <PlanningDetails plan={{ kind: 'milestone', record: milestone }} catalog={catalog} source={snapshot.source} writable={writable} pending={pending} onSave={onPlanningEdit} onDirtyChange={setDetailsDirty} />}
           <PlanningStats cards={activeCards} catalog={catalog} run={run} milestoneId={milestone?.id} history={run || milestone ? (run?.history ?? milestone?.history ?? []) : undefined} />
+          <Button variant="ghost" size="sm" disabled={detailsDirty} onClick={closeInformation}>{t.backToCards}</Button>
         </>}
       </aside>}
       <div className="planning-cards">
-        <div className="planning-order">{ordering && <label>{t.grouping} <select aria-label={t.groupingCards} value={grouping} onChange={event => setGrouping(event.target.value as Grouping)}>
+        <div className="planning-order">{ordering && <label>{t.grouping} <select className="control-field" aria-label={t.groupingCards} value={grouping} onChange={event => setGrouping(event.target.value as PlanningGrouping)}>
           <option value="manual">{t.uiManual}</option><option value="state">{t.state}</option><option value="priority">{t.priority}</option><option value="owner">{t.owner}</option><option value="deck">{t.deck}</option><option value="run">{t.uiRun}</option><option value="milestone">{t.uiMilestone}</option>
-        </select></label>}<span>{t.cardCount(visible.length)}</span></div>
+        </select></label>}<span>{t.cardCount(visible.length)}</span>{grouping === 'manual' && visible.length > 0 && <GroupEffort cards={visible} />}</div>
         {groups.map(group => <section className="planning-card-group" key={group.value} aria-label={group.label}
           onDragOver={event => { if (!mutationDisabled && (grouping === 'run' || grouping === 'milestone') && event.dataTransfer.types.includes('application/x-deckmate-planning')) event.preventDefault(); }}
           onDrop={event => { event.preventDefault(); const card = visible.find(candidate => candidate.id === event.dataTransfer.getData('application/x-deckmate-planning')); if (card && !mutationDisabled && (grouping === 'run' || grouping === 'milestone')) void apply({ kind: 'options', patch: { [grouping]: group.value || null } }, [card]); }}>
-          <h3>{group.label}<span>{amount(group.cards.length)}</span></h3>
+          {grouping !== 'manual' && <h3><span>{group.label}</span><span className="page-number">{amount(group.cards.length)}</span><GroupEffort cards={group.cards} /></h3>}
           <div className="planning-card-grid">{group.cards.map(card => <div key={card.id} draggable={!mutationDisabled && (grouping === 'run' || grouping === 'milestone')} onDragStart={event => { event.dataTransfer.setData('application/x-deckmate-planning', card.id); event.dataTransfer.effectAllowed = 'move'; }}>
-            <CatalogCardTile card={card} catalog={catalog} members={catalog.members ?? []} currentMemberId={currentMember(catalog.members ?? [])?.id} tagDefinitions={catalog.projectTags} lookups={lookups} selected={false} checked={selected.includes(card.id)} selectionActive={selection.length > 0} disabled={pending || draftOpen || Boolean(createdId)} onOpen={(_button, shift) => { if (draftOpen || createdId || pending) return; if (shift || selection.length) toggle(card.id); else { closeComposer(); onOpenCard(card.id); } }} onToggle={() => { if (!draftOpen && !createdId && !pending) toggle(card.id); }} onFamilyOpen={parent => { if (!draftOpen && !createdId && !pending) { closeComposer(); onOpenCard(parent.id); } }} />
+            <CatalogCardTile card={card} catalog={catalog} members={catalog.members ?? []} currentMemberId={viewer?.id} tagDefinitions={catalog.projectTags} lookups={lookups} selected={false} checked={selectionState.selectedIds.has(card.id)} selectionActive={selection.length > 0} disabled={pending || draftOpen || Boolean(createdId)} onOpen={(opened, _button, shift) => { if (draftOpen || createdId || pending) return; if (shift || selection.length) selectionState.toggle(opened.id, shift); else { closeComposer(); onOpenCard(opened.id); } }} onToggle={selectionState.toggle} onFamilyOpen={parent => { if (!draftOpen && !createdId && !pending) { closeComposer(); onOpenCard(parent.id); } }} />
           </div>)}</div>
         </section>)}
         {!visible.length && (filtered
@@ -338,11 +370,11 @@ export function PlanningScope({ title, subtitle, target, retainedPlan, cards, ca
           : <EmptyState variant="first-run" art="first-card" title={t.empty} message={t.emptyHint} action={addCardAction} />)}
       </div>
     </div>
-    <Dialog.Root open={Boolean(deletion)} onOpenChange={open => { if (!open && !pending) setDeletion(null); }}><Dialog.Portal><Dialog.Overlay className="planning-calendar-overlay" /><Dialog.Content className="planning-calendar planning-delete-dialog">
-      <header><Dialog.Title>{t.confirmDelete(title)}</Dialog.Title></header>
-      <Dialog.Description>{t.deleteDescription(unarchivedCount, amount(affectedCards.length), pinned)}</Dialog.Description>
+    <Dialog.Root open={Boolean(deletion)} onOpenChange={open => { if (!open && !pending) setDeletion(null); }}><Dialog.Portal><Dialog.Overlay className="planning-calendar-overlay" /><Dialog.Content className="planning-calendar planning-delete-dialog dialog-panel">
+      <header className="dialog-head"><Dialog.Title className="dialog-title">{t.confirmDelete(title)}</Dialog.Title></header>
+      <div className="dialog-body"><Dialog.Description className="dialog-description">{t.deleteDescription(unarchivedCount, amount(affectedCards.length), pinned)}</Dialog.Description>
       {planningError && <p className="error-banner" role="alert">{planningError}</p>}
-      <footer><Button variant="ghost" disabled={pending} onClick={() => setDeletion(null)}>{t.cancel}</Button><Button variant="outline" className="planning-delete-confirm" disabled={pending} onClick={() => void deleteMilestone()}>{pending ? t.deleting : t.deleteMilestone}</Button></footer>
+      </div><footer className="dialog-foot"><Button variant="ghost" disabled={pending} onClick={() => setDeletion(null)}>{t.cancel}</Button><Button className="destructive" disabled={pending} onClick={() => void deleteMilestone()}>{pending ? t.deleting : t.deleteMilestone}</Button></footer>
     </Dialog.Content></Dialog.Portal></Dialog.Root>
   </section>;
 }

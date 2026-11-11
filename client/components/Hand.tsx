@@ -1,7 +1,7 @@
 import { readStoredValue } from '../storage.ts';
 import { runLabel } from '../run-label.ts';
-import { ArrowUpRight, Bookmark, Check, Crown, Gauge, GripVertical, NotebookText, Users } from 'lucide-react';
-import { createContext, useContext, useMemo, useRef, useState } from 'react';
+import { ArrowUpRight, Bookmark, Check, Crown, Gauge, GripVertical, NotebookText, Users, X } from 'lucide-react';
+import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { PointerEvent as ReactPointerEvent, ReactNode } from 'react';
 import { DndContext, DragEndEvent, DragOverlay, KeyboardSensor, PointerSensor, closestCenter, useSensor, useSensors, type CollisionDetection, type UniqueIdentifier } from '@dnd-kit/core';
 import { SortableContext, arrayMove, rectSortingStrategy, sortableKeyboardCoordinates, useSortable, type SortingStrategy } from '@dnd-kit/sortable';
@@ -11,13 +11,13 @@ import type { WorkspaceSnapshot } from '../../src/workspace-contracts.ts';
 import type { ProjectTag } from '../../src/project-tags.ts';
 import { useCatalog } from '../useCatalog.ts';
 import { buildCatalogLookups, type CatalogLookups, type ChecklistProgress } from '../catalog-lookups.ts';
-import { formatPlanningDate } from '../planning-metrics.ts';
+import { formatPlanningDate, metrics, workdaysUntil } from '../planning-metrics.ts';
 import { navigateToPlanning } from '../planning-navigation.ts';
 import { CardTransferContext, CatalogCardTile } from './CatalogCardTile.tsx';
 import { CardDragFace, captureCardDragPreview, type CardDragPreview } from './CardDragPresentation.tsx';
-import { CardOwnerAvatar } from './CardQuickSettings.tsx';
+import { CardOwnerAvatar, CardQuickSettings, type CardQuickSettingsTab } from './CardQuickSettings.tsx';
 import { StatusBadge } from './StatusMenu.tsx';
-import { CardTags, TagTitlePrefix } from './CardTags.tsx';
+import { CardTags } from './CardTags.tsx';
 import { storedMemberId } from '../current-member.ts';
 import { readMotionTokens } from '../motion.ts';
 import { useCardLayoutMotion } from '../useCardLayoutMotion.ts';
@@ -28,7 +28,6 @@ import { navigateTabs } from '../tab-navigation.ts';
 import { Button } from './ui/button.tsx';
 import { EmptyState } from './EmptyState.tsx';
 import { LoadingState } from './LoadingState.tsx';
-import { ErrorState } from './ErrorState.tsx';
 import type { PlanningTarget } from './PlanningScope.tsx';
 import { defineText, locale, useLang, useText, type Lang } from '../i18n.ts';
 import { kindLabel, stateLabel } from '../locales/common.ts';
@@ -60,12 +59,14 @@ const text = defineText({
   noBookmarks: 'No bookmarked cards yet. Open a card and choose “Bookmark Card” in its menu.',
   cardCount: (count: number) => `${count.toLocaleString(locale())} ${new Intl.PluralRules('en-US').select(count) === 'one' ? 'card' : 'cards'}`,
   emptyMemberHand: 'There are no cards in Hand. Add them by selecting cards in Decks.',
-  emptyHand: 'Empty. In Decks, drag a card onto the Hand tab or press H over a card.',
+  emptyHand: 'Select cards in Decks, then choose this member’s Hand.',
   // 2026-11-10: without write access the caption cannot promise an action, so the read-only copy stays observational.
   emptyHandReadOnly: 'No cards in this Hand yet.',
-  totalEffort: 'Total Hand Effort',
+  chooseCards: 'Choose cards in Decks',
+  totalEffort: (effort: number) => `Sum of the cards’ own Effort, excluding Sub Card totals: ${effort.toLocaleString(locale())}`,
   showAllTitle: 'Show every member’s Hand',
   allHands: 'All Hands',
+  overviewHint: 'To change a Hand, turn off All Hands.',
   whoseHand: 'Whose Hand',
   handOf: (member: string) => `Hand: ${member}`,
   empty: 'Empty',
@@ -79,6 +80,9 @@ const text = defineText({
   invalidMember: 'The member from the link is not on the team. The default Hand is shown.',
   card: 'Card',
   doneSummary: (count: number, effort: number, lastCount: number, lastEffort: number, total: number) => `This week: ${count.toLocaleString(locale())} ${new Intl.PluralRules(locale('en')).select(count) === 'one' ? 'card' : 'cards'} · Effort ${effort.toLocaleString(locale())}\nLast week: ${lastCount.toLocaleString(locale())} · ${lastEffort.toLocaleString(locale())}\nTotal in the pile: ${total.toLocaleString(locale())}`,
+  doneThisWeek: (count: number, effort: number) => `This week: ${count.toLocaleString(locale())} · Effort ${effort.toLocaleString(locale())}`,
+  doneLastWeek: (count: number, effort: number) => `Last week: ${count.toLocaleString(locale())} · Effort ${effort.toLocaleString(locale())}`,
+  noDoneCards: 'No accepted cards in this pile yet.',
   dragInstructions: 'Press Space to pick up a Hand card. Arrow keys change its position, Space drops it, and Escape cancels the move.',
   dragStart: (card: string) => `Picked up card “${card}”.`,
   dragOver: (card: string, position: number, total: number) => `Card “${card}”, position ${position.toLocaleString(locale())} of ${total.toLocaleString(locale())}.`,
@@ -94,6 +98,9 @@ const text = defineText({
   noOwnedMilestone: 'You have no cards in this Milestone.',
   noOwnedRun: 'You have no cards in this Run.',
   openCard: (title: string) => `Open ${title}`,
+  removeCard: (title: string) => `Remove from Hand: ${title}`,
+  refreshData: 'Refresh data',
+  runWorkload: (effort: number, unestimated: number, days: number) => `Active Effort: ${effort.toLocaleString(locale())} · Unestimated: ${unestimated.toLocaleString(locale())} · Workdays left: ${days.toLocaleString(locale())}`,
 }, {
   yourHand: 'Ваш Hand',
   yourDueCards: 'Ваши карточки по срокам',
@@ -126,11 +133,13 @@ const text = defineText({
     return `${count.toLocaleString(locale())} ${word}`;
   },
   emptyMemberHand: 'В Hand нет карточек. Добавьте их через выделение в Decks.',
-  emptyHand: 'Пусто. В Decks перетащите карточку на вкладку Hand или нажмите H, наведя на карточку.',
+  emptyHand: 'Выберите карточки в Decks, затем укажите Hand этого участника.',
   emptyHandReadOnly: 'В этой Hand пока нет карточек.',
-  totalEffort: 'Суммарная оценка Hand',
+  chooseCards: 'Выбрать карточки в Decks',
+  totalEffort: (effort: number) => `Сумма собственных оценок карточек, без суммы Sub Cards: ${effort.toLocaleString(locale())}`,
   showAllTitle: 'Показать Hand всех участников',
   allHands: 'Все Hand',
+  overviewHint: 'Чтобы изменить Hand, выключите обзор всех Hand.',
   whoseHand: 'Чей Hand',
   handOf: (member: string) => `Hand: ${member}`,
   empty: 'Пусто',
@@ -143,6 +152,9 @@ const text = defineText({
   invalidMember: 'Участник из ссылки отсутствует в составе команды. Показан Hand по умолчанию.',
   card: 'Карточка',
   doneSummary: (count: number, effort: number, lastCount: number, lastEffort: number, total: number) => `Неделя: карточек ${count.toLocaleString(locale())} · оценка ${effort.toLocaleString(locale())}\nПрошлая неделя: ${lastCount.toLocaleString(locale())} · ${lastEffort.toLocaleString(locale())}\nВсего в стопке: ${total.toLocaleString(locale())}`,
+  doneThisWeek: (count: number, effort: number) => `За неделю: ${count.toLocaleString(locale())} · оценка ${effort.toLocaleString(locale())}`,
+  doneLastWeek: (count: number, effort: number) => `За прошлую неделю: ${count.toLocaleString(locale())} · оценка ${effort.toLocaleString(locale())}`,
+  noDoneCards: 'В стопке пока нет принятых карточек.',
   dragInstructions: 'Нажмите пробел, чтобы поднять карточку Hand. Стрелки меняют позицию, пробел завершает перенос, Escape отменяет.',
   dragStart: (card: string) => `Поднята карточка «${card}».`,
   dragOver: (card: string, position: number, total: number) => `Карточка «${card}», позиция ${position.toLocaleString(locale())} из ${total.toLocaleString(locale())}.`,
@@ -158,6 +170,9 @@ const text = defineText({
   noOwnedMilestone: 'Ваших карточек в этом Milestone нет.',
   noOwnedRun: 'Ваших карточек в этом Run нет.',
   openCard: (title: string) => `Открыть ${title}`,
+  removeCard: (title: string) => `Убрать из Hand: ${title}`,
+  refreshData: 'Обновить данные',
+  runWorkload: (effort: number, unestimated: number, days: number) => `Оценка активных: ${effort.toLocaleString(locale())} · Без оценки: ${unestimated.toLocaleString(locale())} · Рабочих дней осталось: ${days.toLocaleString(locale())}`,
 });
 
 const HAND_SLOT_COUNT = 7;
@@ -208,13 +223,26 @@ function createHandCollisions() {
   return { detect, reset: () => { previousId = null; } };
 }
 /** Planning tabs collect the selected member's next actions. */
-type HandTab = 'due' | 'runs' | 'milestone' | 'bookmarks' | 'team';
+const handTabs = ['due', 'runs', 'milestone', 'bookmarks', 'team'] as const;
+type HandTab = typeof handTabs[number];
+type HandScroll = { project: string; source: WorkspaceSnapshot['source']; member: string; tab: HandTab; all: boolean; top: number };
+
+function linkedHandTab(): HandTab {
+  const linked = new URLSearchParams(location.search).get('handTab');
+  return handTabs.find(tab => tab === linked) ?? 'bookmarks';
+}
+
 // Hand has no shortcuts of its own: the overview lists the app-wide ones.
 const handShortcutScreens: readonly ShortcutScreen[] = ['app'];
 // All Hands persists in localStorage and can be shared with ?hands=all.
 const ALL_HANDS_STORAGE_KEY = 'deckmate-hand-all';
 
-export function Hand({ snapshot, refreshKey, onOpenCard, onOpenMembers }: {
+function linkedAllHands(): boolean {
+  if (new URLSearchParams(location.search).get('hands') === 'all') return true;
+  try { return readStoredValue(localStorage, ALL_HANDS_STORAGE_KEY) === 'true'; } catch { return false; }
+}
+
+export function Hand({ snapshot, refreshKey, onOpenCard: openCard, onOpenMembers }: {
   snapshot: WorkspaceSnapshot;
   refreshKey: number;
   onOpenCard: (id: string) => void;
@@ -223,15 +251,17 @@ export function Hand({ snapshot, refreshKey, onOpenCard, onOpenMembers }: {
 }) {
   const { catalog, error, pending, edit, refresh } = useCatalog(snapshot, refreshKey);
   const handMutation = useRef(false);
+  const viewRef = useRef<HTMLElement>(null);
   const t = useText(text);
-  // The chosen hand is «me» for notifications and authorship (2026-11-04); a link with ?handMember= shows a hand without choosing it.
+  // Viewing another Hand must not change the acting member used for authorship.
   const [requestedMember, setRequestedMember] = useState(() => new URLSearchParams(location.search).get('handMember') ?? storedMemberId() ?? '');
   // The URL overrides localStorage, so ?hands=all works even with empty storage.
-  const [showAllHands, setShowAllHands] = useState(() => {
-    if (new URLSearchParams(location.search).get('hands') === 'all') return true;
-    try { return readStoredValue(localStorage, ALL_HANDS_STORAGE_KEY) === 'true'; } catch { return false; }
-  });
-  const [tab, setTab] = useState<HandTab>('bookmarks');
+  const [showAllHands, setShowAllHands] = useState(linkedAllHands);
+  const [tab, setTab] = useState<HandTab>(linkedHandTab);
+  const pendingScroll = useRef<HandScroll | null>(null);
+  const tabScrollFrame = useRef<number | null>(null);
+  const [historyEntry, setHistoryEntry] = useState(0);
+  const [quickSettings, setQuickSettings] = useState<{ card: CatalogCard; tab: CardQuickSettingsTab; anchor: HTMLElement } | null>(null);
   // Show all includes the whole team's due dates, beyond the selected member.
   const [showAllDue, setShowAllDue] = useState(false);
   const hands = useMemo(() => catalog ? getCatalogHands(catalog) : [], [catalog]);
@@ -255,15 +285,20 @@ export function Hand({ snapshot, refreshKey, onOpenCard, onOpenMembers }: {
   const members = catalog?.members ?? [];
   const lookups = useMemo(() => catalog ? buildCatalogLookups(catalog.cards, catalog.subCardOrder) : null, [catalog]);
   const writable = snapshot.writable && snapshot.source === 'sandbox';
+  const openQuickSettings = useCallback((cardId: string, tab: CardQuickSettingsTab, anchor: HTMLElement) => {
+    const card = catalog?.cards.find(item => item.id === cardId);
+    if (card) setQuickSettings({ card, tab, anchor });
+  }, [catalog]);
   // Hand slots reuse the deck's card tile; selection belongs to Decks, so no checkbox here.
-  const tile = (card: CatalogCard) => lookups && <CatalogCardTile key={card.id} card={card} catalog={catalog ?? undefined} currentMemberId={selectedMember} lookups={lookups} members={members} tagDefinitions={catalog?.projectTags} selected={false} checked={false} selectionActive={false} disabled={pending} selectable={false} onOpen={() => onOpenCard(card.id)} onToggle={() => undefined} onFamilyOpen={family => onOpenCard(family.id)} />;
+  const tile = (card: CatalogCard, memberId = selectedMember) => lookups && <CatalogCardTile key={card.id} card={card} catalog={catalog ?? undefined} currentMemberId={memberId} lookups={lookups} members={members} tagDefinitions={catalog?.projectTags} selected={false} checked={false} selectionActive={false} disabled={pending} selectable={false} onOpen={() => onOpenCard(card.id)} onToggle={() => undefined} onFamilyOpen={family => onOpenCard(family.id)} onQuickSettings={writable ? openQuickSettings : undefined} />;
   const bookmarkedCards = useMemo(() => catalog ? catalog.cards.filter(card => card.bookmarked && !card.archived && !card.deleted) : [], [catalog]);
   // Planning sections use the selected member's due dates, current Runs and pinned Milestone.
   const today = localIsoDate();
   const dueSplit = catalog && activeHand ? splitDueCards(catalog.cards, activeHand.member, today) : null;
-  const dueBadge = dueSplit ? dueBadgeOf(dueSplit) : null;
   const teamDueSplit = catalog ? splitDueCards(catalog.cards, null, today) : null;
   const shownDueSplit = showAllDue ? teamDueSplit : dueSplit;
+  const dueBadge = shownDueSplit ? dueBadgeOf(shownDueSplit) : null;
+  const dueCount = shownDueSplit ? shownDueSplit.now.length + shownDueSplit.soon.length + shownDueSplit.later.length : 0;
   const runsByOwner = catalog && activeHand ? currentRunsByOwner(catalog.runs, catalog.cards, activeHand.member, today) : null;
   const runsOwnedCardCount = runsByOwner?.owned.reduce((total, entry) => total + entry.cards.length, 0) ?? 0;
   // The manifest stores the pinned Milestone; do not duplicate that choice locally.
@@ -274,30 +309,120 @@ export function Hand({ snapshot, refreshKey, onOpenCard, onOpenMembers }: {
   const runsTabVisible = Boolean(runsByOwner && (runsByOwner.owned.length > 0 || runsByOwner.withoutCards.length > 0));
   const milestoneTabVisible = Boolean(pinnedMilestone);
   const activeTab = tab === 'due' && !dueTabVisible || tab === 'runs' && !runsTabVisible || tab === 'milestone' && !milestoneTabVisible ? 'bookmarks' : tab;
+  useLayoutEffect(() => {
+    pendingScroll.current = history.state?.deckmateHandScroll ?? null;
+  }, []);
+  useEffect(() => {
+    function restoreHand() {
+      if (tabScrollFrame.current !== null) cancelAnimationFrame(tabScrollFrame.current);
+      tabScrollFrame.current = null;
+      const params = new URLSearchParams(location.search);
+      if (params.get('view') !== 'hand') return;
+      pendingScroll.current = history.state?.deckmateHandScroll ?? null;
+      setRequestedMember(params.get('handMember') ?? storedMemberId() ?? '');
+      setShowAllHands(linkedAllHands());
+      setTab(linkedHandTab());
+      setHistoryEntry(entry => entry + 1);
+    }
+    window.addEventListener('popstate', restoreHand);
+    return () => {
+      window.removeEventListener('popstate', restoreHand);
+      if (tabScrollFrame.current !== null) cancelAnimationFrame(tabScrollFrame.current);
+    };
+  }, []);
+  useLayoutEffect(() => {
+    const saved = pendingScroll.current;
+    if (!catalog || !saved) return;
+    if (saved.project !== catalog.rootIdentity || saved.source !== snapshot.source || saved.member !== selectedMember
+      || saved.tab !== activeTab || saved.all !== showAllHands || !Number.isFinite(saved.top) || saved.top < 0) {
+      pendingScroll.current = null;
+      return;
+    }
+    let cancelled = false;
+    let frame = 0;
+    // 2026-11-11: the catalog and fonts determine the Hand's height; restoring against the loading view clamps the position.
+    void document.fonts.ready.then(() => {
+      if (cancelled) return;
+      frame = requestAnimationFrame(() => {
+        frame = requestAnimationFrame(() => {
+          if (cancelled || pendingScroll.current !== saved) return;
+          const scrollport = viewRef.current?.closest<HTMLElement>('.workspace-main') ?? document.scrollingElement;
+          scrollport?.scrollTo({ top: saved.top, behavior: 'instant' });
+          pendingScroll.current = null;
+        });
+      });
+    });
+    return () => { cancelled = true; cancelAnimationFrame(frame); };
+  }, [catalog, snapshot.source, selectedMember, activeTab, showAllHands, historyEntry]);
   // Dragging is limited to a single hand in the test copy; All Hands remains an overview.
   const canReorder = writable && !showAllHands && !pending && Boolean(activeHand);
   const handControls: HandMembershipControls | undefined = activeHand ? {
     memberId: activeHand.member.id,
     disabled: !writable || pending || showAllHands,
-    onToggle: card => void toggleHand(card),
+    onToggle: card => { void toggleHand(card); },
   } : undefined;
 
   async function toggleHand(card: CatalogCard) {
-    if (!catalog || !activeHand || !writable || pending || showAllHands || handMutation.current) return;
+    if (!catalog || !activeHand || !writable || pending || showAllHands || handMutation.current) return false;
     handMutation.current = true;
     try {
       // 2026-11-05: personal queue membership is independent of Owner and planning assignments.
-      await edit({ action: 'bulk-edit-cards', manifestHash: catalog.manifestHash, optionsHash: catalog.optionsHash ?? '',
+      return await edit({ action: 'bulk-edit-cards', manifestHash: catalog.manifestHash, optionsHash: catalog.optionsHash ?? '',
         cards: [{ cardId: card.id, sourceHash: card.sourceHash }],
         change: { kind: 'hand', memberId: activeHand.member.id, mode: card.handMemberIds?.includes(activeHand.member.id) ? 'remove' : 'add' } });
     } finally { handMutation.current = false; }
   }
 
+  async function removeHandCard(card: CatalogCard) {
+    if (!activeHand) return;
+    const memberId = activeHand.member.id;
+    const cards = splitHand(activeHand.cards).openCards;
+    const index = cards.findIndex(item => item.id === card.id);
+    const nextId = cards[index + 1]?.id ?? cards[index - 1]?.id;
+    if (!await toggleHand(card)) return;
+    requestAnimationFrame(() => {
+      const view = viewRef.current;
+      if (!view || view.querySelector<HTMLSelectElement>('.hand-member-picker select')?.value !== memberId) return;
+      const next = [...view.querySelectorAll<HTMLElement>('[data-hand-card]')].find(element => element.dataset.handCard === nextId);
+      (next?.querySelector<HTMLElement>('.hand-slot-handle, .hand-queue-open') ?? view.querySelector<HTMLElement>('.hand-member-picker select'))?.focus();
+    });
+  }
+
+  function onOpenCard(id: string) {
+    const scrollport = viewRef.current?.closest<HTMLElement>('.workspace-main') ?? document.scrollingElement;
+    if (catalog && scrollport) {
+      const scroll: HandScroll = { project: catalog.rootIdentity, source: snapshot.source, member: selectedMember,
+        tab: activeTab, all: showAllHands, top: scrollport.scrollTop };
+      history.replaceState({ ...history.state, deckmateHandScroll: scroll }, '', location.href);
+    }
+    openCard(id);
+  }
+
+  function replaceHandParam(name: string, value: string | null) {
+    pendingScroll.current = null;
+    const url = new URL(location.href);
+    if (value === null) url.searchParams.delete(name); else url.searchParams.set(name, value);
+    const state = { ...history.state };
+    delete state.deckmateHandScroll;
+    history.replaceState(state, '', url.pathname + '?' + url.searchParams.toString() + url.hash);
+  }
+
+  function selectTab(next: HandTab) {
+    setTab(next);
+    replaceHandParam('handTab', next);
+    if (tabScrollFrame.current !== null) cancelAnimationFrame(tabScrollFrame.current);
+    tabScrollFrame.current = null;
+    if (window.matchMedia('(max-width: 600px)').matches) {
+      tabScrollFrame.current = requestAnimationFrame(() => {
+        tabScrollFrame.current = null;
+        viewRef.current?.querySelector('#hand-tab-panel')?.scrollIntoView({ block: 'start' });
+      });
+    }
+  }
+
   function selectMember(memberId: string) {
     setRequestedMember(memberId);
-    const url = new URL(location.href);
-    url.searchParams.set('handMember', memberId);
-    history.replaceState(null, '', url.pathname + '?' + url.searchParams.toString() + url.hash);
+    replaceHandParam('handMember', memberId);
   }
 
   /** Timeline restores its selection from its existing storage key. */
@@ -309,9 +434,7 @@ export function Hand({ snapshot, refreshKey, onOpenCard, onOpenMembers }: {
   function toggleAllHands(enabled: boolean) {
     setShowAllHands(enabled);
     try { localStorage.setItem(ALL_HANDS_STORAGE_KEY, enabled ? 'true' : 'false'); } catch { /* Without localStorage the mode lasts until reload. */ }
-    const url = new URL(location.href);
-    if (enabled) url.searchParams.set('hands', 'all'); else url.searchParams.delete('hands');
-    history.replaceState(null, '', url.pathname + '?' + url.searchParams.toString() + url.hash);
+    replaceHandParam('hands', enabled ? 'all' : null);
   }
 
   /** Open card order is stored as slots in Card Options. */
@@ -346,13 +469,13 @@ export function Hand({ snapshot, refreshKey, onOpenCard, onOpenMembers }: {
     </div>;
     if (activeTab === 'bookmarks') return <div className="hand-tab-panel glass-panel" role="tabpanel" id="hand-tab-panel" tabIndex={0} aria-labelledby="hand-tab-bookmarks">
       {bookmarkedCards.length
-        ? <div className="hand-bookmarks">{bookmarkedCards.map(tile)}</div>
+        ? <div className="hand-bookmarks">{bookmarkedCards.map(card => tile(card))}</div>
         : <EmptyState message={t.noBookmarks} />}
     </div>;
     return <div className="hand-tab-panel glass-stack" role="tabpanel" id="hand-tab-panel" tabIndex={0} aria-labelledby="hand-tab-team">
       {hands.map(({ member, cards }) => <section className="hand-member glass-panel" key={member.id} aria-labelledby={`hand-${member.id}`}>
         <header className="hand-member-heading panel-head"><CardOwnerAvatar owner={member.label} members={members} /><h2 className="panel-title" id={`hand-${member.id}`}>{member.label}</h2><span className="hand-member-kind">{member.kind === 'agent' ? t.agent : t.human}</span><span className="hand-count panel-count" aria-label={t.cardCount(cards.length)}>{(cards.length).toLocaleString(locale())}</span></header>
-        {!cards.length ? <EmptyState message={t.emptyMemberHand} /> : <div className="hand-cards">{cards.map(card => <HandMemberCard key={card.id} card={card} cardsById={cardsById} decksById={decksById} members={members} progress={lookups?.checklistByCard.get(card.id)} projectTags={catalog?.projectTags} onOpenCard={onOpenCard} />)}</div>}
+        {!cards.length ? <EmptyState message={writable ? t.emptyMemberHand : t.emptyHandReadOnly} /> : <div className="hand-cards">{cards.map(card => <HandMemberCard key={card.id} card={card} cardsById={cardsById} decksById={decksById} members={members} progress={lookups?.checklistByCard.get(card.id)} projectTags={catalog?.projectTags} onOpenCard={onOpenCard} />)}</div>}
       </section>)}
     </div>;
   }
@@ -363,20 +486,19 @@ export function Hand({ snapshot, refreshKey, onOpenCard, onOpenMembers }: {
   const orderedHands = useMemo(() => [...hands].sort((left, right) => (left.member.kind === 'human' ? 0 : 1) - (right.member.kind === 'human' ? 0 : 1)), [hands]);
   const panelHeader = <header className="hand-panel-header page-head">
     <div className="page-head-main"><div className="page-title-block"><h1 className="page-title">{t.yourHand}</h1>
-    {/* 2026-11-06: seven numbered slots alone do not say how a card gets here; the hint sits in the header row, so the slots
-        do not jump when the first card arrives. The read-only copy only states the fact (2026-11-10). */}
-    {!showAllHands && activeHand && !activeHand.cards.length && <p className="page-caption">{writable ? t.emptyHand : t.emptyHandReadOnly}</p>}
     </div></div><div className="page-tools">
-    {!showAllHands && handEffort > 0 && <span className="hand-panel-effort page-number" title={t.totalEffort}><Gauge size={16} />{(handEffort).toLocaleString(locale())}</span>}
+    {!showAllHands && handEffort > 0 && <span className="hand-panel-effort page-number" role="img" title={t.totalEffort(handEffort)} aria-label={t.totalEffort(handEffort)}><Gauge size={16} aria-hidden="true" />{(handEffort).toLocaleString(locale())}</span>}
     <label className="hand-all-toggle" title={t.showAllTitle}>
       <input type="checkbox" role="switch" checked={showAllHands} onChange={event => toggleAllHands(event.target.checked)} aria-label={t.allHands} />
       <span className="hand-all-track" aria-hidden="true"><span className="hand-all-thumb" /></span>
       <span>{t.allHands}</span>
     </label>
-    {!showAllHands && <label className="hand-member-picker"><span className="visually-hidden">{t.whoseHand}</span>
+    <label className="hand-member-picker"><span className="visually-hidden">{t.whoseHand}</span>
       <select className="control-field" value={selectedMember} onChange={event => selectMember(event.target.value)} aria-label={t.whoseHand} title={activeHand?.member.label}>{hands.map(({ member }) => <option key={member.id} value={member.id}>{member.label}</option>)}</select>
-    </label>}
-    {!showAllHands && activeHand?.member.kind === 'agent' && <AgentQueueHint assignment="hand" />}</div>
+    </label>
+    </div>
+    {!showAllHands && activeHand?.member.kind === 'agent' && <div className="hand-agent-hint"><AgentQueueHint assignment="hand" /></div>}
+    {showAllHands && writable && <p className="hand-overview-hint">{t.overviewHint}</p>}
   </header>;
   const panelBody = showAllHands
     ? <div className="hand-all-list">
@@ -384,23 +506,44 @@ export function Hand({ snapshot, refreshKey, onOpenCard, onOpenMembers }: {
         const { queuedCards } = splitHand(hand.cards);
         return <section className="hand-all-member" key={hand.member.id} aria-label={t.handOf(hand.member.label)}>
           <header className="hand-all-member-heading"><CardOwnerAvatar owner={hand.member.label} members={members} /><h2>{hand.member.label}</h2></header>
-          {hand.cards.length ? <HandSlots hand={hand} tile={tile} canReorder={false} /> : <EmptyState message={t.empty} />}
+          {hand.cards.length || hand.doneCards.length ? <HandSlots key={hand.member.id} hand={hand} tile={card => tile(card, hand.member.id)} canReorder={false} onOpenCard={onOpenCard} /> : <EmptyState message={t.empty} />}
           <HandQueue cards={queuedCards} decksById={decksById} projectTags={catalog?.projectTags} canReorder={false} onOpenCard={onOpenCard} />
         </section>;
       })}
     </div>
-    : activeHand && <HandSlots hand={activeHand} tile={tile} canReorder={canReorder} />;
+    : activeHand && <HandSlots key={activeHand.member.id} hand={activeHand} tile={tile} canReorder={canReorder} reserveActions={writable} onOpenCard={onOpenCard}
+      onRemove={canReorder ? removeHandCard : undefined} emptyGuide={<div className="hand-empty-guide"><p>{writable ? t.emptyHand : t.emptyHandReadOnly}</p>{writable && <a className="control" href={`/?view=deck&catalogSource=${encodeURIComponent(snapshot.source)}&scope=all&handMember=${encodeURIComponent(selectedMember)}`}>{t.chooseCards}</a>}</div>} />;
 
-  return <section className="hand-view page-light">
-    {error && <ErrorState message={error} onRetry={refresh} pending={pending} />}
+  return <section ref={viewRef} className="hand-view page-light">
+    {error && <div className="hand-error error-banner" role="alert"><span>{error}</span><Button type="button" variant="outline" size="sm" disabled={pending} onClick={() => void refresh()}>{t.refreshData}</Button></div>}
     {!catalog && !error && <LoadingState message={t.loading} />}
     {/* 2026-11-10: the no-members state is a large empty area, so it gets the team scene; the Members action exists only
         where members can be added (writable). */}
     {catalog && !hands.length && <div className="glass-panel"><EmptyState variant="first-run" art="team" title={t.noMembersTitle} message={writable ? t.noMembersDescription : t.noMembersReadOnly} action={writable ? { label: t.openMembers, onClick: onOpenMembers } : undefined} /></div>}
     {catalog && hands.length > 0 && <>
       {panelHeader}
+      <div className="hand-tabs control-tabs">
+        <div className="hand-tab-list" role="tablist" aria-label={t.handSections} onKeyDown={navigateTabs}>
+          {dueTabVisible && <button type="button" role="tab" id="hand-tab-due" aria-controls="hand-tab-panel" tabIndex={activeTab === 'due' ? 0 : -1} aria-selected={activeTab === 'due'} aria-label={t.tabWithCount(t.yourDueCards, dueCount)} className={`hand-tab control-tab${activeTab === 'due' ? ' is-active' : ''}`} onClick={() => selectTab('due')}>
+            <span className={`hand-tab-count page-number${dueBadge?.bucket ? ` is-due-${dueBadge.bucket}` : ''}`} aria-hidden="true">{dueCount.toLocaleString(locale())}</span>{t.yourDueCards}
+          </button>}
+          {runsTabVisible && <button type="button" role="tab" id="hand-tab-runs" aria-controls="hand-tab-panel" tabIndex={activeTab === 'runs' ? 0 : -1} aria-selected={activeTab === 'runs'} aria-label={t.tabWithCount(t.yourRuns, runsOwnedCardCount)} className={`hand-tab control-tab${activeTab === 'runs' ? ' is-active' : ''}`} onClick={() => selectTab('runs')}>
+            <span className="hand-tab-count page-number" aria-hidden="true">{runsOwnedCardCount.toLocaleString(locale())}</span>{t.yourRuns}
+          </button>}
+          {milestoneTabVisible && <button type="button" role="tab" id="hand-tab-milestone" aria-controls="hand-tab-panel" tabIndex={activeTab === 'milestone' ? 0 : -1} aria-selected={activeTab === 'milestone'} aria-label={t.tabWithCount(t.pinnedMilestone, milestoneOwnedCards.length)} className={`hand-tab control-tab${activeTab === 'milestone' ? ' is-active' : ''}`} onClick={() => selectTab('milestone')}>
+            <span className="hand-tab-count page-number" aria-hidden="true">{milestoneOwnedCards.length.toLocaleString(locale())}</span>{t.pinnedMilestone}
+          </button>}
+          <button type="button" role="tab" id="hand-tab-bookmarks" aria-controls="hand-tab-panel" tabIndex={activeTab === 'bookmarks' ? 0 : -1} aria-selected={activeTab === 'bookmarks'} aria-label={t.tabWithCount(t.bookmarks, bookmarkedCards.length)} className={`hand-tab control-tab${activeTab === 'bookmarks' ? ' is-active' : ''}`} onClick={() => selectTab('bookmarks')}>
+            <span className="hand-tab-count page-number" aria-hidden="true">{bookmarkedCards.length.toLocaleString(locale())}</span>{t.bookmarks}
+          </button>
+          <button type="button" role="tab" id="hand-tab-team" aria-controls="hand-tab-panel" tabIndex={activeTab === 'team' ? 0 : -1} aria-selected={activeTab === 'team'} className={`hand-tab control-tab${activeTab === 'team' ? ' is-active' : ''}`} onClick={() => selectTab('team')}>
+            <Users size={20} aria-hidden="true" />{t.teamHands}
+          </button>
+        </div>
+        {activeTab === 'due' && <button type="button" className="hand-show-all control" aria-pressed={showAllDue} onClick={() => setShowAllDue(enabled => !enabled)}>{t.showAll}</button>}
+      </div>
       {!showAllHands && activeHand
-        ? <HandBoard hand={activeHand} canReorder={canReorder} decksById={decksById} projectTags={catalog.projectTags} onOpenCard={onOpenCard} onDragEnd={event => void finishHandDrag(event)}>
+        ? <HandBoard hand={activeHand} canReorder={canReorder} decksById={decksById} projectTags={catalog.projectTags} onOpenCard={onOpenCard} onRemove={canReorder ? removeHandCard : undefined} onDragEnd={event => void finishHandDrag(event)}>
           <section className="hand-panel glass-panel" aria-label={t.yourHand}>
             <div className="hand-panel-body">
               {panelBody}
@@ -412,29 +555,12 @@ export function Hand({ snapshot, refreshKey, onOpenCard, onOpenMembers }: {
               {panelBody}
             </div>
           </section>}
-      <div className="hand-tabs control-tabs">
-        <div className="hand-tab-list" role="tablist" aria-label={t.handSections} onKeyDown={navigateTabs}>
-          {dueTabVisible && <button type="button" role="tab" id="hand-tab-due" aria-controls="hand-tab-panel" tabIndex={activeTab === 'due' ? 0 : -1} aria-selected={activeTab === 'due'} aria-label={t.tabWithCount(t.yourDueCards, dueBadge?.count ?? 0)} className={`hand-tab control-tab${activeTab === 'due' ? ' is-active' : ''}`} onClick={() => setTab('due')}>
-            <span className={`hand-tab-count${dueBadge?.bucket ? ` is-due-${dueBadge.bucket}` : ''}`} aria-hidden="true">{(dueBadge?.count ?? 0).toLocaleString(locale())}</span>{t.yourDueCards}
-          </button>}
-          {runsTabVisible && <button type="button" role="tab" id="hand-tab-runs" aria-controls="hand-tab-panel" tabIndex={activeTab === 'runs' ? 0 : -1} aria-selected={activeTab === 'runs'} aria-label={t.tabWithCount(t.yourRuns, runsOwnedCardCount)} className={`hand-tab control-tab${activeTab === 'runs' ? ' is-active' : ''}`} onClick={() => setTab('runs')}>
-            <span className="hand-tab-count" aria-hidden="true">{(runsOwnedCardCount).toLocaleString(locale())}</span>{t.yourRuns}
-          </button>}
-          {milestoneTabVisible && <button type="button" role="tab" id="hand-tab-milestone" aria-controls="hand-tab-panel" tabIndex={activeTab === 'milestone' ? 0 : -1} aria-selected={activeTab === 'milestone'} aria-label={t.tabWithCount(t.pinnedMilestone, milestoneOwnedCards.length)} className={`hand-tab control-tab${activeTab === 'milestone' ? ' is-active' : ''}`} onClick={() => setTab('milestone')}>
-            <span className="hand-tab-count" aria-hidden="true">{(milestoneOwnedCards.length).toLocaleString(locale())}</span>{t.pinnedMilestone}
-          </button>}
-          <button type="button" role="tab" id="hand-tab-bookmarks" aria-controls="hand-tab-panel" tabIndex={activeTab === 'bookmarks' ? 0 : -1} aria-selected={activeTab === 'bookmarks'} aria-label={t.tabWithCount(t.bookmarks, bookmarkedCards.length)} className={`hand-tab control-tab${activeTab === 'bookmarks' ? ' is-active' : ''}`} onClick={() => setTab('bookmarks')}>
-            <span className="hand-tab-count" aria-hidden="true">{(bookmarkedCards.length).toLocaleString(locale())}</span>{t.bookmarks}
-          </button>
-          <button type="button" role="tab" id="hand-tab-team" aria-controls="hand-tab-panel" tabIndex={activeTab === 'team' ? 0 : -1} aria-selected={activeTab === 'team'} className={`hand-tab control-tab${activeTab === 'team' ? ' is-active' : ''}`} onClick={() => setTab('team')}>
-            <Users size={24} aria-hidden="true" />{t.teamHands}
-          </button>
-        </div>
-          {activeTab === 'due' && <button type="button" className="hand-show-all control" aria-pressed={showAllDue} onClick={() => setShowAllDue(enabled => !enabled)}>{t.showAll}</button>}
-      </div>
       {renderTabPanel()}
       {requestedMember && !memberFromLinkIsValid && <p className="hand-empty" role="status">{t.invalidMember}</p>}
     </>}
+    {quickSettings && catalog && <CardQuickSettings card={quickSettings.card} catalog={catalog} source={snapshot.source} projectName={snapshot.projectName}
+      tab={quickSettings.tab} onTabChange={tab => setQuickSettings(current => current && { ...current, tab })} anchor={quickSettings.anchor}
+      disabled={!writable || pending} onEdit={edit} onClose={() => setQuickSettings(null)} />}
     <ShortcutsHelp screens={handShortcutScreens} writable={writable} />
   </section>;
 }
@@ -445,25 +571,26 @@ function splitHand(cards: CatalogCard[]) {
   return { openCards, slotCards: openCards.slice(0, HAND_SLOT_COUNT), queuedCards: openCards.slice(HAND_SLOT_COUNT) };
 }
 
-/** Show the whole pile's count beside Done Cards; the tooltip retains both ISO-week totals. */
-function DoneSlot({ doneCards }: { doneCards: CatalogCard[] }) {
+/** The pile keeps its total and exposes the current week without requiring a tooltip. */
+function DoneSlot({ doneCards, lastWeek, expanded, controls, onToggle }: { doneCards: CatalogCard[]; lastWeek: ReturnType<typeof summarizeDoneWeek>; expanded: boolean; controls: string; onToggle: () => void }) {
   const t = useText(text);
   const thisWeek = summarizeDoneWeek(doneCards, isoWeekStart());
-  const lastWeek = summarizeDoneWeek(doneCards, isoWeekStart(-1));
   const title = t.doneSummary(thisWeek.count, thisWeek.effort, lastWeek.count, lastWeek.effort, doneCards.length);
-  return <div className="hand-slot hand-slot-done" title={title}>
+  return <button type="button" className="hand-slot hand-slot-done" aria-expanded={expanded} aria-controls={controls} title={title} onClick={onToggle}>
     <span className="hand-slot-done-chip"><Check size={24} aria-hidden="true" /></span>
-    <span className="hand-slot-done-label">{t.doneCards}<span className="hand-slot-done-count">{(doneCards.length).toLocaleString(locale())}</span></span>
-  </div>;
+    <span className="hand-slot-done-label">{t.doneCards} <span className="hand-slot-done-count">{doneCards.length.toLocaleString(locale())}</span></span>
+    <span className="hand-slot-done-week">{t.doneThisWeek(thisWeek.count, thisWeek.effort)}</span>
+  </button>;
 }
 
 /** A single hand shares one drag zone across slots and queue; the panel is passed as children. */
-function HandBoard({ hand, canReorder, decksById, projectTags, onOpenCard, onDragEnd, children }: {
+function HandBoard({ hand, canReorder, decksById, projectTags, onOpenCard, onRemove, onDragEnd, children }: {
   hand: CatalogHand;
   canReorder: boolean;
   decksById: Map<string, CatalogDeck>;
   projectTags?: readonly ProjectTag[];
   onOpenCard: (id: string) => void;
+  onRemove?: (card: CatalogCard) => void;
   onDragEnd: (event: DragEndEvent) => void;
   children: ReactNode;
 }) {
@@ -511,7 +638,7 @@ function HandBoard({ hand, canReorder, decksById, projectTags, onOpenCard, onDra
       <div ref={layoutMotion} className={'hand-board' + (dragging ? ' is-card-transfer-active' : '') + (overlayActive ? ' has-hand-drag-overlay' : '')}>
         <SortableContext items={openIds} strategy={handSorting}>
           {children}
-          <HandQueue cards={splitHand(hand.cards).queuedCards} decksById={decksById} projectTags={projectTags} canReorder={canReorder} overlayActive={Boolean(drag?.queueTitle)} onOpenCard={onOpenCard} />
+          <HandQueue cards={splitHand(hand.cards).queuedCards} decksById={decksById} projectTags={projectTags} canReorder={canReorder} overlayActive={Boolean(drag?.queueTitle)} onOpenCard={onOpenCard} onRemove={onRemove} />
         </SortableContext>
       </div>
       <DragOverlay dropAnimation={dropAnimation} adjustScale={false} style={{ pointerEvents: 'none' }}>
@@ -523,21 +650,31 @@ function HandBoard({ hand, canReorder, decksById, projectTags, onOpenCard, onDra
 }
 
 /** The Done pile and seven numbered slots share a layout in single-hand and All Hands views. */
-function HandSlots({ hand, tile, canReorder }: { hand: CatalogHand; tile: (card: CatalogCard) => ReactNode; canReorder: boolean }) {
+function HandSlots({ hand, tile, canReorder, reserveActions = false, onOpenCard, onRemove, emptyGuide }: { hand: CatalogHand; tile: (card: CatalogCard) => ReactNode; canReorder: boolean; reserveActions?: boolean; onOpenCard: (id: string) => void; onRemove?: (card: CatalogCard) => void; emptyGuide?: ReactNode }) {
   const { slotCards } = splitHand(hand.cards);
-  return <div className="hand-slots">
-    <DoneSlot doneCards={hand.doneCards} />
-    {Array.from({ length: HAND_SLOT_COUNT }, (_, index) => {
+  const [expanded, setExpanded] = useState(false);
+  const t = useText(text);
+  const lastWeek = summarizeDoneWeek(hand.doneCards, isoWeekStart(1));
+  const listId = `hand-done-${hand.member.id}`;
+  return <>
+    <div className={'hand-slots' + (reserveActions && slotCards.length ? ' has-slot-actions' : '')}>
+    <DoneSlot doneCards={hand.doneCards} lastWeek={lastWeek} expanded={expanded} controls={listId} onToggle={() => setExpanded(value => !value)} />
+    {!slotCards.length && emptyGuide ? emptyGuide : Array.from({ length: HAND_SLOT_COUNT }, (_, index) => {
       const card = slotCards[index];
       return card
-        ? <HandSlotTile key={card.id} card={card} tile={tile} canReorder={canReorder} />
+        ? <HandSlotTile key={card.id} card={card} tile={tile} canReorder={canReorder} onRemove={onRemove} />
         : <div className="hand-slot" key={`slot-${index + 1}`}><span className="hand-slot-number">{index + 1}</span></div>;
     })}
-  </div>;
+    </div>
+    <div id={listId} className="hand-done-list" hidden={!expanded}>
+      <p>{t.doneLastWeek(lastWeek.count, lastWeek.effort)}</p>
+      {hand.doneCards.length ? <ul>{hand.doneCards.map(card => <li key={card.id}><button type="button" className="hand-queue-open" onClick={() => onOpenCard(card.id)}>{card.title}</button></li>)}</ul> : <EmptyState message={t.noDoneCards} />}
+    </div>
+  </>;
 }
 
 /** The whole occupied slot is draggable; a click without movement opens the card. */
-function HandSlotTile({ card, tile, canReorder }: { card: CatalogCard; tile: (card: CatalogCard) => ReactNode; canReorder: boolean }) {
+function HandSlotTile({ card, tile, canReorder, onRemove }: { card: CatalogCard; tile: (card: CatalogCard) => ReactNode; canReorder: boolean; onRemove?: (card: CatalogCard) => void }) {
   const transition = useContext(HandMotionContext);
   const sortable = useSortable({ id: card.id, disabled: !canReorder, transition });
   // 2026-11-10: sorting moves the wrapper, not the face; rebuilding it also replaces the tile's callback props.
@@ -551,48 +688,51 @@ function HandSlotTile({ card, tile, canReorder }: { card: CatalogCard; tile: (ca
     if (control && !control.matches('.deck-card-open, .hand-slot-handle')) return;
     sortable.listeners?.onPointerDown?.(event);
   }
-  return <div ref={sortable.setNodeRef} className={'hand-slot is-filled' + (sortable.isDragging ? ' is-drag-source' : '')}
+  return <div ref={sortable.setNodeRef} data-hand-card={card.id} className={'hand-slot is-filled' + (sortable.isDragging ? ' is-drag-source' : '')}
     style={{ transform, transition: sortable.transition }} onPointerDown={startPointerDrag}>
     {face}
-    {/* 2026-11-10: only the handle activates KeyboardSensor; bubbling Space on the face keeps its native action. */}
     {canReorder && <button type="button" ref={sortable.setActivatorNodeRef} className="hand-slot-handle" {...sortable.attributes}
-      onKeyDown={event => sortable.listeners?.onKeyDown?.(event)} aria-label={t.moveInHand(card.title)} title={t.reorderTitle}><GripVertical size={14} aria-hidden="true" /></button>}
+      {...sortable.listeners} onPointerDown={event => { event.stopPropagation(); sortable.listeners?.onPointerDown?.(event); }} aria-label={t.moveInHand(card.title)} title={t.reorderTitle}><GripVertical size={14} aria-hidden="true" /></button>}
+    {onRemove && <button type="button" className="hand-slot-remove" aria-label={t.removeCard(card.title)} title={t.removeCard(card.title)} onClick={() => onRemove(card)}><X size={14} aria-hidden="true" /></button>}
   </div>;
 }
 
 /** Cards beyond the seven slots use queue drag handles; start them with the open card's play action or Space on a tile. */
-function HandQueue({ cards, decksById, projectTags, canReorder, overlayActive, onOpenCard }: {
+function HandQueue({ cards, decksById, projectTags, canReorder, overlayActive, onOpenCard, onRemove }: {
   cards: CatalogCard[];
   decksById: Map<string, CatalogDeck>;
   projectTags?: readonly ProjectTag[];
   canReorder: boolean;
   overlayActive?: boolean;
   onOpenCard: (id: string) => void;
+  onRemove?: (card: CatalogCard) => void;
 }) {
   const t = useText(text);
   if (!cards.length) return null;
   return <div className={'hand-queue' + (overlayActive ? ' has-drag-overlay' : '')}>
     <strong>{t.queue(cards.length)}</strong>
     <ul>{cards.map(card => <HandQueueRow key={card.id} card={card} deckTitle={decksById.get(card.deckId ?? '')?.title ?? t.noDeck}
-      projectTags={projectTags} canReorder={canReorder} onOpen={() => onOpenCard(card.id)} />)}</ul>
+      projectTags={projectTags} canReorder={canReorder} onOpen={() => onOpenCard(card.id)} onRemove={onRemove ? () => onRemove(card) : undefined} />)}</ul>
   </div>;
 }
 
-function HandQueueRow({ card, deckTitle, projectTags, canReorder, onOpen }: {
+function HandQueueRow({ card, deckTitle, projectTags, canReorder, onOpen, onRemove }: {
   card: CatalogCard;
   deckTitle: string;
   projectTags?: readonly ProjectTag[];
   canReorder: boolean;
   onOpen: () => void;
+  onRemove?: () => void;
 }) {
   const transition = useContext(HandMotionContext);
   const sortable = useSortable({ id: card.id, disabled: !canReorder, transition, data: { surface: 'hand-queue' } });
   const t = useText(text);
   const transform = sortable.transform ? `translate3d(${sortable.transform.x}px, ${sortable.transform.y}px, 0)` : undefined;
-  return <li ref={sortable.setNodeRef} className={sortable.isDragging ? 'is-drag-source' : undefined} style={{ transform, transition: sortable.transition }}>
+  return <li ref={sortable.setNodeRef} data-hand-card={card.id} className={sortable.isDragging ? 'is-drag-source' : undefined} style={{ transform, transition: sortable.transition }}>
     {canReorder && <button type="button" ref={sortable.setActivatorNodeRef} className="hand-queue-handle" {...sortable.attributes} {...sortable.listeners}
       aria-label={t.moveInHand(card.title)} title={t.reorderTitle}><GripVertical size={14} /></button>}
-    <button type="button" className="hand-queue-open" onClick={onOpen}><span title={card.title}><TagTitlePrefix tags={card.tags} definitions={projectTags} />{card.title}</span><CardTags tags={card.tags} definitions={projectTags} compact /><small title={deckTitle}>{deckTitle}</small></button>
+    <button type="button" className="hand-queue-open" onClick={onOpen}><span title={card.title}>{card.title}</span><CardTags tags={card.tags} definitions={projectTags} compact /><small title={deckTitle}>{deckTitle}</small></button>
+    {onRemove && <button type="button" className="hand-queue-remove" aria-label={t.removeCard(card.title)} title={t.removeCard(card.title)} onClick={onRemove}><X size={14} aria-hidden="true" /></button>}
   </li>;
 }
 
@@ -630,7 +770,7 @@ function HandSectionRow({ card, deckTitle, dueBucket, owner, members, progress, 
   return <li className={handControls ? 'hand-planning-row' : undefined}>
     <button type="button" className="hand-section-row" onClick={() => onOpenCard(card.id)}>
       {owner !== undefined && members && <span className="hand-row-owner"><CardOwnerAvatar owner={owner} members={members} progress={progress} /></span>}
-      <span className="hand-row-title" title={card.title}><TagTitlePrefix tags={card.tags} definitions={projectTags} />{card.title}</span>
+      <span className="hand-row-title" title={card.title}>{card.title}</span>
       <CardTags tags={card.tags} definitions={projectTags} compact />
       {card.dueDate && <small className={'hand-row-due' + (dueBucket ? ` is-due-${dueBucket}` : '')}>{formatPlanningDate(card.dueDate, lang)}</small>}
       <small title={deckTitle}>{deckTitle}</small>
@@ -682,10 +822,13 @@ function HandRunBlock({ run, cards, decksById, projectTags, onOpenTimeline, onOp
 }) {
   const t = useText(text);
   const lang = useLang();
+  const workload = metrics(cards.filter(card => card.state !== 'done'));
+  const remaining = Math.max(0, workdaysUntil(localIsoDate(), run.end));
   return <div className="hand-run">
     <header className="hand-run-head panel-head">
       <button type="button" className="hand-run-name panel-title" onClick={() => onOpenTimeline({ kind: 'run', id: run.id })} title={t.openRunTimeline(runLabel(run, lang))}>{runLabel(run, lang)}</button>
       <span className="hand-run-dates">{formatPlanningDate(run.start, lang)} — {formatPlanningDate(run.end, lang)}</span>
+      <span className="hand-run-workload">{t.runWorkload(workload.effort, workload.unestimated, remaining)}</span>
     </header>
     {cards.length === 0 && <EmptyState message={t.noOwnedRun} />}
     {groupCardsByStateFlow(cards).map(group => (
@@ -764,9 +907,9 @@ function HandMemberCard({ card, cardsById, decksById, members, progress, project
   const parent = card.parentId ? cardsById.get(card.parentId) : undefined;
   const deck = card.deckId ? decksById.get(card.deckId) : undefined;
   return <div className={`sprint-task hand-card kind-${card.kind}`}>
+    {parent && <span className="sprint-task-parent"><Crown size={12} /><span>{parent.title}</span></span>}
     <button type="button" className="hand-card-open" onClick={() => onOpenCard(card.id)} aria-label={t.openCard(card.title)}>
-      {parent && <span className="sprint-task-parent"><Crown size={12} /><span>{parent.title}</span></span>}
-      <span className="sprint-task-body"><strong><TagTitlePrefix tags={card.tags} definitions={projectTags} />{card.title}</strong><small>{deck?.title ?? t.noDeck}</small>
+      <span className="sprint-task-body"><strong>{card.title}</strong><small>{deck?.title ?? t.noDeck}</small>
         <CardTags tags={card.tags} definitions={projectTags} compact />
         {card.dueDate && <small>{t.due} · {formatPlanningDate(card.dueDate, lang)}</small>}
         <span className="sprint-task-owner"><CardOwnerAvatar owner={card.owner} members={members} progress={progress} /><span>{card.owner ?? t.unassigned}</span>{card.bookmarked && <Bookmark size={12} aria-label={t.bookmark} />}</span>

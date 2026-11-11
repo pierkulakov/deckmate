@@ -115,7 +115,7 @@ export function ProjectTile({ name, children }: { name: string; children?: React
 }
 
 /** Loads the list on every menu opening — the shell reorders its recent list on each switch. */
-export function useRecentProjects(board: DesktopBoardBridge | undefined, open: boolean) {
+function useRecentProjects(board: DesktopBoardBridge | undefined, open: boolean) {
   const [others, setOthers] = useState<DesktopRecentProject[]>([]);
   const [loadFailed, setLoadFailed] = useState(false);
 

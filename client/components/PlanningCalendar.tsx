@@ -1,4 +1,4 @@
-import { useEffect, useEffectEvent, useLayoutEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type RefObject } from 'react';
+import { useEffect, useEffectEvent, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent, type RefObject } from 'react';
 import { createPortal } from 'react-dom';
 import * as Tooltip from '@radix-ui/react-tooltip';
 import { CalendarSync, Plus, X } from 'lucide-react';
@@ -11,6 +11,8 @@ import { RunConfigurationForm, RunScheduleList } from './RunControls.tsx';
 import { useConfirmStrip } from './ConfirmStrip.tsx';
 import { contrastRatio, rgbOf } from '../color-contrast.ts';
 import type { SavePlanning } from './TimelineView.tsx';
+import { TimelineCluster } from './TimelineView.tsx';
+import { moveFocus } from '../focus.ts';
 import { MilestoneForm, PlanningPopover } from './PlanningPopover.tsx';
 import '../planning-calendar.css';
 
@@ -36,6 +38,7 @@ const text = defineText({
   editTitle: 'Edit Milestone',
   setupTitle: 'New Run schedule',
   scheduleTitle: 'Edit Run schedule',
+  chooseMilestone: (count: number) => `${count} Milestones · choose one`,
 }, {
   calendar: 'Календарь',
   clickToAdd: 'Выберите день для нового Milestone',
@@ -58,6 +61,7 @@ const text = defineText({
   editTitle: 'Изменить Milestone',
   setupTitle: 'Новое расписание Run',
   scheduleTitle: 'Изменить расписание Run',
+  chooseMilestone: (count: number) => `Milestone: ${count} · выберите нужный`,
 });
 
 /** A Milestone draft opens at its date cell; a Run schedule draft opens under «Set up Runs». */
@@ -79,7 +83,10 @@ const tileInks = { light: rgbOf('#f9f9fa'), dark: rgbOf('#24180a') };
 function tileInkClass(color: string): string {
   if (!/^#[\da-f]{6}$/iu.test(color)) return '';
   const tile = rgbOf(color);
-  return contrastRatio(tileInks.dark, tile) > contrastRatio(tileInks.light, tile) ? ' is-dark-ink' : '';
+  const dark = contrastRatio(tileInks.dark, tile);
+  const light = contrastRatio(tileInks.light, tile);
+  if (Math.max(dark, light) >= 4.5) return dark > light ? ' is-dark-ink' : '';
+  return contrastRatio([0, 0, 0], tile) > contrastRatio([255, 255, 255], tile) ? ' is-contrast-dark' : ' is-contrast-light';
 }
 
 /** The calendar covers the current year and the two after it (2026-11-05). */
@@ -92,8 +99,9 @@ const scrollLead = 80;
  * date opens the new Milestone form at that cell; a Milestone tile is edited by a click, opened behind the panel by Ctrl/Cmd-click
  * and moved by dragging. The panel stays open on outside clicks; ×, Escape or the calendar button closes it.
  */
-export function PlanningCalendar({ open, onClose, draft, onDraftChange, onDirtyChange, viewRequest, onViewRequestHandled, catalog, cards, today, writable, pending, error, onSave, onChoose }: {
+export function PlanningCalendar({ open, selected, onClose, draft, onDraftChange, onDirtyChange, viewRequest, onViewRequestHandled, catalog, cards, today, writable, pending, error, onSave, onChoose }: {
   open: boolean; onClose: () => void;
+  selected?: PlanningTarget | null;
   draft: CalendarDraft | null; onDraftChange: (draft: CalendarDraft | null) => void; onDirtyChange: (dirty: boolean) => void;
   /** The view asks to switch the draft (null closes the panel); a dirty form answers through the strip first. */
   viewRequest?: { id: number; draft: CalendarDraft | null } | null;
@@ -108,6 +116,9 @@ export function PlanningCalendar({ open, onClose, draft, onDraftChange, onDirtyC
   const setupRef = useRef<HTMLButtonElement>(null);
   const [anchor, setAnchor] = useState<HTMLElement | null>(null);
   const [dirty, setDirty] = useState(false);
+  const selectedDate = selected?.kind === 'milestone' ? catalog.milestones?.find(item => item.id === selected.id)?.date : undefined;
+  const initialDate = selectedDate ?? today;
+  const [focusedDate, setFocusedDate] = useState(initialDate);
   // Switching away from a dirty form asks through the strip inside the popover instead of window.confirm (2026-11-05).
   const strip = useConfirmStrip();
   const [pendingDraft, setPendingDraft] = useState<CalendarDraft | null>(null);
@@ -117,7 +128,7 @@ export function PlanningCalendar({ open, onClose, draft, onDraftChange, onDirtyC
   useEffect(() => () => onDirtyChange(false), [onDirtyChange]);
   useEffect(() => { if (!open) setDirty(false); }, [open]);
   const year = Number(today.slice(0, 4));
-  const years = Array.from({ length: yearsAhead + 1 }, (_, index) => year + index);
+  const years = [...new Set([...Array.from({ length: Math.min(yearsAhead + 1, 10000 - year) }, (_, index) => year + index), Number(initialDate.slice(0, 4))])].sort((a, b) => a - b);
   const milestonesByDate = useMemo(() => {
     const dates = new Map<string, MilestoneRecord[]>();
     for (const saved of catalog.milestones ?? []) {
@@ -147,9 +158,12 @@ export function PlanningCalendar({ open, onClose, draft, onDraftChange, onDirtyC
   }, [open]);
 
   useLayoutEffect(() => {
+    if (!open) return;
     const scroller = scrollRef.current;
-    const month = scroller?.querySelector<HTMLElement>(`[data-month="${monthStart(today)}"]`);
+    const month = scroller?.querySelector<HTMLElement>(`[data-month="${monthStart(initialDate)}"]`);
     if (scroller && month) scroller.scrollTop += month.getBoundingClientRect().top - scroller.getBoundingClientRect().top - scrollLead;
+    setFocusedDate(initialDate);
+    if (!draft) moveFocus(panelRef.current?.querySelector<HTMLButtonElement>(`[data-date="${initialDate}"] button`), { preventScroll: true });
   }, [open]);
   useLayoutEffect(() => {
     if (!open || !draft) { setAnchor(null); return; }
@@ -186,6 +200,33 @@ export function PlanningCalendar({ open, onClose, draft, onDraftChange, onDirtyC
     if (closePanel) onClose();
   }
   function close() { requestDraft(null, true); }
+  function navigateDate(event: ReactKeyboardEvent<HTMLElement>) {
+    if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
+    const cell = (event.target as HTMLElement).closest<HTMLElement>('[data-date]');
+    if (!cell?.dataset.date) return;
+    const date = cell.dataset.date;
+    const weekday = (new Date(`${date}T00:00:00Z`).getUTCDay() + 6) % 7;
+    const offsets: Record<string, number> = { ArrowLeft: -1, ArrowRight: 1, ArrowUp: -7, ArrowDown: 7, Home: -weekday, End: 6 - weekday };
+    let next: string;
+    if (event.key in offsets) next = addDays(date, offsets[event.key]);
+    else if (event.key === 'PageUp' || event.key === 'PageDown') {
+      const month = monthStart(date, event.key === 'PageUp' ? -1 : 1);
+      const last = addDays(monthStart(month, 1), -1);
+      next = addDays(month, Math.min(Number(date.slice(8)), Number(last.slice(8))) - 1);
+    } else return;
+    event.preventDefault();
+    const button = panelRef.current?.querySelector<HTMLButtonElement>(`[data-date="${next}"] button`);
+    if (!button || button.disabled) return;
+    setFocusedDate(next);
+    moveFocus(button, { preventScroll: true });
+    const scroller = scrollRef.current;
+    if (scroller) {
+      const bounds = button.getBoundingClientRect();
+      const view = scroller.getBoundingClientRect();
+      if (bounds.top < view.top) scroller.scrollTop += bounds.top - view.top - 8;
+      else if (bounds.bottom > view.bottom) scroller.scrollTop += bounds.bottom - view.bottom + 8;
+    }
+  }
   // 2026-11-06: Escape closes the panel like ×, also while focus stays on the Calendar button; an open Milestone or schedule
   // form, a drag and any dialog above the panel answer that Escape first.
   const closeOnEscape = useEffectEvent((event: KeyboardEvent) => {
@@ -217,13 +258,13 @@ export function PlanningCalendar({ open, onClose, draft, onDraftChange, onDirtyC
       {writable && <button ref={setupRef} type="button" className="planning-calendar-setup control" disabled={pending} aria-pressed={draft?.kind === 'configuration'} onClick={() => requestDraft(draft?.kind === 'configuration' ? null : { kind: 'configuration' })}><CalendarSync size={16} aria-hidden="true" /><span>{t.setupRuns}</span></button>}
       <button type="button" className="planning-calendar-close control control-ghost" disabled={pending} aria-label={t.close} title={t.close} onClick={close}><X size={16} /></button>
     </header>
-    {error && <p className="error-banner" role="alert">{error}</p>}
-    <div className="planning-calendar-years" ref={scrollRef}>
+    {error && !draft && <p className="error-banner" role="alert">{error}</p>}
+    <div className="planning-calendar-years" ref={scrollRef} onKeyDown={navigateDate} onFocusCapture={event => { const date = event.target.closest<HTMLElement>('[data-date]')?.dataset.date; if (date) setFocusedDate(date); }}>
       {years.map(value => <section key={value} className="planning-calendar-year" aria-labelledby={`planning-calendar-year-${value}`}>
         <h3 id={`planning-calendar-year-${value}`}>{value.toLocaleString(locale(lang), { useGrouping: false })}</h3>
         <div className="planning-calendar-months">{Array.from({ length: 12 }, (_, index) => {
-          const month = `${value}-${String(index + 1).padStart(2, '0')}-01`;
-          return <CalendarMonth key={month} month={month} today={today} lang={lang} writable={writable} pending={pending} milestonesByDate={milestonesByDate} cards={cards}
+          const month = `${String(value).padStart(4, '0')}-${String(index + 1).padStart(2, '0')}-01`;
+          return <CalendarMonth key={month} focusedDate={focusedDate} month={month} today={today} lang={lang} writable={writable} pending={pending} milestonesByDate={milestonesByDate} cards={cards}
             onAdd={date => requestDraft({ kind: 'milestone', date })} onEdit={id => { if (!drag.consumeClick()) requestDraft({ kind: 'edit', id }); }}
             onOpen={id => { if (!drag.consumeClick()) onChoose({ kind: 'milestone', id }); }}
             draggingId={drag.dragging?.milestone.id ?? null} onTilePointerDown={(event, milestone, day) => drag.start(event, milestone, catalog.milestonesHash ?? '', day)} />;
@@ -250,8 +291,9 @@ export function PlanningCalendar({ open, onClose, draft, onDraftChange, onDirtyC
   </aside></Tooltip.Provider>;
 }
 
-function CalendarMonth({ month, today, lang, writable, pending, milestonesByDate, cards, draggingId, onAdd, onEdit, onOpen, onTilePointerDown }: {
+function CalendarMonth({ month, focusedDate, today, lang, writable, pending, milestonesByDate, cards, draggingId, onAdd, onEdit, onOpen, onTilePointerDown }: {
   month: string; today: string; lang: Lang; writable: boolean; pending: boolean; milestonesByDate: Map<string, MilestoneRecord[]>; cards: CatalogCard[];
+  focusedDate: string;
   draggingId: string | null; onAdd: (date: string) => void; onEdit: (id: string) => void; onOpen: (id: string) => void;
   onTilePointerDown: (event: ReactPointerEvent<HTMLButtonElement>, milestone: MilestoneRecord, day: string) => void;
 }) {
@@ -277,10 +319,9 @@ function CalendarMonth({ month, today, lang, writable, pending, milestonesByDate
             const milestones = milestonesByDate.get(date);
             const classes = `${index >= 5 ? 'is-weekend' : ''}${date === today ? ' is-today' : ''}`.trim();
             return <td key={date} data-date={date} className={classes || undefined}>
-              {milestones ? <MilestoneTile date={date} day={day} milestones={milestones} cards={cards} today={today} lang={lang} writable={writable} pending={pending} onEdit={onEdit} onOpen={onOpen}
-                dragSource={milestones[0].id === draggingId} onPointerDown={event => onTilePointerDown(event, milestones[0], day)} />
-                : writable ? <button type="button" className="planning-calendar-day" disabled={pending} aria-label={t.addOn(formatPlanningDate(date, lang))} onClick={() => onAdd(date)}><span>{day}</span><span className="planning-calendar-add" aria-hidden="true"><Plus size={22} /></span></button>
-                  : <span className="planning-calendar-day">{day}</span>}
+              {milestones ? <MilestoneTile date={date} day={day} tabIndex={date === focusedDate ? 0 : -1} milestones={milestones} cards={cards} today={today} lang={lang} writable={writable} pending={pending} onEdit={onEdit} onOpen={onOpen}
+                dragSource={milestones[0].id === draggingId} onPointerDown={event => { if (milestones.length === 1) onTilePointerDown(event, milestones[0], day); }} />
+                : <button type="button" className="planning-calendar-day" tabIndex={date === focusedDate ? 0 : -1} disabled={pending} aria-label={writable ? t.addOn(formatPlanningDate(date, lang)) : formatPlanningDate(date, lang)} aria-current={date === today ? 'date' : undefined} onClick={() => { if (writable) onAdd(date); }}><span>{day}</span>{writable && <span className="planning-calendar-add" aria-hidden="true"><Plus size={22} /></span>}</button>}
             </td>;
           })}
         </tr>)}</tbody>
@@ -289,14 +330,20 @@ function CalendarMonth({ month, today, lang, writable, pending, milestonesByDate
   </div>;
 }
 
-function MilestoneTile({ date, day, milestones, cards, today, lang, writable, pending, dragSource, onEdit, onOpen, onPointerDown }: {
+function MilestoneTile({ date, day, tabIndex, milestones, cards, today, lang, writable, pending, dragSource, onEdit, onOpen, onPointerDown }: {
   date: string; day: string; milestones: MilestoneRecord[]; cards: CatalogCard[]; today: string; lang: Lang; writable: boolean; pending: boolean;
+  tabIndex: number;
   dragSource: boolean; onEdit: (id: string) => void; onOpen: (id: string) => void; onPointerDown: (event: ReactPointerEvent<HTMLButtonElement>) => void;
 }) {
   const t = useText(text);
   const [first] = milestones;
+  if (milestones.length > 1) return <TimelineCluster opensForm={writable} trigger={<button type="button" tabIndex={tabIndex} disabled={pending}
+    className={`planning-calendar-milestone${tileInkClass(first.color)}`} style={{ backgroundColor: first.color }}
+    aria-label={`${formatPlanningDate(date, lang)} · ${t.chooseMilestone(milestones.length)}`}><span>{day}</span><small className="planning-calendar-cluster-count">{milestones.length}</small></button>}
+    entries={milestones.map(milestone => ({ key: milestone.id, icon: <span className="planning-diamond" style={{ color: milestone.color }} />, label: milestone.title,
+      date: '', onSelect: () => { if (writable) onEdit(milestone.id); else onOpen(milestone.id); } }))} />;
   return <Tooltip.Root><Tooltip.Trigger asChild>
-    <button type="button" className={`planning-calendar-milestone${tileInkClass(first.color)}${writable && !pending ? ' is-movable' : ''}${dragSource ? ' is-drag-source' : ''}`} style={{ backgroundColor: first.color }}
+    <button type="button" tabIndex={tabIndex} disabled={pending} className={`planning-calendar-milestone${tileInkClass(first.color)}${writable && !pending ? ' is-movable' : ''}${dragSource ? ' is-drag-source' : ''}`} style={{ backgroundColor: first.color }}
       aria-label={t.milestoneOn(milestones.map(milestone => milestone.title).join(', '), formatPlanningDate(date, lang))}
       onPointerDown={onPointerDown}
       onClick={event => { if (!writable || event.ctrlKey || event.metaKey) onOpen(first.id); else onEdit(first.id); }}>{day}</button>

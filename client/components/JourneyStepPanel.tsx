@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import * as Dialog from '@radix-ui/react-dialog';
 import { Gauge, Layers, Link2, SlidersHorizontal, Trash2, UserRound, X } from 'lucide-react';
 import type { CardPriority, CatalogJourneyStep, CatalogView } from '../../src/catalog-contracts.ts';
@@ -30,6 +30,7 @@ const stepText = defineText({
   cancelConfirm: 'Discard the step edit? The text returns to the start of editing.',
   keepEditing: 'Keep editing',
   discardChanges: 'Discard changes',
+  unsavedText: 'The step text has not been saved. Correct it or discard the edit.',
   roleTitle: 'The step role in the template becomes a deck on import',
   stepRole: 'Step role',
   targetDeckTitle: 'The deck where the step’s Task Card appears',
@@ -75,6 +76,7 @@ const stepText = defineText({
   cancelConfirm: 'Отменить правку шага? Текст вернётся к началу правки.',
   keepEditing: 'Продолжить правку',
   discardChanges: 'Отменить изменения',
+  unsavedText: 'Текст шага не сохранён. Исправьте его или отмените правку.',
   roleTitle: 'Роль шага в шаблоне: при импорте она станет колодой',
   stepRole: 'Роль шага',
   targetDeckTitle: 'Колода, в которой появится Task Card шага',
@@ -120,6 +122,8 @@ interface JourneyStepPanelProps {
   // readOnly replaces the deck select: the template step targets a role, which the import maps to a deck later.
   targetLabel?: string;
   feedback?: ReactNode;
+  saveStatus?: string;
+  onLocalUnsavedChange?: (unsaved: boolean) => void;
   onChange: (patch: Partial<CatalogJourneyStep>) => void;
   onClose: () => void;
   onRemove: () => void;
@@ -143,7 +147,7 @@ const stepMarkdownLimit = 50000;
 // Edit mode is the card's text editor (CardEditForm): first line — title, every keystroke goes to the Journey draft and its autosave.
 // A template step reuses the sheet with readOnly: Edit/Delete hidden, fields locked, the role shown instead of the deck.
 export function JourneyStepPanel({
-  step, steps, catalog, source, path, disabled, readOnly = false, targetLabel, feedback, onChange, onClose, onRemove,
+  step, steps, catalog, source, path, disabled, readOnly = false, targetLabel, feedback, saveStatus, onLocalUnsavedChange, onChange, onClose, onRemove,
 }: JourneyStepPanelProps) {
   const t = useText(stepText);
   const closeButton = useRef<HTMLButtonElement>(null);
@@ -155,6 +159,7 @@ export function JourneyStepPanel({
   const origin = useRef({ title: step.title, markdown: step.markdown });
   const [propertiesOpen, setPropertiesOpen] = useState(() => Boolean(step.owner) || step.dependsOn.length > 0);
   const [editError, setEditError] = useState('');
+  const [closeAfterDiscard, setCloseAfterDiscard] = useState(false);
   // Cancel with changes asks through the strip in the editor's footer instead of window.confirm (2026-11-05).
   const strip = useConfirmStrip();
   const targets = catalog.decks.filter(deck => deck.kind === 'task' || deck.kind === 'mixed');
@@ -163,6 +168,11 @@ export function JourneyStepPanel({
   const ownerUnavailable = Boolean(step.owner && !catalog.members?.some(member => member.label === step.owner));
   const targetUnavailable = Boolean(step.deckId && !targets.some(deck => deck.id === step.deckId));
   const instruction = useMemo(() => parseEditorMarkdown(step.markdown), [step.markdown]);
+  const localUnsaved = editing && Boolean(editError);
+  useEffect(() => {
+    onLocalUnsavedChange?.(localUnsaved);
+    return () => onLocalUnsavedChange?.(false);
+  }, [localUnsaved, onLocalUnsavedChange]);
 
   function startEditing() {
     if (locked) return;
@@ -193,11 +203,22 @@ export function JourneyStepPanel({
     onChange({ title, markdown });
     setEditError('');
     setEditing(false);
+    if (closeAfterDiscard) onClose();
+    setCloseAfterDiscard(false);
   }
   function cancelEditing() {
     const { title, markdown } = origin.current;
+    setCloseAfterDiscard(false);
+    if (localUnsaved && text !== composeDraft(title, markdown)) {
+      if (strip.confirming) strip.keep(); else strip.request();
+      return;
+    }
     if (text !== composeDraft(title, markdown) && !strip.escape()) return;
     discardEditing();
+  }
+  function requestClose() {
+    if (localUnsaved) { setCloseAfterDiscard(true); strip.request(); return; }
+    onClose();
   }
 
   function toggleDependency(dependencyId: string, checked: boolean) {
@@ -206,7 +227,7 @@ export function JourneyStepPanel({
     onChange({ dependsOn });
   }
 
-  return <Dialog.Root open onOpenChange={open => { if (!open) onClose(); }}>
+  return <Dialog.Root open onOpenChange={open => { if (!open) requestClose(); }}>
     <Dialog.Portal>
       <Dialog.Overlay className="journey-step-overlay" />
       <Dialog.Content className="journey-step-sheet"
@@ -215,11 +236,11 @@ export function JourneyStepPanel({
         onEscapeKeyDown={event => {
           event.preventDefault();
           // In edit mode Escape belongs to the editor, as on a card: its menus close first, then the form cancels the edit.
-          if (editing) return;
+          if (editing && event.target instanceof Element && event.target.closest('.card-edit')) return;
           event.stopPropagation();
-          onClose();
+          requestClose();
         }}
-        onPointerDownOutside={event => { event.preventDefault(); onClose(); }}>
+        onPointerDownOutside={event => { event.preventDefault(); requestClose(); }}>
         <header className="journey-step-sheet-header">
           <Dialog.Title>{t.step}</Dialog.Title>
           {readOnly ? <span className="journey-step-target" title={t.roleTitle}>
@@ -235,7 +256,7 @@ export function JourneyStepPanel({
               {targets.map(deck => <option key={deck.id} value={deck.id}>{deck.title}</option>)}
             </select>
           </label>}
-          <button ref={closeButton} type="button" className="ui-button button-ghost button-size-icon" onClick={onClose} aria-label={t.closeStep}><X size={18} /></button>
+          <button ref={closeButton} type="button" className="ui-button button-ghost button-size-icon" onClick={requestClose} aria-label={t.closeStep}><X size={18} /></button>
         </header>
         <Dialog.Description className="visually-hidden">{readOnly
           ? t.descriptionReadonly
@@ -248,7 +269,7 @@ export function JourneyStepPanel({
                 maxLength={stepTitleLimit + 2 + stepMarkdownLimit} notice={editError} onSave={finishEditing} onCancel={cancelEditing}
                 confirmStrip={strip.confirming
                   ? <ConfirmStrip question={t.cancelConfirm} keepLabel={t.keepEditing} confirmLabel={t.discardChanges}
-                      onKeep={strip.keep} onConfirm={discardEditing} />
+                      onKeep={() => { setCloseAfterDiscard(false); strip.keep(); }} onConfirm={discardEditing} />
                   : undefined} /> : <>
                 <h3 className="journey-step-title">{journeyStepLabel(step.title)}</h3>
                 {step.markdown.trim() ? <div className="journey-step-markdown"><Markdown tree={instruction} rawMarkdown={step.markdown} projectTags={catalog.projectTags} source={source} path={path} members={catalog.members} cards={catalog.cards} taskToggleDisabled /></div> : <p className="journey-step-empty">{readOnly ? t.noInstructionReadonly : t.noInstructionEditable}</p>}
@@ -299,10 +320,12 @@ export function JourneyStepPanel({
           </article>
           <nav className="journey-step-rail" aria-label={t.stepActions}>
             <Button type="button" variant="ghost" size="icon" aria-pressed={propertiesOpen} aria-controls={'journey-step-properties-' + step.id} aria-label={t.propertiesAria} title={t.properties} onClick={() => setPropertiesOpen(previous => !previous)}><SlidersHorizontal size={18} /></Button>
-            {!readOnly && <Button type="button" variant="ghost" size="icon" className="journey-step-delete" disabled={disabled} aria-label={t.deleteStep} title={t.deleteStep} onClick={onRemove}><Trash2 size={17} /></Button>}
+            {!readOnly && <Button type="button" variant="ghost" size="icon" className="journey-step-delete" disabled={disabled || localUnsaved} aria-label={t.deleteStep} title={t.deleteStep} onClick={onRemove}><Trash2 size={17} /></Button>}
           </nav>
         </div>
-        {feedback && <div className="journey-step-feedback">{feedback}</div>}
+        {(feedback || saveStatus || localUnsaved) && <div className="journey-step-feedback">{feedback}
+          {(saveStatus || localUnsaved) && <p className="journey-step-save-state" role="status">{localUnsaved ? t.unsavedText : saveStatus}</p>}
+        </div>}
       </Dialog.Content>
     </Dialog.Portal>
   </Dialog.Root>;

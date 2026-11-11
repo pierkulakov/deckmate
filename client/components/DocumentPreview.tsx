@@ -232,16 +232,16 @@ export function DocumentPreviewProvider({ children }: { children: ReactNode }) {
     <Dialog.Root open={Boolean(current)} onOpenChange={open => { if (!open) close(); }}>
       <Dialog.Portal>
         <Dialog.Overlay className="document-preview-overlay" />
-        <Dialog.Content className={'document-preview-pane' + (expanded ? ' is-expanded' : '')}
+        <Dialog.Content className={'document-preview-pane dialog-panel' + (expanded ? ' is-expanded' : '')}
           onOpenAutoFocus={event => { event.preventDefault(); moveFocus(title.current); }}
           onCloseAutoFocus={event => { event.preventDefault(); if (opener.current?.isConnected) moveFocus(opener.current); }}>
-          <header className="document-preview-header">
+          <header className="document-preview-header dialog-head">
             <div className="document-preview-navigation">
               <Button type="button" size="icon" variant="ghost" disabled={history.length < 2}
                 onClick={() => setHistory(previous => previous.slice(0, -1))} aria-label={t.back} title={t.backShort}><ArrowLeft size={17} /></Button>
               <span className="document-preview-file-icon"><FileText size={18} /></span>
               <div className="document-preview-heading">
-                <Dialog.Title ref={title} tabIndex={-1}>{current?.path.split(/[\\/]/u).at(-1) ?? t.document}</Dialog.Title>
+                <Dialog.Title className="dialog-title" ref={title} tabIndex={-1} title={current?.path}>{current?.path.split(/[\\/]/u).at(-1) ?? t.document}</Dialog.Title>
                 <Dialog.Description title={current?.path}>{current?.path ?? t.markdownPreview}</Dialog.Description>
               </div>
             </div>
@@ -254,14 +254,14 @@ export function DocumentPreviewProvider({ children }: { children: ReactNode }) {
             </div>
           </header>
           <div className="document-preview-toolbar">
-            <div className="document-preview-mode" role="group" aria-label={t.view}>
-              <button type="button" aria-pressed={!raw} onClick={() => setRaw(false)}><BookOpen size={14} />{t.document}</button>
-              <button type="button" aria-pressed={raw} onClick={() => setRaw(true)}><Code2 size={14} />{t.source}</button>
+            <div className="document-preview-mode control-segmented" role="group" aria-label={t.view}>
+              <button type="button" className="control" aria-pressed={!raw} onClick={() => setRaw(false)}><BookOpen size={14} />{t.document}</button>
+              <button type="button" className="control" aria-pressed={raw} onClick={() => setRaw(true)}><Code2 size={14} />{t.source}</button>
             </div>
             <span className="document-preview-source">{current?.source === 'live' ? t.original : t.sandbox}<span>{t.readOnly}</span></span>
             <Button type="button" size="icon" variant="ghost" disabled={loading} aria-label={t.reread} title={t.refresh} onClick={() => setRetry(value => value + 1)}><RefreshCw size={15} /></Button>
           </div>
-          <div className="document-preview-body" ref={viewport} aria-busy={loading} data-document-preview-body>
+          <div className="document-preview-body dialog-body" ref={viewport} aria-busy={loading} data-document-preview-body>
             {renderBody()}
           </div>
         </Dialog.Content>

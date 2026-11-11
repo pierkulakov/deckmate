@@ -9,12 +9,12 @@ import { defineText, useText } from '../i18n.ts';
 import { useDesktopDirty } from '../desktop-bridge.ts';
 import { Button } from './ui/button.tsx';
 import { Markdown } from './Markdown.tsx';
+import { MilestoneForm } from './PlanningPopover.tsx';
 import type { SavePlanning } from './TimelineView.tsx';
 import '../planning-details.css';
 
 const text = defineText({
-  edit: 'Edit details', title: 'Title', goal: 'Goal', date: 'Date', color: 'Color',
-  projectOnly: 'Only for this project', description: 'Description', cover: 'Cover image',
+  edit: 'Edit details', goal: 'Goal', description: 'Description', cover: 'Cover image',
   coverHint: 'Project-relative image path or HTTPS URL.', noDescription: 'Add a description to explain this plan.',
   emptyDescription: 'No description.',
   save: 'Save details', saving: 'Saving…', cancel: 'Cancel',
@@ -25,8 +25,7 @@ const text = defineText({
   coverInvalid: 'Use an HTTPS image URL or a project-relative path without “..”.',
   coverUnavailable: 'The cover image could not be loaded.',
 }, {
-  edit: 'Изменить сведения', title: 'Название', goal: 'Цель', date: 'Дата', color: 'Цвет',
-  projectOnly: 'Только для этого проекта', description: 'Описание', cover: 'Обложка',
+  edit: 'Изменить сведения', goal: 'Цель', description: 'Описание', cover: 'Обложка',
   coverHint: 'Путь к изображению внутри проекта или HTTPS-ссылка.', noDescription: 'Добавьте описание этого плана.',
   emptyDescription: 'Описания нет.',
   save: 'Сохранить сведения', saving: 'Сохраняем…', cancel: 'Отмена',
@@ -39,14 +38,11 @@ const text = defineText({
 });
 
 type Plan = { kind: 'run'; record: RunRecord } | { kind: 'milestone'; record: MilestoneRecord };
-interface Draft { title: string; date: string; color: string; projectSpecific: boolean; description: string; cover: string }
+interface Draft { title: string; description: string; cover: string }
 
 function valuesOf(plan: Plan): Draft {
   return {
     title: plan.kind === 'run' ? plan.record.goal : plan.record.title,
-    date: plan.kind === 'milestone' ? plan.record.date : '',
-    color: plan.kind === 'milestone' ? plan.record.color : '',
-    projectSpecific: plan.kind === 'milestone' && Boolean(plan.record.projectSpecific),
     description: plan.record.description ?? '', cover: plan.record.cover ?? '',
   };
 }
@@ -95,51 +91,43 @@ export function PlanningDetails({ plan, catalog, source, writable, pending, onSa
     setDraft(previous => ({ ...previous, [key]: value }));
   }
   function loadSaved() {
-    if (!conflict || pending) return;
+    if (!conflict || pending || plan.kind !== 'run') return;
     const savedRun = conflict.runs?.find(item => item.id === plan.record.id);
-    const savedMilestone = conflict.milestones?.find(item => item.id === plan.record.id);
-    let initial: Draft;
-    if (plan.kind === 'run' && savedRun) initial = valuesOf({ kind: 'run', record: savedRun });
-    else if (plan.kind === 'milestone' && savedMilestone) initial = valuesOf({ kind: 'milestone', record: savedMilestone });
-    else { setMessage('missing'); return; }
+    if (!savedRun) { setMessage('missing'); return; }
+    const initial = valuesOf({ kind: 'run', record: savedRun });
     setDraft(initial); setInitialDraft(initial);
     setBase(conflict); setConflict(null); setMessage(null); setServerError(null);
   }
   async function save(event: FormEvent) {
     event.preventDefault();
-    if (!onSave || pending || !writable || conflict || missing || !dirty) return;
+    if (!onSave || plan.kind !== 'run' || pending || !writable || conflict || missing || !dirty) return;
     setServerError(null);
     const cover = draft.cover.trim();
     if (!validPlanningCover(cover)) { setMessage('coverInvalid'); return; }
     const details = { description: draft.description, cover };
-    const record = plan.kind === 'run' ? base.runs?.find(item => item.id === plan.record.id) : base.milestones?.find(item => item.id === plan.record.id);
+    const record = base.runs?.find(item => item.id === plan.record.id);
     if (!record) { setMessage('missing'); return; }
-    const result = plan.kind === 'run'
-      ? await onSave({ action: 'update-run', runsHash: base.runsHash ?? '', run: { ...record as RunRecord, ...details, goal: draft.title.trim() } })
-      : await onSave({ action: 'update-milestone', milestonesHash: base.milestonesHash ?? '', milestone: { ...record as MilestoneRecord, ...details,
-        title: draft.title.trim(), date: draft.date, color: draft.color, projectSpecific: draft.projectSpecific } });
+    const result = await onSave({ action: 'update-run', runsHash: base.runsHash ?? '', run: { ...record, ...details, goal: draft.title.trim() } });
     if (result.ok) { setEditing(false); setMessage(null); }
     else if (result.revisions) { setConflict(result.revisions); setMessage('conflict'); }
     else if (result.message) { setMessage(null); setServerError(result.message); }
     else setMessage('failed');
   }
 
+  if (editing && plan.kind === 'milestone' && onSave) return <div className="planning-detail-form"><MilestoneForm date={plan.record.date} milestone={plan.record} catalog={base}
+    pending={pending || !writable} details onSave={onSave} onDirtyChange={onDirtyChange} onCancel={() => setEditing(false)} onDone={() => setEditing(false)} /></div>;
+
   if (editing) return <form className="planning-detail-form" onSubmit={event => void save(event)}>
     <fieldset disabled={pending || !writable}>
-      <label>{plan.kind === 'run' ? t.goal : t.title}<input autoFocus required maxLength={plan.kind === 'run' ? 200 : 120} value={draft.title} onChange={event => change('title', event.target.value)} /></label>
-      {plan.kind === 'milestone' && <>
-        <div className="planning-detail-date"><label>{t.date}<input type="date" min="0001-01-01" max="9999-12-31" required value={draft.date} onChange={event => change('date', event.target.value)} /></label>
-          <label>{t.color}<input type="color" value={draft.color} onChange={event => change('color', event.target.value)} /></label></div>
-        <label className="planning-checkbox"><input type="checkbox" checked={draft.projectSpecific} onChange={event => change('projectSpecific', event.target.checked)} />{t.projectOnly}</label>
-      </>}
-      <label>{t.description}<textarea rows={5} maxLength={10000} value={draft.description} onChange={event => change('description', event.target.value)} /></label>
-      <label>{t.cover}<input maxLength={2000} value={draft.cover} onChange={event => change('cover', event.target.value)} /><small>{t.coverHint}</small></label>
+      <label>{t.goal}<input className="control-field" autoFocus required maxLength={200} value={draft.title} onChange={event => change('title', event.target.value)} /></label>
+      <label>{t.description}<textarea className="control-field" rows={5} maxLength={10000} value={draft.description} onChange={event => change('description', event.target.value)} /></label>
+      <label>{t.cover}<input className="control-field" maxLength={2000} value={draft.cover} onChange={event => change('cover', event.target.value)} /><small>{t.coverHint}</small></label>
     </fieldset>
     {missing ? <p className="planning-detail-error" role="alert">{t.missing}</p> : message && <p className="planning-detail-error" role="alert">{t[message]}</p>}
     {serverError && <p className="planning-detail-error" role="alert">{serverError}</p>}
     {conflict && !missing && <Button type="button" size="sm" variant="outline" disabled={pending} onClick={loadSaved}>{t.loadSaved}</Button>}
     <footer><Button type="button" size="sm" variant="ghost" disabled={pending} onClick={() => setEditing(false)}>{t.cancel}</Button>
-      <Button type="submit" size="sm" variant="outline" disabled={pending || !writable || Boolean(conflict) || missing || !dirty || !draft.title.trim()}>{pending ? t.saving : t.save}</Button></footer>
+      <Button type="submit" size="sm" disabled={pending || !writable || Boolean(conflict) || missing || !dirty || !draft.title.trim()}>{pending ? t.saving : t.save}</Button></footer>
   </form>;
 
   return <section className="planning-description-panel">

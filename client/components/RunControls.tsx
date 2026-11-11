@@ -113,32 +113,33 @@ export function RunConfigurationForm({ catalog, configuration, pending, onSave, 
     }
   }
   return <form className="planning-create-form run-configuration-form" onSubmit={event => void submit(event)}>
+    <div className="planning-form-content">
     <fieldset disabled={pending || Boolean(confirmStrip)}>
       <div className="run-form-band"><Switch label={t.projectOnly} hint={t.projectNote} checked={value.projectSpecific ?? false} onChange={checked => update('projectSpecific', checked)} /></div>
       {/* 2026-11-05: three groups — name and color, period, finish and carry-over; the calendar's popover sets them in columns, a narrow dialog stacks them. */}
       <div className="run-form-columns">
         <div>
-          <label>{t.shortName}<input required autoFocus maxLength={5} value={value.shortName} onChange={event => update('shortName', event.target.value)} /></label>
-          <label>{t.label}<input required maxLength={160} value={value.labelTemplate} onChange={event => update('labelTemplate', event.target.value)} /></label><p className="planning-form-note">{t.labelHelp}</p>
+          <label>{t.shortName}<input className="control-field" required autoFocus maxLength={5} value={value.shortName} onChange={event => update('shortName', event.target.value)} /></label>
+          <label>{t.label}<input className="control-field" required maxLength={160} value={value.labelTemplate} onChange={event => update('labelTemplate', event.target.value)} /></label><p className="planning-form-note">{t.labelHelp}</p>
           <div className="run-form-color"><span>{t.color}</span><PlanningColorField label={t.color} value={value.color} onChange={color => update('color', color)} /></div>
         </div>
         <div>
-          <label>{t.duration}<input type="number" min={1} max={52} required value={value.durationWeeks} onChange={event => update('durationWeeks', Number(event.target.value))} /></label>
-          {configuration ? <label>{t.startWeekday}<select value={new Date(value.startDate + 'T00:00:00Z').getUTCDay()} onChange={event => { const weekday = new Date(value.startDate + 'T00:00:00Z').getUTCDay(); update('startDate', addDays(value.startDate, Number(event.target.value) - weekday)); }}>{[1, 2, 3, 4, 5, 6, 0].map(day => <option key={day} value={day}>{t.weekday(day)}</option>)}</select></label>
-            : <label>{t.start}<input type="date" required min="0001-01-01" max="9999-12-31" value={value.startDate} onChange={event => update('startDate', event.target.value)} /></label>}
-          <label>{t.upcoming}<input type="number" min={1} max={52} required value={value.upcomingCount} onChange={event => update('upcomingCount', Number(event.target.value))} /></label>
+          <label>{t.duration}<input className="control-field" type="number" min={1} max={52} required value={value.durationWeeks} onChange={event => update('durationWeeks', Number(event.target.value))} /></label>
+          {configuration ? <label>{t.startWeekday}<select className="control-field" value={new Date(value.startDate + 'T00:00:00Z').getUTCDay()} onChange={event => { const weekday = new Date(value.startDate + 'T00:00:00Z').getUTCDay(); update('startDate', addDays(value.startDate, Number(event.target.value) - weekday)); }}>{[1, 2, 3, 4, 5, 6, 0].map(day => <option key={day} value={day}>{t.weekday(day)}</option>)}</select></label>
+            : <label>{t.start}<input className="control-field" type="date" required min="0001-01-01" max="9999-12-31" value={value.startDate} onChange={event => update('startDate', event.target.value)} /></label>}
+          <label>{t.upcoming}<input className="control-field" type="number" min={1} max={52} required value={value.upcomingCount} onChange={event => update('upcomingCount', Number(event.target.value))} /></label>
         </div>
         <div>
-          <div className="planning-form-dates"><label>{t.finishTime}<input required pattern="([01][0-9]|2[0-3]):[0-5][0-9]|24:00" value={value.finishTime} onChange={event => update('finishTime', event.target.value)} /></label>
-            <label>{t.timeZone}<input required maxLength={100} value={value.timeZone} onChange={event => update('timeZone', event.target.value)} /></label></div><p className="planning-form-note">{t.finishHelp}</p>
+          <div className="planning-form-dates"><label>{t.finishTime}<input className="control-field" required pattern="([01][0-9]|2[0-3]):[0-5][0-9]|24:00" value={value.finishTime} onChange={event => update('finishTime', event.target.value)} /></label>
+            <label>{t.timeZone}<input className="control-field" required maxLength={100} value={value.timeZone} onChange={event => update('timeZone', event.target.value)} /></label></div><p className="planning-form-note">{t.finishHelp}</p>
           <CarryOverFields value={value.carryOver} onChange={next => update('carryOver', next)} />
         </div>
       </div>
     </fieldset>
-    {configuration && <p className="run-settings-note">{t.editFuture}</p>}
     {error && <p className="error-banner" role="alert">{error}</p>}
     {conflictingConfiguration && <div className="notice"><p>{t.reloadHint}</p><Button type="button" variant="outline" size="sm" disabled={pending} onClick={() => { initial.current = configurationDraftKey(conflictingConfiguration); setValue(conflictingConfiguration); setConflictingConfiguration(null); setError(null); }}>{t.reload}</Button></div>}
-    {confirmStrip ?? <footer><Button type="button" variant="ghost" disabled={pending} onClick={onCancel}>{t.cancel}</Button><Button type="submit" disabled={pending || Boolean(conflictingConfiguration) || removed || Boolean(configuration && !dirty)}>{pending ? t.saving : t.save}</Button></footer>}
+    </div>
+    {confirmStrip ?? <footer className="dialog-foot"><Button type="button" variant="ghost" disabled={pending} onClick={onCancel}>{t.cancel}</Button><Button type="submit" disabled={pending || Boolean(conflictingConfiguration) || removed || Boolean(configuration && !dirty)}>{pending ? t.saving : t.save}</Button></footer>}
   </form>;
 }
 
@@ -187,9 +188,9 @@ export function RunControls({ catalog, run, pending, writable, onSave, onDeleted
     {!run.finishedAt && <><Button variant="ghost" size="icon" disabled={disabled || run.start > localIsoDate()} aria-label={t.finish} title={t.finish} onClick={() => open('finish')}><Check size={18} /></Button>
       <Button variant="ghost" size="icon" disabled={disabled} aria-label={t.delete} title={t.delete} onClick={() => open('delete')}><Trash2 size={18} /></Button></>}
     {configuration?.stopDate && <Button variant="ghost" size="sm" disabled={disabled} onClick={() => void onSave({ action: 'resume-runs', configurationId: configuration.id, runsHash: catalog.runsHash ?? '' })}><RotateCcw size={15} />{t.resume}</Button>}
-    <Dialog.Root open={Boolean(dialog)} onOpenChange={next => { if (!next) close(); }}><Dialog.Portal><Dialog.Overlay className="planning-calendar-overlay" /><Dialog.Content className="planning-calendar planning-calendar-editing" onPointerDownOutside={event => { if (dirty || pending) event.preventDefault(); }}>
-      <header><Dialog.Title>{dialogTitle}</Dialog.Title><Button variant="ghost" size="icon" disabled={pending} aria-label={t.close} onClick={close}><X size={18} /></Button></header>
-      <Dialog.Description>{dialogDescription}</Dialog.Description>
+    <Dialog.Root open={Boolean(dialog)} onOpenChange={next => { if (!next) close(); }}><Dialog.Portal><Dialog.Overlay className="planning-calendar-overlay" /><Dialog.Content className={`planning-calendar planning-calendar-editing dialog-panel${dialog === 'settings' ? ' planning-run-settings' : ''}`} onPointerDownOutside={event => { if (dirty || pending) event.preventDefault(); }}>
+      <header className="dialog-head"><Dialog.Title className="dialog-title">{dialogTitle}</Dialog.Title><Button variant="ghost" size="icon" disabled={pending} aria-label={t.close} onClick={close}><X size={18} /></Button></header>
+      <div className="dialog-body"><Dialog.Description className="dialog-description">{dialogDescription}</Dialog.Description>
       {dialog === 'settings' && configuration ? <RunConfigurationForm catalog={revisions} configuration={configuration} pending={pending} onSave={onSave} onCancel={close} onDirtyChange={setDirty} onSaved={() => { setDirty(false); closeNow(); }}
         confirmStrip={strip.confirming
           ? <ConfirmStrip question={t.discard} keepLabel={t.keepEditing} confirmLabel={t.discardChanges} onKeep={strip.keep} onConfirm={closeNow} />
@@ -199,8 +200,9 @@ export function RunControls({ catalog, run, pending, writable, onSave, onDeleted
         {failure && !conflict && <p className="error-banner" role="alert">{failure}</p>}
         {strip.confirming
           ? <ConfirmStrip question={t.discard} keepLabel={t.keepEditing} confirmLabel={t.discardChanges} onKeep={strip.keep} onConfirm={closeNow} />
-          : <footer><Button variant="ghost" disabled={pending} onClick={close}>{t.cancel}</Button><Button variant="outline" className={dialog === 'delete' ? 'planning-delete-confirm' : undefined} disabled={pending} onClick={() => void perform()}>{pending ? t.saving : actionLabel}</Button></footer>}
+          : <footer className="dialog-foot"><Button variant="ghost" disabled={pending} onClick={close}>{t.cancel}</Button><Button className={dialog === 'delete' ? 'destructive' : undefined} disabled={pending} onClick={() => void perform()}>{pending ? t.saving : actionLabel}</Button></footer>}
       </div>}
+      </div>
     </Dialog.Content></Dialog.Portal></Dialog.Root>
   </div>;
 }

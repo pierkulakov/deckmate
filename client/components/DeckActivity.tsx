@@ -198,7 +198,7 @@ export function DeckActivity({ deckId, source, refreshKey, disabled, onOpen }: D
           })}>
           {chip.id === 'done' ? stateLabel('done', lang) : t[chip.id]}{loadedCounts.get(chip.id) !== undefined && <span className="page-number">{formatNumber(loadedCounts.get(chip.id)!, 3, lang)}</span>}
         </button>; })}
-      {groupFilter.size > 0 && <button type="button" className="deck-activity-chip deck-activity-chip-clear control" disabled={disabled} onClick={() => setGroupFilter(new Set())}>{t.reset}</button>}
+      {groupFilter.size > 0 && <button type="button" className="deck-activity-chip control" disabled={disabled} onClick={() => setGroupFilter(new Set())}>{t.reset}</button>}
     </div>}
     {[...groups].map(([minute, events]) => <div className="deck-activity-day" key={minute}>
       <h3><time dateTime={events[0].at} title={fullTimeFormat.format(new Date(events[0].at))}>{minute}</time></h3>

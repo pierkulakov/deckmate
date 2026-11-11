@@ -5,7 +5,6 @@ import './deck-transition.css';
 
 // 2026-11-09: the frozen gallery owns the moving frame. Only after its row becomes the clipped shelf do the live tools
 // and cards appear; moving both pages together exposes controls through the departing Add deck tile.
-const dimmedOpacity = .25;
 
 function motionTokens(section: HTMLElement) {
   const style = getComputedStyle(section);
@@ -29,7 +28,7 @@ interface Snapshot {
  * Half a millisecond per pixel of travel, 200–300 ms: rows further down take the full 300 ms, and a deck in the first row
  * would flash by in 100 ms without the floor.
  */
-export function travelDuration(distance: number) {
+function travelDuration(distance: number) {
   return Math.max(200, Math.min(300, Math.abs(distance) * .5));
 }
 
@@ -180,10 +179,6 @@ function arrive(section: HTMLElement, snapshot: Snapshot, ready: () => void) {
   for (const part of section.children) {
     if (part !== rail) reveals.push(part.animate([{ opacity: 0 }, { opacity: 1 }], { duration: tokens.feedback, delay: duration, easing: tokens.easing, fill: 'backwards' }));
   }
-  // 2026-11-09: the selected face stays continuous; the other faces resolve directly to the shelf's 25% material.
-  for (const cover of ghost.querySelectorAll<HTMLElement>('[data-deck-cover]')) {
-    if (cover.dataset.deckCover !== snapshot.deckId) motions.push(cover.animate([{ opacity: 1 }, { opacity: dimmedOpacity }], { ...timing, fill: 'forwards' }));
-  }
   for (const tile of ghost.querySelectorAll<HTMLElement>('.catalog-add-deck, .catalog-cover-settings, .catalog-space-heading')) motions.push(tile.animate([{ opacity: 1 }, { opacity: 0 }], { duration: tokens.feedback, easing: tokens.easing, fill: 'forwards' }));
   // 2026-11-10: the opened cover stays filled with its color all the way to the shelf, where the current deck is filled too;
   // its hover chrome (the settings button) leaves on the next frame.
@@ -222,7 +217,8 @@ function comeBack(section: HTMLElement, snapshot: Snapshot, ready: () => void) {
   // The row returns where the shelf was; a row outside the view is brought in first, 5 px under the edge.
   const landing = target.getBoundingClientRect();
   if (snapshot.galleryScrollTop === null && (landing.top < port.top || landing.bottom > port.bottom)) scrollBy(scrollport, landing.top - port.top - 5);
-  if (reducedMotion()) return null;
+  // 2026-11-11: initial pulse data can change the landing point; keep navigation immediate instead of freezing its loader.
+  if (reducedMotion() || section.querySelector('.project-pulse-loading')) return null;
   const to = target.getBoundingClientRect();
   const dx = snapshot.from.left - to.left;
   const dy = snapshot.from.top - to.top;
@@ -250,9 +246,6 @@ function comeBack(section: HTMLElement, snapshot: Snapshot, ready: () => void) {
       const shelfInset = Math.max(0, snapshot.shelfTop - port.top);
       motions.push(layer.animate([{ clipPath: `inset(${shelfInset}px 0 0)` }, { clipPath: 'inset(0)' }], { ...timing, fill: 'both' }));
     }
-  }
-  for (const cover of ghost.querySelectorAll<HTMLElement>('[data-deck-cover]')) {
-    if (cover.dataset.deckCover !== snapshot.deckId) motions.push(cover.animate([{ opacity: dimmedOpacity }, { opacity: 1 }], { duration: tokens.feedback, easing: tokens.easing }));
   }
   for (const tile of ghost.querySelectorAll<HTMLElement>('.catalog-add-deck')) motions.push(tile.animate([{ opacity: 0 }, { opacity: 1 }], { duration: tokens.feedback, easing: tokens.easing }));
   let finished = false;

@@ -3,7 +3,7 @@
 // ink, so a scene sits in the page like an unobtrusive watermark in either theme. The grid is 32×24 and
 // scales by whole numbers. EmptyArt.tsx renders it.
 
-export const emptyArtScenes = ['sorted', 'first-card', 'no-results', 'track', 'hand', 'team', 'milestone', 'journey'] as const;
+const emptyArtScenes = ['sorted', 'first-card', 'no-results', 'track', 'hand', 'team', 'milestone', 'journey'] as const;
 export type EmptyArtScene = typeof emptyArtScenes[number];
 
 export const emptyArtWidth = 32;

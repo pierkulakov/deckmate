@@ -2,25 +2,28 @@ import { moveFocus } from '../focus.ts';
 // Global card search opens with "/" from anywhere.
 // The query language itself (words, tags, owners, deck:/kind:/state:, property and content filters, $ID / gd: / gc:
 // navigation) lives in search-query.ts; active filters show as removable pills below the search bar.
-import { useDeferredValue, useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent } from 'react';
+import { useDeferredValue, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent } from 'react';
 import { ArrowRight, Search, X } from 'lucide-react';
 import type { CatalogCard, CatalogDeck, CatalogMember } from '../../src/catalog-contracts.ts';
 import type { ProjectTag } from '../../src/project-tags.ts';
 import type { WorkspaceSnapshot } from '../../src/workspace-contracts.ts';
 import { useCatalog } from '../useCatalog.ts';
-import { currentMember } from '../current-member.ts';
+import { currentMember, onMemberChange, storedMemberId } from '../current-member.ts';
 import { matchShortcut, shortcutTargetBlocked } from '../keyboard-shortcuts.ts';
 import { RESULT_LIMIT, runSearch, parseSearch, toggleTagOr, withoutToken, type FilterToken, type NavigationTarget } from '../search-query.ts';
 import { cardIcons } from './CatalogCardTile.tsx';
-import { CardOwnerAvatar } from './CardQuickSettings.tsx';
-import { CardTags, TagBadge, TagTitlePrefix } from './CardTags.tsx';
-import { StatusBadge } from './StatusMenu.tsx';
+import { memberForOwner, ownerProgressLabel } from './CardOwnerAvatar.tsx';
+import { CardTags, TagBadge } from './CardTags.tsx';
+import { CardFaceStatus, cardFaceStatus } from './CardIndicators.tsx';
+import { buildCatalogLookups } from '../catalog-lookups.ts';
+import type { CardTileLookups } from '../card-tile-equality.ts';
 import { defineText, locale, useLang, useText } from '../i18n.ts';
 import { kindLabel } from '../locales/common.ts';
 import { emitSignal } from '../onboarding/signals.ts';
 import { EmptyState } from './EmptyState.tsx';
 import { LoadingState } from './LoadingState.tsx';
 import { ErrorState } from './ErrorState.tsx';
+import { Button } from './ui/button.tsx';
 import '../global-search.css';
 
 const text = defineText({
@@ -36,10 +39,9 @@ const text = defineText({
   disableOr: 'Any of the tags — turn off',
   enableOr: 'Show cards with any of the tags',
   or: 'or',
-  contains: (query: string) => `contains '${query}'`,
   results: 'Search results',
-  content: 'Content',
-  goToCard: 'Go to card',
+  syntax: 'Search syntax',
+  close: 'Close search',
   noCards: 'The project has no cards yet.',
   found: (total: number, limit: number) => `Found ${total.toLocaleString(locale())} — showing the first ${limit.toLocaleString(locale())}.`,
   goTo: (title: string) => `Go to: ${title}`,
@@ -59,10 +61,9 @@ const text = defineText({
   disableOr: 'Любой из тегов — выключить',
   enableOr: 'Показать карточки с любым из тегов',
   or: 'или',
-  contains: (query: string) => `содержит «${query}»`,
   results: 'Результаты поиска',
-  content: 'Содержимое',
-  goToCard: 'Перейти к карточке',
+  syntax: 'Синтаксис поиска',
+  close: 'Закрыть поиск',
   noCards: 'В проекте пока нет карточек.',
   found: (total: number, limit: number) => `Найдено ${total.toLocaleString(locale())} — показаны первые ${limit.toLocaleString(locale())}.`,
   goTo: (title: string) => `Перейти: ${title}`,
@@ -91,22 +92,30 @@ function SearchFilterLabel({ token, definitions = [] }: { token: FilterToken; de
   </span>;
 }
 
-export function GlobalSearch({ snapshot, refreshKey, onOpenCard }: {
+export function GlobalSearch({ snapshot, refreshKey, onOpenCard, onOpenDeck, disabled = false }: {
   snapshot: WorkspaceSnapshot;
   refreshKey: number;
   onOpenCard: (id: string) => void;
+  onOpenDeck: (id: string) => void;
+  disabled?: boolean;
 }) {
   const { catalog, error, refresh } = useCatalog(snapshot, refreshKey);
   const t = useText(text);
   const lang = useLang();
   const [value, setValue] = useState('');
   const [open, setOpen] = useState(false);
+  const [expanded, setExpanded] = useState(false);
+  const [syntaxOpen, setSyntaxOpen] = useState(false);
   const [highlighted, setHighlighted] = useState(0);
   const fieldRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
   const deferredValue = useDeferredValue(value);
-  // My Cards and hand:in/not use the same member: the last hand selection, otherwise the first registered human.
-  const member = useMemo(() => currentMember(catalog?.members ?? []), [catalog]);
+  const [memberId, setMemberId] = useState(storedMemberId);
+  useEffect(() => onMemberChange(setMemberId), []);
+  const member = useMemo(() => memberId ? catalog?.members?.find(candidate => candidate.id === memberId) ?? null : currentMember(catalog?.members ?? []), [catalog, memberId]);
+  useLayoutEffect(() => { if (expanded) moveFocus(inputRef.current); }, [expanded]);
   const results = useMemo(() => catalog && deferredValue.trim() ? runSearch(catalog, deferredValue, member?.id ?? null) : null, [catalog, deferredValue, member, lang]);
   // Ambiguous short references show an explanation above the list, outside keyboard navigation.
   const goTo = useMemo<GoToTarget[]>(() => results
@@ -119,7 +128,7 @@ export function GlobalSearch({ snapshot, refreshKey, onOpenCard }: {
   ], [goTo, results]);
 
   // Filter pills use the current input rather than deferred input so removal appears immediately.
-  const pills = useMemo(() => parseSearch(value).filter((token): token is FilterToken => token.kind !== 'nav'), [value]);
+  const pills = useMemo(() => parseSearch(value).filter((token): token is FilterToken => token.kind !== 'nav' && token.kind !== 'word'), [value]);
   const tagPills = pills.filter(token => token.kind === 'tag' && !token.negated);
   const tagValues = tagPills.flatMap(token => token.alternatives ?? [token.value]);
   // Multiple tags show an "or" pill that toggles between AND and OR.
@@ -140,6 +149,7 @@ export function GlobalSearch({ snapshot, refreshKey, onOpenCard }: {
   // "/" focuses the field; "q" toggles My Cards.
   useEffect(() => {
     function onKeyDown(event: globalThis.KeyboardEvent) {
+      if (disabled) return;
       // 2026-11-10: only the exact generated owner query opts out of the normal typing guard.
       if (event.code === 'KeyQ' && !event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey
         && !event.repeat && !event.isComposing && event.target === inputRef.current && member && value === '@' + member.id) {
@@ -154,6 +164,7 @@ export function GlobalSearch({ snapshot, refreshKey, onOpenCard }: {
       if (!shortcut || shortcutTargetBlocked(event)) return;
       if (shortcut.id === 'focus-search') {
         event.preventDefault();
+        setExpanded(true);
         moveFocus(inputRef.current);
         inputRef.current?.select();
         return;
@@ -171,12 +182,13 @@ export function GlobalSearch({ snapshot, refreshKey, onOpenCard }: {
       }
       setValue(myQuery);
       setOpen(true);
+      setExpanded(true);
       moveFocus(inputRef.current);
       inputRef.current?.select();
     }
     document.addEventListener('keydown', onKeyDown, true);
     return () => document.removeEventListener('keydown', onKeyDown, true);
-  }, [member, value]);
+  }, [member, value, disabled]);
   // 2026-11-05: quests count a settled search, not each keystroke; the same query twice in a row is one search.
   const lastSearched = useRef('');
   useEffect(() => {
@@ -189,32 +201,44 @@ export function GlobalSearch({ snapshot, refreshKey, onOpenCard }: {
 
   // Clicking outside a focusable element still counts as leaving the search.
   useEffect(() => {
-    if (!open) return;
+    if (!open && !expanded) return;
     function onPointerDown(event: PointerEvent) {
-      if (!fieldRef.current?.contains(event.target as Node)) setOpen(false);
+      if (!fieldRef.current?.contains(event.target as Node)) { setOpen(false); setExpanded(false); }
     }
     document.addEventListener('pointerdown', onPointerDown);
     return () => document.removeEventListener('pointerdown', onPointerDown);
-  }, [open]);
+  }, [open, expanded]);
 
   useEffect(() => {
-    if (highlighted === 0) return;
-    document.getElementById(`global-search-option-${highlighted}`)?.scrollIntoView({ block: 'nearest' });
-  }, [highlighted]);
+    const box = scrollRef.current;
+    const row = box?.querySelector<HTMLElement>(`#global-search-option-${highlighted}`);
+    if (!box || !row) return;
+    const bounds = box.getBoundingClientRect(), active = row.getBoundingClientRect();
+    if (active.top < bounds.top) box.scrollTop += active.top - bounds.top;
+    else if (active.bottom > bounds.bottom) box.scrollTop += active.bottom - bounds.bottom;
+  }, [highlighted, entries, open]);
+
+  function closeSearch() {
+    setOpen(false); setExpanded(false);
+    if (triggerRef.current?.getBoundingClientRect().width) moveFocus(triggerRef.current);
+    else inputRef.current?.blur();
+  }
 
   function openResult(card: CatalogCard) {
+    if (disabled) return;
     setOpen(false);
+    setExpanded(false);
     onOpenCard(card.id);
     inputRef.current?.blur();
   }
 
   function openNavigation(target: NavigationTarget) {
-    if (target.kind === 'ambiguous') return;
+    if (disabled || target.kind === 'ambiguous') return;
     setOpen(false);
+    setExpanded(false);
     if (target.kind === 'deck') {
-      // Deck reads ?deck=<id> only on mount (Deck.tsx, initialScope).
-      // Search has no open-deck callback, so navigation reloads the page.
-      location.href = `/?view=deck&catalogSource=${encodeURIComponent(snapshot.source)}&deck=${encodeURIComponent(target.deck.id)}`;
+      onOpenDeck(target.deck.id);
+      inputRef.current?.blur();
       return;
     }
     onOpenCard(target.card.id);
@@ -222,12 +246,18 @@ export function GlobalSearch({ snapshot, refreshKey, onOpenCard }: {
   }
 
   function onKeyDown(event: ReactKeyboardEvent<HTMLInputElement>) {
+    if (event.nativeEvent.isComposing) return;
     if (event.key === 'Escape') {
+      event.preventDefault(); event.stopPropagation();
       // Escape removes the last filter pill; with no pills left, it closes the overlay.
       if (pills.length) { removeFilter(pills[pills.length - 1]); return; }
-      setOpen(false);
-      inputRef.current?.blur();
+      closeSearch();
       return;
+    }
+    const last = pills.at(-1);
+    if (event.key === 'Backspace' && last && event.currentTarget.selectionStart === value.length
+      && event.currentTarget.selectionEnd === value.length && !value.slice(last.end).trim()) {
+      event.preventDefault(); removeFilter(last); return;
     }
     const count = entries.length;
     if (!count) return;
@@ -243,27 +273,27 @@ export function GlobalSearch({ snapshot, refreshKey, onOpenCard }: {
   }
 
   const decksById = useMemo(() => new Map(catalog?.decks.map(deck => [deck.id, deck])), [catalog]);
+  const lookups = useMemo(() => buildCatalogLookups(catalog?.cards ?? [], catalog?.subCardOrder), [catalog]);
   const members = catalog?.members ?? [];
-  // 2026-11-04: operators describe filters/navigation, not literal content; matching stays in search-query.ts.
-  const query = deferredValue.trim();
-  const hasOperators = query.split(/\s+/u).some(token => /^(?:\$.+|[!#@]|(?:t|sub|gd|gc|deck|kind|state|effort|priority|run|milestone|hand|due):)/iu.test(token));
-
-  return <div className="global-search" ref={fieldRef}>
+  return <div className={`global-search${expanded ? ' is-expanded' : ''}`} ref={fieldRef}>
+    <Button ref={triggerRef} variant="ghost" size="icon" className="global-search-trigger" aria-label={t.searchCards} aria-expanded={expanded}
+      disabled={disabled} onClick={() => { if (expanded) closeSearch(); else setExpanded(true); }}><Search size={18} aria-hidden="true" /></Button>
     <div className={`global-search-field control-field${open ? ' is-open' : ''}`}>
-      <Search size={20} strokeWidth={1.75} aria-hidden="true" />
+      <Search size={18} aria-hidden="true" />
       <input ref={inputRef} type="search" role="combobox" aria-label={t.searchCards} aria-expanded={open}
         aria-controls="global-search-results" aria-activedescendant={open && entries.length ? `global-search-option-${highlighted}` : undefined}
         aria-autocomplete="list" placeholder={t.searchPlaceholder} autoComplete="off" spellCheck={false}
-        value={value} onKeyDown={onKeyDown}
+        value={value} onKeyDown={onKeyDown} disabled={disabled}
         onFocus={() => { if (value.trim()) setOpen(true); }}
         onBlur={event => { if (!fieldRef.current?.contains(event.relatedTarget as Node | null)) setOpen(false); }}
         onChange={event => { setValue(event.target.value); setOpen(Boolean(event.target.value.trim())); }} />
       <kbd className="global-search-key" aria-hidden="true">/</kbd>
+      <Button variant="ghost" size="icon" className="global-search-close" aria-label={t.close} onClick={closeSearch}><X size={18} /></Button>
     </div>
     {open && <div className="global-search-pop dialog-panel">
       <ErrorState variant="inline" className="global-search-empty" message={error} onRetry={refresh} />
       {!error && !catalog && <LoadingState message={t.loading} />}
-      {!error && catalog && <div className="global-search-sections">
+      {!error && catalog && <div ref={scrollRef} className="global-search-sections">
         {pills.length > 0 && <div className="global-search-pills" role="group" aria-label={t.activeFilters}>
           {pills.map(token => <button key={token.start} type="button" className="global-search-pill control"
             onMouseDown={event => event.preventDefault()}
@@ -278,21 +308,17 @@ export function GlobalSearch({ snapshot, refreshKey, onOpenCard }: {
             title={tagOrActive ? t.disableOr : t.enableOr}
             onClick={toggleOr}>{t.or}</button>}
         </div>}
-        <section className="global-search-content" aria-labelledby="global-search-content-label">
-          <h3 id="global-search-content-label" className="global-search-section-label">{t.content}</h3>
-          <p className="global-search-query">{hasOperators ? query : t.contains(query)}</p>
-        </section>
-        <div id="global-search-results" role="listbox" aria-label={t.results} className="global-search-navigation">
+        <div id="global-search-results" role="listbox" aria-label={t.results}>
           <div role="group" aria-labelledby="global-search-navigation-label">
-            <h3 id="global-search-navigation-label" className="global-search-section-label">{t.goToCard}</h3>
+            <h3 id="global-search-navigation-label" className="global-search-section-label">{t.results} · {((results?.total ?? 0) + goTo.length).toLocaleString(locale(lang))}</h3>
             {ambiguous.map(({ message }, index) => <p key={`ambiguous-${index}`} className="global-search-nav-note" role="status">{message}</p>)}
             <ul role="presentation" className="global-search-results">
               {entries.map((entry, index) => entry.type === 'navigation'
                 ? <NavigationRow key={entry.target.kind === 'deck' ? `nav-deck-${entry.target.deck.id}` : `nav-card-${entry.target.card.id}`}
-                    entry={entry} index={index} highlighted={highlighted} decksById={decksById} tagDefinitions={catalog.projectTags}
+                    entry={entry} index={index} highlighted={highlighted} decksById={decksById} tagDefinitions={catalog.projectTags} members={members} lookups={lookups}
                     onHover={() => setHighlighted(index)} onOpen={openNavigation} />
                 : <ResultRow key={`result-${entry.card.id}`} card={entry.card} index={index} highlighted={highlighted}
-                    decksById={decksById} members={members} tagDefinitions={catalog.projectTags}
+                    decksById={decksById} members={members} tagDefinitions={catalog.projectTags} lookups={lookups}
                     onHover={() => setHighlighted(index)} onOpen={openResult} />)}
             </ul>
           </div>
@@ -303,49 +329,54 @@ export function GlobalSearch({ snapshot, refreshKey, onOpenCard }: {
           : <EmptyState className="global-search-empty" message={t.noCards} />)}
         {results && results.cards.length > 0 && results.cards.length < results.total
           && <p className="global-search-empty global-search-total" role="status">{t.found(results.total, RESULT_LIMIT)}</p>}
+        <div className="global-search-syntax"><button type="button" className="control control-ghost" aria-expanded={syntaxOpen} onClick={() => setSyntaxOpen(current => !current)}>{t.syntax}</button>
+          {syntaxOpen && <p>{t.syntaxHint}</p>}
+        </div>
       </div>}
-      <footer className="global-search-syntax" aria-hidden="true">{t.syntaxHint}</footer>
     </div>}
   </div>;
 }
 
 /** Leading navigation rows link to cards via $ID/gc: or decks via gd:. */
-function NavigationRow({ entry, index, highlighted, decksById, tagDefinitions, onHover, onOpen }: {
+function NavigationRow({ entry, index, highlighted, decksById, tagDefinitions, members, lookups, onHover, onOpen }: {
   entry: { type: 'navigation'; target: GoToTarget };
   index: number;
   highlighted: number;
   decksById: Map<string, CatalogDeck>;
   tagDefinitions?: readonly ProjectTag[];
+  members: CatalogMember[];
+  lookups: CardTileLookups;
   onHover: () => void;
   onOpen: (target: NavigationTarget) => void;
 }) {
   const target = entry.target;
   const t = useText(text);
-  const deck = target.kind === 'card' && target.card.deckId ? decksById.get(target.card.deckId) : undefined;
-  const title = target.kind === 'deck' ? target.deck.title : target.card.title;
+  if (target.kind === 'card') return <ResultRow card={target.card} index={index} highlighted={highlighted}
+    decksById={decksById} members={members} tagDefinitions={tagDefinitions} lookups={lookups} navigation
+    onHover={onHover} onOpen={() => onOpen(target)} />;
+  const title = target.deck.title;
   return <li id={`global-search-option-${index}`} role="option" aria-selected={index === highlighted}>
     <button type="button" className="global-search-row global-search-nav" onMouseDown={event => event.preventDefault()}
       onMouseEnter={onHover} onClick={() => onOpen(target)}
       title={t.goTo(title)}>
       <span className="global-search-kind is-nav" aria-hidden="true"><ArrowRight size={12} /></span>
       <span className="global-search-card-main">
-        <span className="global-search-title"><span className="global-search-nav-label">{t.goToLabel}</span> {target.kind === 'card' && <TagTitlePrefix tags={target.card.tags} definitions={tagDefinitions} />}{title}</span>
-        {target.kind === 'card' && <CardTags tags={target.card.tags} definitions={tagDefinitions} compact />}
+        <span className="global-search-title"><span className="global-search-nav-label">{t.goToLabel}</span> {title}</span>
       </span>
-      {target.kind === 'deck' && <span className="global-search-deck-dot" style={{ '--deck-color': target.deck.color } as CSSProperties} aria-label={t.deck(title)} />}
-      {deck && <span className="global-search-deck" style={{ '--deck-color': deck.color } as CSSProperties} title={deck.title}>
-        <span className="global-search-deck-dot" aria-hidden="true" />{deck.title}</span>}
+      <span className="global-search-deck-dot" style={{ '--deck-color': target.deck.color } as CSSProperties} aria-label={t.deck(title)} />
     </button>
   </li>;
 }
 
-function ResultRow({ card, index, highlighted, decksById, members, tagDefinitions, onHover, onOpen }: {
+function ResultRow({ card, index, highlighted, decksById, members, tagDefinitions, lookups, navigation = false, onHover, onOpen }: {
   card: CatalogCard;
   index: number;
   highlighted: number;
   decksById: Map<string, CatalogDeck>;
   members: CatalogMember[];
   tagDefinitions?: readonly ProjectTag[];
+  lookups: CardTileLookups;
+  navigation?: boolean;
   onHover: () => void;
   onOpen: (card: CatalogCard) => void;
 }) {
@@ -353,21 +384,24 @@ function ResultRow({ card, index, highlighted, decksById, members, tagDefinition
   const t = useText(text);
   const lang = useLang();
   const Icon = cardIcons[card.kind];
+  const status = cardFaceStatus(card, lookups, lang);
+  const owner = memberForOwner(card.owner, members)?.label ?? card.owner;
+  const ownerLabel = ownerProgressLabel(owner, lookups.checklistByCard.get(card.id), lang);
   return <li id={`global-search-option-${index}`} role="option" aria-selected={index === highlighted}>
-    <button type="button" className="global-search-row" onMouseDown={event => event.preventDefault()}
+    <button type="button" className={`global-search-row${navigation ? ' global-search-nav' : ''}`} onMouseDown={event => event.preventDefault()}
       onMouseEnter={onHover} onClick={event => { event.preventDefault(); onOpen(card); }}
-      title={t.open(card.title)}>
+      title={navigation ? t.goTo(card.title) : t.open(card.title)}>
       <span className={`global-search-kind is-${card.kind}`} aria-hidden="true"><Icon size={12} /></span>
       <span className="visually-hidden">{kindLabel(card.kind, lang)}</span>
       <span className="global-search-card-main">
-        <span className="global-search-title"><TagTitlePrefix tags={card.tags} definitions={tagDefinitions} />{card.title}</span>
+        <span className="global-search-title">{navigation && <span className="global-search-nav-label">{t.goToLabel} </span>}{card.title}</span>
         <CardTags tags={card.tags} definitions={tagDefinitions} compact maxVisible={2} />
         <span className="global-search-card-meta">
           {deck && <span className="global-search-deck" style={{ '--deck-color': deck.color } as CSSProperties} title={deck.title}>
             <span className="global-search-deck-dot" aria-hidden="true" />{deck.title}</span>}
-          {card.state && <StatusBadge state={card.state} />}
-          {card.owner && <CardOwnerAvatar owner={card.owner} members={members} />}
+          {owner && <span className="global-search-owner" title={ownerLabel} aria-label={ownerLabel}>{owner}</span>}
         </span>
+        <CardFaceStatus status={status} />
       </span>
     </button>
   </li>;

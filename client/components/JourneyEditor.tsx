@@ -14,11 +14,13 @@ import { JourneyZones } from './JourneyZones.tsx';
 import { JourneyBulkActions } from './JourneyBulkActions.tsx';
 import { JourneyMetricsTable, useJourneyMetrics } from './JourneyMetrics.tsx';
 import { dependencyCycle, draftError, duplicateJourneySteps, journeyDraft, mergeJourneyDraft, nextJourneyId, normalizedDraft, sameDraft, visibleSteps, type JourneyDraft, type JourneySnapshot } from './JourneyDraft.tsx';
-import { CatalogReferenceLink } from './JourneyPanel.tsx';
+import { CatalogReferenceLink, journeyIntroductionText } from './JourneyPanel.tsx';
 import { Button } from './ui/button.tsx';
-import { defineText, locale, useText, type Lang } from '../i18n.ts';
+import { defineText, formatNumber, locale, useText } from '../i18n.ts';
 import { failureMessage } from '../failure-message.ts';
 import { useDesktopDirty } from '../desktop-bridge.ts';
+import { currentSourceLabels } from '../source-access.ts';
+import { moveFocus } from '../focus.ts';
 import '../journey-editor.css';
 
 // The new zone title is saved to the project file, so it follows the project's format language, not the interface language.
@@ -27,10 +29,6 @@ const formatText = defineText({
 }, {
   newZoneTitle: 'Новая зона',
 });
-
-function numberValue(value: number, lang: Lang): string {
-  return new Intl.NumberFormat(locale(lang)).format(value);
-}
 
 const text = defineText({
   prepareJourney: 'Prepare Journey for ',
@@ -41,6 +39,7 @@ const text = defineText({
   closeJourney: 'Close Journey',
   addZone: 'Add step zone',
   allSaved: 'All changes saved',
+  localStepUnsaved: 'Step text is not saved',
   unfinishedSave: 'Journey save is unfinished',
   addJourneyStep: 'Add a Journey step',
   readOnly: 'Read only',
@@ -60,15 +59,14 @@ const text = defineText({
   autosaveUnconfirmed: 'Autosave was not confirmed. Your input is preserved; try again.',
   lastStep: 'The last step cannot be deleted: a Journey must contain at least one step.',
   cycleNotice: 'The chain creates a dependency cycle. Changes were not applied.',
-  chainNotice: (count: number) => `Dependency Chain: ${numberValue(count, 'en')} ${new Intl.PluralRules(locale('en')).select(count) === 'one' ? 'step' : 'steps'}`,
+  chainNotice: (count: number) => `Dependency Chain: ${formatNumber(count, 3, 'en')} ${new Intl.PluralRules(locale('en')).select(count) === 'one' ? 'step' : 'steps'}`,
   duplicateMessage: (count: number, dropped: number) => {
     const noun = new Intl.PluralRules(locale('en')).select(count) === 'one' ? 'step' : 'steps';
-    return `${numberValue(count, 'en')} ${noun} copied${dropped ? `. Dependencies on unselected steps removed: ${numberValue(dropped, 'en')}` : ''}`;
+    return `${formatNumber(count, 3, 'en')} ${noun} copied${dropped ? `. Dependencies on unselected steps removed: ${formatNumber(dropped, 3, 'en')}` : ''}`;
   },
   copyUnconfirmed: 'Copying was not confirmed: the target Journey was reread. Your selection is preserved; check it before trying again.',
   localChangesApplied: 'Your edits were applied to the reread Journey',
   cloned: (deck: string) => `Journey copied to deck “${deck}”`,
-  importUnconfirmed: 'Import was not confirmed. The deck mapping is preserved; check the Journey before trying again.',
   imported: 'Template imported',
   templateSaveUnconfirmed: 'Template save was not confirmed. The fields are preserved.',
   templateSaved: 'Template saved in the project',
@@ -89,7 +87,6 @@ const text = defineText({
   journeyDescription: 'Description',
   deckJourney: 'Deck Journey',
   assetMixedOnly: 'Journey is available for Asset and Mixed decks.',
-  readOnlySandbox: 'Read-only mode. Open the sandbox to edit.',
   discardTitle: 'Changes are not confirmed yet',
   discardCreateDescription: 'Creation may have completed on the server. Check the deck’s Journey before creating it again. Leaving discards local input.',
   discardDescription: 'Correct the fields or resolve the conflict to continue autosaving.',
@@ -104,6 +101,7 @@ const text = defineText({
   closeJourney: 'Закрыть Journey',
   addZone: 'Добавить зону шагов',
   allSaved: 'Все изменения сохранены',
+  localStepUnsaved: 'Текст шага не сохранён',
   unfinishedSave: 'Сохранение Journey не завершено',
   addJourneyStep: 'Добавьте шаг Journey',
   readOnly: 'Только чтение',
@@ -125,16 +123,15 @@ const text = defineText({
   cycleNotice: 'Цепочка создаёт цикл зависимостей. Изменения не применены.',
   chainNotice: (count: number) => {
     const noun = { one: 'шаг', few: 'шага', many: 'шагов', other: 'шага', zero: 'шагов', two: 'шага' }[new Intl.PluralRules(locale('ru')).select(count)];
-    return `Цепочка зависимостей: ${numberValue(count, 'ru')} ${noun}`;
+    return `Цепочка зависимостей: ${formatNumber(count, 3, 'ru')} ${noun}`;
   },
   duplicateMessage: (count: number, dropped: number) => {
     const noun = { one: 'шаг скопирован', few: 'шага скопировано', many: 'шагов скопировано', other: 'шага скопировано', zero: 'шагов скопировано', two: 'шага скопировано' }[new Intl.PluralRules(locale('ru')).select(count)];
-    return `${numberValue(count, 'ru')} ${noun}${dropped ? `. Снято зависимостей от невыбранных шагов: ${numberValue(dropped, 'ru')}` : ''}`;
+    return `${formatNumber(count, 3, 'ru')} ${noun}${dropped ? `. Снято зависимостей от невыбранных шагов: ${formatNumber(dropped, 3, 'ru')}` : ''}`;
   },
   copyUnconfirmed: 'Копирование не подтверждено: целевой Journey перечитан. Выбор сохранён; проверьте его перед повтором.',
   localChangesApplied: 'Ваши правки перенесены на перечитанный Journey',
   cloned: (deck: string) => `Journey скопирован в колоду «${deck}»`,
-  importUnconfirmed: 'Импорт не подтверждён. Сопоставление колод сохранено; проверьте Journey перед повтором.',
   imported: 'Шаблон импортирован',
   templateSaveUnconfirmed: 'Сохранение шаблона не подтверждено. Заполненные поля сохранены.',
   templateSaved: 'Шаблон сохранён в проекте',
@@ -155,7 +152,6 @@ const text = defineText({
   journeyDescription: 'Описание',
   deckJourney: 'Journey колоды',
   assetMixedOnly: 'Journey доступен для Asset и Mixed колод.',
-  readOnlySandbox: 'Режим чтения. Для редактирования откройте тестовую копию.',
   discardTitle: 'Изменения ещё не подтверждены',
   discardCreateDescription: 'Создание могло сохраниться на сервере. Перед повторным созданием проверьте Journey колоды. Выход уберёт локальный ввод.',
   discardDescription: 'Исправьте поля или разрешите конфликт, чтобы продолжить автосохранение.',
@@ -171,6 +167,7 @@ export function JourneyEditor({ catalog, deck, source, initialJourneyId, writabl
   onEdit: (action: CatalogAction) => Promise<boolean>; onClose: () => void; onRestoreFocus?: () => void;
 }) {
   const t = useText(text);
+  const introduction = useText(journeyIntroductionText);
   const journeys = (catalog.journeys ?? []).filter(journey => journey.deckId === deck.id);
   const initialJourney = journeys.find(journey => journey.id === initialJourneyId) ?? journeys[0] ?? null;
   const [base, setBase] = useState<JourneySnapshot>(() => ({ journey: initialJourney, manifestHash: catalog.manifestHash, draft: journeyDraft(initialJourney, deck, catalog.formatLanguage) }));
@@ -178,6 +175,7 @@ export function JourneyEditor({ catalog, deck, source, initialJourneyId, writabl
   const [screen, setScreen] = useState<'editor' | 'catalog'>('editor');
   const [settings, setSettings] = useState(false);
   const [inspectedId, setInspectedId] = useState<string | null>(null);
+  const [invalidStepText, setInvalidStepText] = useState(false);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [saveTemplate, setSaveTemplate] = useState(false);
   const [metricsOpen, setMetricsOpen] = useState(false);
@@ -190,6 +188,8 @@ export function JourneyEditor({ catalog, deck, source, initialJourneyId, writabl
   const [conflict, setConflict] = useState<JourneySnapshot | null>(null);
   const [unconfirmedCreate, setUnconfirmedCreate] = useState<CreateAttempt | null>(null);
   const mutation = useRef(false);
+  const catalogBack = useRef<(() => void) | null>(null);
+  const browseButton = useRef<HTMLButtonElement>(null);
   const latestCatalog = useRef(catalog);
   const latestDraft = useRef(draft);
   const latestBase = useRef(base);
@@ -206,6 +206,7 @@ export function JourneyEditor({ catalog, deck, source, initialJourneyId, writabl
   const locked = busy || !!unconfirmedCreate;
   let saveStatus = base.journey ? t.allSaved : t.addJourneyStep;
   if (operationJourney?.pendingOperation) saveStatus = t.unfinishedSave;
+  else if (invalidStepText) saveStatus = t.localStepUnsaved;
   else if (!editable) saveStatus = t.readOnly;
   else if (conflict) saveStatus = t.conflictStatus;
   else if (unconfirmedCreate) saveStatus = t.createConfirmation;
@@ -215,9 +216,9 @@ export function JourneyEditor({ catalog, deck, source, initialJourneyId, writabl
   else if (dirty) saveStatus = t.waitingAutosave;
   // Refresh metrics when this Journey's cards or their states change.
   const metricsRevision = base.journey ? catalog.cards.filter(card => card.journey?.journeyId === base.journey!.id).map(card => `${card.id}:${card.state}`).join('|') : '';
-  const { metrics, error: metricsError } = useJourneyMetrics(source, base.journey?.id ?? null, metricsRevision);
+  const { metrics, error: metricsError, loading: metricsLoading, retry: retryMetrics } = useJourneyMetrics(source, base.journey?.id ?? null, metricsRevision);
   const metricsByStep = useMemo(() => new Map((metrics?.steps ?? []).map(step => [step.stepId, step])), [metrics]);
-  const metricsAvailable = metricsByStep.size > 0 || Boolean(metricsError);
+  const metricsAvailable = Boolean(base.journey);
   const duplicateTargets = (catalog.journeys ?? []).map(journey => ({ id: journey.id, title: journey.id === base.journey?.id ? t.thisJourney : `${catalog.decks.find(target => target.id === journey.deckId)?.title ?? journey.deckId} · ${journey.title}`, disabled: journey.steps.length + selectedIds.length > 30 }));
   for (const target of cloneTargets.filter(target => !catalog.journeys?.some(journey => journey.deckId === target.id))) duplicateTargets.push({ id: `deck:${target.id}`, title: t.newJourney(target.title), disabled: false });
 
@@ -239,13 +240,13 @@ export function JourneyEditor({ catalog, deck, source, initialJourneyId, writabl
     if (catalog.manifestHash !== base.manifestHash) replaceBase({ ...base, manifestHash: catalog.manifestHash });
   }, [catalog, busy, dirty, conflict, unconfirmedCreate, inspectedId]);
 
-  useDesktopDirty(dirty || !!unconfirmedCreate);
+  useDesktopDirty(dirty || !!unconfirmedCreate || invalidStepText);
   useEffect(() => {
-    if (!dirty && !unconfirmedCreate) return;
+    if (!dirty && !unconfirmedCreate && !invalidStepText) return;
     const warn = (event: BeforeUnloadEvent) => { event.preventDefault(); event.returnValue = ''; };
     window.addEventListener('beforeunload', warn);
     return () => window.removeEventListener('beforeunload', warn);
-  }, [dirty, unconfirmedCreate]);
+  }, [dirty, unconfirmedCreate, invalidStepText]);
 
   useEffect(() => {
     if (!dirty || !editable || busy || conflict || error || unconfirmedCreate || invalid || screen !== 'editor') return;
@@ -261,13 +262,14 @@ export function JourneyEditor({ catalog, deck, source, initialJourneyId, writabl
     return readFreshCatalog(source);
   }
 
-  async function exclusive(work: () => Promise<boolean>): Promise<boolean> {
+  async function exclusive(work: () => Promise<boolean>, reportFailure = true): Promise<boolean> {
     if (mutation.current || pending || !editable) return false;
     mutation.current = true; setSaving(true); setError('');
     try { return await work(); }
     catch (failure) {
-      setError(failureMessage(failure, t.saveFailed));
+      if (reportFailure) setError(failureMessage(failure, t.saveFailed));
       try { await readCatalog(); } catch { /* 2026-11-10: preserve the original server explanation when rereading fails. */ }
+      if (!reportFailure) throw failure;
       return false;
     }
     finally { mutation.current = false; setSaving(false); }
@@ -391,10 +393,15 @@ export function JourneyEditor({ catalog, deck, source, initialJourneyId, writabl
   }
 
   function requestNavigation(destination: Destination) {
+    if (invalidStepText) return;
     if (unconfirmedCreate) { setDiscardTo(destination); return; }
     if (conflict || invalid && dirty || error && dirty) { setDiscardTo(destination); return; }
     if (dirty || busy || mutation.current) { setNavigation(destination); if (!busy) void save(); return; }
     navigate(destination);
+  }
+  function backFromCatalog() {
+    setScreen('editor'); setError('');
+    window.requestAnimationFrame(() => moveFocus(browseButton.current));
   }
 
   function applyLocalChanges() {
@@ -419,9 +426,9 @@ export function JourneyEditor({ catalog, deck, source, initialJourneyId, writabl
       const saved = await onEdit({ action: 'import-journey-template', manifestHash: base.manifestHash, deckId: deck.id, templateId: template.id, templateSource: template.source, templateHash: template.fileHash, mode, journeyId: base.journey?.id ?? null, journeyHash: base.journey?.fileHash ?? null, roleMapping });
       const fresh = await readCatalog();
       const candidates = fresh.journeys?.filter(journey => journey.deckId === deck.id && (base.journey ? journey.id === base.journey.id && journey.fileHash !== base.journey.fileHash : !previousIds.includes(journey.id))) ?? [];
-      if (!saved || candidates.length !== 1) { setError(t.importUnconfirmed); return false; }
+      if (!saved || candidates.length !== 1) return false;
       acceptSnapshot(candidates[0]!, fresh.manifestHash); setScreen('editor'); setNotice(t.imported); return true;
-    });
+    }, false);
   }
 
   async function saveAsTemplate(metadata: { title: string; description: string; category: string; tags: string[] }) {
@@ -437,8 +444,8 @@ export function JourneyEditor({ catalog, deck, source, initialJourneyId, writabl
   }
 
   const conflictFeedback = conflict && <div className="journey-editor-error" role="alert">{t.conflictText}
-    <Button variant="outline" size="sm" disabled={busy || !conflict.journey} onClick={applyLocalChanges}>{t.applyMine}</Button>
-    <Button variant="ghost" size="sm" disabled={busy} onClick={() => { setInspectedId(null); acceptSnapshot(conflict.journey, conflict.manifestHash); }}>{t.useFileVersion}</Button></div>;
+    <Button variant="outline" size="sm" disabled={busy || invalidStepText || !conflict.journey} onClick={applyLocalChanges}>{t.applyMine}</Button>
+    <Button variant="ghost" size="sm" disabled={busy || invalidStepText} onClick={() => { setInspectedId(null); acceptSnapshot(conflict.journey, conflict.manifestHash); }}>{t.useFileVersion}</Button></div>;
   const errorFeedback = error && <div className="journey-editor-error" role="alert">{error}
     {unconfirmedCreate && <Button variant="outline" size="sm" disabled={busy} onClick={() => void verifyCreate()}>{t.rereadResult}</Button>}
     {dirty && !conflict && !unconfirmedCreate && screen === 'editor' && <Button variant="outline" size="sm" disabled={busy} onClick={() => { setError(''); void save(); }}>{t.retryAutosave}</Button>}
@@ -450,7 +457,7 @@ export function JourneyEditor({ catalog, deck, source, initialJourneyId, writabl
   return <Dialog.Root open onOpenChange={open => { if (!open) requestNavigation('close'); }}><Dialog.Portal>
     <Dialog.Overlay ref={prepareEntrance} className="journey-editor-overlay" />
       <Dialog.Content ref={prepareEntrance} className="journey-editor-dialog dialog-panel" aria-busy={busy} onCloseAutoFocus={event => { event.preventDefault(); onRestoreFocus?.(); }}
-      onEscapeKeyDown={event => { event.preventDefault(); if (selectedIds.length) setSelectedIds([]); else requestNavigation('close'); }} onPointerDownOutside={event => event.preventDefault()}
+      onEscapeKeyDown={event => { event.preventDefault(); if (screen === 'catalog') { if (!(event.target instanceof Element && event.target.closest('.confirm-strip'))) catalogBack.current?.(); return; } if (selectedIds.length) setSelectedIds([]); else requestNavigation('close'); }} onPointerDownOutside={event => event.preventDefault()}
       onKeyDown={event => {
         if (screen !== 'editor' || inspectedId || !editable || (event.target instanceof HTMLElement && event.target.closest('input,textarea,select,[contenteditable="true"],[role="menu"]'))) return;
         if ((event.ctrlKey || event.metaKey) && event.code === 'KeyA') { event.preventDefault(); event.stopPropagation(); setSelectedIds(draft.steps.map(step => step.id)); }
@@ -463,9 +470,9 @@ export function JourneyEditor({ catalog, deck, source, initialJourneyId, writabl
           <header className="journey-editor-heading dialog-head"><h2 className="dialog-title">{t.prepareJourney}<span className="journey-deck-chip" title={deck.title}><span className="journey-deck-icon" aria-hidden="true"><Layers size={11} /></span><span className="journey-deck-name">{deck.title}</span></span></h2>
             <Button variant="ghost" size="icon" className="journey-editor-info" aria-pressed={settings} aria-label={t.aboutAria} title={t.aboutTitle} onClick={() => setSettings(previous => !previous)}><Info size={15} /></Button>
             <div className="journey-editor-actions">{metricsAvailable && <Button variant="outline" size="sm" className="journey-metrics-toggle" aria-pressed={metricsOpen} title={t.metricsTitle} onClick={() => setMetricsOpen(previous => !previous)}><ChartNoAxesColumn size={13} />{t.metrics}</Button>}
-              <Button variant="outline" size="sm" className="journey-browse-button" disabled={locked} onClick={() => requestNavigation('catalog')}><LayoutGrid size={13} />{t.browseTemplates}</Button>
+              <Button ref={browseButton} variant="outline" size="sm" className="journey-browse-button" disabled={locked} onClick={() => requestNavigation('catalog')}><LayoutGrid size={13} />{t.browseTemplates}</Button>
               <Button variant="outline" size="sm" disabled={locked || !editable || !!operationJourney?.pendingOperation || !base.journey || dirty || !!conflict} title={dirty ? t.saveTemplateWaiting : t.saveTemplateTitle} onClick={() => setSaveTemplate(true)}>{t.saveAsTemplate}</Button>
-              <DropdownMenu.Root><DropdownMenu.Trigger asChild><Button variant="ghost" size="sm" className="journey-clone-button" disabled={locked || !editable || !base.journey || dirty || !!conflict || cloneTargets.length === 0}>{t.cloneJourney}<ChevronDown size={13} /></Button></DropdownMenu.Trigger><DropdownMenu.Portal><DropdownMenu.Content className="journey-editor-menu" align="end" sideOffset={6}>
+              <DropdownMenu.Root><DropdownMenu.Trigger asChild><Button variant="ghost" size="sm" disabled={locked || !editable || !base.journey || dirty || !!conflict || cloneTargets.length === 0}>{t.cloneJourney}<ChevronDown size={13} /></Button></DropdownMenu.Trigger><DropdownMenu.Portal><DropdownMenu.Content className="journey-editor-menu" align="end" sideOffset={6}>
                 <DropdownMenu.Label className="journey-editor-menu-label">{t.copyJourney}</DropdownMenu.Label>
                 {cloneTargets.map(target => <DropdownMenu.Item key={target.id} onSelect={() => void cloneTo(target)}><Copy size={13} />{target.title}</DropdownMenu.Item>)}
               </DropdownMenu.Content></DropdownMenu.Portal></DropdownMenu.Root>
@@ -476,13 +483,14 @@ export function JourneyEditor({ catalog, deck, source, initialJourneyId, writabl
             {settings && <div className="journey-editor-settings"><label>{t.journeyTitle}<input className="control-field" maxLength={120} value={draft.title} disabled={!editable} onChange={event => changeDraft({ title: event.target.value })} /></label><label>{t.journeyDescription}<textarea className="control-field" rows={2} maxLength={2000} value={draft.description} disabled={!editable} onChange={event => changeDraft({ description: event.target.value })} /></label>
               {journeys.length > 1 && <label>{t.deckJourney}<select className="control-field" value={base.journey?.id ?? ''} disabled={locked} onChange={event => requestNavigation({ journeyId: event.target.value })}>{journeys.map(journey => <JourneyOption key={journey.id} journey={journey} />)}</select>{operationJourney && <JourneyOperationBadge journey={operationJourney} />}</label>}
               {base.journey && <CatalogReferenceLink kind="p" id={base.journey.id} source={source} />}</div>}
-            {!editable && !operationBlocked && <p className="journey-editor-notice">{writable ? t.assetMixedOnly : t.readOnlySandbox}</p>}
+            {!editable && !operationBlocked && <p className="journey-editor-notice">{writable ? t.assetMixedOnly : currentSourceLabels().projectReadOnly}</p>}
+            {draft.steps.length === 0 && <p className="journey-editor-intro">{introduction.explanation}</p>}
             {!inspected && conflictFeedback}
-            {metricsOpen && metricsAvailable && <JourneyMetricsTable metrics={metrics} error={metricsError} steps={draft.steps} />}
+            {metricsOpen && metricsAvailable && <JourneyMetricsTable metrics={metrics} error={metricsError} loading={metricsLoading} onRetry={retryMetrics} steps={draft.steps} />}
             <JourneyZones zones={draft.zones} steps={draft.steps} decks={catalog.decks} disabled={!editable || !!unconfirmedCreate} selectedIds={selectedIds} onSelectionChange={setSelectedIds} metrics={metricsByStep} onZonesChange={zones => changeDraft({ zones })} onStepsChange={steps => changeDraft({ steps })} onOpen={setInspectedId} onAdd={addStep} />
             <button type="button" className="journey-add-zone control" disabled={!editable || !!unconfirmedCreate || draft.zones.length >= 20} onClick={() => changeDraft({ zones: [...draft.zones, { id: nextJourneyId('zone', draft.zones), title: formatText[catalog.formatLanguage].newZoneTitle }] })}><Plus size={14} />{t.addZone}</button>
           </div>
-        </> : <JourneyCatalog catalog={catalog} deck={deck} journey={operationJourney} source={source} disabled={locked || !writable} onEdit={onEdit} onOperationBusyChange={setOperationBusy} onImport={importTemplate} onBack={() => { setScreen('editor'); setError(''); }} />}
+        </> : <JourneyCatalog catalog={catalog} deck={deck} journey={operationJourney} source={source} disabled={locked || !writable} onEdit={onEdit} onOperationBusyChange={setOperationBusy} onImport={importTemplate} onBack={backFromCatalog} backRef={catalogBack} />}
         {screen === 'catalog' && <Button className="journey-catalog-close" variant="ghost" size="icon" aria-label={t.closeJourney} onClick={() => requestNavigation('close')}><X size={18} /></Button>}
         {!inspected && errorFeedback}
         {screen === 'editor' && <footer className="journey-editor-footer"><span role="status">{saveStatus}{busy && <LoaderCircle size={14} className="spin" />}</span>
@@ -491,7 +499,7 @@ export function JourneyEditor({ catalog, deck, source, initialJourneyId, writabl
       </div>
     </Dialog.Content></Dialog.Portal>
     {inspected && <JourneyStepPanel key={inspected.id} step={inspected} steps={draft.steps} catalog={catalog} source={source} path={base.journey?.path.replace(/index\.md$/, `steps/${inspected.id}.md`)} disabled={!editable}
-      feedback={<>{operationFeedback}{conflictFeedback}{errorFeedback}<p className="journey-step-save-state" role="status">{saveStatus}{invalid && dirty ? `. ${invalid}` : ''}</p></>}
+      feedback={<>{operationFeedback}{conflictFeedback}{errorFeedback}</>} saveStatus={saveStatus + (invalid && dirty ? `. ${invalid}` : '')} onLocalUnsavedChange={setInvalidStepText}
       onChange={patch => changeDraft({ steps: latestDraft.current.steps.map(step => step.id === inspected.id ? { ...step, ...patch } : step) })} onClose={() => setInspectedId(null)} onRemove={() => deleteSteps([inspected.id])} />}
     {saveTemplate && base.journey && <JourneySaveTemplateDialog journey={base.journey} categories={[...new Set((catalog.journeyTemplates ?? []).map(template => template.category))]} disabled={busy} onSave={saveAsTemplate} onClose={() => { if (!busy) setSaveTemplate(false); }} />}
     <Dialog.Root open={discardTo !== null} onOpenChange={open => { if (!open) setDiscardTo(null); }}><Dialog.Portal><Dialog.Overlay className="journey-confirm-overlay" /><Dialog.Content className="journey-confirm-dialog dialog-panel">

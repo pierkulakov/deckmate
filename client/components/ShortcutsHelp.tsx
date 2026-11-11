@@ -100,7 +100,7 @@ export function ShortcutsHelp({ screens, writable, vision = false }: ShortcutsHe
           onCloseAutoFocus={event => { event.preventDefault(); if (opener.current?.isConnected) moveFocus(opener.current, { preventScroll: true }); }}>
           {/* 2026-11-10: the frame, head and body come from the shared dialog grammar in surface.css; the description is
               the caption under the title, and groups are panel sections with panel-title headings. */}
-          <header className="shortcuts-panel-header dialog-head">
+          <header className="dialog-head">
             <div className="shortcuts-panel-heading">
               <Dialog.Title className="dialog-title">{t.title}</Dialog.Title>
               <Dialog.Description className="shortcuts-panel-caption">{t.description}</Dialog.Description>
@@ -124,7 +124,7 @@ export function ShortcutsHelp({ screens, writable, vision = false }: ShortcutsHe
             </section>)}
           </div>
           {/* AGPL §13: the app ships no version to the client, so the foot names the app, its license and its source. */}
-          <footer className="shortcuts-panel-foot">
+          <footer className="shortcuts-panel-foot dialog-foot">
             Deckmate · {t.license} · <a href="https://github.com/pierkulakov/deckmate" target="_blank" rel="noreferrer noopener">{t.sourceCode}</a>
           </footer>
         </Dialog.Content>

@@ -20,8 +20,6 @@
 .deck-panel-button.is-narrow { width: auto; min-width: 24px; padding: 0 3px; }
 .deck-panel-button.is-wide { width: 100%; }
 .deck-panel-button svg { flex-shrink: 0; }
-/* 2026-11-06: pressed panel buttons move 1 px like every .ui-button; the global button transition has no transform. */
-.deck-panel-button, .card-ordering-help { transition: background-color var(--motion-feedback), color var(--motion-feedback), border-color var(--motion-feedback), opacity var(--motion-feedback), transform var(--motion-feedback) var(--ease-out); }
 .deck-panel-button:active:not(:disabled), .card-ordering-help:active { transform: translateY(1px); }
 
 .deck-panel-switch-row { display: flex; align-items: center; gap: 4px; height: 14px; font-weight: 500; letter-spacing: .01em; }
@@ -95,3 +93,13 @@
 .deck-table .catalog-group-select:has(input:indeterminate) input { opacity: 1; }
 .deck-open-tools .deck-archive-toggle { flex-shrink: 0; height: 30px; }
 @media (hover: none) { .catalog-group-select, .deck-table .catalog-group-select input[type="checkbox"] { opacity: 1; } }
+@media (pointer: coarse) {
+  .deck-panel-switch-row, .deck-panel .deck-panel-switch-row { min-height: var(--control-target-touch); height: auto; gap: var(--space-2); }
+  .deck-panel-switch-row > label { display: flex; align-items: center; min-height: var(--control-target-touch); white-space: normal; overflow-wrap: anywhere; }
+  .deck-panel-switch { position: relative; display: grid; place-items: center; width: var(--control-target-touch); height: var(--control-target-touch); padding: 0; border-radius: var(--control-radius); }
+  .deck-panel-switch, .deck-panel-switch[aria-checked="true"] { background: transparent; }
+  .deck-panel-switch::before { content: ''; width: 28px; height: 12px; border-radius: 999px; background: var(--toggle-off); }
+  .deck-panel-switch[aria-checked="true"]::before { background: var(--toggle-on, var(--accent)); }
+  .deck-panel-switch > span { position: absolute; left: calc(50% - 13px); top: calc(50% - 5px); }
+  .deck-panel-button, .card-ordering-help { min-height: var(--control-target-touch); min-width: var(--control-target-touch); }
+}

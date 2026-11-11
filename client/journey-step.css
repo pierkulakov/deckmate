@@ -2,7 +2,7 @@
 .journey-step-overlay { position: fixed; inset: 0; z-index: 130; background: color-mix(in srgb, var(--surface) 88%, transparent); animation: backdrop-fade var(--motion-panel) ease-out; }
 .journey-step-sheet { position: fixed; inset: 0 auto 0 0; z-index: 131; display: flex; flex-direction: column; width: min(521px, 100vw); max-height: 100dvh; background: var(--ground); color: var(--ink); box-shadow: var(--shadow); --sheet-from: -100% 0; animation: sheet-slide var(--motion-panel) var(--ease-panel); }
 .journey-step-sheet-header { display: flex; align-items: center; gap: 8px; height: 52px; padding: 0 15px 0 12px; flex-shrink: 0; }
-.journey-step-sheet-header h2 { margin: 0 auto 0 0; font-size: 12px; font-weight: 600; line-height: 14px; }
+.journey-step-sheet-header h2 { margin: 0 auto 0 0; font-size: 15px; font-weight: 600; line-height: 24px; }
 .journey-step-sheet-header > .ui-button { width: 26px; height: 26px; min-height: 26px; color: var(--ink); }
 .journey-step-target { display: inline-flex; align-items: center; gap: 5px; min-width: 0; max-width: 60%; height: 24px; padding-left: 6px; border: var(--control-hairline) solid var(--control-line); border-radius: var(--control-radius); background: var(--canvas); color: var(--ink); }
 .journey-step-target > svg { flex-shrink: 0; color: var(--focus); }
@@ -15,7 +15,7 @@
 .journey-step-sheet-body { display: grid; grid-template-columns: minmax(0, 455px) 24px; align-items: start; column-gap: 13px; min-height: 0; flex: 1; overflow: auto; padding: 1px 15px 24px 13px; scrollbar-width: thin; scrollbar-color: var(--line) var(--ground); }
 .journey-step-document { display: flex; flex-direction: column; min-height: 570px; overflow: hidden; border-radius: 6px; background: var(--card-face); color: var(--card-ink); box-shadow: var(--card-shadow); }
 .journey-step-content { flex: 1; min-width: 0; padding: 16px 15px 8px; }
-.journey-step-title { margin: 0 0 10px; font-size: 24px; font-weight: 700; line-height: 30px; overflow-wrap: anywhere; }
+.journey-step-title { margin: 0 0 10px; font-size: 22px; font-weight: 600; line-height: 26px; overflow-wrap: anywhere; }
 .journey-step-markdown .markdown, .journey-step-empty { color: color-mix(in srgb, var(--card-ink) 88%, var(--card-face)); font-size: 14px; line-height: 20.6px; }
 .journey-step-empty { margin: 0; color: var(--card-muted); }
 /* Edit mode reuses CardEditForm edge to edge, filling the face down to the band so Done stays where Edit was. */
@@ -46,7 +46,7 @@
 .journey-step-edit:hover:not(:disabled) { filter: brightness(1.12); }
 .journey-step-properties { display: flex; align-items: center; justify-content: space-between; gap: 14px; height: 46px; flex-shrink: 0; padding: 0 18px; background: var(--journey-band, color-mix(in srgb, var(--accent) 38%, var(--card-face))); color: var(--card-ink); }
 .journey-step-properties label { display: inline-flex; align-items: center; gap: 8px; color: var(--card-muted); }
-.journey-step-properties label > span:first-child { font-size: 10px; font-weight: 500; letter-spacing: .4px; text-transform: uppercase; }
+.journey-step-properties label > span:first-child { font-size: 12px; font-weight: 500; letter-spacing: .4px; text-transform: uppercase; }
 .journey-step-properties .journey-priority-icon { color: var(--card-ink); }
 .journey-step-properties input, .journey-step-properties select { height: 26px; padding: 0 4px; border: .67px solid transparent; border-radius: var(--control-radius); background: transparent; color: var(--card-ink); font-size: 14px; font-weight: 500; }
 .journey-step-properties input { width: 52px; font-variant-numeric: tabular-nums; }
@@ -68,5 +68,9 @@
 @media (max-width: 440px) {
   .journey-step-sheet-body { grid-template-columns: minmax(0, 1fr) 24px; padding-inline: 8px; column-gap: 8px; }
   .journey-step-properties { gap: 8px; padding-inline: 12px; }
-  .journey-step-title { font-size: 21px; }
+}
+@media (hover: none) {
+  .journey-step-sheet-header > .ui-button, .journey-step-rail .ui-button { width: var(--control-target-touch, 44px); height: var(--control-target-touch, 44px); min-height: var(--control-target-touch, 44px); }
+  .journey-step-sheet-body { grid-template-columns: minmax(0, 1fr) var(--control-target-touch, 44px); }
+  .journey-step-target, .journey-step-target select { min-height: var(--control-target-touch, 44px); }
 }

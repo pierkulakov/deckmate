@@ -17,6 +17,8 @@ import { CatalogReferenceLink } from './JourneyPanel.tsx';
 import { Button } from './ui/button.tsx';
 import { defineText, textNow, useText } from '../i18n.ts';
 import { moveFocus } from '../focus.ts';
+import { OpenQuestions, questionReadingTree } from './OpenQuestions.tsx';
+import { parseOpenQuestions } from '../../src/open-questions.ts';
 import '../card-editor.css';
 
 const text = defineText({
@@ -124,7 +126,7 @@ async function fetchCardContent(cardId: string, source: WorkspaceSnapshot['sourc
   return result as CardContent;
 }
 
-export function CardContentEditor({ card, catalog, snapshot, writable, pending, blocked, headingRef, onEdit, onEditingChange, onCancelEdit, titleActions, footerActions, footerTarget, bodyAfter, onOpenCard, focusMode = false, onFocusModeExit, hideJourneyStepLink = false }: {
+export function CardContentEditor({ card, catalog, snapshot, writable, pending, blocked, headingRef, onEdit, onEditingChange, onQuestionsActiveChange, questionsDisabled = false, onCancelEdit, titleActions, footerActions, footerTarget, bodyAfter, onOpenCard, focusMode = false, onFocusModeExit, hideJourneyStepLink = false }: {
   card: CatalogCard;
   catalog: CatalogView;
   snapshot: WorkspaceSnapshot;
@@ -134,6 +136,8 @@ export function CardContentEditor({ card, catalog, snapshot, writable, pending, 
   headingRef: RefObject<HTMLHeadingElement | null>;
   onEdit: (action: CatalogAction) => Promise<boolean>;
   onEditingChange: (editing: boolean) => void;
+  onQuestionsActiveChange?: (active: boolean) => void;
+  questionsDisabled?: boolean;
   onCancelEdit?: () => void;
   titleActions?: ReactNode;
   footerActions?: ReactNode;
@@ -186,7 +190,12 @@ export function CardContentEditor({ card, catalog, snapshot, writable, pending, 
   // the editor and the file keep the full text.
   const readingMarkdown = useMemo(() => hideJourneyStepLink ? splitJourneyStepLink(shownContent.markdown, card.journey).body : shownContent.markdown,
     [hideJourneyStepLink, shownContent.markdown, card.journey]);
-  const tree = useMemo(() => parseEditorMarkdown(readingMarkdown), [readingMarkdown]);
+  const questionsShown = card.kind === 'doc' && !focusMode && Boolean(onQuestionsActiveChange && onOpenCard);
+  const tree = useMemo(() => {
+    const parsed = parseEditorMarkdown(readingMarkdown);
+    return questionsShown ? questionReadingTree(parsed) : parsed;
+  }, [readingMarkdown, questionsShown]);
+  const questions = useMemo(() => parseOpenQuestions(shownContent.markdown), [shownContent.markdown]);
   const base = baseline.current;
   const contentDirty = editing && base !== null && draft !== composeDraft(base.title, base.markdown);
   const revisionChanged = editing && base !== null
@@ -357,7 +366,7 @@ export function CardContentEditor({ card, catalog, snapshot, writable, pending, 
     const base = baseline.current;
     if (!editing || !base || !writable || pending || saving || inFlight.current || hasConflict) return;
     inFlight.current = true;
-    const { title: draftTitle, markdown: draftMarkdown } = splitDraft(draft);
+    const { title: draftTitle, markdown: draftMarkdown } = splitDraft(draft, base.markdown);
     if (!draftTitle) { setNotice(t.titleRequired); inFlight.current = false; return; }
     if (draftTitle.length > 1000 || draftMarkdown.length > 200000) { setNotice(t.tooLong); inFlight.current = false; return; }
     await persistContent(base, draftTitle, draftMarkdown);
@@ -439,13 +448,14 @@ export function CardContentEditor({ card, catalog, snapshot, writable, pending, 
           onTaskToggle={content && writable && !loadFailure ? (offset, checked) => void toggleTask(offset, checked) : undefined}
           taskToggleDisabled={loading || pending || saving || blocked} /> : <p className="card-content-empty">{t.empty}</p>}
       </div>
+      {questionsShown && onQuestionsActiveChange && onOpenCard && <OpenQuestions card={{ ...card, markdown: shownContent.markdown, sourceHash: shownContent.sourceHash, openQuestions: questions.questions, openQuestionWarnings: questions.warnings }} catalog={catalog} source={snapshot.source} writable={writable} disabled={questionsDisabled || saving || pending || loading} onEdit={onEdit} onSelect={onOpenCard} onActiveChange={onQuestionsActiveChange} />}
       {!focusMode && bodyAfter}
       {notice && <p className="card-content-notice" role="status">{notice}</p>}
       {!focusMode && !footerTarget && readingFooter}
     </>}
     {editing && <CardEditForm draft={draft} onDraftChange={setDraft} catalog={catalog} source={snapshot.source} path={card.path} cardId={card.id}
       writable={writable} busy={pending || saving} saving={saving} blocked={hasConflict} hintActions={focusMode ? undefined : titleActions} notice={notice}
-      saveLabel={notice === t.rebased ? t.saveMyText : undefined}
+      saveLabel={notice === t.rebased ? t.saveMyText : undefined} footerTarget={focusMode ? undefined : footerTarget}
        onSave={() => void save()} onCancel={() => void cancelEditing()}>
        {saveStatus && <p className="card-content-save-status" role="status">{saveStatus}</p>}
       {hasConflict && <section className="card-content-conflict" aria-label={t.conflict}>

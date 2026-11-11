@@ -138,7 +138,7 @@ Rust checks again on every command (`bridge.rs`): launcher commands answer only 
 
 ### Navigation and new windows
 
-The main window may navigate only to the bundled launcher (`http://tauri.localhost/index.html`) and the current server origin; iframes only to the current server origin. Any other `http(s)` target opens in the system browser and is canceled in the app; every other scheme is canceled outright. Page-initiated new-window requests do not create app windows: an `http(s)` target goes to the system browser, anything else is dropped. The shell itself may open the separate What's new window. Navigating back to the launcher URL while a project is open is intercepted and routed through the shell, which stops the server before the start screen appears.
+The main window may navigate only to the bundled launcher (`http://tauri.localhost/index.html`) and the current server origin; iframes only to the current server origin. Any other `http(s)` target opens in the system browser and is canceled in the app; every other scheme is canceled outright. Page-initiated new-window requests do not create app windows: an `http(s)` target, including the current server's document and reference links, goes to the system browser; bundled app URLs and all other schemes are dropped. The shell itself may open the separate What's new window. Navigating back to the launcher URL while a project is open is intercepted and routed through the shell, which stops the server before the start screen appears.
 
 ### WebView2 permissions
 
@@ -170,7 +170,9 @@ UNC and device paths (`\\server\share`, `\\?\C:\`, `\\.\`), mapped network drive
 
 ### Window
 
-The main window is 1280×820 by default and at least 960×600. Saved bounds are restored when at least 120×60 of the window overlaps some monitor's work area; bounds are saved 300 ms after a move or resize and on close; the maximized state is kept. The window is created hidden and shown once the bounds are restored and the first page load has finished; a 5-second fallback shows it with an error, so a broken start screen never leaves an invisible process. A second launch unminimizes, shows and focuses the running window. The title is `Deckmate` on the start screen and `Deckmate — <folder name>` on the board.
+The main window is 1280×820 by default and at least 960×600. Saved bounds are restored when at least 120×60 of the window's top edge overlaps some monitor's work area, keeping its title bar reachable; bounds are saved 300 ms after a move or resize and on close; the maximized state is kept. The window is created hidden and shown once the bounds are restored and the first page load has finished; a 5-second fallback shows it with an error, so a broken start screen never leaves an invisible process. A second launch unminimizes, shows and focuses the running window. The title is `Deckmate` on the start screen and `Deckmate — <folder name>` on the board.
+
+The main window leaves file drops to WebView2's HTML drag-and-drop handlers, so the board's attachment panel receives files as it does in a browser; no native file-drop capability is needed.
 
 ### Zoom
 
@@ -193,7 +195,7 @@ The Node compile cache remains disabled. On 2026-11-09, five debug `Deckmate.exe
 - **No embedded board HTML.** Server and client filter Vision scenes: `iframe`/unknown element types are hidden with warnings on read and rejected on save; AI generation data, executable links, non-raster scene files and unsupported app state are removed. Only project nodes and canonical HTTPS YouTube embeds are allowed; scene/image sizes are bounded, and reads never rewrite project files.
 - **Same-origin iframes can reach the board bridge.** Vision renders project content in same-origin iframes on the board, and such an iframe can invoke the eight board commands: WebView2 IPC does not identify the calling frame, so the top-frame check Electron made cannot be repeated on the Rust side. The bridge remains restricted to listing workspace/recent projects, explicit workspace mutations, dirty-state reporting, switching to a listed project and showing the start screen. Every command passes the current-origin check; additions are restricted to the native dialog, current project or recent list. Same-origin content can change workspace membership/order, dirty state or trigger navigation, but cannot add or open an arbitrary caller-provided path.
 - **DevTools are off in release builds.** The tauri crate is built without the `devtools` feature. The menu item remains visible but is disabled in release builds; its handler is compiled only with debug assertions.
-- **Debug-only hooks.** `DECKMATE_DESKTOP_NODE`, `DECKMATE_DESKTOP_SERVER`, `DECKMATE_DESKTOP_CDP_PORT` (the smoke's CDP port), `DECKMATE_DESKTOP_SETTINGS_DIR` (the smoke's throwaway settings folder), `DECKMATE_DESKTOP_DIRTY_POLICY=refuse` (cancels dirty navigation/quit without opening a native dialog), and `DECKMATE_DESKTOP_EXTERNAL_LOG` (records external links instead of opening the user's browser) are honored only by debug builds; release builds never read them.
+- **Debug-only hooks.** `DECKMATE_DESKTOP_NODE`, `DECKMATE_DESKTOP_SERVER`, `DECKMATE_DESKTOP_CDP_PORT` (the smoke's CDP port), `DECKMATE_DESKTOP_SETTINGS_DIR` (the smoke's throwaway settings folder, with a shared `webview/` profile for the main and What's new windows), `DECKMATE_DESKTOP_DIRTY_POLICY=refuse` (cancels dirty navigation/quit without opening a native dialog), and `DECKMATE_DESKTOP_EXTERNAL_LOG` (records external links instead of opening the user's browser) are honored only by debug builds; release builds never read them.
 - **The builds are not code-signed**, so Windows SmartScreen may warn on first run.
 
 ## Release and upgrading from Electron

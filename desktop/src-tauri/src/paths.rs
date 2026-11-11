@@ -73,6 +73,11 @@ fn debug_settings_dir() -> Option<PathBuf> {
     None
 }
 
+pub fn debug_webview_dir() -> Option<PathBuf> {
+    // 2026-11-11: isolated shell checks must not change the user's WebView2 profile.
+    debug_settings_dir().map(|directory| directory.join("webview"))
+}
+
 pub fn is_network_path(path: &str) -> bool {
     classify_network_path(path, remote_drive, |path| {
         std::fs::canonicalize(path)
@@ -241,8 +246,13 @@ mod tests {
         let original = env::var_os("DECKMATE_DESKTOP_SETTINGS_DIR");
         env::set_var("DECKMATE_DESKTOP_SETTINGS_DIR", r"C:\smoke\settings");
         assert_eq!(settings_dir().unwrap(), PathBuf::from(r"C:\smoke\settings"));
+        assert_eq!(
+            debug_webview_dir(),
+            Some(PathBuf::from(r"C:\smoke\settings\webview"))
+        );
         env::set_var("DECKMATE_DESKTOP_SETTINGS_DIR", "");
         assert_ne!(settings_dir().unwrap(), PathBuf::from(r"C:\smoke\settings"));
+        assert!(debug_webview_dir().is_none());
         match original {
             Some(value) => env::set_var("DECKMATE_DESKTOP_SETTINGS_DIR", value),
             None => env::remove_var("DECKMATE_DESKTOP_SETTINGS_DIR"),

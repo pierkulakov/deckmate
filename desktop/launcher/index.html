@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'; connect-src 'self' ipc: http://ipc.localhost">
   <title>Deckmate</title>
   <script src="theme.js"></script>
   <link rel="stylesheet" href="tokens.css">
@@ -43,8 +43,16 @@
 
       <div class="table" aria-hidden="true">
         <div class="shelf">
-          <div class="cover" style="--deck-color: #028188; --deck-band: #01797f; --art: url('art/art.webp')"><span class="cover-art"></span><span class="cover-title">Art</span><span class="cover-count">12</span></div>
-          <div class="cover" style="--deck-color: #4c7099; --deck-band: #47698f; --art: url('art/buildings.webp')"><span class="cover-art"></span><span class="cover-title">Buildings</span><span class="cover-count">7</span></div>
+          <div class="cover" style="--cover-c-dark: #00747b; --cover-c-light: #a1d6da; --art: url('art/art.webp')">
+            <span class="cover-backdrop"></span><span class="cover-art"></span>
+            <span class="cover-medallion"><svg class="icon" viewBox="0 0 24 24"><path d="M12 22a10 10 0 1 1 0-20c5.5 0 9 3.5 9 8 0 2.2-1.8 4-4 4h-1.8a2 2 0 0 0-1.6 3.2A3 3 0 0 1 12 22Z"/><path d="M7.5 10h.01M10 6.5h.01M14 6.5h.01M17 10h.01"/></svg></span>
+            <span class="cover-title">Art</span><span class="cover-foot"><span class="cover-count">12</span></span>
+          </div>
+          <div class="cover" style="--cover-c-dark: #496c91; --cover-c-light: #b7cde6; --art: url('art/buildings.webp')">
+            <span class="cover-backdrop"></span><span class="cover-art"></span>
+            <span class="cover-medallion"><svg class="icon" viewBox="0 0 24 24"><path d="m3 10 9-7 9 7v10H3Z"/><path d="M9 20v-7h6v7"/></svg></span>
+            <span class="cover-title">Buildings</span><span class="cover-foot"><span class="cover-count">7</span></span>
+          </div>
         </div>
         <div class="fan">
           <div class="fan-card fan-card-doc" style="--i: 2"><img src="art/cards.png" alt=""></div>

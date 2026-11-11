@@ -536,7 +536,7 @@ export function groupIdenticalNotices(notices) {
   });
 }
 
-export function collectReleaseCrates(metadata) {
+function collectReleaseCrates(metadata) {
   const packages = new Map(metadata.packages.map(pkg => [pkg.id, pkg]));
   const nodes = new Map(metadata.resolve.nodes.map(node => [node.id, node]));
   const root = packages.get(metadata.resolve.root);
@@ -587,7 +587,7 @@ function crateLicenseFiles(pkg) {
   });
 }
 
-export function renderDesktopNotices({ nodePin, nodeLicense, crates, groups }) {
+function renderDesktopNotices({ nodePin, nodeLicense, crates, groups }) {
   const rust = groups.map((group, index) => {
     const crateList = [...group.crates.values()]
       .sort((a, b) => a.name.localeCompare(b.name) || a.version.localeCompare(b.version))

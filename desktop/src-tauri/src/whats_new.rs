@@ -128,6 +128,10 @@ pub async fn open(app: &AppHandle, from: Option<String>) {
                 let _ = window.show();
             }
         });
+    let builder = match crate::paths::debug_webview_dir() {
+        Some(directory) => builder.data_directory(directory),
+        None => builder,
+    };
     // 2026-11-09: WebView2 windows sharing a profile require identical browser arguments, including CDP.
     let result = match window::debug_browser_args() {
         Some(args) => builder.additional_browser_args(&args),

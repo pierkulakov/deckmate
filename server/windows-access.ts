@@ -17,8 +17,11 @@ const script = `
   $trusted = @($user.Value, 'S-1-5-18', 'S-1-5-32-544')
   while ($null -ne ($line = [Console]::ReadLine())) {
     $request = $null
+    try { $request = ConvertFrom-Json -InputObject $line } catch { [Console]::WriteLine(':denied:request'); continue }
+    # A concurrent Set-Acl from another Deckmate process can fail a read for a moment; only an untrusted owner or writer
+    # is a verdict, anything else is retried twice before it counts as a denial.
+    for ($attempt = 1; ; $attempt++) {
     try {
-      $request = ConvertFrom-Json -InputObject $line
       foreach ($target in @($request.filename, $request.parent)) {
         if (!$target) { continue }
         $acl = Get-Acl -LiteralPath $target
@@ -48,10 +51,14 @@ const script = `
         }
       }
       [Console]::WriteLine(([string]$request.id + ':ok'))
+      break
     } catch {
       $reason = ([string]$_.Exception.Message -replace '[^A-Za-z0-9-]', '')
+      if ($reason -notmatch '^(owner|writer)-' -and $attempt -lt 3) { Start-Sleep -Milliseconds (50 * $attempt); continue }
       if ($reason.Length -gt 80) { $reason = $reason.Substring(0, 80) }
       [Console]::WriteLine(([string]$request.id + ':denied:' + $reason))
+      break
+    }
     }
   }
 `;

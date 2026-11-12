@@ -136,10 +136,14 @@ async function main() {
       run('unit', 'unit', ['--maxWorkers=2']),
       (async () => {
         if (browserAvailable) built = await buildBrowserFixtures();
-        const shards = await Promise.allSettled([1, 2, 3].map(index => run(`browser-${index}`, 'browser', [`--shard=${index}/3`])));
+        // 2026-11-13: the editor/focus matrix races concurrent renderer layout work; overlap it with unit workers before starting the other browsers.
+        const focusFiles = ['tests/card-preview-first-batch.test.ts'];
+        const focus = await run('browser-focus', 'browser', focusFiles);
+        const shards = await Promise.allSettled([1, 2, 3].map(index => run(`browser-${index}`, 'browser',
+          [`--shard=${index}/3`, ...focusFiles.map(file => `--exclude=${file}`)])));
         const errors = shards.flatMap(shard => shard.status === 'rejected' ? [shard.reason] : []);
         if (errors.length) throw new AggregateError(errors, t.runnerFailed);
-        return shards.flatMap(shard => shard.status === 'fulfilled' ? [shard.value] : []);
+        return [focus, ...shards.flatMap(shard => shard.status === 'fulfilled' ? [shard.value] : [])];
       })(),
     ]);
     const jobs = results.flatMap(result => result.status === 'fulfilled' ? [result.value].flat() : []);
@@ -157,7 +161,7 @@ async function main() {
       .reduce((sum, job) => sum + (job.tests?.numPendingTests ?? 0), 0)));
     console.info(t.duration((report.elapsedMs / 1000).toFixed(2), (report.buildMs / 1000).toFixed(2)));
     console.info(t.report(filename));
-    if (interrupted || jobs.length !== 4 || jobs.some(job => job.exitCode !== 0 || !job.tests)) process.exitCode = 1;
+    if (interrupted || jobs.length !== 5 || jobs.some(job => job.exitCode !== 0 || !job.tests)) process.exitCode = 1;
   } finally {
     if (children.size) stop();
     await Promise.all(cancellations);

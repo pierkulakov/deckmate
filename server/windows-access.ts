@@ -70,7 +70,10 @@ function failWorker(child: ChildProcessWithoutNullStreams): void {
 function accessWorker(): ChildProcessWithoutNullStreams {
   if (worker) return worker;
   const executable = path.join(process.env.SystemRoot ?? 'C:\\Windows', 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe');
-  const child = spawn(executable, ['-NoLogo', '-NoProfile', '-NonInteractive', '-Command', script], { windowsHide: true });
+  // 2026-11-13: a PowerShell 7 parent leaves its PSModulePath behind, and Windows PowerShell then cannot load Get-Acl;
+  // without the variable it builds its own default module path.
+  const env = Object.fromEntries(Object.entries(process.env).filter(([name]) => name.toLowerCase() !== 'psmodulepath'));
+  const child = spawn(executable, ['-NoLogo', '-NoProfile', '-NonInteractive', '-Command', script], { windowsHide: true, env });
   worker = child;
   let received = '';
   child.stdout.setEncoding('utf8');

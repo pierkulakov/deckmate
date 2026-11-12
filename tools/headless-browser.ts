@@ -211,7 +211,9 @@ async function launchBrowser(options: HeadlessBrowserOptions, viewport?: Viewpor
         endpoint = lines[1];
         if (port > 0 && endpoint?.startsWith('/devtools/browser/')) break;
       } catch (error) {
-        if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+        // 2026-11-13: Chromium briefly locks the port file while publishing it on Windows; keep the existing startup deadline.
+        const code = (error as NodeJS.ErrnoException).code;
+        if (code !== 'ENOENT' && !(process.platform === 'win32' && code === 'EBUSY')) throw error;
       }
       await sleep(200);
     }

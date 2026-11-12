@@ -308,9 +308,11 @@ describe.skipIf(!browserPath)('open-deck chrome', () => {
       await page.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [await point(selector)] });
     };
     try {
+      await navigateTo(browserFixtureUrl('open-deck-chrome') + '?view=deck&catalogSource=sandbox&deck=work&order=priority',
+        `document.querySelector('.card-transfer-handle')`);
       for (const ending of ['touchCancel', 'Escape', 'group', 'deck']) {
-        await navigateTo(browserFixtureUrl('open-deck-chrome') + '?view=deck&catalogSource=sandbox&deck=work&order=priority',
-          `document.querySelector('.card-transfer-handle')`);
+        // 2026-11-13: writes return the unchanged fixture catalog, so each ending needs a fresh request log rather than a full reload.
+        await page.evaluate(`window.deckEdits.length = 0`);
         await page.evaluate(`document.querySelector('.deck-action-rail button[aria-pressed="true"]')?.click(); document.querySelector('.card-transfer-handle').scrollIntoView({block:'center',behavior:'instant'})`);
         await waitForLayout(page.evaluate, '.catalog-workbench');
         const start = await point('.card-transfer-handle');
@@ -345,6 +347,9 @@ describe.skipIf(!browserPath)('open-deck chrome', () => {
           expect(request).toMatchObject(ending === 'group'
             ? { action: 'bulk-edit-cards', change: { kind: 'properties', priority: 'medium' } }
             : { action: 'bulk-assign-deck', deckId: null });
+          // 2026-11-13: recording a POST precedes the saved UI; navigating while it is pending opens a blocking beforeunload dialog.
+          await until(`Boolean(document.querySelector('.card-transfer-handle[aria-disabled="false"]'))`);
+          await waitForLayout(page.evaluate, '.catalog-workbench');
         } else expect(await page.evaluate('window.deckEdits'), ending).toEqual([]);
         expect(await page.evaluate(`document.documentElement.classList.contains('is-transfer-target-over')`)).toBe(false);
       }

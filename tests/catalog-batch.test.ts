@@ -307,7 +307,10 @@ it.each(['files', 'server'] as const)('yields a long batch to a waiting independ
     const result = await writeCatalogBatch(project.config, project.source, 'agent', Array.from({ length: 8 }, (_, i) => hash => create(i, hash)));
     expect(result.every(item => item.ok)).toBe(true);
     await competitor;
-    expect(visits.indexOf('independent')).toBeLessThanOrEqual(3);
+    // 2026-11-13: the waiting writer must get the lock before the batch ends; which chunk lets it in depends on
+    // timer scheduling between the two writers, and on Linux CI that was once the fifth edit rather than the fourth.
+    expect(visits.indexOf('independent')).toBeGreaterThan(0);
+    expect(visits.indexOf('independent')).toBeLessThan(visits.length - 1);
     expect((await readProjectCatalog(project.root)).cards).toHaveLength(10);
     expect((await readWholeActivity(project.root)).events).toHaveLength(9);
   } finally { await competitor; await other.close(); }

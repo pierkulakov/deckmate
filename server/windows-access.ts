@@ -7,17 +7,14 @@ let sequence = 0;
 const pending = new Map<number, AccessRequest>();
 
 // 2026-11-12: one pipe-bound helper amortizes PowerShell startup; checking each lock must not stall other writers.
-// 2026-11-13: an elevated administrator's new files are owned by the Administrators group rather than the user;
-// that group already counts as a trusted writer, so it is an acceptable owner only for such a process.
+// 2026-11-13: SYSTEM and Administrators can change any file anyway, so they are trusted owners and writers; the check
+// keeps out other ordinary users. An elevated process owns new files through the Administrators group, and a profile's
+// Temp folder may belong to SYSTEM. Inherit-only entries grant nothing on the object itself. A denial names its reason.
 const script = `
   $ErrorActionPreference = 'Stop'
   [Console]::InputEncoding = [Text.Encoding]::UTF8
-  $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
-  $user = $identity.User
-  $owners = @($user.Value)
-  if ((New-Object Security.Principal.WindowsPrincipal($identity)).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
-    $owners += 'S-1-5-32-544'
-  }
+  $user = [Security.Principal.WindowsIdentity]::GetCurrent().User
+  $trusted = @($user.Value, 'S-1-5-18', 'S-1-5-32-544')
   while ($null -ne ($line = [Console]::ReadLine())) {
     $request = $null
     try {
@@ -25,7 +22,8 @@ const script = `
       foreach ($target in @($request.filename, $request.parent)) {
         if (!$target) { continue }
         $acl = Get-Acl -LiteralPath $target
-        if ($acl.GetOwner([Security.Principal.SecurityIdentifier]).Value -notin $owners) { throw 'owner' }
+        $owner = $acl.GetOwner([Security.Principal.SecurityIdentifier]).Value
+        if ($owner -notin $trusted) { throw ('owner-' + $owner) }
         if ($request.restrict -and $target -eq $request.filename) {
           $private = New-Object Security.AccessControl.DirectorySecurity
           $private.SetOwner($user)
@@ -44,12 +42,17 @@ const script = `
           [Security.AccessControl.FileSystemRights]::ChangePermissions -bor
           [Security.AccessControl.FileSystemRights]::TakeOwnership
         foreach ($ace in $acl.GetAccessRules($true, $true, [Security.Principal.SecurityIdentifier])) {
+          if (($ace.PropagationFlags -band [Security.AccessControl.PropagationFlags]::InheritOnly) -ne 0) { continue }
           if ($ace.AccessControlType -eq 'Allow' -and ($ace.FileSystemRights -band $write) -ne 0 -and
-            $ace.IdentityReference.Value -notin @($user.Value, 'S-1-5-18', 'S-1-5-32-544')) { throw 'writers' }
+            $ace.IdentityReference.Value -notin $trusted) { throw ('writer-' + $ace.IdentityReference.Value) }
         }
       }
       [Console]::WriteLine(([string]$request.id + ':ok'))
-    } catch { [Console]::WriteLine(([string]$request.id + ':denied')) }
+    } catch {
+      $reason = ([string]$_.Exception.Message -replace '[^A-Za-z0-9-]', '')
+      if ($reason.Length -gt 80) { $reason = $reason.Substring(0, 80) }
+      [Console]::WriteLine(([string]$request.id + ':denied:' + $reason))
+    }
   }
 `;
 
@@ -79,7 +82,7 @@ function accessWorker(): ChildProcessWithoutNullStreams {
       if (newline < 0) break;
       const line = received.slice(0, newline).trim();
       received = received.slice(newline + 1);
-      const match = /^(\d+):(ok|denied)$/u.exec(line);
+      const match = /^(\d+):(ok|denied)(?::([A-Za-z0-9-]{0,80}))?$/u.exec(line);
       if (!match) { failWorker(child); return; }
       const id = Number(match[1]);
       const request = pending.get(id);
@@ -87,7 +90,7 @@ function accessWorker(): ChildProcessWithoutNullStreams {
       clearTimeout(request.timer);
       pending.delete(id);
       if (match[2] === 'ok') request.resolve();
-      else request.reject(new Error('Windows access denied'));
+      else request.reject(new Error(`Windows access denied${match[3] ? ` (${match[3]})` : ''}`));
     }
   });
   child.stderr.resume();

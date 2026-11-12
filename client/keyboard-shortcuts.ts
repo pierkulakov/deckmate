@@ -6,6 +6,7 @@ import type { CatalogCard, CardPriority } from '../src/catalog-contracts.ts';
 import { defineText, textNow } from './i18n.ts';
 import { priorityLabel, stateLabel } from './locales/common.ts';
 import { resolveCardStateAction, type CardStateAction, type CardStateActionContext, type CardStateTrigger } from './card-state-actions.ts';
+import { primaryModifierPressed, type KeyCombo, type ShortcutModifier } from './shortcut-format.ts';
 
 const text = defineText({
   general: 'General',
@@ -74,8 +75,6 @@ const text = defineText({
   changeTaskState: 'Mark done or reopen; in Review, focus Accept review',
   trashCardConfirmed: 'Move the card to the Trash, after a confirmation',
   searchMyCards: 'Search my cards; press again to reset',
-  arrows: 'Arrows',
-  space: 'Space',
 }, {
   general: 'Общие',
   cardOverview: 'Карточки',
@@ -143,8 +142,6 @@ const text = defineText({
   changeTaskState: 'Принять или открыть снова; на приёмке — фокус на «Принять результат»',
   trashCardConfirmed: 'Переместить карточку в корзину после подтверждения',
   searchMyCards: 'Поиск моих карточек; повторное нажатие сбрасывает',
-  arrows: 'Стрелки',
-  space: 'Пробел',
 });
 
 /** Dialog group; open-card also routes shortcuts to the open card instead of the deck. */
@@ -157,11 +154,9 @@ export type CardQuickSettingsTab = 'deck' | 'owner' | 'run' | 'milestone' | 'pri
  */
 export type ShortcutScreen = 'app' | 'cards' | 'deck' | 'card';
 
-export interface ShortcutDefinition {
+interface ShortcutSpec {
   id: string;
   label: string;
-  /** Dialog label: one chip per combination, such as "Shift+V". */
-  keys: string;
   group: ShortcutGroupId;
   screen: ShortcutScreen;
   /** Mutates data: disabled and hidden from the dialog for read-only sources. */
@@ -182,128 +177,147 @@ export interface ShortcutDefinition {
   stateTrigger?: CardStateTrigger;
 }
 
-interface ShortcutGroup {
+export interface ShortcutDefinition extends ShortcutSpec { combo: KeyCombo }
+
+interface ShortcutGroupSpec {
   id: ShortcutGroupId;
   title: string;
-  items: readonly ShortcutDefinition[];
+  items: readonly ShortcutSpec[];
 }
+interface ShortcutGroup extends Omit<ShortcutGroupSpec, 'items'> { items: readonly ShortcutDefinition[] }
 
 const digitCodes = ['Digit0', 'Digit1', 'Digit2', 'Digit3', 'Digit4', 'Digit5', 'Digit6', 'Digit7', 'Digit8', 'Digit9'] as const;
 
 // Group order is General, screen-specific groups, then Search. Labels describe Deckmate behavior;
 // key combinations and contexts follow common board-tool shortcuts (2026-11-05).
-const SHORTCUT_GROUPS: readonly ShortcutGroup[] = [
+const SHORTCUT_SPECS: readonly ShortcutGroupSpec[] = [
   {
     id: 'general',
     get title() { return textNow(text).general; },
     items: [
-      { id: 'focus-search', get label() { return textNow(text).searchCards; }, keys: '/', key: '/', group: 'general', screen: 'app' },
-      { id: 'shortcuts-overview', get label() { return textNow(text).toggleOverview; }, keys: '?', key: '?', group: 'general', screen: 'app' },
-      { id: 'close-stepwise', get label() { return textNow(text).closeStepwise; }, keys: 'Esc', key: 'Escape', group: 'general', screen: 'cards' },
-      { id: 'view-hand', get label() { return textNow(text).goHand; }, keys: 'Shift+1', code: 'Digit1', shift: true, group: 'general', screen: 'app' },
-      { id: 'view-deck', get label() { return textNow(text).goDecks; }, keys: 'Shift+2', code: 'Digit2', shift: true, group: 'general', screen: 'app' },
-      { id: 'view-timeline', get label() { return textNow(text).goTimeline; }, keys: 'Shift+3', code: 'Digit3', shift: true, group: 'general', screen: 'app' },
-      { id: 'view-vision', get label() { return textNow(text).goVision; }, keys: 'Shift+4', code: 'Digit4', shift: true, group: 'general', screen: 'app' },
+      { id: 'focus-search', get label() { return textNow(text).searchCards; }, key: '/', group: 'general', screen: 'app' },
+      { id: 'shortcuts-overview', get label() { return textNow(text).toggleOverview; }, key: '?', group: 'general', screen: 'app' },
+      { id: 'close-stepwise', get label() { return textNow(text).closeStepwise; }, key: 'Escape', group: 'general', screen: 'cards' },
+      { id: 'view-hand', get label() { return textNow(text).goHand; }, code: 'Digit1', shift: true, group: 'general', screen: 'app' },
+      { id: 'view-deck', get label() { return textNow(text).goDecks; }, code: 'Digit2', shift: true, group: 'general', screen: 'app' },
+      { id: 'view-timeline', get label() { return textNow(text).goTimeline; }, code: 'Digit3', shift: true, group: 'general', screen: 'app' },
+      { id: 'view-vision', get label() { return textNow(text).goVision; }, code: 'Digit4', shift: true, group: 'general', screen: 'app' },
     ],
   },
   {
     id: 'deck',
     get title() { return textNow(text).cardOverview; },
     items: [
-      { id: 'toggle-card-view', get label() { return textNow(text).toggleCardView; }, keys: 'Shift+V', code: 'KeyV', shift: true, group: 'deck', screen: 'cards' },
-      { id: 'next-card', get label() { return textNow(text).nextCard; }, keys: 'J', code: 'KeyJ', group: 'deck', screen: 'cards' },
-      { id: 'previous-card', get label() { return textNow(text).previousCard; }, keys: 'K', code: 'KeyK', group: 'deck', screen: 'cards' },
-      { id: 'move-grid-focus', get label() { return textNow(text).moveGridFocus; }, get keys() { return textNow(text).arrows; }, codes: ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'], group: 'deck', screen: 'cards' },
+      { id: 'toggle-card-view', get label() { return textNow(text).toggleCardView; }, code: 'KeyV', shift: true, group: 'deck', screen: 'cards' },
+      { id: 'next-card', get label() { return textNow(text).nextCard; }, code: 'KeyJ', group: 'deck', screen: 'cards' },
+      { id: 'previous-card', get label() { return textNow(text).previousCard; }, code: 'KeyK', group: 'deck', screen: 'cards' },
+      { id: 'move-grid-focus', get label() { return textNow(text).moveGridFocus; }, codes: ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'], group: 'deck', screen: 'cards' },
       // O opens owner settings; Enter opens the card (2026-11-05).
-      { id: 'open-focused-card-enter', get label() { return textNow(text).openFocusedCard; }, keys: 'Enter', key: 'Enter', group: 'deck', screen: 'cards' },
-      { id: 'new-card', get label() { return textNow(text).addCard; }, keys: 'N', code: 'KeyN', group: 'deck', screen: 'cards', edits: true },
-      { id: 'toggle-select-focused', get label() { return textNow(text).selectFocusedCard; }, keys: 'X', code: 'KeyX', group: 'deck', screen: 'cards' },
-      { id: 'open-order-panel', get label() { return textNow(text).toggleOrder; }, keys: 'Shift+O', code: 'KeyO', shift: true, group: 'deck', screen: 'cards' },
-      { id: 'open-tags-panel', get label() { return textNow(text).toggleTags; }, keys: 'Shift+T', code: 'KeyT', shift: true, group: 'deck', screen: 'deck' },
-      { id: 'open-metrics', get label() { return textNow(text).openMetrics; }, keys: 'Shift+M', code: 'KeyM', shift: true, group: 'deck', screen: 'deck' },
-      { id: 'open-recent-activity', get label() { return textNow(text).openActivity; }, keys: 'Shift+I', code: 'KeyI', shift: true, group: 'deck', screen: 'deck' },
+      { id: 'open-focused-card-enter', get label() { return textNow(text).openFocusedCard; }, key: 'Enter', group: 'deck', screen: 'cards' },
+      { id: 'new-card', get label() { return textNow(text).addCard; }, code: 'KeyN', group: 'deck', screen: 'cards', edits: true },
+      { id: 'toggle-select-focused', get label() { return textNow(text).selectFocusedCard; }, code: 'KeyX', group: 'deck', screen: 'cards' },
+      { id: 'open-order-panel', get label() { return textNow(text).toggleOrder; }, code: 'KeyO', shift: true, group: 'deck', screen: 'cards' },
+      { id: 'open-tags-panel', get label() { return textNow(text).toggleTags; }, code: 'KeyT', shift: true, group: 'deck', screen: 'deck' },
+      { id: 'open-metrics', get label() { return textNow(text).openMetrics; }, code: 'KeyM', shift: true, group: 'deck', screen: 'deck' },
+      { id: 'open-recent-activity', get label() { return textNow(text).openActivity; }, code: 'KeyI', shift: true, group: 'deck', screen: 'deck' },
       // Deck.tsx handles S, Shift+S, and Shift+C, so they belong to the deck group even though they require an open card.
-      { id: 'toggle-subcards', get label() { return textNow(text).toggleSubCards; }, keys: 'S', code: 'KeyS', group: 'deck', screen: 'card' },
-      { id: 'open-hero', get label() { return textNow(text).openHero; }, keys: 'Shift+S', code: 'KeyS', shift: true, group: 'deck', screen: 'card' },
-      { id: 'new-sub-card', get label() { return textNow(text).createSubCard; }, keys: 'Shift+C', code: 'KeyC', shift: true, group: 'deck', screen: 'card', edits: true },
+      { id: 'toggle-subcards', get label() { return textNow(text).toggleSubCards; }, code: 'KeyS', group: 'deck', screen: 'card' },
+      { id: 'open-hero', get label() { return textNow(text).openHero; }, code: 'KeyS', shift: true, group: 'deck', screen: 'card' },
+      { id: 'new-sub-card', get label() { return textNow(text).createSubCard; }, code: 'KeyC', shift: true, group: 'deck', screen: 'card', edits: true },
     ],
   },
   {
     id: 'mini-card',
     get title() { return textNow(text).miniCard; },
     items: [
-      { id: 'hover-work', get label() { return textNow(text).toggleWork; }, get keys() { return textNow(text).space; }, code: 'Space', group: 'mini-card', screen: 'cards', edits: true, stateTrigger: 'space' },
-      { id: 'hover-owner', get label() { return textNow(text).quickOwner; }, keys: 'O', code: 'KeyO', group: 'mini-card', screen: 'cards', edits: true, quickTab: 'owner' },
-      { id: 'hover-tags', get label() { return textNow(text).quickTags; }, keys: 'T', code: 'KeyT', group: 'mini-card', screen: 'cards', edits: true },
-      { id: 'hover-hand', get label() { return textNow(text).toggleHand; }, keys: 'H', code: 'KeyH', group: 'mini-card', screen: 'cards', edits: true },
-      { id: 'hover-deck', get label() { return textNow(text).quickDeck; }, keys: 'D', code: 'KeyD', group: 'mini-card', screen: 'cards', edits: true, quickTab: 'deck' },
-      { id: 'hover-effort', get label() { return textNow(text).quickEffort; }, keys: 'E', code: 'KeyE', group: 'mini-card', screen: 'cards', edits: true, quickTab: 'effort' },
-      { id: 'hover-priority', get label() { return textNow(text).quickPriority; }, keys: 'P', code: 'KeyP', group: 'mini-card', screen: 'cards', edits: true, quickTab: 'priority' },
-      { id: 'hover-run', get label() { return textNow(text).quickRun; }, keys: ',', code: 'Comma', group: 'mini-card', screen: 'cards', edits: true, quickTab: 'run' },
-      { id: 'hover-milestone', get label() { return textNow(text).quickMilestone; }, keys: 'M', code: 'KeyM', group: 'mini-card', screen: 'cards', edits: true, quickTab: 'milestone' },
-      { id: 'hover-hero', get label() { return textNow(text).pickHero; }, keys: 'Shift+S', code: 'KeyS', shift: true, group: 'mini-card', screen: 'cards', edits: true },
-      { id: 'hover-archive', get label() { return textNow(text).toggleArchive; }, keys: 'R', code: 'KeyR', group: 'mini-card', screen: 'cards', edits: true },
-      { id: 'hover-delete', get label() { return textNow(text).trashCard; }, keys: 'Backspace', code: 'Backspace', group: 'mini-card', screen: 'cards', edits: true },
-      { id: 'hover-done', get label() { return textNow(text).changeTaskState; }, keys: 'W', code: 'KeyW', group: 'mini-card', screen: 'cards', edits: true, stateTrigger: 'done' },
-      { id: 'hover-bookmark', get label() { return textNow(text).toggleBookmark; }, keys: '.', code: 'Period', group: 'mini-card', screen: 'cards', edits: true },
-      { id: 'hover-select', get label() { return textNow(text).toggleSelection; }, keys: 'X', code: 'KeyX', group: 'mini-card', screen: 'cards' },
-      { id: 'hover-effort-number', get label() { return textNow(text).effortNumber; }, keys: '0–9', codes: digitCodes, group: 'mini-card', screen: 'cards', edits: true },
-      { id: 'hover-priority-number', get label() { return textNow(text).priorityNumber(priorityLabel('low'), priorityLabel('medium'), priorityLabel('high')); }, keys: '0–3', codes: digitCodes.slice(0, 4), group: 'mini-card', screen: 'cards', edits: true },
+      { id: 'hover-work', get label() { return textNow(text).toggleWork; }, code: 'Space', group: 'mini-card', screen: 'cards', edits: true, stateTrigger: 'space' },
+      { id: 'hover-owner', get label() { return textNow(text).quickOwner; }, code: 'KeyO', group: 'mini-card', screen: 'cards', edits: true, quickTab: 'owner' },
+      { id: 'hover-tags', get label() { return textNow(text).quickTags; }, code: 'KeyT', group: 'mini-card', screen: 'cards', edits: true },
+      { id: 'hover-hand', get label() { return textNow(text).toggleHand; }, code: 'KeyH', group: 'mini-card', screen: 'cards', edits: true },
+      { id: 'hover-deck', get label() { return textNow(text).quickDeck; }, code: 'KeyD', group: 'mini-card', screen: 'cards', edits: true, quickTab: 'deck' },
+      { id: 'hover-effort', get label() { return textNow(text).quickEffort; }, code: 'KeyE', group: 'mini-card', screen: 'cards', edits: true, quickTab: 'effort' },
+      { id: 'hover-priority', get label() { return textNow(text).quickPriority; }, code: 'KeyP', group: 'mini-card', screen: 'cards', edits: true, quickTab: 'priority' },
+      { id: 'hover-run', get label() { return textNow(text).quickRun; }, code: 'Comma', group: 'mini-card', screen: 'cards', edits: true, quickTab: 'run' },
+      { id: 'hover-milestone', get label() { return textNow(text).quickMilestone; }, code: 'KeyM', group: 'mini-card', screen: 'cards', edits: true, quickTab: 'milestone' },
+      { id: 'hover-hero', get label() { return textNow(text).pickHero; }, code: 'KeyS', shift: true, group: 'mini-card', screen: 'cards', edits: true },
+      { id: 'hover-archive', get label() { return textNow(text).toggleArchive; }, code: 'KeyR', group: 'mini-card', screen: 'cards', edits: true },
+      { id: 'hover-delete', get label() { return textNow(text).trashCard; }, code: 'Backspace', group: 'mini-card', screen: 'cards', edits: true },
+      { id: 'hover-done', get label() { return textNow(text).changeTaskState; }, code: 'KeyW', group: 'mini-card', screen: 'cards', edits: true, stateTrigger: 'done' },
+      { id: 'hover-bookmark', get label() { return textNow(text).toggleBookmark; }, code: 'Period', group: 'mini-card', screen: 'cards', edits: true },
+      { id: 'hover-select', get label() { return textNow(text).toggleSelection; }, code: 'KeyX', group: 'mini-card', screen: 'cards' },
+      { id: 'hover-effort-number', get label() { return textNow(text).effortNumber; }, codes: digitCodes, group: 'mini-card', screen: 'cards', edits: true },
+      { id: 'hover-priority-number', get label() { return textNow(text).priorityNumber(priorityLabel('low'), priorityLabel('medium'), priorityLabel('high')); }, codes: digitCodes.slice(0, 4), group: 'mini-card', screen: 'cards', edits: true },
     ],
   },
   {
     id: 'bulk',
     get title() { return textNow(text).bulkSelection; },
     items: [
-      { id: 'bulk-select-all', get label() { return textNow(text).selectAll; }, keys: 'Ctrl/Cmd+A', code: 'KeyA', command: true, group: 'bulk', screen: 'cards' },
-      { id: 'bulk-invert', get label() { return textNow(text).invertSelection; }, keys: 'I', code: 'KeyI', group: 'bulk', screen: 'cards' },
-      { id: 'bulk-assign-me', get label() { return textNow(text).assignSelection; }, get keys() { return textNow(text).space; }, code: 'Space', group: 'bulk', screen: 'cards', edits: true },
-      { id: 'bulk-owner', get label() { return textNow(text).chooseOwner; }, keys: 'O', code: 'KeyO', group: 'bulk', screen: 'cards', edits: true },
-      { id: 'bulk-tags', get label() { return textNow(text).changeTags; }, keys: 'T', code: 'KeyT', group: 'bulk', screen: 'cards', edits: true },
-      { id: 'bulk-hand', get label() { return textNow(text).openHand; }, keys: 'H', code: 'KeyH', group: 'bulk', screen: 'cards', edits: true },
-      { id: 'bulk-deck', get label() { return textNow(text).moveToDeck; }, keys: 'D', code: 'KeyD', group: 'bulk', screen: 'cards', edits: true },
-      { id: 'bulk-effort', get label() { return textNow(text).setEffort; }, keys: 'E', code: 'KeyE', group: 'bulk', screen: 'cards', edits: true },
-      { id: 'bulk-priority', get label() { return textNow(text).setPriority; }, keys: 'P', code: 'KeyP', group: 'bulk', screen: 'cards', edits: true },
-      { id: 'bulk-run', get label() { return textNow(text).assignRun; }, keys: ',', code: 'Comma', group: 'bulk', screen: 'cards', edits: true },
-      { id: 'bulk-milestone', get label() { return textNow(text).assignMilestone; }, keys: 'M', code: 'KeyM', group: 'bulk', screen: 'cards', edits: true },
-      { id: 'bulk-parent', get label() { return textNow(text).openHeroDialog; }, keys: 'Shift+S', code: 'KeyS', shift: true, group: 'bulk', screen: 'cards', edits: true },
-      { id: 'bulk-archive', get label() { return textNow(text).archiveConfirmed; }, keys: 'R', code: 'KeyR', group: 'bulk', screen: 'cards', edits: true },
-      { id: 'bulk-done', get label() { return textNow(text).markStateConfirmed(stateLabel("done")); }, keys: 'W', code: 'KeyW', group: 'bulk', screen: 'cards', edits: true },
-      { id: 'bulk-bookmark', get label() { return textNow(text).bookmarkSelection; }, keys: '.', code: 'Period', group: 'bulk', screen: 'cards', edits: true },
-      { id: 'bulk-delete', get label() { return textNow(text).trashSelection; }, keys: 'Backspace', code: 'Backspace', group: 'bulk', screen: 'cards', edits: true },
+      { id: 'bulk-select-all', get label() { return textNow(text).selectAll; }, code: 'KeyA', command: true, group: 'bulk', screen: 'cards' },
+      { id: 'bulk-invert', get label() { return textNow(text).invertSelection; }, code: 'KeyI', group: 'bulk', screen: 'cards' },
+      { id: 'bulk-assign-me', get label() { return textNow(text).assignSelection; }, code: 'Space', group: 'bulk', screen: 'cards', edits: true },
+      { id: 'bulk-owner', get label() { return textNow(text).chooseOwner; }, code: 'KeyO', group: 'bulk', screen: 'cards', edits: true },
+      { id: 'bulk-tags', get label() { return textNow(text).changeTags; }, code: 'KeyT', group: 'bulk', screen: 'cards', edits: true },
+      { id: 'bulk-hand', get label() { return textNow(text).openHand; }, code: 'KeyH', group: 'bulk', screen: 'cards', edits: true },
+      { id: 'bulk-deck', get label() { return textNow(text).moveToDeck; }, code: 'KeyD', group: 'bulk', screen: 'cards', edits: true },
+      { id: 'bulk-effort', get label() { return textNow(text).setEffort; }, code: 'KeyE', group: 'bulk', screen: 'cards', edits: true },
+      { id: 'bulk-priority', get label() { return textNow(text).setPriority; }, code: 'KeyP', group: 'bulk', screen: 'cards', edits: true },
+      { id: 'bulk-run', get label() { return textNow(text).assignRun; }, code: 'Comma', group: 'bulk', screen: 'cards', edits: true },
+      { id: 'bulk-milestone', get label() { return textNow(text).assignMilestone; }, code: 'KeyM', group: 'bulk', screen: 'cards', edits: true },
+      { id: 'bulk-parent', get label() { return textNow(text).openHeroDialog; }, code: 'KeyS', shift: true, group: 'bulk', screen: 'cards', edits: true },
+      { id: 'bulk-archive', get label() { return textNow(text).archiveConfirmed; }, code: 'KeyR', group: 'bulk', screen: 'cards', edits: true },
+      { id: 'bulk-done', get label() { return textNow(text).markStateConfirmed(stateLabel("done")); }, code: 'KeyW', group: 'bulk', screen: 'cards', edits: true },
+      { id: 'bulk-bookmark', get label() { return textNow(text).bookmarkSelection; }, code: 'Period', group: 'bulk', screen: 'cards', edits: true },
+      { id: 'bulk-delete', get label() { return textNow(text).trashSelection; }, code: 'Backspace', group: 'bulk', screen: 'cards', edits: true },
     ],
   },
   {
     id: 'open-card',
     get title() { return textNow(text).card; },
     items: [
-      { id: 'open-card-work', get label() { return textNow(text).toggleWork; }, get keys() { return textNow(text).space; }, code: 'Space', group: 'open-card', screen: 'card', edits: true, stateTrigger: 'space' },
-      { id: 'open-card-owner', get label() { return textNow(text).quickOwner; }, keys: 'O', code: 'KeyO', group: 'open-card', screen: 'card', edits: true, quickTab: 'owner' },
-      { id: 'open-card-hand', get label() { return textNow(text).toggleHand; }, keys: 'H', code: 'KeyH', group: 'open-card', screen: 'card', edits: true },
-      { id: 'open-card-effort', get label() { return textNow(text).quickEffort; }, keys: 'E', code: 'KeyE', group: 'open-card', screen: 'card', edits: true, quickTab: 'effort' },
-      { id: 'open-card-priority', get label() { return textNow(text).quickPriority; }, keys: 'P', code: 'KeyP', group: 'open-card', screen: 'card', edits: true, quickTab: 'priority' },
-      { id: 'open-card-run', get label() { return textNow(text).quickRun; }, keys: ',', code: 'Comma', group: 'open-card', screen: 'card', edits: true, quickTab: 'run' },
-      { id: 'open-card-milestone', get label() { return textNow(text).quickMilestone; }, keys: 'M', code: 'KeyM', group: 'open-card', screen: 'card', edits: true, quickTab: 'milestone' },
-      { id: 'open-card-effort-number', get label() { return textNow(text).effortNumber; }, keys: '0–9', codes: digitCodes, group: 'open-card', screen: 'card', edits: true },
-      { id: 'open-card-priority-number', get label() { return textNow(text).priorityNumber(priorityLabel('low'), priorityLabel('medium'), priorityLabel('high')); }, keys: '0–3', codes: digitCodes.slice(0, 4), group: 'open-card', screen: 'card', edits: true },
-      { id: 'open-card-attachments', get label() { return textNow(text).openAttachments; }, keys: 'A', code: 'KeyA', group: 'open-card', screen: 'card' },
-      { id: 'open-card-properties', get label() { return textNow(text).openProperties; }, keys: 'Z', code: 'KeyZ', group: 'open-card', screen: 'card' },
-      { id: 'open-card-tags', get label() { return textNow(text).openCardTags; }, keys: 'T', code: 'KeyT', group: 'open-card', screen: 'card' },
-      { id: 'open-card-focus', get label() { return textNow(text).openFocusMode; }, keys: 'F', code: 'KeyF', group: 'open-card', screen: 'card' },
-      { id: 'open-card-done', get label() { return textNow(text).changeTaskState; }, keys: 'W', code: 'KeyW', group: 'open-card', screen: 'card', edits: true, stateTrigger: 'done' },
-      { id: 'open-card-archive', get label() { return textNow(text).toggleArchive; }, keys: 'R', code: 'KeyR', group: 'open-card', screen: 'card', edits: true },
-      { id: 'open-card-delete', get label() { return textNow(text).trashCardConfirmed; }, keys: 'Backspace', code: 'Backspace', group: 'open-card', screen: 'card', edits: true },
-      { id: 'open-card-bookmark', get label() { return textNow(text).toggleBookmark; }, keys: '.', code: 'Period', group: 'open-card', screen: 'card', edits: true },
+      { id: 'open-card-work', get label() { return textNow(text).toggleWork; }, code: 'Space', group: 'open-card', screen: 'card', edits: true, stateTrigger: 'space' },
+      { id: 'open-card-owner', get label() { return textNow(text).quickOwner; }, code: 'KeyO', group: 'open-card', screen: 'card', edits: true, quickTab: 'owner' },
+      { id: 'open-card-hand', get label() { return textNow(text).toggleHand; }, code: 'KeyH', group: 'open-card', screen: 'card', edits: true },
+      { id: 'open-card-effort', get label() { return textNow(text).quickEffort; }, code: 'KeyE', group: 'open-card', screen: 'card', edits: true, quickTab: 'effort' },
+      { id: 'open-card-priority', get label() { return textNow(text).quickPriority; }, code: 'KeyP', group: 'open-card', screen: 'card', edits: true, quickTab: 'priority' },
+      { id: 'open-card-run', get label() { return textNow(text).quickRun; }, code: 'Comma', group: 'open-card', screen: 'card', edits: true, quickTab: 'run' },
+      { id: 'open-card-milestone', get label() { return textNow(text).quickMilestone; }, code: 'KeyM', group: 'open-card', screen: 'card', edits: true, quickTab: 'milestone' },
+      { id: 'open-card-effort-number', get label() { return textNow(text).effortNumber; }, codes: digitCodes, group: 'open-card', screen: 'card', edits: true },
+      { id: 'open-card-priority-number', get label() { return textNow(text).priorityNumber(priorityLabel('low'), priorityLabel('medium'), priorityLabel('high')); }, codes: digitCodes.slice(0, 4), group: 'open-card', screen: 'card', edits: true },
+      { id: 'open-card-attachments', get label() { return textNow(text).openAttachments; }, code: 'KeyA', group: 'open-card', screen: 'card' },
+      { id: 'open-card-properties', get label() { return textNow(text).openProperties; }, code: 'KeyZ', group: 'open-card', screen: 'card' },
+      { id: 'open-card-tags', get label() { return textNow(text).openCardTags; }, code: 'KeyT', group: 'open-card', screen: 'card' },
+      { id: 'open-card-focus', get label() { return textNow(text).openFocusMode; }, code: 'KeyF', group: 'open-card', screen: 'card' },
+      { id: 'open-card-done', get label() { return textNow(text).changeTaskState; }, code: 'KeyW', group: 'open-card', screen: 'card', edits: true, stateTrigger: 'done' },
+      { id: 'open-card-archive', get label() { return textNow(text).toggleArchive; }, code: 'KeyR', group: 'open-card', screen: 'card', edits: true },
+      { id: 'open-card-delete', get label() { return textNow(text).trashCardConfirmed; }, code: 'Backspace', group: 'open-card', screen: 'card', edits: true },
+      { id: 'open-card-bookmark', get label() { return textNow(text).toggleBookmark; }, code: 'Period', group: 'open-card', screen: 'card', edits: true },
     ],
   },
   {
     id: 'search',
     get title() { return textNow(text).search; },
     items: [
-      { id: 'search-my-cards', get label() { return textNow(text).searchMyCards; }, keys: 'Q', code: 'KeyQ', group: 'search', screen: 'app' },
+      { id: 'search-my-cards', get label() { return textNow(text).searchMyCards; }, code: 'KeyQ', group: 'search', screen: 'app' },
     ],
   },
 ];
+
+function comboFromSpec(shortcut: ShortcutSpec): KeyCombo {
+  let key = shortcut.code ?? shortcut.key ?? '';
+  if (shortcut.codes?.[0] === 'ArrowLeft') key = 'ArrowKeys';
+  else if (shortcut.codes) key = shortcut.codes.length === 4 ? 'Digit0To3' : 'Digit0To9';
+  const modifiers: ShortcutModifier[] = [];
+  if (shortcut.shift) modifiers.push('shift');
+  if (shortcut.command) modifiers.push('primary');
+  return modifiers.length ? { key, modifiers } : { key };
+}
+
+const SHORTCUT_GROUPS: readonly ShortcutGroup[] = SHORTCUT_SPECS.map(group => ({
+  id: group.id,
+  get title() { return group.title; },
+  items: group.items.map(item => ({ ...item, get label() { return item.label; }, combo: comboFromSpec(item) })),
+}));
 
 export const ALL_SHORTCUTS: readonly ShortcutDefinition[] = SHORTCUT_GROUPS.flatMap(group => group.items);
 export const OPEN_CARD_SHORTCUTS = ALL_SHORTCUTS.filter(shortcut => shortcut.group === 'open-card');
@@ -323,8 +337,8 @@ export function shortcutGroupsFor(screens: readonly ShortcutScreen[], writable: 
 
 export function matchShortcut(event: KeyboardEvent, shortcuts: readonly ShortcutDefinition[] = ALL_SHORTCUTS): ShortcutDefinition | null {
   if (event.altKey) return null;
+  const command = primaryModifierPressed(event);
   for (const shortcut of shortcuts) {
-    const command = event.ctrlKey || event.metaKey;
     if (command !== (shortcut.command ?? false)) continue;
     const matched = shortcut.codes ? shortcut.codes.includes(event.code) : shortcut.code ? event.code === shortcut.code : event.key === shortcut.key;
     if (!matched) continue;
@@ -361,10 +375,11 @@ export function shortcutTargetBlocked(event: KeyboardEvent, scope?: 'open-card' 
   if (!scope && event.key === 'Escape' && document.querySelector('[data-card-panel-open="true"]')) return true;
   // Hover and bulk actions have their own targets even with another card open; selection takes precedence over both open and hovered cards.
   if (scope !== 'open-card' && scope !== 'hover' && scope !== 'bulk' && openCardTargets > 0 && matchShortcut(event, OPEN_CARD_SHORTCUTS)) return true;
-  if (scope !== 'bulk' && scope !== 'selection' && selectionIsActive() && matchShortcut(event, BULK_SHORTCUTS)) return true;
+  const bulkShortcut = matchShortcut(event, BULK_SHORTCUTS);
+  if (scope !== 'bulk' && scope !== 'selection' && bulkShortcut && selectionIsActive()) return true;
   // 2026-11-05: mini-card wins over the open card and the old focused-card handler, regardless of listener order.
   const hoveredShortcut = matchShortcut(event, HOVER_CARD_SHORTCUTS);
-  const hoveredCard = hoveredCardElement(document);
+  const hoveredCard = hoveredShortcut ? hoveredCardElement(document) : null;
   if (hoveredShortcut && hoveredCard) {
     if (scope === 'open-card') return true;
     if (!scope && (hoveredShortcut.id !== 'hover-work' || [...hoverShortcutRoots].some(root => root.contains(hoveredCard)))) return true;

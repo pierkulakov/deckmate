@@ -31,7 +31,7 @@ it('shows the actual open Hand slot, urgent date, questions and Task-only family
   const html = render([
     child('done', { state: 'done', handMemberIds: ['alex'], handOrder: { alex: 1 } }),
     child('working', { state: 'started', owner: 'Alex', effort: 5, priority: 'high', dueDate: '2000-01-01', handMemberIds: ['alex'], handOrder: { alex: 90 } }),
-    child('doc', { kind: 'doc', state: null, openQuestions: [{ text: 'Which input?', taskRef: null }] }),
+    child('doc', { kind: 'doc', state: null, openQuestions: [{ text: 'Which input?', taskRef: null, assignee: null, target: null }] }),
     child('hidden', { archived: true }),
   ], [child('earlier', { parentId: null, handMemberIds: ['alex'], handOrder: { alex: 40 } })]);
   expect(html).toContain('1 из 2 принято');

@@ -640,7 +640,7 @@ describe('release workflow publication boundary', () => {
     const gate = preflight.findIndex(step => step.run === 'node desktop/scripts/github-release.mjs require-ci');
     expect(gate).toBeGreaterThan(-1);
     expect(preflight[gate].if).toBe("github.event_name == 'push'");
-    expect(gate).toBeLessThan(preflight.findIndex(step => step.run === 'npm ci'));
+    expect(gate).toBeLessThan(preflight.findIndex(step => /^npm ci(?: |$)/u.test(step.run ?? '')));
     expect(preflight.some(step => step.run === 'npm test' || step.run === 'npm run typecheck')).toBe(false);
     expect(workflow.jobs.preflight.permissions).toEqual({ contents: 'read', checks: 'read' });
   });

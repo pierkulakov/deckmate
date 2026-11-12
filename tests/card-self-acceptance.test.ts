@@ -158,3 +158,23 @@ it.each(['set-card-state', 'add-card-report'] as const)('keeps human self-accept
   const result = await service.edit(edit, 'sandbox', 'human');
   expect(result.cards.find(candidate => candidate.id === card.id)?.state).toBe('done');
 });
+
+for (const legacy of [false, true]) {
+  it.each(['set-card-properties', 'bulk-edit-cards'] as const)(`remembers the previous owner without a Report after %s (legacy=${legacy})`, async action => {
+    const { root, service, catalog, card } = await fixture('Builder', 'No reports yet.\n', false, legacy);
+    const edit: CatalogEdit = action === 'set-card-properties'
+      ? { action, cardId: card.id, sourceHash: card.sourceHash, manifestHash: catalog.manifestHash, owner: null, effort: null, priority: null }
+      : { action, manifestHash: catalog.manifestHash, optionsHash: catalog.optionsHash ?? '',
+        cards: [{ cardId: card.id, sourceHash: card.sourceHash }], change: { kind: 'properties', owner: 'Human' } };
+    await service.edit(edit, 'sandbox', 'builder');
+    const fresh = await readProjectCatalog(root);
+    const current = fresh.cards.find(candidate => candidate.id === card.id)!;
+    const before = await readFile(path.join(root, current.path));
+    await expect(service.edit({ action: 'set-card-state', cardId: card.id, sourceHash: current.sourceHash,
+      manifestHash: fresh.manifestHash, state: 'done' }, 'sandbox', 'builder')).rejects.toMatchObject({ status: 422, saved: false });
+    expect(await readFile(path.join(root, current.path))).toEqual(before);
+    const accepted = await service.edit({ action: 'set-card-state', cardId: card.id, sourceHash: current.sourceHash,
+      manifestHash: fresh.manifestHash, state: 'done' }, 'sandbox', 'reviewer');
+    expect(accepted.cards.find(candidate => candidate.id === card.id)?.state).toBe('done');
+  });
+}

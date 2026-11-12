@@ -21,7 +21,7 @@ Deckmate is a local project board over Markdown. The files in the user's project
 
 ## Working on a project as an agent
 
-1. `npm run project -- next <member>` (add `--data <project>` unless `.env.local` sets `DECKMATE_DATA`) picks the first allowed card; `brief <c-ref>` returns a compact package with the rules to read next.
+1. `npm run project -- next <member>` (add `--data <project>` unless `.env.local` sets `DECKMATE_DATA`) returns the oldest answered decision still waiting to be applied (edit its target, then `apply`), otherwise the first allowed card; `brief <c-ref>` returns a compact package with the rules to read next.
 2. Read the referenced ranges with `show <c-ref> --lines a-b` before editing; for Journey steps use `step <p-ref> <step-id>`.
 3. Ask a blocking question with `ask`; hand in results with `report <c-ref> --file <report.md> --member <you> --state <review state>`. A reviewer returns or accepts with `state <c-ref> <state> --member <you> [--reason <text>]`. Never mark your own work accepted.
 4. Assigning an owner never starts a model. The full route is [skills/deckmate/workflows/work.md](skills/deckmate/workflows/work.md).
@@ -52,9 +52,13 @@ npm run quiet -- npm run build
 
 The desktop shell has its own tests: `cargo test --manifest-path desktop/src-tauri/Cargo.toml`; they need Rust, and `npm test` does not build them. `npm run desktop:smoke` additionally drives the real debug shell end to end over CDP (Windows only; needs `cargo build` first).
 
-CI runs the whole suite on every pull request: typecheck and the unit project on Ubuntu and Windows, and the browser project on Windows with Edge (the engine of the desktop app's WebView2), split into three parallel shards. The release workflow publishes only a commit whose CI is green and does not run the suite again. Locally, run the checks above for the files you changed; run the full `npm test` when a change touches shared helpers, test infrastructure or many modules. The running app serves `dist/`: client changes need `npm run build` and a page reload; server changes need `npm run build` and a restart.
+Run the full suite for shared helpers, test infrastructure or changes spanning many modules. `npm test` runs `unit` (at most four workers), then `browser` (one file at a time). `npm run quiet -- npm run test:fast` overlaps two unit workers and three serial browser shards, with one temporary fixture build and separate preview ports. Both commands cover the same tests. Logs, counts and timings go to `.deckmate/test-fast/`; `--out <directory>` selects another destination. Do not increase worker limits or setup timeouts to hide contention.
 
-Vitest runs `unit` (at most four workers) before `browser` (one file at a time); Vitest 5 schedules different worker budgets in separate groups. Use `npx vitest run --project browser` for all browser files and `--shard=1/3` to repeat one CI shard; normal file filters still work. Every headless page starts as a desktop with a fine hovering pointer and motion allowed (`tools/layout-capture.ts`); a test of the touch layout or of reduced motion emulates it explicitly. Browser fixtures share one temporary build/preview server per invocation, not `dist/` or a dev dependency cache; profiles and project data stay isolated per file. Add browser fixtures to `tests/browser-files.ts`. Set `DECKMATE_BROWSER` to an installed Chrome/Edge/Chromium executable if discovery fails. Local absence prints one skipped-case count; `CI=true` or `DECKMATE_REQUIRE_BROWSER=1` requires a browser and fails if it is missing. Do not increase worker limits or setup timeouts to hide contention.
+CI runs typecheck and unit tests on Ubuntu and Windows, and three timing-balanced browser shards on Windows Edge. `tests/browser-durations.json` supplies the weights; `npx vitest run --project browser --shard=1/3` repeats a shard locally. File filters still work. Both required `checks` contexts gate releases.
+
+Browser processes are reused per launch configuration; every page gets a disposable context isolating cookies, storage, permissions and emulation. Profiles, ports and temporary project data stay private to their invocation. The shared driver is `tools/headless-browser.ts`; pages start with a fine hovering pointer and motion allowed. Fixtures use temporary builds, not `dist/` or a shared dependency cache. Register fixtures in `tests/browser-files.ts`. Set `DECKMATE_BROWSER` to an installed Chrome/Edge/Chromium executable if discovery fails. Local absence reports skipped cases; `CI=true` or `DECKMATE_REQUIRE_BROWSER=1` makes absence an error.
+
+The running app serves `dist/`: client changes need a build and reload; server changes need a build and restart.
 
 ## Commits and pull requests
 

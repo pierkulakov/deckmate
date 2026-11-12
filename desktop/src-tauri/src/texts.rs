@@ -76,6 +76,15 @@ pub fn text(language: &str, key: &str) -> &'static str {
             "Обновление Deckmate {version} можно установить",
         ),
         "installAndRestart" => ("Restart and update", "Перезапустить и обновить"),
+        "continueUpdate" => ("Continue update", "Продолжить обновление"),
+        "mcpUpdateWarning" => (
+            "MCP sessions open: {count}. Postpone the update and stop the agents, or continue: their work will be interrupted.",
+            "Открыто сеансов MCP: {count}. Отложите обновление и завершите работу агентов или продолжите: работа сеансов прервётся.",
+        ),
+        "mcpUpdateInProgress" => (
+            "Deckmate is preparing or installing an update. MCP cannot start. Wait for the update to finish and reconnect.",
+            "Deckmate готовит или устанавливает обновление. MCP не может запуститься. Дождитесь завершения обновления и подключитесь снова.",
+        ),
         "later" => ("Later", "Позже"),
         "skipVersion" => ("Skip this version", "Пропустить эту версию"),
         "installPending" => (
@@ -178,6 +187,10 @@ pub fn text(language: &str, key: &str) -> &'static str {
         "workspacePath" => (
             "Choose a folder in the dialog, or select the current project or a recent project. The workspace holds up to 30 projects.",
             "Выберите папку в диалоге, текущий проект или проект из недавних. В рабочем пространстве может быть до 30 проектов.",
+        ),
+        "mcpStartFailed" => (
+            "Could not start Deckmate MCP: {error}. Check the reported error and try again.",
+            "Не удалось запустить Deckmate MCP: {error}. Проверьте указанную ошибку и повторите запуск.",
         ),
         "serverExit" => (
             "Server exited with code {code}.",

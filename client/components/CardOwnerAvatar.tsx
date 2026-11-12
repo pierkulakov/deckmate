@@ -39,7 +39,7 @@ export function ownerInitials(owner: string | null, lang: Lang = currentLang()):
   return owner?.trim().split(/\s+/u).slice(0, 2).map(part => Array.from(part)[0]).join('').toLocaleUpperCase(locale(lang)) ?? '';
 }
 
-export function OwnerAvatar({ owner, kind, agentSymbol, progress }: { owner: string | null; kind?: 'agent' | 'human'; agentSymbol?: AgentSymbol; progress?: ChecklistProgress }) {
+function OwnerAvatar({ owner, kind, agentSymbol, progress }: { owner: string | null; kind?: 'agent' | 'human'; agentSymbol?: AgentSymbol; progress?: ChecklistProgress }) {
   const lang = useLang();
   const label = progress ? ownerProgressLabel(owner, progress, lang) : undefined;
   const initials = ownerInitials(owner, lang);

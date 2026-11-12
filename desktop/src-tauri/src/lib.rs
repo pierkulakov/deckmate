@@ -3,6 +3,8 @@ mod bridge;
 mod fatal;
 mod job;
 mod log;
+mod mcp;
+mod mcp_sessions;
 mod menu;
 mod paths;
 mod self_test;
@@ -20,17 +22,29 @@ mod workspace;
 use std::sync::{atomic::Ordering, Arc};
 use tauri::Manager;
 
+fn attach_parent_console() {
+    #[cfg(windows)]
+    unsafe {
+        // 2026-11-09: the release GUI subsystem must print command-line results in a parent console.
+        let _ = windows::Win32::System::Console::AttachConsole(
+            windows::Win32::System::Console::ATTACH_PARENT_PROCESS,
+        );
+    }
+}
+
 pub fn run() {
+    log::begin_startup();
     fatal::install_hook();
     let args: Vec<String> = std::env::args().collect();
-    if args.get(1).is_some_and(|arg| arg == "--self-test") {
-        #[cfg(windows)]
-        unsafe {
-            // 2026-11-09: the release GUI subsystem must also print self-test JSON in a parent console.
-            let _ = windows::Win32::System::Console::AttachConsole(
-                windows::Win32::System::Console::ATTACH_PARENT_PROCESS,
-            );
+    if let Some(arguments) = mcp::arguments(&args) {
+        let mode = mcp::mode(arguments);
+        if mode == mcp::Mode::Check {
+            attach_parent_console();
         }
+        std::process::exit(mcp::run(arguments, mode));
+    }
+    if args.get(1).is_some_and(|arg| arg == "--self-test") {
+        attach_parent_console();
         let runtime = tokio::runtime::Runtime::new().expect("self-test runtime");
         let code = runtime.block_on(self_test::run(
             args.get(2).map(String::as_str).unwrap_or(""),
@@ -73,10 +87,13 @@ pub fn run() {
             whats_new::whats_new_get
         ])
         .setup(|app| {
-            app.manage(Arc::new(app::Shell::new(app.path().resource_dir().ok())?));
+            let shell = Arc::new(app::Shell::new(app.path().resource_dir().ok())?);
+            let launch = shell.next_launch();
+            app.manage(shell);
+            // 2026-11-12: the sidecar does not need WebView2; overlap both startup paths.
+            tauri::async_runtime::spawn(app::startup(app.handle().clone(), launch));
             menu::rebuild(app.handle());
             window::create(app.handle())?;
-            tauri::async_runtime::spawn(app::startup(app.handle().clone()));
             updater::start(app.handle().clone());
             Ok(())
         })

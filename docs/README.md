@@ -7,9 +7,11 @@ Documentation index. Source code is in `client/`, `server/`, `src/`, `tools/`, a
 | Document | Contents |
 |---|---|
 | [catalog.md](catalog.md) | Data model and full contract: entities (Space/Deck/Task/Hero/Doc/Track/Hand/Journey/Vision), source files, manifest, CardOptions, guarded writes, HTTP API, agent CLI, activity journal, and implementation boundaries. |
-| [api.md](api.md) | Local HTTP API for agents: run modes, token and actor headers, hash guards, read and write endpoints, errors, examples. |
+| [mcp.md](mcp.md) | The `deckmate mcp` server for AI clients: connecting a client, project and member resolution, the eleven board tools, rev guards, retry-safe creation, limits, and the `deckmate project` equivalents. |
+| [api.md](api.md) | Local HTTP API for the app and tools that need a live server: run modes, token and actor headers, hash guards, read and write endpoints, errors, examples. |
 | [Desktop](../desktop/README.md) | Tauri 2 shell, Windows requirements, workspace, updates, development and release checks. |
-| [skills.md](skills.md) | `/deckmate` skills: project installation, six workflows, lenses, genres, engines, project profile, agent configuration, and `npm run agents -- run`. Configuration format: [agents-config.md](agents-config.md). |
+| [skills.md](skills.md) | `/deckmate` skills: project installation, fourteen workflows, lenses, genres, engines, project profile, agent configuration, and `npm run agents -- run`. Configuration format: [agents-config.md](agents-config.md). |
+| Skill examples: [English](skill-examples.md) / [Русский](skill-examples.ru.md) | Requests and step-by-step examples for every workflow, decisions and board layout. |
 | [../PRODUCT.md](../PRODUCT.md) | Product direction: purpose, positioning, users, principles, and design requirements. |
 | [../DESIGN.md](../DESIGN.md) | Design system: tokens, card materials, decks, tilt, glare, and reduced motion. |
 | [ui-map.md](ui-map.md) | UI screens and entry points, component/CSS ownership, shared-element blast radius, responsive and shell branches, captures, and tests by zone. |

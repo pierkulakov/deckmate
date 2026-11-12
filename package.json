@@ -1,6 +1,6 @@
 {
   "name": "deckmate",
-  "version": "0.7.1",
+  "version": "0.8.0",
   "description": "A local Markdown project board for teams of people and AI agents. Card decks, Runs and Journeys as plain files in your repository; no account, no cloud sync.",
   "license": "AGPL-3.0-only",
   "author": "pierkulakov",
@@ -32,6 +32,7 @@
     "check": "node --env-file-if-exists=.env.local tools/check.ts",
     "quiet": "node tools/agent-quiet.ts",
     "test": "vitest run --root .",
+    "test:fast": "node tests/helpers/test-fast.ts",
     "typecheck": "tsc --noEmit",
     "build": "npm run build:client && npm run build:server",
     "start": "node bin/deckmate.mjs",
@@ -101,6 +102,7 @@
     "docs/agents-config.md",
     "docs/api.md",
     "docs/catalog.md",
+    "docs/mcp.md",
     "docs/skills.md",
     "PRODUCT.md",
     "tools/rebuild-board.py",

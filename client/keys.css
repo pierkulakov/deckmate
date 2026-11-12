@@ -1,0 +1,12 @@
+/* 2026-11-12: Mac symbols come from a system symbol face whose ascent differs from the key's text face. Trimming the
+   symbol box to its own cap height and baseline keeps it from growing the key's line, so the key's cap-height centring
+   holds for ⌘ ⇧ ⌥ ⏎ ⌫ as for letters. */
+kbd .key-mac-symbol { display: inline-block; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Apple Symbols', sans-serif; line-height: 1; text-box: trim-both cap alphabetic; }
+/* Two symbols are not drawn across the cap height, so each gets the shift that puts its ink centre on the cap centre:
+   ⎋ sits at x-height on the baseline and ⌃ is a caret that hangs from the cap line. */
+kbd .key-mac-symbol[data-glyph="⎋"] { translate: 0 -.1em; }
+kbd .key-mac-symbol[data-glyph="⌃"] { translate: 0 .27em; }
+@supports not (translate: 0 1px) {
+  kbd .key-mac-symbol[data-glyph="⎋"] { transform: translateY(-.1em); }
+  kbd .key-mac-symbol[data-glyph="⌃"] { transform: translateY(.27em); }
+}

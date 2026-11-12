@@ -62,7 +62,7 @@ async function render(options: { card?: string; query?: string; lang?: 'en' | 'r
     { ...children[2], journey: undefined, state: 'review', effort: 3 },
     { ...child('planned', 'Plan Arena', 'not-started'), journey: undefined, effort: 1 },
     { ...child('blocked', 'Integrate Arena', 'not-started'), journey: undefined, dependsOn: [children[1].id] },
-    { ...child('question', 'Input decisions', null), kind: 'doc', journey: undefined, openQuestions: [{ text: 'Which input?', taskRef: null }] },
+    { ...child('question', 'Input decisions', null), kind: 'doc', journey: undefined, openQuestions: [{ text: 'Which input?', taskRef: null, assignee: null, target: null }] },
     { ...base, id: 'card:unrelated', title: 'Other Hero', path: 'cards/unrelated.md' },
   ];
   children[1].markdown = options.longContent

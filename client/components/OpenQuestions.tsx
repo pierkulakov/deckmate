@@ -1,129 +1,86 @@
-import { readStoredValue } from '../storage.ts';
+import { useEffect, useId, useMemo, useRef, useState, type FormEvent, type KeyboardEvent, type MouseEvent } from 'react';
+import * as Tooltip from '@radix-ui/react-tooltip';
+import { AlertCircle, ArrowUpRight, CircleCheck, CircleDashed, MessageCircle, MessageCircleQuestion, MessageSquareReply } from 'lucide-react';
+import type { ListItem, Root, RootContent } from 'mdast';
+import type { CatalogCard, CatalogView } from '../../src/catalog-contracts.ts';
+import { isCardSectionBoundary, isDecisionTaskLink, openQuestionsOf } from '../../src/open-questions.ts';
+import { shortReference } from '../../src/references.ts';
+import { markerWords } from '../../src/format-vocabulary.ts';
 import { storedMemberId } from '../current-member.ts';
-import { useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
-import * as Dialog from '@radix-ui/react-dialog';
-import { AlertCircle, Check, ListChecks, LoaderCircle, Send, UserRound, X } from 'lucide-react';
-import { deckAcceptsCard, type CatalogCard, type CatalogOpenQuestion, type CatalogView } from '../../src/catalog-contracts.ts';
-import { resolveReference, shortReference } from '../../src/references.ts';
-import type { CatalogAction } from '../useCatalog.ts';
-import { Button } from './ui/button.tsx';
-import { defineText, textNow, useLang, useText } from '../i18n.ts';
-import { kindLabel } from '../locales/common.ts';
-import { moveFocus } from '../focus.ts';
-import type { Root, RootContent } from 'mdast';
-import { openQuestionsOf } from '../../src/open-questions.ts';
 import { parseEditorMarkdown } from '../editor-checklists.ts';
+import { markdownText } from '../card-word-count.ts';
+import { defineText, useLang, useText } from '../i18n.ts';
+import { moveFocus } from '../focus.ts';
+import { copyText } from '../clipboard.ts';
+import { formatShortcut, primaryModifierPressed, shortcutAria } from '../shortcut-format.ts';
+import type { CatalogAction } from '../useCatalog.ts';
+import { decisionsOf, questionsOf, targetDetails, type Decision, type Question } from '../question-model.ts';
+import { Button } from './ui/button.tsx';
+import { CardOwnerAvatar } from './CardOwnerAvatar.tsx';
 import { Markdown } from './Markdown.tsx';
+import '../card-value-hint.css';
 import '../open-questions.css';
 
 const text = defineText({
-  linkNotConfirmed: 'The task link is not confirmed in the updated card. Check the catalog message and retry with the same taskCardId.',
-  choosePersonDeck: 'Choose a person and a deck that accepts Task.',
-  otherTask: 'The item already references another task that is not in the catalog. Fix the link in Markdown first.',
-  notConfirmed: 'Action not confirmed. Check the catalog message; retrying uses the same task.',
-  saveUnconfirmed: 'Could not confirm the save. Retry: the task ID is preserved.',
-  answerRequired: 'Enter an answer — it will become an item in the “Resolved” section.',
-  noAuthor: 'The project registry has no person whose name can record the decision.',
-  chooseAuthor: 'Choose a person to record the decision',
-  actingAs: 'Acting as',
-  answerNotSaved: 'Answer not recorded. Check the catalog message and that the question is current; the answer text is preserved.',
-  recordUnconfirmed: 'Could not confirm the entry. The answer text is preserved; try again.',
-  section: (count: number) => `Open · ${count}`,
-  open: 'Open',
-  emptyQuestion: 'Empty question — text is required in Markdown.',
-  openTask: (title: string) => `Open task: ${title}`,
-  decision: 'Decision',
-  toHand: 'To Hand',
-  answer: 'Answer',
-  answerLabel: 'Answer to question',
-  answerPlaceholder: 'Decision for the “Resolved” section…',
-  answerHint: (author: string | null) => `Enter / Ctrl+Enter — record · Esc — cancel${author ? ` · author: ${author}` : ''}`,
-  cancel: 'Cancel',
-  saving: 'Saving…',
-  record: 'Record',
-  readOnly: 'This source is read-only. Open the test copy from the source menu in the top bar — questions and answers are saved there.',
-  raiseTitle: 'To Hand…',
-  closeRaise: 'Close “To Hand” window',
-  member: 'Member',
-  noPeople: 'No people in the registry',
-  deck: 'Deck',
-  noDecks: 'No decks for Task',
-  mixedDeck: 'Mixed',
-  raiseNote: 'A Task called “Decision” will be created: the selected person becomes its owner, the task appears in their Hand, and the link appears in the question item.',
-  retryId: 'Retry ID is preserved',
-  retryAction: 'Retry',
+  panel: 'Questions and decisions', open: 'Open', decisions: 'Decisions', answer: 'Answer', discuss: 'Copy question ID', ask: 'Ask a question…',
+  noQuestions: 'No open questions.', emptyQuestion: 'Empty question', thisCard: 'this card',
+  copied: 'Question ID copied. Paste it into a chat.', copyFailed: 'Could not copy. Select the question ID and copy it manually.', copyReference: 'Question ID to copy',
+  answerLabel: 'Answer to question', answerPlaceholder: 'Decision…', questionLabel: 'Question', questionPlaceholder: 'Your question…',
+  member: 'To', nobody: 'No one', target: 'Where to apply', searchCards: 'Search cards', section: 'Section (optional)',
+  noResults: 'No matching cards.', author: 'By', chooseAuthor: 'Choose a person', noAuthor: 'The project registry has no person who can record the decision.',
+  addressedTo: (name: string) => `Question addressed to ${name}; check the answer author below.`,
+  sectionHint: 'Use the section identifier, for example working-notes for “Working notes”. Leave empty to target the whole card.',
+  pendingHint: 'After editing the target, confirm the change separately through the CLI or with an agent. The agent is not started automatically.',
+  appliedOn: (date: string) => `Applied: ${date}`,
+  cancel: 'Cancel', save: 'Save', send: 'Ask', saving: 'Saving…',
+  answerRequired: 'Enter an answer.', questionRequired: 'Enter a question.',
+  notSaved: 'Not saved. Check the catalog message and try again; your text is preserved.',
+  stale: 'The card changed. Review your draft before using the current version.', useCurrent: 'Use current version',
+  changedQuestion: 'The question changed. Copy your answer before closing this form.',
+  readOnly: 'This source is read-only.', toApply: 'to apply', applied: 'applied',
+  shortcut: (save: string, escape: string) => `${save} — save · ${escape} — cancel`,
 }, {
-  linkNotConfirmed: 'Ссылка на задачу не подтверждена в обновлённой карточке. Проверьте сообщение каталога и повторите с тем же taskCardId.',
-  choosePersonDeck: 'Выберите человека и колоду, принимающую Task.',
-  otherTask: 'В пункте уже указана другая задача, которой нет в каталоге. Сначала исправьте ссылку в Markdown.',
-  notConfirmed: 'Действие не подтверждено. Проверьте сообщение каталога; повтор использует ту же задачу.',
-  saveUnconfirmed: 'Не удалось подтвердить сохранение. Повторите: идентификатор задачи сохранён.',
-  answerRequired: 'Введите ответ — он станет пунктом раздела «Решено».',
-  noAuthor: 'В реестре проекта нет человека, от имени которого можно записать решение.',
-  chooseAuthor: 'Выберите человека для записи решения',
-  actingAs: 'От имени',
-  answerNotSaved: 'Ответ не записан. Проверьте сообщение каталога и актуальность вопроса; текст ответа сохранён.',
-  recordUnconfirmed: 'Не удалось подтвердить запись. Текст ответа сохранён; повторите действие.',
-  section: (count: number) => `Открыто · ${count}`,
-  open: 'Открыто',
-  emptyQuestion: 'Пустой вопрос — нужен текст в Markdown.',
-  openTask: (title: string) => `Открыть задачу: ${title}`,
-  decision: 'Решение',
-  toHand: 'В Hand',
-  answer: 'Ответить',
-  answerLabel: 'Ответ на вопрос',
-  answerPlaceholder: 'Решение для раздела «Решено»…',
-  answerHint: (author: string | null) => `Enter / Ctrl+Enter — записать · Esc — отмена${author ? ` · автор: ${author}` : ''}`,
-  cancel: 'Отмена',
-  saving: 'Сохраняем…',
-  record: 'Записать',
-  readOnly: 'Источник открыт только для чтения. Откройте тестовую копию через меню источника в верхней полосе — вопросы и ответы сохраняются туда.',
-  raiseTitle: 'В Hand…',
-  closeRaise: 'Закрыть окно «В Hand»',
-  member: 'Участник',
-  noPeople: 'Нет людей в реестре',
-  deck: 'Колода',
-  noDecks: 'Нет колод для Task',
-  mixedDeck: 'Mixed',
-  raiseNote: 'Создастся Task «Решение»: исполнитель — выбранный человек, задача появится в его Hand, а ссылка — в пункте вопроса.',
-  retryId: 'ID повтора сохраняется',
-  retryAction: 'Повторить',
+  panel: 'Вопросы и решения', open: 'Открытые', decisions: 'Решения', answer: 'Ответить', discuss: 'Скопировать ID вопроса', ask: 'Задать вопрос…',
+  noQuestions: 'Нет открытых вопросов.', emptyQuestion: 'Пустой вопрос', thisCard: 'эта карточка',
+  copied: 'ID вопроса скопирован. Вставьте его в чат.', copyFailed: 'Не удалось скопировать. Выделите ID вопроса и скопируйте вручную.', copyReference: 'ID вопроса для копирования',
+  answerLabel: 'Ответ на вопрос', answerPlaceholder: 'Решение…', questionLabel: 'Вопрос', questionPlaceholder: 'Ваш вопрос…',
+  member: 'Кому', nobody: 'Никому', target: 'Куда внести', searchCards: 'Поиск карточки', section: 'Раздел (необязательно)',
+  noResults: 'Карточки не найдены.', author: 'От имени:', chooseAuthor: 'Выберите человека', noAuthor: 'В реестре проекта нет человека для записи решения.',
+  addressedTo: (name: string) => `Вопрос адресован ${name}; проверьте автора ответа ниже.`,
+  sectionHint: 'Укажите идентификатор раздела, например working-notes для «Working notes». Без него цель — вся карточка.',
+  pendingHint: 'После изменения цели подтвердите внесение отдельно через CLI или с помощью агента. Агент автоматически не запускается.',
+  appliedOn: (date: string) => `Внесено: ${date}`,
+  cancel: 'Отмена', save: 'Записать', send: 'Спросить', saving: 'Записываю…',
+  answerRequired: 'Введите ответ.', questionRequired: 'Введите вопрос.',
+  notSaved: 'Не сохранено. Проверьте сообщение каталога и повторите; текст сохранён.',
+  stale: 'Карточка изменилась. Проверьте черновик перед использованием актуальной версии.', useCurrent: 'Использовать актуальную версию',
+  changedQuestion: 'Вопрос изменился. Скопируйте ответ перед закрытием формы.',
+  readOnly: 'Источник открыт только для чтения.', toApply: 'к внесению', applied: 'внесено',
+  shortcut: (save: string, escape: string) => `${save} — записать · ${escape} — отмена`,
 });
 
-const decisionDeckStorageKey = 'deckmate-open-question-deck';
-
-interface RaiseDraft {
-  questionIndex: number;
-  questionText: string;
-  taskCardId: string;
-  memberId: string;
-  deckId: string;
+interface AnswerDraft { questionIndex: number; question: Question; answer: string; memberId: string; sourceHash: string }
+interface AskDraft { text: string; assignee: string; targetId: string; section: string; search: string; sourceHash: string }
+interface Props {
+  id?: string; card: CatalogCard; catalog: CatalogView; writable: boolean; disabled: boolean;
+  onEdit: (action: CatalogAction) => Promise<boolean>; onSelect: (card: CatalogCard) => void;
+  onActiveChange: (active: boolean) => void; source?: 'live' | 'sandbox';
 }
 
-interface AnswerDraft {
-  memberId: string;
-  questionIndex: number;
-  questionText: string;
-  answer: string;
+function matchesAnswerQuestion(draft: AnswerDraft, questions: readonly Question[]): boolean {
+  const question = questions[draft.questionIndex];
+  return Boolean(question && question.text === draft.question.text
+    && (question.assignee ?? null) === (draft.question.assignee ?? null)
+    && (question.target ?? null) === (draft.question.target ?? null));
 }
 
-interface OpenQuestionsProps {
-  card: CatalogCard;
-  catalog: CatalogView;
-  writable: boolean;
-  disabled: boolean;
-  onEdit: (action: CatalogAction) => Promise<boolean>;
-  onSelect: (card: CatalogCard) => void;
-  onActiveChange: (active: boolean) => void;
-  source?: 'live' | 'sandbox';
-}
-
-// 2026-11-11: move recognized items in the presentation tree only; original offsets keep unrelated checkboxes writable.
+// Move only the presentation nodes; source offsets remain usable for unrelated checkboxes.
 export function questionReadingTree(tree: Root): Root {
   const questions = openQuestionsOf(tree).questions;
   if (!questions) return tree;
   const starts = new Set(questions.map(question => question.start));
-  const children = tree.children.flatMap<RootContent>(node => {
+  const resolved = new Set(resolvedNodes(tree));
+  const children = tree.children.filter(node => !resolved.has(node)).flatMap<RootContent>(node => {
     if (node.type !== 'list') return [node];
     const remaining = node.children.filter(item => !starts.has(item.position?.start.offset ?? -1));
     return remaining.length ? [{ ...node, children: remaining }] : [];
@@ -134,283 +91,249 @@ export function questionReadingTree(tree: Root): Root {
   return { ...tree, children };
 }
 
-function decisionDecks(catalog: CatalogView) {
-  return catalog.decks.filter(deck => deckAcceptsCard(deck.kind, 'task'));
+function resolvedNodes(tree: Root): RootContent[] {
+  if (openQuestionsOf(tree).questions === null) return [];
+  const titles = markerWords('decided').map(title => title.toLocaleLowerCase());
+  const start = tree.children.findIndex(node => node.type === 'heading' && node.depth === 2 && titles.includes(markdownText(node).trim().toLocaleLowerCase()));
+  if (start < 0) return [];
+  let end = start + 1;
+  while (end < tree.children.length && !isCardSectionBoundary(tree.children[end])) end++;
+  return tree.children.slice(start, end);
 }
 
-function initialDecisionDeck(catalog: CatalogView): string {
-  const available = decisionDecks(catalog);
-  try {
-    const stored = readStoredValue(localStorage, decisionDeckStorageKey);
-    if (stored && available.some(deck => deck.id === stored)) return stored;
-  } catch { /* Private browsing must not block deck selection in the current window. */ }
-  const productionSpaceIds = new Set(catalog.spaces
-    .filter(space => space.kind === 'tasks' || space.title.trim().toLocaleLowerCase('ru') === 'production')
-    .map(space => space.id));
-  return (available.find(deck => deck.kind === 'task' && productionSpaceIds.has(deck.spaceId))
-    ?? available.find(deck => deck.kind === 'task') ?? available[0])?.id ?? '';
+function withoutTaskLink(item: ListItem): RootContent[] {
+  return item.children.map(child => {
+    if (child.type !== 'paragraph') return child;
+    const children = child.children.filter(node => !(node.type === 'link' && isDecisionTaskLink(node.url)));
+    const last = children[children.length - 1];
+    if (last?.type === 'text') children[children.length - 1] = { ...last, value: last.value.replace(/\s*[—–-]\s*$/u, '') };
+    return { ...child, children };
+  }) as RootContent[];
 }
 
-function taskForReference(catalog: CatalogView, reference: string | null): CatalogCard | null {
-  if (!reference) return null;
-  try { return resolveReference(catalog.cards, 'c', reference); }
-  catch { return null; }
-}
-
-export function OpenQuestions({ card, catalog, writable, disabled, onEdit, onSelect, onActiveChange, source = 'sandbox' }: OpenQuestionsProps) {
+export function DecisionStatus({ decision, card, catalog, source, onSelect, disabled = false }: {
+  decision: Decision; card: CatalogCard; catalog: CatalogView; source: 'live' | 'sandbox'; onSelect: (card: CatalogCard) => void; disabled?: boolean;
+}) {
   const t = useText(text);
   const lang = useLang();
-  const [raiseDraft, setRaiseDraft] = useState<RaiseDraft | null>(null);
-  const [raiseSaving, setRaiseSaving] = useState(false);
-  const [raiseChecking, setRaiseChecking] = useState(false);
-  const [raiseError, setRaiseError] = useState('');
+  if (!decision.applied) return <span className="decision-status is-pending"><CircleDashed size={14} aria-hidden="true" />{t.toApply}</span>;
+  const target = targetDetails(decision.target, card, catalog, lang);
+  if (target.isCurrent || !target.reference) return <span className="decision-status"><CircleCheck size={14} aria-hidden="true" />{t.applied}</span>;
+  return <a className="decision-status decision-applied" href={targetHref(target, source)} title={target.label} aria-disabled={disabled || undefined} tabIndex={disabled ? -1 : undefined}
+    onMouseDown={event => { if (disabled) event.preventDefault(); }}
+    onClick={event => openTarget(event, target, onSelect, disabled)}><CircleCheck size={14} aria-hidden="true" />{t.applied}</a>;
+}
+
+function decodeSection(section: string) { try { return decodeURIComponent(section); } catch { return section; } }
+
+type Target = ReturnType<typeof targetDetails>;
+
+function targetHref(target: Target, source: 'live' | 'sandbox') {
+  const fragment = target.section ? '#' + encodeURIComponent(decodeSection(target.section)) : '';
+  return `/r/${target.reference}?source=${source}${fragment}`;
+}
+
+function openTarget(event: MouseEvent<HTMLAnchorElement>, target: Target, onSelect: (card: CatalogCard) => void, disabled: boolean) {
+  if (disabled) { event.preventDefault(); return; }
+  if (target.card && !event.ctrlKey && !event.metaKey && !event.shiftKey && !event.altKey) { event.preventDefault(); onSelect(target.card); }
+}
+
+function QuestionTarget({ target, source, onSelect, disabled }: {
+  target: Target; source: 'live' | 'sandbox'; onSelect: (card: CatalogCard) => void; disabled: boolean;
+}) {
+  if (target.isCurrent) return null;
+  if (!target.reference) return <span className="open-question-target">{target.caption}</span>;
+  return <a className="open-question-target" href={targetHref(target, source)} aria-disabled={disabled || undefined} tabIndex={disabled ? -1 : undefined}
+    onMouseDown={event => { if (disabled) event.preventDefault(); }}
+    onClick={event => openTarget(event, target, onSelect, disabled)}><span>{target.caption}</span><ArrowUpRight size={12} aria-hidden="true" /></a>;
+}
+
+export function OpenQuestions({ id, card, catalog, writable, disabled, onEdit, onSelect, onActiveChange, source = 'sandbox' }: Props) {
+  const t = useText(text);
+  const lang = useLang();
+  const sectionHintId = useId();
   const [answerDraft, setAnswerDraft] = useState<AnswerDraft | null>(null);
-  const [answerSaving, setAnswerSaving] = useState(false);
-  const [answerError, setAnswerError] = useState('');
-  const raiseInFlight = useRef(false);
-  const answerInFlight = useRef(false);
-  const answerField = useRef<HTMLTextAreaElement>(null);
-  const memberField = useRef<HTMLSelectElement>(null);
-  const questions = card.kind === 'doc' ? card.openQuestions : null;
+  const [askDraft, setAskDraft] = useState<AskDraft | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+  const [copyFeedback, setCopyFeedback] = useState<{ index: number; questionText: string; message: string; reference?: string } | null>(null);
+  const inFlight = useRef(false);
+  const copySequence = useRef(0);
+  const copyTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const field = useRef<HTMLTextAreaElement>(null);
+  const container = useRef<HTMLElement>(null);
+  const returnFocus = useRef<{ questionIndex?: number } | null>(null);
+  const questions = questionsOf(card);
+  const currentQuestions = useRef(questions);
+  currentQuestions.current = questions;
+  const visibleCopyFeedback = copyFeedback && questions[copyFeedback.index]?.text === copyFeedback.questionText ? copyFeedback : null;
+  const decisions = useMemo(() => decisionsOf(card), [card]);
   const humans = (catalog.members ?? []).filter(member => member.kind === 'human');
-  const availableDecks = decisionDecks(catalog);
-  const locked = disabled || raiseSaving || answerSaving;
-  const active = Boolean(answerDraft || raiseDraft) || raiseSaving || raiseChecking || answerSaving;
-  const [expanded, setExpanded] = useState(true);
-  const { parsed, items } = useMemo(() => {
-    const tree = parseEditorMarkdown(card.markdown);
-    return { parsed: openQuestionsOf(tree).questions, items: tree.children.flatMap(node => node.type === 'list' ? node.children : []) };
-  }, [card.markdown]);
-
+  const locked = disabled || saving;
+  const active = Boolean(answerDraft || askDraft || saving);
+  const answerVisible = Boolean(answerDraft && matchesAnswerQuestion(answerDraft, questions));
+  const tree = useMemo(() => parseEditorMarkdown(card.markdown), [card.markdown]);
+  const parsed = useMemo(() => openQuestionsOf(tree).questions, [tree]);
+  const items = useMemo(() => tree.children.flatMap(node => node.type === 'list' ? node.children : []), [tree]);
+  const shortcut = { key: 'Enter', modifiers: ['primary'] } as const;
+  useEffect(() => { onActiveChange(active); return () => onActiveChange(false); }, [active, onActiveChange]);
   useEffect(() => {
-    onActiveChange(active);
-    return () => onActiveChange(false);
-  }, [active, onActiveChange]);
-
+    setCopyFeedback(null);
+    return () => { copySequence.current++; clearTimeout(copyTimer.current); };
+  }, [card.id]);
+  useEffect(() => { if (answerDraft || askDraft) moveFocus(field.current); }, [Boolean(answerDraft), Boolean(askDraft), answerVisible]);
   useEffect(() => {
-    if (answerDraft) moveFocus(answerField.current);
-  }, [answerDraft?.questionIndex, answerDraft?.questionText]);
+    if (active || !returnFocus.current) return;
+    const index = returnFocus.current.questionIndex;
+    const button = index === undefined ? container.current?.querySelector<HTMLButtonElement>('.open-question-ask-action')
+      : container.current?.querySelectorAll<HTMLButtonElement>('.open-question-answer-action')[index];
+    returnFocus.current = null;
+    moveFocus(button ?? container.current?.querySelector<HTMLButtonElement>('.open-question-ask-action'));
+  }, [active]);
 
-  // A 200 response can still describe a partially saved raise-decision. The refreshed projection is the verdict:
-  // close only when the new task reference is present; otherwise keep the same id for a safe retry.
-  useEffect(() => {
-    if (!raiseDraft || !raiseChecking) return;
-    const question = card.openQuestions?.[raiseDraft.questionIndex];
-    const expectedReference = shortReference('c', raiseDraft.taskCardId);
-    if (question?.text === raiseDraft.questionText && question.taskRef === expectedReference) {
-      setRaiseDraft(null);
-      setRaiseChecking(false);
-      setRaiseError('');
-      return;
-    }
-    const partialWarning = catalog.warnings.find(warning => warning.includes('Действие выполнено частично'));
-    setRaiseError(partialWarning ?? textNow(text).linkNotConfirmed);
-    setRaiseChecking(false);
-  }, [card.openQuestions, catalog.warnings, raiseChecking, raiseDraft]);
-
-  if (!questions || (!questions.length && !card.openQuestionWarnings?.length)) return null;
-
-  function openRaise(question: CatalogOpenQuestion, questionIndex: number) {
+  function closeDraft() {
+    if (inFlight.current) return;
+    returnFocus.current = answerDraft ? { questionIndex: answerDraft.questionIndex } : {};
+    setAnswerDraft(null); setAskDraft(null); setError('');
+  }
+  function clearCopyFeedback() {
+    copySequence.current++;
+    clearTimeout(copyTimer.current);
+    setCopyFeedback(null);
+  }
+  function openAnswer(question: Question, index: number) {
     if (locked || !writable) return;
-    const linkedTask = taskForReference(catalog, question.taskRef);
-    setAnswerDraft(null);
-    setAnswerError('');
-    setRaiseError('');
-    setRaiseChecking(false);
-    setRaiseDraft({
-      questionIndex,
-      questionText: question.text,
-      taskCardId: linkedTask?.id ?? 'card:' + crypto.randomUUID(),
-      memberId: humans[0]?.id ?? '',
-      deckId: initialDecisionDeck(catalog),
-    });
-  }
-
-  function closeRaise() {
-    if (raiseSaving || raiseInFlight.current) return;
-    setRaiseDraft(null);
-    setRaiseChecking(false);
-  }
-
-  function changeRaise(changes: Partial<Pick<RaiseDraft, 'memberId' | 'deckId'>>) {
-    setRaiseDraft(current => current ? { ...current, ...changes } : null);
-    setRaiseError('');
-    if (changes.deckId) {
-      try { localStorage.setItem(decisionDeckStorageKey, changes.deckId); }
-      catch { /* The choice remains active until the window closes, even without localStorage. */ }
-    }
-  }
-
-  async function saveRaise() {
-    if (!raiseDraft || raiseInFlight.current || locked || raiseChecking || !writable) return;
-    if (!raiseDraft.memberId || !raiseDraft.deckId) {
-      setRaiseError(t.choosePersonDeck);
-      return;
-    }
-    const question = card.openQuestions?.[raiseDraft.questionIndex];
-    if (question?.taskRef && question.taskRef !== shortReference('c', raiseDraft.taskCardId)) {
-      setRaiseError(t.otherTask);
-      return;
-    }
-    raiseInFlight.current = true;
-    setRaiseSaving(true);
-    setRaiseError('');
-    let saved = false;
-    try {
-      saved = await onEdit({ action: 'raise-decision', cardId: card.id, sourceHash: card.sourceHash,
-        questionIndex: raiseDraft.questionIndex, questionText: raiseDraft.questionText,
-        taskCardId: raiseDraft.taskCardId, deckId: raiseDraft.deckId, memberId: raiseDraft.memberId });
-      if (!saved) setRaiseError(t.notConfirmed);
-    } catch {
-      setRaiseError(t.saveUnconfirmed);
-    } finally {
-      raiseInFlight.current = false;
-      setRaiseSaving(false);
-    }
-    if (saved) setRaiseChecking(true);
-  }
-
-  function openAnswer(question: CatalogOpenQuestion, questionIndex: number) {
-    if (locked || !writable) return;
-    setRaiseDraft(null);
-    setRaiseError('');
-    setAnswerError('');
     const author = humans.find(member => member.id === storedMemberId());
-    setAnswerDraft({ questionIndex, questionText: question.text, answer: '', memberId: author?.id ?? '' });
+    setAnswerDraft({ questionIndex: index, question: { ...question }, answer: '', memberId: author?.id ?? '', sourceHash: card.sourceHash });
+    setError(''); clearCopyFeedback();
   }
-
-  function cancelAnswer() {
-    if (answerSaving || answerInFlight.current) return;
-    setAnswerDraft(null);
-    setAnswerError('');
+  async function copyQuestion(index: number) {
+    const sequence = ++copySequence.current;
+    const questionText = questions[index]?.text;
+    if (questionText === undefined) return;
+    clearTimeout(copyTimer.current);
+    setCopyFeedback(null);
+    const reference = `${shortReference('c', card.id)}#${index + 1}`;
+    const copied = await copyText(reference);
+    if (sequence !== copySequence.current || currentQuestions.current[index]?.text !== questionText) return;
+    if (copied) {
+      setCopyFeedback({ index, questionText, message: t.copied });
+      copyTimer.current = setTimeout(() => setCopyFeedback(null), 1500);
+    } else setCopyFeedback({ index, questionText, message: t.copyFailed, reference });
   }
-
-  async function saveAnswer() {
-    if (!answerDraft || answerInFlight.current || locked || !writable) return;
-    const answer = answerDraft.answer.trim();
-    if (!answer) { setAnswerError(t.answerRequired); return; }
-    const author = humans.find(member => member.id === answerDraft.memberId);
-    if (!author) { setAnswerError(humans.length ? t.chooseAuthor : t.noAuthor); return; }
-    answerInFlight.current = true;
-    setAnswerSaving(true);
-    setAnswerError('');
+  async function submit() {
+    if (inFlight.current || locked || !writable) return;
+    if (answerDraft && !answerDraft.answer.trim()) { setError(t.answerRequired); return; }
+    if (askDraft && !askDraft.text.trim()) { setError(t.questionRequired); return; }
+    if (answerDraft && !humans.some(member => member.id === answerDraft.memberId)) { setError(t.noAuthor); return; }
+    if (answerDraft && !answerVisible) { setError(t.changedQuestion); return; }
+    const draft = answerDraft ?? askDraft;
+    if (!draft || draft.sourceHash !== card.sourceHash) return;
+    inFlight.current = true; setSaving(true); setError('');
     try {
-      const saved = await onEdit({ action: 'record-decision', cardId: card.id, sourceHash: card.sourceHash,
-        questionIndex: answerDraft.questionIndex, questionText: answerDraft.questionText, answer, memberId: author.id });
-      if (saved) setAnswerDraft(null);
-      else setAnswerError(t.answerNotSaved);
-    } catch {
-      setAnswerError(t.recordUnconfirmed);
-    } finally {
-      answerInFlight.current = false;
-      setAnswerSaving(false);
-    }
+      let action: CatalogAction;
+      if (answerDraft) action = { action: 'record-decision', cardId: card.id, sourceHash: answerDraft.sourceHash,
+        questionIndex: answerDraft.questionIndex, questionText: answerDraft.question.text, answer: answerDraft.answer.trim(), memberId: answerDraft.memberId };
+      else if (askDraft) {
+        const section = askDraft.section.trim();
+        const target = askDraft.targetId !== card.id || section ? shortReference('c', askDraft.targetId) + (section ? '#' + encodeURIComponent(section) : '') : undefined;
+        action = { action: 'ask-question', cardId: card.id, sourceHash: askDraft.sourceHash, text: askDraft.text.trim(), assignee: askDraft.assignee || null, ...(target ? { target } : {}) };
+      } else return;
+      if (await onEdit(action)) { returnFocus.current = {}; setAnswerDraft(null); setAskDraft(null); }
+      else setError(t.notSaved);
+    } catch { setError(t.notSaved); }
+    finally { inFlight.current = false; setSaving(false); }
   }
-
-  function answerKeys(event: KeyboardEvent<HTMLTextAreaElement>) {
-    if (event.key === 'Escape') {
-      event.preventDefault();
-      event.stopPropagation();
-      cancelAnswer();
-    } else if (event.key === 'Enter' && !event.shiftKey) {
-      // Enter and Ctrl+Enter save a single-line decision; Shift+Enter inserts a draft line break.
-      event.preventDefault();
-      void saveAnswer();
-    }
+  function keys(event: KeyboardEvent<HTMLFormElement>) {
+    if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); closeDraft(); }
+    else if (event.key === 'Enter' && primaryModifierPressed(event)) { event.preventDefault(); void submit(); }
   }
+  const draft = answerDraft ?? askDraft;
+  const sameQuestion = !answerDraft || answerVisible;
+  const stale = Boolean(draft && (draft.sourceHash !== card.sourceHash || !sameQuestion));
+  const answerAuthor = answerDraft && humans.find(member => member.id === answerDraft.memberId);
+  const answerAssigneeId = answerDraft?.question.assignee;
+  const answerAssignee = answerAssigneeId && (catalog.members?.find(member => member.id === answerAssigneeId)?.label ?? answerAssigneeId);
+  const submitLabel = answerDraft ? t.save : t.send;
+  const matchingCards = askDraft ? catalog.cards.filter(candidate => !candidate.deleted && !candidate.archived
+    && candidate.title.toLocaleLowerCase().includes(askDraft.search.trim().toLocaleLowerCase())) : [];
 
-  const raiseQuestion = raiseDraft ? card.openQuestions?.[raiseDraft.questionIndex] : undefined;
-  const raiseReferenceConflict = Boolean(raiseDraft && raiseQuestion?.taskRef
-    && raiseQuestion.taskRef !== shortReference('c', raiseDraft.taskCardId));
-
-  return <section className="open-questions" aria-label={t.section(questions.length)}>
-    <button type="button" className="open-questions-heading" aria-expanded={expanded || active} disabled={active} onClick={() => setExpanded(value => !value)}><span>{t.open}</span><span className="open-questions-count">{questions.length}</span></button>
-    {(card.openQuestionWarnings?.length ?? 0) > 0 && <ul className="open-question-warnings">
-      {card.openQuestionWarnings!.map((warning, warningIndex) => <li key={warningIndex}><AlertCircle size={13} aria-hidden="true" /><span>{warning}</span></li>)}
-    </ul>}
-    <div hidden={!expanded && !active}>
-    {questions.length > 0 && <ul className="open-questions-list">
-      {questions.map((question, questionIndex) => {
-        const task = taskForReference(catalog, question.taskRef);
-        const item = items.find(item => item.position?.start.offset === parsed?.[questionIndex]?.start);
-        const answering = answerDraft?.questionIndex === questionIndex && answerDraft.questionText === question.text;
-        return <li className="open-question" key={questionIndex}>
-          <div className="open-question-row">
-            <div className="open-question-text">{item
-              ? <Markdown tree={{ type: 'root', children: [{ type: 'list', ordered: false, spread: false, children: [item] }] }} rawMarkdown={card.markdown} projectTags={catalog.projectTags} source={source} path={card.path} members={catalog.members} cards={catalog.cards} onOpenCard={onSelect} />
-              : question.text || t.emptyQuestion}</div>
-            <div className="open-question-actions">
-              {task && <Button type="button" variant="ghost" size="sm" className="open-question-task" disabled={locked}
-                title={task.title} aria-label={t.openTask(task.title)} onClick={() => onSelect(task)}><ListChecks size={14} /><span>{t.decision}</span></Button>}
-              {writable && <><Button type="button" variant="ghost" size="sm" disabled={locked} onClick={() => openRaise(question, questionIndex)}><UserRound size={14} />{t.toHand}</Button>
-                <Button type="button" variant="ghost" size="sm" disabled={locked} aria-expanded={answering} onClick={() => openAnswer(question, questionIndex)}>{t.answer}</Button></>}
-            </div>
-          </div>
-          {answering && answerDraft && <div className="open-question-answer">
-            <label><span>{t.actingAs}</span><select value={answerDraft.memberId} disabled={locked} aria-label={t.actingAs}
-              onChange={event => {
-                const memberId = event.target.value;
-                setAnswerDraft(current => current ? { ...current, memberId } : null);
-                setAnswerError('');
-              }}>
-              <option value="">—</option>
-              {humans.map(member => <option key={member.id} value={member.id}>{member.label}</option>)}
-            </select></label>
-            {!answerDraft.memberId && <p style={{ overflowWrap: 'anywhere' }}>{humans.length ? t.chooseAuthor : t.noAuthor}</p>}
-            <label><span className="visually-hidden">{t.answerLabel}</span><textarea ref={answerField} value={answerDraft.answer} rows={3} maxLength={200000}
-              placeholder={t.answerPlaceholder} disabled={locked} onChange={event => {
-                const answer = event.target.value;
-                setAnswerDraft(current => current ? { ...current, answer } : null);
-                setAnswerError('');
-              }} onKeyDown={answerKeys} /></label>
-            {answerError && <p className="open-question-error" role="alert">{answerError}</p>}
-            <div className="open-question-answer-footer"><span>{t.answerHint(humans.find(member => member.id === answerDraft.memberId)?.label ?? null)}</span>
-              <Button type="button" variant="ghost" size="sm" disabled={answerSaving} onClick={cancelAnswer}>{t.cancel}</Button>
-              <Button type="button" size="sm" disabled={locked || !answerDraft.answer.trim() || !humans.some(member => member.id === answerDraft.memberId)} onClick={() => void saveAnswer()}>
-                {answerSaving ? <LoaderCircle size={13} className="spin" /> : <Check size={13} />}{answerSaving ? t.saving : t.record}
-              </Button>
-            </div>
-          </div>}
-        </li>;
-      })}
-    </ul>}
-    {!writable && <p className="open-questions-readonly">{t.readOnly}</p>}
+  const formFooter = <>
+    {stale && !saving && <p className="open-question-error" role="alert">{sameQuestion ? t.stale : t.changedQuestion}</p>}
+    {error && <p className="open-question-error" role="alert"><AlertCircle size={13} aria-hidden="true" />{error}</p>}
+    <div className="open-question-answer-footer" data-saving={saving || undefined}>
+      {answerDraft && humans.length === 0 && <p className="open-question-author">{t.noAuthor}</p>}
+      {answerDraft && humans.length === 1 && answerAuthor && <p className="open-question-author">{t.author}<span>{answerAuthor.label}</span></p>}
+      {answerDraft && humans.length > 0 && (humans.length > 1 || !answerAuthor) && <label className="open-question-author">{t.author}<select className="control-field" value={answerDraft.memberId} disabled={locked} onChange={event => setAnswerDraft({ ...answerDraft, memberId: event.target.value })}>
+        {!answerAuthor && <option value={answerDraft.memberId} disabled>{t.chooseAuthor}</option>}
+        {humans.map(member => <option key={member.id} value={member.id}>{member.label}</option>)}
+      </select></label>}
+      <span className="open-question-answer-buttons"><Button type="button" variant="ghost" size="sm" disabled={saving} onClick={closeDraft}>{t.cancel}</Button>
+        {stale && !saving ? <Button type="button" size="sm" disabled={!sameQuestion} onClick={() => {
+          setAnswerDraft(value => value && matchesAnswerQuestion(value, questions) ? { ...value, sourceHash: card.sourceHash } : value);
+          setAskDraft(value => value && { ...value, sourceHash: card.sourceHash }); setError('');
+        }}>{t.useCurrent}</Button> : <Button type="submit" size="sm" disabled={locked || (answerDraft ? !answerDraft.answer.trim() || !answerAuthor : !askDraft?.text.trim())}
+          aria-busy={saving || undefined} aria-keyshortcuts={shortcutAria(shortcut)} title={t.shortcut(formatShortcut(shortcut).display, formatShortcut({ key: 'Escape' }).display)}>
+          {saving ? t.saving : submitLabel}</Button>}
+      </span>
     </div>
+    <span className="visually-hidden" role="status">{saving ? t.saving : ''}</span>
+  </>;
+  const answerForm = answerDraft && <form className="open-question-answer" onSubmit={(event: FormEvent) => { event.preventDefault(); void submit(); }} onKeyDown={keys}>
+    <label className="open-question-field"><span className="visually-hidden">{t.answerLabel}</span><textarea ref={field} className="control-field" value={answerDraft.answer} rows={3} maxLength={200000} placeholder={t.answerPlaceholder} disabled={locked} onChange={event => { setAnswerDraft({ ...answerDraft, answer: event.target.value }); setError(''); }} /></label>
+    {answerAssignee && <p className="open-question-hint">{t.addressedTo(answerAssignee)}</p>}
+    {formFooter}
+  </form>;
 
-    {raiseDraft && <Dialog.Root open onOpenChange={open => { if (!open) closeRaise(); }}><Dialog.Portal>
-      <Dialog.Overlay className="open-questions-overlay" />
-      <Dialog.Content className="open-questions-dialog" aria-busy={raiseSaving || raiseChecking}
-        onOpenAutoFocus={event => { event.preventDefault(); moveFocus(memberField.current); }}
-        onEscapeKeyDown={event => { if (raiseSaving || raiseChecking) event.preventDefault(); }}
-        onPointerDownOutside={event => { if (raiseSaving || raiseChecking) event.preventDefault(); }}>
-        <header className="open-questions-dialog-heading"><Dialog.Title>{t.raiseTitle}</Dialog.Title>
-          <Button type="button" variant="ghost" size="icon" disabled={raiseSaving || raiseChecking} aria-label={t.closeRaise} onClick={closeRaise}><X size={16} /></Button>
-        </header>
-        <Dialog.Description className="open-questions-dialog-question">{raiseDraft.questionText}</Dialog.Description>
-        <form onSubmit={(event: FormEvent<HTMLFormElement>) => { event.preventDefault(); void saveRaise(); }}>
-          <div className="open-questions-dialog-fields">
-            <label><span>{t.member}</span><select ref={memberField} value={raiseDraft.memberId} disabled={locked || raiseChecking}
-              onChange={event => changeRaise({ memberId: event.target.value })}>
-              {humans.length === 0 && <option value="">{t.noPeople}</option>}
-              {humans.map(member => <option key={member.id} value={member.id}>{member.label}</option>)}
-            </select></label>
-            <label><span>{t.deck}</span><select value={raiseDraft.deckId} disabled={locked || raiseChecking}
-              onChange={event => changeRaise({ deckId: event.target.value })}>
-              {availableDecks.length === 0 && <option value="">{t.noDecks}</option>}
-              {availableDecks.map(deck => <option key={deck.id} value={deck.id}>{deck.title} · {deck.kind === 'task' ? kindLabel('task', lang) : t.mixedDeck}</option>)}
-            </select></label>
-          </div>
-          <p className="open-questions-dialog-note">{t.raiseNote}</p>
-          {raiseReferenceConflict && <p className="open-question-error" role="alert">{t.otherTask}</p>}
-          {raiseError && <p className="open-question-error" role="alert">{raiseError}</p>}
-          <footer className="open-questions-dialog-footer"><span>{t.retryId}</span>
-            <Button type="button" variant="ghost" size="sm" disabled={raiseSaving || raiseChecking} onClick={closeRaise}>{t.cancel}</Button>
-            <Button type="submit" size="sm" disabled={locked || raiseChecking || !raiseDraft.memberId || !raiseDraft.deckId || raiseReferenceConflict}>
-              {raiseSaving || raiseChecking ? <LoaderCircle size={13} className="spin" /> : <Send size={13} />}{raiseError ? t.retryAction : t.toHand}
-            </Button>
-          </footer>
-        </form>
-      </Dialog.Content>
-    </Dialog.Portal></Dialog.Root>}
+  return <section ref={container} id={id} className="open-questions" aria-label={t.panel}>
+    {(card.openQuestionWarnings?.length ?? 0) > 0 && <ul className="open-question-warnings">{card.openQuestionWarnings!.map((warning, index) => <li key={index}><AlertCircle size={13} aria-hidden="true" />{warning}</li>)}</ul>}
+    <h3 className="questions-section-title">{t.open} <span className="page-number">{questions.length}</span></h3>
+    {questions.length === 0 ? <p className="open-questions-empty">{t.noQuestions}</p> : <Tooltip.Provider><ul className="open-questions-list">{questions.map((question, index) => {
+      const item = items.find(candidate => candidate.position?.start.offset === parsed?.[index]?.start);
+      const answering = answerVisible && answerDraft?.questionIndex === index;
+      const target = targetDetails(question.target, card, catalog, lang);
+      const assignee = question.assignee && ((catalog.members ?? []).find(member => member.id === question.assignee)?.label ?? question.assignee);
+      return <li className="open-question" key={index}>
+        <div className="open-question-row"><div className="open-question-text">{item && !question.assignee && !question.target
+          ? <Markdown tree={{ type: 'root', children: withoutTaskLink(item) }} rawMarkdown={card.markdown} projectTags={catalog.projectTags} source={source} path={card.path} members={catalog.members} cards={catalog.cards} onOpenCard={onSelect} />
+          : question.text || t.emptyQuestion}</div>
+          {(assignee || !target.isCurrent) && <div className="open-question-meta">
+            {assignee && <span className="open-question-assignee"><CardOwnerAvatar owner={question.assignee ?? null} members={catalog.members ?? []} />@{assignee}</span>}
+            <QuestionTarget target={target} source={source} onSelect={onSelect} disabled={locked || active} />
+          </div>}
+          {visibleCopyFeedback?.index === index && visibleCopyFeedback.reference && <label className="open-question-field open-question-copy-reference"><span>{t.copyFailed}</span><input className="control-field" aria-label={t.copyReference} readOnly value={visibleCopyFeedback.reference} onFocus={event => event.currentTarget.select()} /></label>}
+          {!active && <div className="open-question-actions">{writable && <Button type="button" variant="ghost" size="sm" className="open-question-answer-action" disabled={locked} onClick={() => openAnswer(question, index)}><MessageSquareReply size={16} aria-hidden="true" />{t.answer}</Button>}
+            <Tooltip.Root open={visibleCopyFeedback?.index === index}><Tooltip.Trigger asChild>
+              <Button type="button" variant="ghost" size="sm" className="open-question-discuss-action" disabled={disabled} onClick={() => void copyQuestion(index)}><MessageCircle size={16} aria-hidden="true" />{t.discuss}</Button>
+            </Tooltip.Trigger><Tooltip.Portal><Tooltip.Content className="card-value-tooltip open-question-feedback" side="top" sideOffset={6} collisionPadding={8}
+              onEscapeKeyDown={clearCopyFeedback}>{visibleCopyFeedback?.message}</Tooltip.Content></Tooltip.Portal></Tooltip.Root></div>}
+        </div>
+        {answering && answerForm}
+      </li>;
+    })}</ul></Tooltip.Provider>}
+    {answerDraft && !answerVisible && <div className="open-question-orphan"><p className="open-question-text">{answerDraft.question.text}</p>{answerForm}</div>}
+    <span className="visually-hidden" aria-live="polite" aria-atomic="true">{visibleCopyFeedback?.message ?? ''}</span>
+    {decisions.length > 0 && <section className="open-questions-resolved"><h3 className="questions-section-title">{t.decisions} <span className="page-number">{decisions.length}</span></h3>{decisions.some(decision => !decision.applied) && <p className="open-question-hint pending-hint">{t.pendingHint}</p>}<ul className="resolved-list">{decisions.map((decision, index) => <li className="resolved-item" key={decision.index ?? index}>
+      {decision.question && <p className="resolved-question">{decision.question} →</p>}
+      <div className="resolved-decision"><Markdown tree={decision.nodes ? { type: 'root', children: decision.nodes } : parseEditorMarkdown(decision.answer)} rawMarkdown={decision.nodes ? card.markdown : decision.answer} source={source} path={card.path} members={catalog.members} cards={catalog.cards} onOpenCard={onSelect} /></div>
+      <QuestionTarget target={targetDetails(decision.target, card, catalog, lang)} source={source} onSelect={onSelect} disabled={locked || active} />
+      <div className="resolved-attribution">{(decision.by || decision.date) && <span>{[decision.by, decision.date].filter(Boolean).join(' · ')}</span>}<DecisionStatus decision={decision} card={card} catalog={catalog} source={source} onSelect={onSelect} disabled={locked || active} />{decision.applied && <span>{t.appliedOn(decision.applied)}</span>}</div>
+    </li>)}</ul></section>}
+    {!writable && <p className="open-questions-readonly">{t.readOnly}</p>}
+    {writable && !active && <Button type="button" variant="ghost" size="sm" className="open-question-ask-action" disabled={locked} onClick={() => {
+      setError(''); clearCopyFeedback(); setAskDraft({ text: '', assignee: '', targetId: card.id, section: '', search: '', sourceHash: card.sourceHash });
+    }}><MessageCircleQuestion size={16} aria-hidden="true" />{t.ask}</Button>}
+    {askDraft && <form className="open-question-ask" onSubmit={(event: FormEvent) => { event.preventDefault(); void submit(); }} onKeyDown={keys}>
+      <label className="open-question-field"><span>{t.questionLabel}</span><textarea ref={field} className="control-field" value={askDraft.text} rows={3} maxLength={200000} placeholder={t.questionPlaceholder} disabled={locked} onChange={event => setAskDraft({ ...askDraft, text: event.target.value })} /></label>
+      <label className="open-question-field"><span>{t.member}</span><select className="control-field" value={askDraft.assignee} disabled={locked} onChange={event => setAskDraft({ ...askDraft, assignee: event.target.value })}><option value="">{t.nobody}</option>{(catalog.members ?? []).map(member => <option key={member.id} value={member.id}>@{member.label}</option>)}</select></label>
+      <label className="open-question-field"><span>{t.searchCards}</span><input type="search" className="control-field" value={askDraft.search} disabled={locked} onChange={event => setAskDraft({ ...askDraft, search: event.target.value })} /></label>
+      <label className="open-question-field"><span>{t.target}</span><select className="control-field" value={askDraft.targetId} disabled={locked} onChange={event => setAskDraft({ ...askDraft, targetId: event.target.value })}>
+        <option value={card.id}>{t.thisCard}</option>{matchingCards.filter(candidate => candidate.id !== card.id).map(candidate => <option value={candidate.id} key={candidate.id}>{candidate.title}</option>)}
+        {askDraft.targetId !== card.id && !matchingCards.some(candidate => candidate.id === askDraft.targetId) && <option value={askDraft.targetId}>{catalog.cards.find(candidate => candidate.id === askDraft.targetId)?.title ?? askDraft.targetId}</option>}
+      </select></label>
+      {askDraft.search && matchingCards.length === 0 && <p className="open-questions-empty">{t.noResults}</p>}
+      <label className="open-question-field"><span>{t.section}</span><input className="control-field" value={askDraft.section} disabled={locked} aria-describedby={sectionHintId} onChange={event => setAskDraft({ ...askDraft, section: event.target.value })} /><span id={sectionHintId} className="open-question-hint">{t.sectionHint}</span></label>
+      {formFooter}
+    </form>}
   </section>;
 }

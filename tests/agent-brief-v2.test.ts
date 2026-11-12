@@ -1,24 +1,20 @@
 import { afterEach, expect, it, vi } from 'vitest';
-import { freePort } from './free-port.ts';
 import { createHash, randomUUID } from 'node:crypto';
 import { appendFile, mkdir, mkdtemp, readFile, readdir, realpath, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import type { FastifyInstance } from 'fastify';
 import { buildBrief, estimateTokens } from '../server/agent-brief.ts';
 import { emptyManifest, readProjectCatalog, renderCatalogManifest } from '../server/catalog.ts';
 import { readCardContent } from '../server/card-content.ts';
 import { createManagedMarkdown } from '../server/native-cards.ts';
-import { createApp } from '../server/app.ts';
 import { writeCatalog } from '../server/cli-write.ts';
+import * as cliWrite from '../server/cli-write.ts';
 import type { ServerConfig } from '../server/config.ts';
-import { getCatalogHands } from '../src/catalog-hand.ts';
-import { parseOpenQuestions } from '../src/open-questions.ts';
 import { resolveReference, shortReference } from '../src/references.ts';
+import { parseOpenQuestions } from '../src/open-questions.ts';
 import { run as ask } from '../tools/commands/ask.ts';
 
 const roots: string[] = [];
-const apps: Array<{ app: FastifyInstance; closed: Promise<void>; port: number }> = [];
 const port = 4396;
 const taskId = 'task:features/example.md#1.1';
 const docId = 'doc:features/example.md';
@@ -26,14 +22,6 @@ vi.setConfig({ testTimeout: 30000 });
 
 afterEach(async () => {
   vi.restoreAllMocks();
-  for (const { app, closed, port: appPort } of apps.splice(0)) {
-    // The server answers only requests addressed to its own host and port.
-    const appHeaders = { host: `127.0.0.1:${appPort}` };
-    const snapshot = (await app.inject({ url: '/api/snapshot', headers: appHeaders })).json();
-    expect((await app.inject({ method: 'POST', url: '/api/shutdown',
-      headers: { ...appHeaders, 'x-deckmate-token': snapshot.token } })).statusCode).toBe(200);
-    await closed;
-  }
   for (const root of roots.splice(0)) {
     const relative = path.relative(await realpath(tmpdir()), await realpath(root));
     if (!relative || relative.startsWith('..') || path.isAbsolute(relative) || !path.basename(root).startsWith('deckmate-k2-')) {
@@ -70,12 +58,13 @@ function offline() {
   }));
 }
 
-async function askQuestion(config: ServerConfig, cardId: string, text: string, to?: string) {
+async function askQuestion(config: ServerConfig, cardId: string, text: string, to?: string, target?: string) {
   const catalog = await readProjectCatalog(config.dataRoot);
   const output = vi.spyOn(console, 'log').mockImplementation(() => {});
   try {
-    await ask({ config, root: config.dataRoot, source: 'sandbox', catalog }, [shortReference('c', cardId), text],
-      new Map([['member', 'codex'], ...(to ? [['to', to] as [string, string]] : [])]));
+    const options = new Map([['member', 'codex'], ...(to ? [['to', to] as [string, string]] : []),
+      ...(target ? [['target', target] as [string, string]] : [])]);
+    await ask({ config, root: config.dataRoot, source: 'sandbox', catalog }, [shortReference('c', cardId), text], options);
     return JSON.parse(output.mock.calls.at(-1)![0] as string);
   } finally { output.mockRestore(); }
 }
@@ -100,144 +89,52 @@ async function native(root: string, markdown: string, parentId: string | null = 
 
 async function brief(root: string, cardId: string, budget?: number) {
   const catalog = await readProjectCatalog(root);
-  return buildBrief(catalog, root, catalog.cards.find(card => card.id === cardId)!, { budget });
+  const card = catalog.cards.find(card => card.id === cardId)!;
+  if (card.openQuestions === undefined) {
+    const questions = parseOpenQuestions(card.markdown).questions;
+    if (questions) card.openQuestions = questions.map(question => ({ text: question.text, taskRef: question.taskRef, assignee: null, target: null }));
+  }
+  return buildBrief(catalog, root, card, { budget });
 }
 
-it('asks a legacy rule, adds exactly one decision to the first human hand, and repeats with zero writes', async () => {
+it('asks on the source legacy Task without creating a Decision Task', async () => {
   const { root, config } = await fixture();
-  const fetch = offline();
-  const filename = path.join(root, 'features/example.md');
-  const before = await readFile(filename, 'utf8');
+  offline();
+  const write = vi.spyOn(cliWrite, 'writeCatalog').mockResolvedValue({ warnings: [], via: 'files' });
   const result = await askQuestion(config, taskId, 'Choose colour?');
   const catalog = await readProjectCatalog(root);
-  const decisions = catalog.cards.filter(card => card.title === 'Решение: Choose colour?');
-  expect(decisions).toHaveLength(1);
-  expect(decisions[0]).toMatchObject({ kind: 'task', parentId: docId, owner: 'Reviewer' });
-  expect(getCatalogHands(catalog).find(hand => hand.member.id === 'reviewer')?.cards.map(card => card.id)).toContain(decisions[0].id);
-  const after = await readFile(filename, 'utf8');
-  const withoutBom = after.slice(1);
-  const questions = parseOpenQuestions(withoutBom).questions!;
-  expect(questions).toHaveLength(1);
-  expect(questions[0].taskRef).toBe(shortReference('c', decisions[0].id));
-  expect(result.link).toContain(questions[0].taskRef);
-  expect(result.warnings).toEqual([expect.stringContaining('does not block the source Task')]);
-  expect('\uFEFF' + withoutBom.replace(withoutBom.slice(questions[0].start, questions[0].end) + '\r\n', '')
-    .replace('## Открыто\r\n\r\n\r\n', '## Открыто\r\n\r\n')).toBe(before);
-  const snapshot = await files(root);
-  fetch.mockClear();
-  expect(await askQuestion(config, taskId, 'Choose colour?')).toMatchObject({ existing: true, writes: 0, link: result.link,
-    warnings: result.warnings });
-  expect(fetch).not.toHaveBeenCalled();
-  expect(await files(root)).toEqual(snapshot);
+  expect(result).toMatchObject({ card: shortReference('c', taskId), assignee: 'reviewer', target: shortReference('c', taskId), existing: false });
+  expect(write).toHaveBeenCalledWith(config, 'sandbox', expect.objectContaining({
+    action: 'ask-question', cardId: taskId, text: 'Choose colour?', assignee: 'reviewer',
+  }), 'codex');
+  expect(catalog.cards.filter(card => card.title === 'Решение: Choose colour?')).toHaveLength(0);
 });
 
-it('uses a native Doc parent and explicit human recipient, finishing manual-order stages', async () => {
+it('keeps a native child question on that child with an explicit recipient and target', async () => {
   const { root, config } = await fixture(true);
   offline();
+  const write = vi.spyOn(cliWrite, 'writeCatalog').mockResolvedValue({ warnings: [], via: 'files' });
   const parentId = await native(root, '## Открыто\n\n', null, 'doc');
-  const childId = await native(root, 'Original.\n', parentId);
-  const result = await askQuestion(config, childId, 'Which route?', 'second');
-  const catalog = await readProjectCatalog(root);
-  const decision = catalog.cards.find(card => card.title === 'Решение: Which route?')!;
-  expect(decision).toMatchObject({ parentId, owner: 'Second' });
-  expect(getCatalogHands(catalog).find(hand => hand.member.id === 'second')?.cards.map(card => card.id)).toContain(decision.id);
-  expect(result.link).toContain(shortReference('c', decision.id));
-  expect(catalog.deckOrder?.work.flatOrder).toContain(decision.id);
+  const childId = await native(root, '## Work\n\nOriginal.\n', parentId);
+  const target = `${shortReference('c', childId)}#Work`;
+  const result = await askQuestion(config, childId, 'Which route?', 'second', target);
+  expect(result).toMatchObject({ card: shortReference('c', childId), assignee: 'second', target });
+  expect(write).toHaveBeenCalledWith(config, 'sandbox', expect.objectContaining({
+    action: 'ask-question', cardId: childId, assignee: 'second', target,
+  }), 'codex');
+  expect((await readProjectCatalog(root)).cards.filter(card => card.title === 'Решение: Which route?')).toHaveLength(0);
+});
+
+it('rejects empty text and an agent recipient before writing', async () => {
+  const { root, config } = await fixture();
+  offline();
+  const write = vi.spyOn(cliWrite, 'writeCatalog').mockResolvedValue({ warnings: [], via: 'files' });
   const snapshot = await files(root);
-  await askQuestion(config, childId, 'Which route?', 'second');
-  expect(await files(root)).toEqual(snapshot);
-});
-
-it('keeps a native question without a rule on that card and preserves literal Markdown punctuation', async () => {
-  const { root, config } = await fixture();
-  offline();
-  const cardId = await native(root, 'Body.\r\n');
-  for (const [index, text] of ['- [ ] status', 'Use &lt;tag&gt;?', '1) *bold* [link](/r/c-1234567890)'].entries()) {
-    const to = index === 0 ? 'second' : undefined;
-    // 2026-11-06: nobody receives a Decision task here, so the command says so instead of implying one.
-    const first = await askQuestion(config, cardId, text, to);
-    expect(first.warnings.join(' ')).toContain('no Decision task was created');
-    expect(first.warnings.join(' ')).toContain('does not block the source Task');
-    if (to) expect(first.warnings.join(' ')).toContain('--to was not used');
-    const snapshot = await files(root);
-    const repeated = await askQuestion(config, cardId, text, to);
-    expect(repeated).toMatchObject({ writes: 0, warnings: first.warnings });
-    expect(await files(root)).toEqual(snapshot);
-  }
-  const content = await readCardContent(root, cardId);
-  expect(parseOpenQuestions(content.markdown).questions?.map(question => question.text)).toEqual([
-    '- [ ] status', 'Use &lt;tag&gt;?', '1) *bold* [link](/r/c-1234567890)',
-  ]);
-  expect((await readProjectCatalog(root)).cards.filter(card => card.title.startsWith('Решение:'))).toHaveLength(0);
-});
-
-it('writes English open-question and decision markers without renaming an existing English section', async () => {
-  const { root, config } = await fixture();
-  offline();
-  const manifestPath = path.join(root, 'tasks/deckmate.md');
-  await writeFile(manifestPath, (await readFile(manifestPath, 'utf8')).replace('schema: 1\n', 'schema: 1\nformatLanguage: en\n'));
-  const cardId = await native(root, 'Body.\n');
-  await askQuestion(config, cardId, 'Plain question?');
-  const content = await readCardContent(root, cardId);
-  expect(content.markdown).toContain('## Open questions\n');
-  expect(content.markdown).not.toContain('## Открыто');
-
-  const docId = await native(root, '## Open questions\n\n', null, 'doc');
-  await askQuestion(config, docId, 'Choose a route?');
-  const catalog = await readProjectCatalog(root);
-  expect(catalog.cards.some(card => card.title === 'Decision: Choose a route?')).toBe(true);
-  const task = catalog.cards.find(card => card.title === 'Decision: Choose a route?')!;
-  const body = (await readCardContent(root, task.id)).markdown;
-  expect(body).toContain('A question from the rule [Isolated](/r/');
-  expect(body).toContain('section “Open questions”:');
-  expect(body).toContain('The human\'s answer is recorded by the record-decision command in the rule\'s “Decided” section.');
-  const saved = await readFile(path.join(root, `cards/${docId.slice(5)}.md`), 'utf8');
-  expect(saved.match(/^## Open questions$/gmu)).toHaveLength(1);
-});
-
-it('uses CRLF for an empty native body and rejects unsafe body rewrites before writing', async () => {
-  const { root, config } = await fixture();
-  offline();
-  const cardId = await native(root, '');
-  const filename = path.join(root, `cards/${cardId.slice(5)}.md`);
-  await writeFile(filename, (await readFile(filename, 'utf8')).replace(/\r?\n/gu, '\r\n'));
-  await askQuestion(config, cardId, 'Empty body?');
-  expect((await readCardContent(root, cardId)).markdown).toContain('\r\n- Empty body\\?\r\n');
-  await appendFile(filename, 'Mixed\n');
-  const snapshot = await files(root);
-  await expect(askQuestion(config, cardId, 'Another?')).rejects.toThrow('bytes outside the question');
-  expect(await files(root)).toEqual(snapshot);
-});
-
-it('rejects invalid text, an agent recipient, and stale source hashes without writes', async () => {
-  const { root, config } = await fixture();
-  offline();
-  const snapshot = await files(root);
-  await expect(askQuestion(config, taskId, 'Trailing -')).rejects.toThrow('trailing dash');
+  await expect(askQuestion(config, taskId, '   ')).rejects.toThrow('1 to 900');
   await expect(askQuestion(config, taskId, 'Question?', 'codex')).rejects.toThrow('human');
+  expect(write).not.toHaveBeenCalled();
   expect(await files(root)).toEqual(snapshot);
-  const catalog = await readProjectCatalog(root);
-  await appendFile(path.join(root, 'features/example.md'), '\r\nExternal.\r\n');
-  const changed = await files(root);
-  await expect(ask({ config, root, source: 'sandbox', catalog }, [taskId, 'Question?'], new Map([['member', 'codex']]))).rejects.toMatchObject({ status: 409 });
-  expect(await files(root)).toEqual(changed);
 });
-
-it('uses the live transport and stops its server through /api/shutdown', async () => {
-  const { root, config: fixed } = await fixture();
-  const config = { ...fixed, port: await freePort() };
-  const app = await createApp(config);
-  const closed = new Promise<void>(resolve => app.addHook('onClose', async () => { resolve(); }));
-  apps.push({ app, closed, port: config.port });
-  await app.listen({ host: '127.0.0.1', port: config.port });
-  const fetch = vi.spyOn(globalThis, 'fetch');
-  const result = await askQuestion(config, taskId, 'Server question?');
-  expect(result.link).toMatch(/\/r\/c-/u);
-  const posts = fetch.mock.calls.filter(([, options]) => options?.method === 'POST');
-  expect(posts).toHaveLength(2);
-  expect(posts.every(([, options]) => new Headers(options?.headers).get('x-deckmate-actor') === 'codex')).toBe(true);
-  expect((await readProjectCatalog(root)).cards.filter(card => card.title === 'Решение: Server question?')).toHaveLength(1);
-}, 30000);
 
 it('extracts only the latest real report, limits it to ten lines, and retains complete source ranges', async () => {
   const { root } = await fixture();
@@ -266,11 +163,10 @@ it('includes reports on legacy Docs without pulling the complete document into t
   expect(result.markdown).toContain('(a document: read the full ranges');
 });
 
-it.each(['Open questions', 'Открыто'])('keeps reports outside %s selections and source ranges after ask and report', async title => {
+it.each(['Open questions', 'Открыто'])('keeps reports outside %s selections and source ranges', async title => {
   const { root, config } = await fixture();
   offline();
-  const cardId = await native(root, `Stable colour build.\n\n## ${title}\n\n`);
-  await askQuestion(config, cardId, 'Which stable colour build?');
+  const cardId = await native(root, `Stable colour build.\n\n## ${title}\n\n- Which stable colour build?\n`);
   const catalog = await readProjectCatalog(root);
   const content = await readCardContent(root, cardId);
   await writeCatalog(config, 'sandbox', { action: 'add-card-report', cardId, sourceHash: content.sourceHash,
@@ -286,38 +182,22 @@ it.each(['Open questions', 'Открыто'])('keeps reports outside %s selectio
   expect(result.markdown.split('## Agent questions\n')[1].split('\n\n## ')[0]).not.toContain('verified.');
 });
 
-it('shows open questions and recorded answers after resolution without inventing a pairing', async () => {
-  const { root, config } = await fixture();
-  offline();
-  await askQuestion(config, taskId, 'Which colour?');
-  expect((await brief(root, taskId)).markdown).toContain('## Agent questions\n');
+it('shows open questions and only decisions waiting to be applied on the same card', async () => {
+  const { root } = await fixture();
+  const cardId = await native(root, 'Stable colour build.\n\n## Open questions\n\n- Which stable colour build?\n\n## Decided\n\n- Existing rule.\n');
   const catalog = await readProjectCatalog(root);
-  const content = await readCardContent(root, docId);
-  await writeCatalog(config, 'sandbox', { action: 'record-decision', cardId: docId, sourceHash: content.sourceHash,
-    manifestHash: catalog.manifestHash, questionIndex: 0, questionText: 'Which colour?', answer: 'Blue.', memberId: 'reviewer' }, 'reviewer');
-  const result = await brief(root, taskId);
-  expect(result.markdown).toContain('Решение: Which colour?');
-  expect(result.markdown).toContain('Blue. — Reviewer');
-  expect(result.markdown).toContain('answers are not linked to individual questions');
-  expect(parseOpenQuestions((await readCardContent(root, docId)).markdown).questions).toHaveLength(0);
-});
-
-it('shows answers recorded under an English “Decided” heading', async () => {
-  // 2026-11-09: matching only the Russian heading made every answer in an English project vanish from the brief.
-  const { root, config } = await fixture();
-  offline();
-  const manifestPath = path.join(root, 'tasks/deckmate.md');
-  await writeFile(manifestPath, (await readFile(manifestPath, 'utf8')).replace('schema: 1\n', 'schema: 1\nformatLanguage: en\n'));
-  const rulePath = path.join(root, 'features/example.md');
-  await writeFile(rulePath, (await readFile(rulePath, 'utf8')).replace('## Решено', '## Decided').replace('## Открыто', '## Open questions'));
-  await askQuestion(config, taskId, 'Which colour?');
-  const catalog = await readProjectCatalog(root);
-  const content = await readCardContent(root, docId);
-  await writeCatalog(config, 'sandbox', { action: 'record-decision', cardId: docId, sourceHash: content.sourceHash,
-    manifestHash: catalog.manifestHash, questionIndex: 0, questionText: 'Which colour?', answer: 'Blue.', memberId: 'reviewer' }, 'reviewer');
-  const result = await brief(root, taskId);
-  expect(result.markdown).toContain('Blue. — Reviewer');
-  expect(result.markdown).toContain('answers are not linked to individual questions');
+  const card = catalog.cards.find(candidate => candidate.id === cardId)!;
+  card.openQuestions = [{ text: 'Which stable colour build?', taskRef: null, assignee: 'reviewer', target: null }];
+  card.decisions = [
+    { index: 3, question: 'Old question?', answer: 'Already applied.', by: 'reviewer', date: '2026-11-11', target: null, applied: '2026-11-12' },
+    { index: 4, question: 'Which stable colour build?', answer: 'Blue.', by: 'reviewer', date: '2026-11-12', target: null, applied: null },
+  ];
+  const result = await buildBrief(catalog, root, card);
+  const ref = shortReference('c', cardId);
+  expect(result.markdown).toContain(`Ask ${ref}#1 · @reviewer · target ${ref} · Which stable colour build?`);
+  expect(result.markdown).toContain('Apply #4 · Which stable colour build? → Blue. — reviewer');
+  expect(result.markdown).not.toContain('Already applied.');
+  expect(result.markdown).toContain('## Agent questions\n');
 });
 
 it('reads a Journey instruction with its version and detects stale step files', async () => {
@@ -347,7 +227,7 @@ it.runIf(Boolean(process.env.K2_SANDBOX && process.env.K2_BASELINE))('keeps all 
   const catalog = await readProjectCatalog(root);
   const before = await files(root);
   for (const ref of ['c-tdurz5vi89', 'c-7bycq1r84u', 'c-j5xauk77vb']) {
-    const result = await buildBrief(catalog, root, resolveReference(catalog.cards, 'c', ref)!);
+    const result = await buildBrief(catalog, root, resolveReference(catalog.cards, 'c', ref)!, { budget: 1500 });
     expect(result.tokens).toBeLessThanOrEqual(1500);
     if (ref === 'c-j5xauk77vb') expect(JSON.stringify(result)).toBe(JSON.stringify(baseline[ref]));
   }

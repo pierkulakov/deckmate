@@ -4,6 +4,7 @@ import { validPlanningCover } from '../src/planning-cover.ts';
 import { isoWeek } from '../src/iso-week.ts';
 import { boundedText, validDate } from './card-options.ts';
 import { defineText, serverText } from './i18n.ts';
+import { isPlainRecord } from './yaml-front-matter.ts';
 
 const text = defineText({
   invalid: (field: string) => `Invalid planning field: ${field}.`,
@@ -13,10 +14,6 @@ const text = defineText({
   limit: 'Реестр Run заполнен (1000 периодов). Сохраните старую историю проекта отдельно перед расширением расписания.',
 });
 
-function planningRecord(value: unknown): value is Record<string, unknown> {
-  return value !== null && typeof value === 'object' && !Array.isArray(value)
-    && [Object.prototype, null].includes(Object.getPrototypeOf(value));
-}
 export function invalidPlanning(field: string): never { throw new Error(serverText(text).invalid(field)); }
 export function planningId(value: unknown): value is string { return typeof value === 'string' && /^[a-z0-9][a-z0-9-]{0,79}$/u.test(value); }
 export function addRunDays(date: string, count: number): string {
@@ -39,13 +36,13 @@ export function isRunExpired(run: RunRecord, configuration: RunConfiguration | u
 }
 
 export function validateCarryOver(value: unknown): RunCarryOver {
-  if (!planningRecord(value) || Object.keys(value).length !== 3 || ['review', 'blocked', 'other'].some(key => typeof value[key] !== 'boolean')) invalidPlanning('carryOver');
+  if (!isPlainRecord(value) || Object.keys(value).length !== 3 || ['review', 'blocked', 'other'].some(key => typeof value[key] !== 'boolean')) invalidPlanning('carryOver');
   return value as unknown as RunCarryOver;
 }
 
 export function validateRunConfiguration(value: unknown): RunConfiguration {
   const allowed = ['id', 'shortName', 'color', 'projectSpecific', 'labelTemplate', 'startDate', 'durationWeeks', 'upcomingCount', 'finishTime', 'timeZone', 'carryOver', 'stopDate'];
-  if (!planningRecord(value) || Object.keys(value).some(key => !allowed.includes(key))) invalidPlanning('configuration');
+  if (!isPlainRecord(value) || Object.keys(value).some(key => !allowed.includes(key))) invalidPlanning('configuration');
   if (!planningId(value.id)) invalidPlanning('configuration.id');
   if (!boundedText(value.shortName, 5)) invalidPlanning('shortName');
   if (typeof value.color !== 'string' || !/^#[0-9a-f]{6}$/iu.test(value.color)) invalidPlanning('color');
@@ -73,7 +70,7 @@ export function validatePlanningDetails(value: Record<string, unknown>): void {
 }
 function nonnegative(value: unknown): value is number { return typeof value === 'number' && Number.isFinite(value) && value >= 0; }
 function validateHistoryPoint(value: unknown): asserts value is PlanningHistoryPoint {
-  if (!planningRecord(value) || !validDate(value.date) || ['tasks', 'done', 'effort', 'doneEffort'].some(key => !nonnegative(value[key]))) invalidPlanning('history');
+  if (!isPlainRecord(value) || !validDate(value.date) || ['tasks', 'done', 'effort', 'doneEffort'].some(key => !nonnegative(value[key]))) invalidPlanning('history');
   if (Number(value.done) > Number(value.tasks) || Number(value.doneEffort) > Number(value.effort)) invalidPlanning('history');
 }
 export function validatePlanningStatistics(value: unknown): asserts value is PlanningStatistics {
@@ -82,9 +79,9 @@ export function validatePlanningStatistics(value: unknown): asserts value is Pla
   if (typeof statistics.capturedAt !== 'string' || !Number.isFinite(Date.parse(statistics.capturedAt)) || !nonnegative(statistics.unestimated)) invalidPlanning('statistics');
   for (const key of ['states', 'priorities', 'owners', 'decks']) {
     const distribution = statistics[key];
-    if (!Array.isArray(distribution) || distribution.length > 100_000 || distribution.some(item => !planningRecord(item) || typeof item.key !== 'string' || item.key.length > 1000 || !nonnegative(item.total) || !nonnegative(item.done) || item.done > item.total || item.unestimated !== undefined && !nonnegative(item.unestimated))) invalidPlanning('statistics.' + key);
+    if (!Array.isArray(distribution) || distribution.length > 100_000 || distribution.some(item => !isPlainRecord(item) || typeof item.key !== 'string' || item.key.length > 1000 || !nonnegative(item.total) || !nonnegative(item.done) || item.done > item.total || item.unestimated !== undefined && !nonnegative(item.unestimated))) invalidPlanning('statistics.' + key);
   }
-  if (!Array.isArray(statistics.completedEffort) || statistics.completedEffort.length > 100_000 || statistics.completedEffort.some(item => !planningRecord(item) || !validDate(item.date) || !nonnegative(item.effort) || item.cardId !== undefined && typeof item.cardId !== 'string')) invalidPlanning('statistics.completedEffort');
+  if (!Array.isArray(statistics.completedEffort) || statistics.completedEffort.length > 100_000 || statistics.completedEffort.some(item => !isPlainRecord(item) || !validDate(item.date) || !nonnegative(item.effort) || item.cardId !== undefined && typeof item.cardId !== 'string')) invalidPlanning('statistics.completedEffort');
 }
 
 export function runGoal(configuration: RunConfiguration, number: number, start: string): string {

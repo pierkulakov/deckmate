@@ -6,37 +6,24 @@ import { randomBytes } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { packagePath } from './package-path.ts';
-import { Repository, RepositoryError } from './repository.ts';
+import type { Repository } from './repository.ts';
 import { assertWritable, containedFile, WriteAccessError } from './config.ts';
-import { listProjectTemplates, planProjectTemplate, ProjectTemplateNotFoundError } from './project-templates.ts';
 import type { ServerConfig } from './config.ts';
-import { applyAttachmentEdit, attachmentEditActions, InvalidAttachmentIdError, readCardAttachments, type AttachmentEditAction } from './attachments.ts';
-import { watchProjectFiles } from './file-events.ts';
-import { CatalogError, CatalogService } from './catalog-service.ts';
-import { Boards } from './boards.ts';
-import { importCards } from './catalog-import.ts';
+import type { AttachmentEditAction } from './attachments.ts';
+import type { ProjectFileWatcher } from './file-events.ts';
+import { CatalogError } from './catalog-error.ts';
+import type { CatalogService } from './catalog-service.ts';
+import type { Boards } from './boards.ts';
 import type { BoardScene } from '../src/board-contracts.ts';
 import type { CatalogEdit, CatalogImportEdit, CatalogQuery, CatalogView } from '../src/catalog-contracts.ts';
 import type { DataSource } from '../src/workspace-contracts.ts';
 import { resolveReference } from '../src/references.ts';
-import { summarizeCatalog } from './catalog-summary.ts';
-import { readJourneyMetrics } from './journey-metrics.ts';
-import { readProjectPulse } from './project-pulse.ts';
-import { readCardContent, CardContentError } from './card-content.ts';
-import { NotificationService } from './notifications.ts';
+import type { NotificationService } from './notifications.ts';
 import { cardStates, cardStateWords } from '../src/format-vocabulary.ts';
 import type { NotificationDismissRequest, NotificationWatchRequest } from '../src/notification-contracts.ts';
 import { memberIdPattern } from '../src/members.ts';
 import type { PlanningEdit } from '../src/planning-files.ts';
-import { applyPlanningEdit } from './planning-files.ts';
-import { needsPlanningObservation, recordPlanningObservation } from './planning-history.ts';
-import { maintainRecurringRuns, runScheduleDue } from './run-lifecycle.ts';
-import { readRuns } from './runs.ts';
 import { registerRequestLang } from './i18n.ts';
-import { readProjectCatalog } from './catalog.ts';
-import { buildBrief, readFileLines } from './agent-brief.ts';
-import { readAgentChanges } from './agent-changes.ts';
-import { readOnboardingFacts } from './onboarding-facts.ts';
 
 const messages = defineText({
   attachmentsChanged: "Attachments changed in the files. Refresh the panel and try again.",
@@ -101,6 +88,7 @@ function servableRequestPath(value: unknown): value is string {
 
 /** 2026-11-05: attachments use the same write policy as the catalog and their own module queue. */
 async function runAttachmentEdit(catalog: CatalogService, config: ServerConfig, edit: AttachmentEditAction & { source: DataSource }): Promise<CatalogView> {
+  const { applyAttachmentEdit } = await import('./attachments.ts');
   const root = await assertWritable(config, edit.source);
   try {
     await applyAttachmentEdit(root, edit);
@@ -114,25 +102,40 @@ async function runAttachmentEdit(catalog: CatalogService, config: ServerConfig, 
   return catalog.get('sandbox');
 }
 
-export async function createApp(config: ServerConfig) {
+export async function createApp(config: ServerConfig, options: { deferStartup?: boolean } = {}) {
   const app = Fastify({ logger: false, bodyLimit: 512 * 1024,
     // 2026-11-07: malformed URLs bypass request hooks but still need the same-origin framing policy.
     frameworkErrors: (error, _request, reply: FastifyReply) => { reply.headers(framingHeaders).send(error); },
   });
   // First hook: every later hook and handler answers in the client's interface language.
   registerRequestLang(app);
-  const repository = new Repository(config);
-  const catalog = new CatalogService(config);
+  let repository: Repository;
+  let catalog: CatalogService;
+  let boards: Boards;
+  let notifications: NotificationService;
+  const failedWatchSources = new Set<DataSource>();
+  let closing = false;
+  let repositoryError: typeof import('./repository.ts').RepositoryError | undefined;
+  let projectStartup: Promise<void> | undefined;
+  const initializeProject = () => projectStartup ??= (async () => {
+    const [repositoryModule, catalogModule, boardsModule, notificationsModule] = await Promise.all([
+      import('./repository.ts'), import('./catalog-service.ts'), import('./boards.ts'), import('./notifications.ts'),
+    ]);
+    repositoryError = repositoryModule.RepositoryError;
+    repository = new repositoryModule.Repository(config);
+    catalog = new catalogModule.CatalogService(config);
+    for (const source of failedWatchSources) catalog.watchFailed(source);
+    boards = new boardsModule.Boards(config);
+    notifications = new notificationsModule.NotificationService(config, catalog);
+    await Promise.all([repository.initialize(), startWatchers()]);
+  })();
   let observedPlanningView: CatalogView | null = null;
   // 2026-11-05: burndown numbers change only through writes, so only a successful POST makes a planning point due.
   // 2026-11-07: GET /api/catalog may still write (carry Runs, auto-archive) as catalog housekeeping; that is not a planning edit.
   let observationDue = false;
   let historyWrite: Promise<void> | null = null;
-  const boards = new Boards(config);
-  const notifications = new NotificationService(config, catalog);
   // 2026-11-04: who acts — the member chosen in the client or an agent's own registry ID; no header = an unknown API caller.
   const actorOf = (value: string | string[] | undefined): string | null => typeof value === 'string' && memberIdPattern.test(value) ? value : null;
-  await repository.initialize();
   const token = randomBytes(32).toString('hex');
   // 2026-11-07: on IPv6 stacks the browser reaches the loopback as [::1], so the Host/Origin guard accepts it too.
   const allowedHosts = new Set([`127.0.0.1:${config.port}`, `localhost:${config.port}`, `[::1]:${config.port}`]);
@@ -148,11 +151,16 @@ export async function createApp(config: ServerConfig) {
     }
     reply.header('X-Content-Type-Options', 'nosniff');
     reply.header('Referrer-Policy', 'no-referrer');
+    // 2026-11-12: the shell and health do not need project imports, Python checks or an initial watcher scan.
+    const route = request.routeOptions.url ?? '';
+    if ((route.startsWith('/api/') && route !== '/api/health' && route !== '/api/shutdown') || route.startsWith('/r/')) {
+      await initializeProject();
+    }
   });
   app.setErrorHandler((error, _request, reply) => {
     if (error instanceof WriteAccessError) return reply.code(error.status).send({ code: 'READ_ONLY', message: error.message });
     if (error instanceof CatalogError) return reply.code(error.status).send({ code: 'CATALOG', message: error.message, saved: error.saved });
-    if (error instanceof RepositoryError) return reply.code(error.status).send(error.detail);
+    if (repositoryError && error instanceof repositoryError) return reply.code(error.status).send(error.detail);
     if (error instanceof Error && error.message.includes('Block model changed')) {
       return reply.code(422).send({ code: 'MODEL', message: serverText(messages).modelChanged });
     }
@@ -171,6 +179,25 @@ export async function createApp(config: ServerConfig) {
   // 2026-11-09: the running package's version; the literal here said 0.1.0 since the first release.
   const packageVersion = readFile(packagePath('package.json'), 'utf8')
     .then(text => (JSON.parse(text) as { version: string }).version, () => 'unknown');
+  let registration: Promise<(() => Promise<void>) | undefined> | undefined;
+  app.addHook('onListen', async () => {
+    const address = app.server.address();
+    if (!address || typeof address === 'string') return;
+    allowedHosts.clear();
+    allowedOrigins.clear();
+    for (const host of ['127.0.0.1', 'localhost', '[::1]']) {
+      allowedHosts.add(`${host}:${address.port}`);
+      allowedOrigins.add(`http://${host}:${address.port}`);
+    }
+    void startWatchers().catch(error => app.log.error(error));
+    if (config.editMode === 'read-only' || !config.writeRoot) return;
+    // 2026-11-12: discovery is optional; an inaccessible cache must not break serving or graceful shutdown.
+    registration = packageVersion.then(async version => {
+      const { registerRunningServer } = await import('./server-discovery.ts');
+      return registerRunningServer(config, config.writeRoot!, address.port, version);
+    })
+      .catch(() => undefined);
+  });
   app.get('/api/health', async () => ({ app: 'Deckmate', version: await packageVersion, pid: process.pid }));
   app.get<{ Params: { ref: string }; Querystring: { source?: DataSource } }>('/r/:ref', async (request, reply) => {
     const source = request.query.source === 'live' ? 'live' : 'sandbox';
@@ -199,10 +226,11 @@ export async function createApp(config: ServerConfig) {
     if (source === 'sandbox') observedPlanningView = view;
     return view;
   });
-  app.get('/api/onboarding-facts', async () => readOnboardingFacts([config.writeRoot, config.dataRoot]));
-  app.get('/api/project-templates', async () => listProjectTemplates());
+  app.get('/api/onboarding-facts', async () => (await import('./onboarding-facts.ts')).readOnboardingFacts([config.writeRoot, config.dataRoot]));
+  app.get('/api/project-templates', async () => (await import('./project-templates.ts')).listProjectTemplates());
   app.get<{ Params: { id: string }; Querystring: { source?: DataSource } }>('/api/project-templates/:id/plan', async (request, reply) => {
     const source = request.query.source === 'live' ? 'live' : 'sandbox';
+    const { planProjectTemplate, ProjectTemplateNotFoundError } = await import('./project-templates.ts');
     try {
       return await planProjectTemplate(await catalog.get(source), request.params.id);
     } catch (error) {
@@ -212,6 +240,7 @@ export async function createApp(config: ServerConfig) {
   });
   // 2026-11-05: planning has its own schema and shares the catalog's mutation queue.
   app.post<{ Body: PlanningEdit & { source: 'sandbox' } }>('/api/planning', { schema: { body: planningBodySchema } }, async (request, reply) => {
+    const { applyPlanningEdit } = await import('./planning-files.ts');
     const root = await assertWritable(config, request.body.source);
     let mutationSaved = false;
     try {
@@ -223,7 +252,7 @@ export async function createApp(config: ServerConfig) {
       const view = await catalog.get('sandbox');
       return { ...view, warnings: [...view.warnings, ...outcome.warnings ?? []] };
     } catch (error) {
-      if (error instanceof WriteAccessError) throw error;
+      if (error instanceof WriteAccessError || (error instanceof CatalogError && !mutationSaved)) throw error;
       const message = error instanceof Error ? error.message : serverText(messages).planFailed;
       const saved = mutationSaved || Boolean(error && typeof error === 'object' && 'saved' in error && error.saved);
       if (saved) catalog.invalidate('sandbox');
@@ -251,6 +280,7 @@ export async function createApp(config: ServerConfig) {
     },
   } } }, async (request, reply) => {
     const source = request.query.source === 'live' ? 'live' : 'sandbox';
+    const { readJourneyMetrics } = await import('./journey-metrics.ts');
     const metrics = await readJourneyMetrics(catalog.root(source), await catalog.get(source), request.query.journeyId);
     return metrics ?? reply.code(404).send({ code: 'CATALOG', message: serverText(messages).journeyMissing });
   });
@@ -259,6 +289,7 @@ export async function createApp(config: ServerConfig) {
     type: 'object', additionalProperties: false, properties: { source: { type: 'string', enum: ['live', 'sandbox'] } },
   } } }, async request => {
     const source = request.query.source === 'live' ? 'live' : 'sandbox';
+    const { readProjectPulse } = await import('./project-pulse.ts');
     return readProjectPulse(catalog.root(source), await catalog.get(source));
   });
   // Per-member notification stacks persist dismissals in the project's notification registry.
@@ -282,6 +313,7 @@ export async function createApp(config: ServerConfig) {
     },
   } } }, async request => notifications.watch(request.body));
   app.get<{ Querystring: { source?: DataSource; track?: string; limit?: string } }>('/api/summary', async request => {
+    const { summarizeCatalog } = await import('./catalog-summary.ts');
     const source = request.query.source === 'live' ? 'live' : 'sandbox';
     try { return { source, ...summarizeCatalog(await catalog.get(source), request.query.track, Number(request.query.limit ?? 5)) }; }
     catch (error) { throw new CatalogError(422, error instanceof Error ? error.message : serverText(messages).summaryFailed); }
@@ -294,6 +326,7 @@ export async function createApp(config: ServerConfig) {
     },
   } } }, async (request, reply) => {
     const root = catalog.root(request.query.source === 'live' ? 'live' : 'sandbox');
+    const [{ readProjectCatalog }, { buildBrief }] = await Promise.all([import('./catalog.ts'), import('./agent-brief.ts')]);
     const view = await readProjectCatalog(root);
     const card = resolveReference(view.cards, 'c', request.query.cardId, serverLang());
     if (!card) return reply.code(404).send({ message: serverText(messages).cardMissing });
@@ -310,6 +343,7 @@ export async function createApp(config: ServerConfig) {
     },
   } } }, async (request, reply) => {
     const root = catalog.root(request.query.source === 'live' ? 'live' : 'sandbox');
+    const [{ readProjectCatalog }, { readAgentChanges }] = await Promise.all([import('./catalog.ts'), import('./agent-changes.ts')]);
     const view = await readProjectCatalog(root);
     const card = resolveReference(view.cards, 'c', request.query.cardId, serverLang());
     if (!card) return reply.code(404).send({ message: serverText(messages).cardMissing });
@@ -326,6 +360,7 @@ export async function createApp(config: ServerConfig) {
     },
   } } }, async (request, reply) => {
     const source = request.query.source === 'live' ? 'live' : 'sandbox';
+    const { readCardContent, CardContentError } = await import('./card-content.ts');
     try { return await readCardContent(catalog.root(source), request.query.cardId); }
     catch (error) {
       if (error instanceof CardContentError) return reply.code(error.status).send({ code: 'CONTENT', message: error.message });
@@ -351,6 +386,7 @@ export async function createApp(config: ServerConfig) {
   } } }, async request => {
     const source = request.query.source === 'live' ? 'live' : 'sandbox';
     if (request.query.fields !== 'brief') return catalog.search(source, request.query);
+    const { CatalogService } = await import('./catalog-service.ts');
     const contextCatalog = new CatalogService({ ...config, editMode: 'read-only' }, ':memory:');
     try {
       const cards = await contextCatalog.search(source, request.query, { hits: true });
@@ -367,6 +403,9 @@ export async function createApp(config: ServerConfig) {
     'save-project-tag': ['tagsHash', 'tag'],
     'raise-decision': ['cardId', 'sourceHash', 'questionIndex', 'questionText', 'taskCardId', 'deckId', 'memberId'],
     'record-decision': ['cardId', 'sourceHash', 'questionIndex', 'questionText', 'answer', 'memberId'],
+    'ask-question': ['cardId', 'sourceHash', 'text', 'assignee'],
+    'assign-question': ['cardId', 'sourceHash', 'questionIndex', 'questionText', 'assignee'],
+    'apply-decision': ['cardId', 'sourceHash', 'decisionIndex', 'answer'],
     'set-card-links': ['cardId', 'deckId', 'trackIds', 'sourceHash'],
     'bulk-assign-deck': ['cards', 'deckId'], 'bulk-add-track': ['cards', 'trackId'],
     'create-space': ['title'], 'create-deck': ['title', 'spaceId', 'kind', 'icon', 'color', 'description'],
@@ -406,18 +445,7 @@ export async function createApp(config: ServerConfig) {
   };
   // Card titles allow up to 1,000 characters; catalog entity names use a shorter limit.
   const shortTitleActions = ['create-space', 'update-space', 'create-deck', 'update-deck', 'create-track', 'create-journey', 'update-journey', 'save-journey-template'];
-  // 2026-11-04: a 10 MB attachment becomes about 13.4 MB in base64, requiring a 16 MB request limit.
-  app.post<{ Body: CatalogEdit & { source: DataSource } }>('/api/catalog', { bodyLimit: 16 * 1024 * 1024,
-    preValidation: async (request, reply) => {
-      const body = request.body;
-      if (body && (body.action === 'create-card' || body.action === 'update-card-content')
-        && (typeof body.title !== 'string' || typeof body.markdown !== 'string')) {
-        return reply.code(400).send({ code: 'CONTENT', message: serverText(messages).contentStrings });
-      }
-      if (body?.action === 'add-card-report' && typeof body.markdown !== 'string') {
-        return reply.code(400).send({ code: 'CONTENT', message: serverText(messages).contentStrings });
-      }
-    }, schema: { body: {
+  const catalogBodySchema = {
     type: 'object', additionalProperties: false, required: ['action', 'manifestHash', 'source'],
     // Only promote-parent may send an empty `cards` list; every other action keeps the 1–1000 rule (400).
     if: { properties: { action: { const: 'bulk-edit-cards' }, change: { type: 'object', properties: { kind: { const: 'promote-parent' } }, required: ['kind'] } }, required: ['action', 'change'] },
@@ -445,10 +473,14 @@ export async function createApp(config: ServerConfig) {
       trackId: { type: 'string', minLength: 1, maxLength: 80 },
       // 2026-11-04: explicit properties prevent AJV from stripping open-question fields from the request.
       questionIndex: { type: 'integer', minimum: 0, maximum: 999 },
+      decisionIndex: { type: 'integer', minimum: 0, maximum: 999 },
+      assignee: { type: ['string', 'null'], pattern: '^[a-z0-9][a-z0-9-]{0,79}$' },
+      target: { type: ['string', 'null'], minLength: 1, maxLength: 1000 },
       questionText: { type: 'string', minLength: 1, maxLength: 2000 },
       taskCardId: { type: 'string', minLength: 1, maxLength: 1000 },
       memberId: { type: 'string', minLength: 1, maxLength: 80 },
       answer: { type: 'string', minLength: 1, maxLength: 2000 },
+      note: { type: 'string', maxLength: 2000, pattern: '^[^\u0000]*$' },
       cardIds: { type: 'array', maxItems: 1000, uniqueItems: true, items: { type: 'string', minLength: 1, maxLength: 1000 } },
       sourceHash: { type: 'string', minLength: 64, maxLength: 64 },
       source: { type: 'string', enum: ['live', 'sandbox'] }, title: { type: 'string', minLength: 1, maxLength: 1000, pattern: '^[^\\r\\n]+$' },
@@ -482,7 +514,7 @@ export async function createApp(config: ServerConfig) {
       // Journey return reasons and step lessons are single lines of up to 500 characters (2026-11-04).
       returnReason: { type: ['string', 'null'], maxLength: 500, pattern: '^[^\\r\\n]*$' },
       stepId: { type: 'string', pattern: '^[a-zA-Z0-9][a-zA-Z0-9_-]{0,79}$' },
-      text: { type: 'string', minLength: 1, maxLength: 500, pattern: '^[^\\r\\n]+$' },
+      text: { type: 'string', minLength: 1, maxLength: 2000, pattern: '^[^\\r\\n]+$' },
       style: { type: 'string', enum: ['symbol', 'artwork', 'minimal'] },
       cover: { type: ['string', 'null'], maxLength: 1000 },
       coverPosition: { type: 'number', minimum: 0, maximum: 100 },
@@ -531,6 +563,10 @@ export async function createApp(config: ServerConfig) {
       })),
       { if: { properties: { action: { enum: shortTitleActions } }, required: ['action'] },
         then: { type: 'object', properties: { title: { type: 'string', maxLength: 120 } } } },
+      { if: { properties: { action: { const: 'ask-question' } }, required: ['action'] },
+        then: { properties: { text: { type: 'string', minLength: 1, maxLength: 2000, pattern: '^[^\\r\\n\\u0000]+$' } } } },
+      { if: { properties: { action: { const: 'add-journey-step-lesson' } }, required: ['action'] },
+        then: { properties: { text: { type: 'string', maxLength: 500 } } } },
       // Only an import creating a new Journey may use null journeyId/journeyHash.
       { if: { properties: { action: { enum: ['apply-journey', 'update-journey', 'save-journey-template', 'add-journey-step-lesson', 'abandon-journey-operation'] } }, required: ['action'] },
         then: { properties: { journeyId: { type: 'string' }, journeyHash: { type: 'string' } } } },
@@ -540,8 +576,20 @@ export async function createApp(config: ServerConfig) {
       { if: { properties: { action: { const: 'upload-cover' } }, required: ['action'] },
         then: { properties: { dataUrl: { type: 'string', maxLength: 7 * 1024 * 1024 } } } },
     ],
-  } } }, async request => {
+  };
+  const invalidContent = (body: CatalogEdit): boolean => {
+    if (body && (body.action === 'create-card' || body.action === 'update-card-content')) {
+      return typeof body.title !== 'string' || typeof body.markdown !== 'string';
+    }
+    return body?.action === 'add-card-report' && typeof body.markdown !== 'string';
+  };
+  // 2026-11-04: a 10 MB attachment becomes about 13.4 MB in base64, requiring a 16 MB request limit.
+  app.post<{ Body: CatalogEdit & { source: DataSource } }>('/api/catalog', { bodyLimit: 16 * 1024 * 1024,
+    preValidation: async (request, reply) => {
+      if (invalidContent(request.body)) return reply.code(400).send({ code: 'CONTENT', message: serverText(messages).contentStrings });
+    }, schema: { body: catalogBodySchema } }, async request => {
     // 2026-11-04: attachment actions share the /api/catalog contract and delegate to server/attachments.ts.
+    const { attachmentEditActions } = await import('./attachments.ts');
     if (attachmentEditActions.has(request.body.action)) {
       // Use the request actor as the uploader; addedBy is a fallback for API calls without an actor.
       const attachmentEdit = request.body as AttachmentEditAction & { source: DataSource };
@@ -549,6 +597,30 @@ export async function createApp(config: ServerConfig) {
       return runAttachmentEdit(catalog, config, attachmentEdit.action === 'upload-attachment' && actor ? { ...attachmentEdit, addedBy: actor } : attachmentEdit);
     }
     return catalog.edit(request.body, request.body.source, actorOf(request.headers['x-deckmate-actor']));
+  });
+  // 2026-11-12: the server owns the whole batch lock; a client-held lock would deadlock the HTTP writer.
+  app.post<{ Body: { source: DataSource; edits: CatalogEdit[] } }>('/api/catalog-batch', {
+    bodyLimit: 16 * 1024 * 1024,
+    schema: { body: { type: 'object', additionalProperties: false, required: ['source', 'edits'], properties: {
+      source: { type: 'string', enum: ['live', 'sandbox'] },
+      edits: { type: 'array', minItems: 1, maxItems: 1000, items: { type: 'object', additionalProperties: true } },
+    } } },
+  }, async request => {
+    const { source, edits } = request.body;
+    const { attachmentEditActions } = await import('./attachments.ts');
+    const validate = request.compileValidationSchema(catalogBodySchema);
+    const result = await catalog.editBatch(edits.map(edit => manifestHash => {
+      const body = { ...edit, source, manifestHash };
+      if (invalidContent(body)) throw new CatalogError(400, serverText(messages).contentStrings);
+      if (attachmentEditActions.has(body.action) || !validate(body)) throw new CatalogError(400, serverText(messages).incomplete);
+      return body;
+    }), source, actorOf(request.headers['x-deckmate-actor']));
+    return { catalog: result.catalog, outcomes: result.outcomes.map(outcome => {
+      if (outcome.ok) return outcome;
+      const error = outcome.error;
+      if (error instanceof CatalogError) return { ok: false, status: error.status, message: error.message, saved: error.saved };
+      return { ok: false, status: 422, message: serverText(messages).actionFailed, saved: false };
+    }) };
   });
   // CSV import has its own endpoint: 10 MB of CSV expands into JSON beyond the catalog request limit.
   // Writes share the recordMutation queue and activity journal.
@@ -571,6 +643,7 @@ export async function createApp(config: ServerConfig) {
     },
   } } }, async (request, reply) => {
     const root = await assertWritable(config, request.body.source);
+    const { importCards } = await import('./catalog-import.ts');
     try {
       // Keep import warnings separately because recordMutation replaces warnings if journaling fails.
       let importWarnings: string[] = [];
@@ -582,7 +655,7 @@ export async function createApp(config: ServerConfig) {
       const journalWarnings = (result.warnings ?? []).filter(message => !importWarnings.includes(message));
       return { ...result, warnings: [...importWarnings, ...journalWarnings] };
     } catch (error) {
-      if (error instanceof WriteAccessError) throw error;
+      if (error instanceof WriteAccessError || error instanceof CatalogError) throw error;
       const message = error instanceof Error ? error.message : serverText(messages).importFailed;
       if (['CATALOG_CONFLICT', 'CARD_CONFLICT', 'CARD_OPTIONS_CONFLICT'].includes(message)) {
         return reply.code(409).send({ code: 'CATALOG', message: serverText(messages).importChanged });
@@ -596,6 +669,7 @@ export async function createApp(config: ServerConfig) {
       cardId: { type: 'string', minLength: 1, maxLength: 1000 },
     },
   } } }, async (request, reply) => {
+    const { readCardAttachments, InvalidAttachmentIdError } = await import('./attachments.ts');
     try { return await readCardAttachments(catalog.root(request.query.source === 'live' ? 'live' : 'sandbox'), request.query.cardId); }
     catch (error) {
       // 2026-11-06: an identifier that cannot name an attachment directory answers 400, not a server error.
@@ -625,6 +699,7 @@ export async function createApp(config: ServerConfig) {
         throw new CatalogError(422, 'from/to require a Markdown file and an inclusive line range starting at 1.');
       }
       try {
+        const { readFileLines } = await import('./agent-brief.ts');
         const range = await readFileLines(repository.root(request.query.source === 'live' ? 'live' : 'sandbox'), relative,
           Number(request.query.from), Number(request.query.to));
         reply.type('text/plain; charset=utf-8');
@@ -666,34 +741,54 @@ export async function createApp(config: ServerConfig) {
     sockets.handleUpgrade(request, socket, head, client => sockets.emit('connection', client, request));
   });
   const broadcast = (source: DataSource, relativePath: string) => {
-    catalog.invalidate(source, relativePath);
+    catalog?.invalidate(source, relativePath);
     const message = JSON.stringify({ type: 'changed', source, relativePath, detectedAt: Date.now() });
     for (const client of sockets.clients) if (client.readyState === WebSocket.OPEN) client.send(message);
   };
   const watchFailed = (source: DataSource) => {
-    catalog.watchFailed(source);
+    failedWatchSources.add(source);
+    catalog?.watchFailed(source);
     const message = JSON.stringify({ type: 'watcher-error', source });
     for (const client of sockets.clients) if (client.readyState === WebSocket.OPEN) client.send(message);
   };
   // 2026-11-05: direct mode has one root and one event source, so each file change is delivered once.
   const projectSource: DataSource = config.editMode === 'direct' ? 'sandbox' : 'live';
-  const watchers = [watchProjectFiles(config.dataRoot, relative => broadcast(projectSource, relative), () => watchFailed(projectSource))];
-  if (config.editMode === 'sandbox' && config.writeRoot) {
-    watchers.push(watchProjectFiles(config.writeRoot, relative => broadcast('sandbox', relative), () => watchFailed('sandbox')));
-  }
-  await Promise.all(watchers.map(watcher => watcher.ready));
+  const watchers: ProjectFileWatcher[] = [];
+  let watcherStartup: Promise<void> | undefined;
+  const startWatchers = () => watcherStartup ??= (async () => {
+    const { watchProjectFiles } = await import('./file-events.ts');
+    if (closing) return;
+    const watch = async (root: string, source: DataSource) => {
+      const watcher = watchProjectFiles(root, relative => broadcast(source, relative), () => watchFailed(source));
+      watchers.push(watcher);
+      try { await watcher.ready; }
+      catch (error) {
+        // 2026-11-12: a failed initial scan needs the same fresh-read fallback as a later watcher failure.
+        watchFailed(source);
+        app.log.error(error);
+      }
+    };
+    const ready = [watch(config.dataRoot, projectSource)];
+    if (config.editMode === 'sandbox' && config.writeRoot) {
+      ready.push(watch(config.writeRoot, 'sandbox'));
+    }
+    await Promise.all(ready);
+  })();
   // 2026-11-05: GET only supplies an observed view. Daily machine history is a separate queued job;
   // it never edits Run/Milestone registries and never scans a project that has not been opened.
   const historyTimer = setInterval(() => {
     if (!observationDue || historyWrite || config.editMode === 'read-only' || !config.writeRoot || !observedPlanningView) return;
     const view = observedPlanningView;
-    if (!needsPlanningObservation(view)) return;
-    historyWrite = catalog.recordMutation('observe-planning', async () => {
-      const root = await assertWritable(config);
-      await recordPlanningObservation(root, view);
-      if (observedPlanningView === view) { observedPlanningView = null; observationDue = false; }
-      return {};
-    }).then(() => {}).catch(error => {
+    historyWrite = (async () => {
+      const { needsPlanningObservation, recordPlanningObservation } = await import('./planning-history.ts');
+      if (!needsPlanningObservation(view)) return;
+      await catalog.recordMutation('observe-planning', async () => {
+        const root = await assertWritable(config);
+        await recordPlanningObservation(root, view);
+        if (observedPlanningView === view) { observedPlanningView = null; observationDue = false; }
+        return {};
+      });
+    })().catch(error => {
       if (observedPlanningView === view) observedPlanningView = null;
       app.log.warn({ err: error }, 'Planning observation was not saved.');
     })
@@ -708,6 +803,8 @@ export async function createApp(config: ServerConfig) {
   const advanceRunSchedules = () => {
     if (runScheduleWrite || config.editMode === 'read-only' || !config.writeRoot || Date.now() < runScheduleRetryAt) return;
     runScheduleWrite = (async () => {
+      await initializeProject();
+      const [{ readRuns }, { runScheduleDue, maintainRecurringRuns }] = await Promise.all([import('./runs.ts'), import('./run-lifecycle.ts')]);
       const source = await readRuns(config.writeRoot!);
       if (source.warnings.length || !runScheduleDue(source)) return;
       const outcome = await catalog.recordMutation('advance-runs', async () => maintainRecurringRuns(await assertWritable(config)));
@@ -720,21 +817,36 @@ export async function createApp(config: ServerConfig) {
   const runScheduleTimer = setInterval(advanceRunSchedules, 60_000);
   runScheduleTimer.unref();
   app.addHook('onResponse', async (request, reply) => {
-    if (request.method === 'POST' && reply.statusCode < 400 && /^\/api\/(catalog|planning)(\?|$)/u.test(request.url)) observationDue = true;
+    if (request.method === 'POST' && reply.statusCode < 400 && /^\/api\/(catalog|catalog-batch|planning)(\?|$)/u.test(request.url)) observationDue = true;
+    // 2026-11-12: a request waiting for startup can become idle after the HTTP server's initial close sweep.
+    if (closing) app.server.closeIdleConnections();
   });
   // 2026-11-05: upgraded browser sockets must close before Fastify waits for the HTTP server.
   app.addHook('preClose', async () => {
+    closing = true;
     clearInterval(historyTimer);
     clearInterval(runScheduleTimer);
+    // 2026-11-12: active API requests may await the initial scan; close it before Fastify drains those requests.
+    await Promise.all(watchers.map(watcher => watcher.close()));
+    await watcherStartup?.catch(() => {});
     await historyWrite;
     await runScheduleWrite;
     for (const client of sockets.clients) client.terminate();
     await new Promise<void>((resolve, reject) => sockets.close(error => error ? reject(error) : resolve()));
   });
   app.addHook('onClose', async () => {
-    await Promise.all(watchers.map(watcher => watcher.close()));
-    await catalog.close();
-    await boards.close();
+    try {
+      await projectStartup?.catch(() => {});
+      await catalog?.close();
+      await boards?.close();
+    } finally {
+      try { await (await registration)?.(); }
+      catch { /* 2026-11-12: stale discovery data must not prevent the remaining shutdown hooks. */ }
+    }
   });
+  if (!options.deferStartup) {
+    try { await initializeProject(); }
+    catch (error) { await app.close(); throw error; }
+  }
   return app;
 }

@@ -81,20 +81,27 @@ impl Server {
     }
 }
 
-pub fn filtered_env(
+pub fn filter_env(
     entries: impl IntoIterator<Item = (OsString, OsString)>,
+    excluded_prefixes: &[&str],
 ) -> Vec<(OsString, OsString)> {
     entries
         .into_iter()
         .filter(|(key, _)| {
             let key = key.to_string_lossy().to_ascii_uppercase();
-            // 2026-11-09: NODE_OPTIONS (--require, --inspect), NODE_PATH and OPENSSL_CONF/OPENSSL_MODULES would let an
-            // inherited environment load code into the bundled Node; the Electron build disabled them through fuses.
-            !["DECKMATE_", "FREETION_", "NODE_", "OPENSSL_"]
+            !excluded_prefixes
                 .iter()
                 .any(|prefix| key.starts_with(prefix))
         })
         .collect()
+}
+
+pub fn filtered_env(
+    entries: impl IntoIterator<Item = (OsString, OsString)>,
+) -> Vec<(OsString, OsString)> {
+    // 2026-11-09: NODE_OPTIONS (--require, --inspect), NODE_PATH and OPENSSL_CONF/OPENSSL_MODULES would let an
+    // inherited environment load code into the bundled Node; the Electron build disabled them through fuses.
+    filter_env(entries, &["DECKMATE_", "FREETION_", "NODE_", "OPENSSL_"])
 }
 
 fn command(programs: &Programs) -> Command {
@@ -106,8 +113,6 @@ fn command(programs: &Programs) -> Command {
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .kill_on_drop(true);
-    #[cfg(windows)]
-    command.creation_flags(windows::Win32::System::Threading::CREATE_NO_WINDOW.0);
     command
 }
 
@@ -181,19 +186,20 @@ pub fn start_on_port(
     // 2026-11-09: CreateProcessW rejects a working directory longer than MAX_PATH (os error 267) even with
     // LongPathsEnabled, so a project at a deep path never started. The server reads its folder from
     // DECKMATE_DATA, not the working directory; the short settings directory is the working directory instead.
-    let mut child = command(programs)
-        .arg(&programs.server)
-        .current_dir(directory)
-        .env("DECKMATE_DATA", folder)
-        .env("DECKMATE_PORT", port.to_string())
-        .env("DECKMATE_HOST", "127.0.0.1")
-        .env("DECKMATE_INDEX", directory.join("index"))
-        .env("DECKMATE_SHUTDOWN_STDIN", "1")
-        .spawn()?;
-    let job = Job::attach(&child)?;
+    let (mut child, job) = Job::spawn(
+        command(programs)
+            .arg(&programs.server)
+            .current_dir(directory)
+            .env("DECKMATE_DATA", folder)
+            .env("DECKMATE_PORT", port.to_string())
+            .env("DECKMATE_HOST", "127.0.0.1")
+            .env("DECKMATE_INDEX", directory.join("index"))
+            .env("DECKMATE_SHUTDOWN_STDIN", "1"),
+    )?;
     // 2026-11-09: Child::wait() closes the child's stdin before waiting, and the run loop waits from the first
     // poll; the server reads that as the shell going away and stops. The handle lives outside the Child instead.
     let stdin = child.stdin.take();
+    log.milestone(&format!("node-spawned pid={}", child.id().unwrap_or(0)));
     log.write(format!("start {folder} on port {port}"));
     let (output, receiver) = mpsc::unbounded_channel();
     let stdout = tokio::spawn(read_output(
@@ -302,6 +308,7 @@ async fn read_output(
         if !matched_ready {
             ready_buffer.extend_from_slice(&chunk[..length]);
             if let Some(url) = ready_url(&String::from_utf8_lossy(&ready_buffer), port) {
+                log.milestone("server-ready");
                 let _ = sender.send(Output::Ready(url));
                 matched_ready = true;
             }
@@ -448,25 +455,13 @@ async fn initialize_with_timeout(
     if let Some(bin) = programs.cli.parent() {
         command.current_dir(bin);
     }
-    let mut child = command.spawn().map_err(|error| {
+    let (mut child, job) = Job::spawn(&mut command).map_err(|error| {
         init_failure(
             Failure::new("create-failed", error.to_string()),
             folder,
             language,
         )
     })?;
-    let job = match Job::attach(&child) {
-        Ok(job) => job,
-        Err(error) => {
-            let _ = child.kill().await;
-            let _ = child.wait().await;
-            return Err(init_failure(
-                Failure::new("create-failed", error.to_string()),
-                folder,
-                language,
-            ));
-        }
-    };
     // 2026-11-09: drain both pipes while waiting so a noisy CLI cannot deadlock; no stdin stays in Child.
     let _stdin = child.stdin.take();
     let (output, mut receiver) = mpsc::unbounded_channel();

@@ -32,9 +32,8 @@ describe.skipIf(!browserPath)('one-step Hero return (browser)', () => {
     await delay(80);
   }
   async function render(options: object = {}) {
-    await evaluate(`window.heroReturnTest.render(${JSON.stringify(options)})`);
-    await until(`Boolean(document.querySelector(${JSON.stringify(tile('hero'))}))`);
-    await delay(80);
+    await evaluate(`window.previousHeroTile = document.querySelector(${JSON.stringify(tile('hero'))}); window.heroReturnTest.render(${JSON.stringify(options)})`);
+    await until(`document.querySelector(${JSON.stringify(tile('hero'))}) && document.querySelector(${JSON.stringify(tile('hero'))}) !== window.previousHeroTile`);
   }
   async function openHero(familyVisible = false) {
     await click(tile('hero'));
@@ -78,9 +77,10 @@ describe.skipIf(!browserPath)('one-step Hero return (browser)', () => {
     await until(selected('design'));
     expect(await evaluate(`document.querySelector('.card-preview-parent kbd')?.textContent`)).toBe('Esc');
     expect(await evaluate(`document.querySelector('.card-preview-parent').getAttribute('aria-keyshortcuts')`)).toBe('Escape');
-    expect(await evaluate(`(() => { const style = getComputedStyle(document.querySelector('.card-preview-parent kbd'));
-      return { family: style.fontFamily, weight: style.fontWeight, size: style.fontSize, line: style.lineHeight }; })()`))
-      .toEqual({ family: '"Geist Mono", monospace', weight: '600', size: '10px', line: '10px' });
+    expect(await evaluate(`(() => { const cap = document.querySelector('.card-preview-parent kbd'), style = getComputedStyle(cap);
+      return { color: style.color, height: style.height, name: cap.getAttribute('aria-label'), role: cap.getAttribute('role'),
+        family: style.fontFamily, weight: style.fontWeight, size: style.fontSize }; })()`))
+      .toEqual({ color: 'rgb(36, 24, 10)', height: '16px', name: 'Escape', role: 'group', family: '"Geist Mono", monospace', weight: '600', size: '10px' });
     await key('Escape');
     await expectHero(scroll, mini('design'), visible);
     expect(await evaluate(`document.querySelector(${JSON.stringify(mini('design'))}).tabIndex`)).toBe(0);
@@ -261,10 +261,12 @@ describe.skipIf(!browserPath)('one-step Hero return (browser)', () => {
         const rows = [...panel.querySelectorAll('.card-family-row-main')].map(row => ({ height: row.getBoundingClientRect().height, tagged: Boolean(row.querySelector('.card-family-row-tags')),
           inlineTags: !row.querySelector('.card-family-row-tags') || row.querySelector('.card-family-row-title')?.contains(row.querySelector('.card-family-row-tags')) }));
         return { lines: new Set(buttons.map(box => Math.round(box.top))).size, minTarget: Math.min(...buttons.map(box => Math.min(box.width, box.height))),
+          separate: buttons.every((box, index) => buttons.every((other, otherIndex) => index === otherIndex || box.right <= other.left || other.right <= box.left || box.bottom <= other.top || other.bottom <= box.top)),
           overflow: panel.scrollWidth > panel.clientWidth, rows, text: panel.textContent,
           hand: panel.querySelector('.card-hand-indicator')?.getAttribute('aria-label') };
       })()`);
       expect(layout.lines).toBe(1);
+      expect(layout.separate).toBe(true);
       expect(layout.minTarget).toBeGreaterThanOrEqual(touch ? 44 : 30);
       expect(layout.overflow).toBe(false);
       const tagged = layout.rows.filter((row: { tagged: boolean }) => row.tagged).map((row: { height: number }) => row.height);
@@ -292,7 +294,19 @@ describe.skipIf(!browserPath)('one-step Hero return (browser)', () => {
       if (touch) {
         await click('.card-family-overflow');
         expect(await evaluate(`document.querySelector('[role="menu"]').textContent`)).toContain('Прикрепить существующие Sub Cards');
-        await key('Escape');
+        await waitForLayout(evaluate, '[role="menu"]');
+        // 2026-11-12: DOM presence alone misses menus painted below the phone's full-screen card.
+        expect(await evaluate(`(() => { const item = document.querySelector('[role="menuitem"]'), box = item.getBoundingClientRect();
+          return item.contains(document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2)); })()`)).toBe(true);
+        await evaluate(`document.querySelector('[role="menuitem"][aria-haspopup="menu"]').focus()`);
+        await key('ArrowRight');
+        await until(`Boolean(document.querySelector('.card-family-order-menu'))`);
+        await waitForLayout(evaluate, '.card-family-order-menu');
+        expect(await evaluate(`(() => { const box = document.querySelector('.card-family-order-menu').getBoundingClientRect();
+          return box.left >= 0 && box.right <= innerWidth; })()`)).toBe(true);
+        await click('.card-family-order-menu [role="menuitemradio"][data-state="checked"]');
+        await until(`!document.querySelector('[role="menu"]')`);
+        expect(await evaluate(`document.activeElement === document.querySelector('.card-family-overflow')`)).toBe(true);
       }
     } finally {
       await send('Emulation.setTouchEmulationEnabled', { enabled: false });

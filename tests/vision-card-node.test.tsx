@@ -112,3 +112,19 @@ it('full excerpts reuse Markdown text extraction and hide only the matching serv
   for (const noise of ['[x]', '[ ]', '---', 'Journey step:', 'secret code', '**Readable**']) expect(html).not.toContain(noise);
   expect(render({ ...base, markdown }, 'full')).toContain('Journey step: build');
 });
+
+// 2026-11-12: a Doc node shows its volume through the same shared metrics element as the tile and the open card.
+it('shows the Doc volume in the node metrics row', () => {
+  for (const view of ['mini', 'full'] as const) {
+    const html = render({ ...base, id: 'doc-node', sourceHash: 'doc-node', kind: 'doc', markdown: 'Four readable words' }, view);
+    expect(html).toContain('<span class="doc-word-count vision-card-priority-icon" role="img" aria-label="3 слова" title="3 слова"><span aria-hidden="true">3 сл.</span></span>');
+  }
+});
+
+it.each(['lane', 'mini', 'full'] as const)('%s shows questions in shared metrics rather than the face', view => {
+  const html = render({ ...base, kind: 'doc', openQuestions: [{ text: 'Question?', taskRef: null, assignee: null, target: null }] }, view);
+  expect(html).toContain('class="card-questions-metric"');
+  expect(html).toContain('aria-label="Открытых вопросов: 1"');
+  expect(html).toContain('lucide-message-circle-question');
+  expect(html).not.toContain('>Вопросов: 1</span>');
+});

@@ -2,7 +2,7 @@ import { useId, useMemo, useRef, useState } from 'react';
 import * as Dialog from '@radix-ui/react-dialog';
 import { ArrowLeft, Check, Crown, Layers, LoaderCircle, NotebookText, Search, X } from 'lucide-react';
 import { deckAcceptsCard, type CatalogCard, type CatalogView } from '../../src/catalog-contracts.ts';
-import { shortReference } from '../../src/references.ts';
+import { cardReferenceQuery, shortReference } from '../../src/references.ts';
 import { Button } from './ui/button.tsx';
 import { CardOwnerAvatar } from './CardQuickSettings.tsx';
 import { EffortIcon } from './EffortIcon.tsx';
@@ -163,7 +163,7 @@ export function CardParentPicker({ card, catalog, pending, embedded = false, onC
       .sort((first, second) => first.title.localeCompare(second.title, languageTag, { numeric: true }));
   }, [catalog.cards, card.id, languageTag]);
   const query = search.trim().toLocaleLowerCase(languageTag);
-  const tokens = (query.match(/\bc-[a-z0-9]{10}\b/u)?.[0] ?? query).split(/\s+/u).filter(Boolean);
+  const tokens = cardReferenceQuery(query).split(/\s+/u).filter(Boolean);
   const shown = candidates.filter(candidate => {
     const text = [candidate.title, candidate.id, shortReference('c', candidate.id), deckTitles.get(candidate.deckId ?? '')].join(' ').toLocaleLowerCase(languageTag);
     return tokens.every(token => text.includes(token));

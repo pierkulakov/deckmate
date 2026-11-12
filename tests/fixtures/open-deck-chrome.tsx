@@ -4,6 +4,8 @@ import * as Tooltip from '@radix-ui/react-tooltip';
 import App from '../../client/App.tsx';
 import { DeckAutomation, type DeckAutomationSettings } from '../../client/components/DeckAutomation.tsx';
 import type { CatalogCard, CatalogView } from '../../src/catalog-contracts.ts';
+import { shortReference } from '../../src/references.ts';
+import { catalogStore } from '../../client/catalog-store.ts';
 import '../../client/styles.css';
 import '../../client/motion.css';
 import '../../client/card-material.css';
@@ -23,6 +25,23 @@ const catalog: CatalogView = {
   tracks: [], warnings: [], members: [], runs: [], milestones: [], projectTags: [], journeys: [],
 };
 const params = new URLSearchParams(location.search);
+if (params.has('theme')) document.documentElement.classList.toggle('dark', params.get('theme') === 'dark');
+if (Number(params.get('questionSystem')) > 0) {
+  Object.assign(cards[0], { openQuestions: [{ text: 'Как настроить камеру?', taskRef: null, assignee: null, target: null }],
+    decisions: [{ index: 0, question: 'Как двигаться?', answer: 'Свободно.', by: 'Майя', date: '2026-11-12', target: null, applied: null }] });
+  if (Number(params.get('questionSystem')) >= 3) {
+    cards[0].decisions!.push({ index: 1, question: 'Какой темп?', answer: 'Спокойный темп.', by: 'Ли', date: '2026-11-11', target: shortReference('c', cards[1].id) + '#Камера', applied: null });
+    Object.assign(cards[1], { decisions: [{ index: 0, question: 'Какой ракурс?', answer: 'Вид сверху.', by: 'Майя', date: '2026-11-10', target: null, applied: null },
+      { index: 1, question: 'Уже внесено?', answer: 'Да.', by: null, date: null, target: null, applied: '2026-11-12' }] });
+  }
+}
+Object.assign(window, { questionSystem: { applyAll: async () => {
+  for (const card of cards) {
+    const decisions = card.decisions ?? [];
+    decisions.forEach(decision => { decision.applied = '2026-11-12'; });
+  }
+  await catalogStore('sandbox', 'test').refresh();
+} } });
 if (params.has('zonesTest')) {
   catalog.deckOrder = { work: { zones: [{ id: 'long', title: 'Зона с длинным русским названием' }, { id: 'empty', title: 'Пустая зона' }],
     zoneOrder: { long: cards.map(card => card.id), empty: [] } } };

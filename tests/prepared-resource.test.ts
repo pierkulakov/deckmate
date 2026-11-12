@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { preparedNavigation, preparedResource } from '../client/prepared-resource.ts';
+import { preparedNavigation, preparedResource, preload } from '../client/prepared-resource.ts';
 
 function held<Value>() {
   let resolve!: (value: Value) => void; let reject!: (error: Error) => void;
@@ -28,7 +28,7 @@ describe('prepared navigation', () => {
 
   it('lets a failed chunk reach the foreground error boundary without an unhandled speculative rejection', async () => {
     const pending = held<void>(); const resource = preparedResource(() => pending.promise); const commit = vi.fn();
-    preparedNavigation().run(resource, commit); pending.reject(Error('stale chunk'));
+    preload(resource); preload(resource); preparedNavigation().run(resource, commit); pending.reject(Error('stale chunk'));
     await expect(resource.load()).rejects.toThrow('stale chunk'); await Promise.resolve(); expect(commit).toHaveBeenCalledOnce(); expect(resource.ready()).toBe(false);
   });
 });

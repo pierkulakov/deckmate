@@ -3,7 +3,7 @@ import { failureMessage } from './failure-message.ts';
 import * as Dialog from '@radix-ui/react-dialog';
 import { ArrowRight, Check, Crown, Layers, Link2, LoaderCircle, RefreshCw, Search, UserRound, X } from 'lucide-react';
 import type { CatalogCard, CatalogView } from '../src/catalog-contracts.ts';
-import { shortReference } from '../src/references.ts';
+import { cardReferenceQuery, shortReference } from '../src/references.ts';
 import { StatusBadge } from './components/StatusMenu.tsx';
 import { Button } from './components/ui/button.tsx';
 import { defineText, locale, useLang, useText } from './i18n.ts';
@@ -149,7 +149,7 @@ export function AttachSubCards({ hero, catalog, pending, writable, onAttach, onC
       cardById.get(card.parentId ?? '')?.title].join(' ').toLocaleLowerCase(languageTag),
   })).sort((first, second) => first.card.title.localeCompare(second.card.title, languageTag, { numeric: true }) || first.card.id.localeCompare(second.card.id)), [catalog.cards, deckById, cardById, hero.id, parentsWithChildren, languageTag]);
   const query = search.trim().toLocaleLowerCase(languageTag);
-  const tokens = (query.match(/\bc-[a-z0-9]{10}\b/u)?.[0] ?? query).split(/\s+/u).filter(Boolean);
+  const tokens = cardReferenceQuery(query).split(/\s+/u).filter(Boolean);
   const shown = candidates.filter(({ card, search: text }) => (!deckId || (deckId === unassignedDeck ? card.deckId === null : card.deckId === deckId))
     && (!withoutHero || card.parentId === null) && tokens.every(token => text.includes(token)));
   const selectableShown = shown.filter(({ card }) => attachable(card));

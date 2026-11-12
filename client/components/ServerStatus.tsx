@@ -67,7 +67,7 @@ const savedForMs = 1600;
 /**
  * Server connection and saving beside the logo (2026-11-05): one chip says Live, Saving…, Saved,
  * Connecting… or Offline. The slot keeps the width of the longest label, so the tabs never move; the pill inside hugs
- * the active label with a scaled face, without relaying out the chrome during the transition.
+ * the active label without relaying out the chrome or scaling its rounded ends during the transition.
  */
 export function ServerStatus({ connection, snapshot, updatedAt }: { connection: ConnectionState; snapshot: WorkspaceSnapshot | null; updatedAt: number }) {
   const t = useText(text);
@@ -89,7 +89,8 @@ export function ServerStatus({ connection, snapshot, updatedAt }: { connection: 
       {shownStates.map(option => <span key={option}>{chip[option]}</span>)}</span></span>
     <Dialog.Root modal={false}>
       <Dialog.Trigger asChild>
-        <button type="button" className={`server-status is-${state}${pinged ? ' is-pinged' : ''}`} aria-label={title[state]}>
+        <button type="button" className={`server-status is-${state}${pinged ? ' is-pinged' : ''}`} aria-label={chip[state] === title[state] ? chip[state] : `${chip[state]} — ${title[state]}`}>
+          <span className="server-status-face" aria-hidden="true"><span /></span>
           <span className="server-status-dot" aria-hidden="true" />
           <span ref={labelsRef} className="server-status-labels" aria-hidden="true">
             {shownStates.map(option => <span key={option} className={option === state ? 'is-active' : undefined}>{chip[option]}</span>)}
@@ -113,26 +114,35 @@ export function ServerStatus({ connection, snapshot, updatedAt }: { connection: 
   </span>;
 }
 
-/** 2026-11-10: the label stack keeps its widest width; only the face scales, avoiding a layout on every saving frame. */
+/** The fixed-width slot keeps the tabs still; only the straight middle and the right cap move. */
 function useHuggedFace(state: string, lang: string) {
   const ref = useRef<HTMLSpanElement>(null);
   const measure = useCallback(() => {
     const labels = ref.current;
     const active = labels?.querySelector<HTMLElement>('.is-active');
     const chip = labels?.parentElement;
-    if (!labels || !active || !chip) return;
-    const width = chip.offsetWidth;
+    const dot = chip?.querySelector<HTMLElement>('.server-status-dot');
+    if (!labels || !active || !chip || !dot) return;
+    const width = chip.getBoundingClientRect().width;
     const labelWidth = labels.offsetWidth;
-    const activeWidth = active.offsetWidth;
-    if (width <= 0) return;
-    const scale = String((width - labelWidth + activeWidth) / width);
-    if (chip.style.getPropertyValue('--status-face-scale') !== scale) chip.style.setProperty('--status-face-scale', scale);
+    if (width <= 22) return;
+    const style = getComputedStyle(chip);
+    const padding = parseFloat(style.paddingLeft) + parseFloat(style.paddingRight);
+    const gap = labelWidth > 0 ? parseFloat(style.columnGap) : 0;
+    const faceWidth = Math.min(width, padding + dot.offsetWidth + gap + active.getBoundingClientRect().width);
+    const shift = `${faceWidth - width}px`;
+    const scale = String(Math.max(0, faceWidth - 22) / (width - 22));
+    if (chip.style.getPropertyValue('--status-cap-shift') !== shift) chip.style.setProperty('--status-cap-shift', shift);
+    if (chip.style.getPropertyValue('--status-middle-scale') !== scale) chip.style.setProperty('--status-middle-scale', scale);
   }, []);
   useLayoutEffect(measure, [measure, state, lang]);
   useEffect(() => {
     // 2026-11-10: the label stack disappears on narrow windows; measure its return without polling animation frames.
     const observer = new ResizeObserver(measure);
-    if (ref.current) observer.observe(ref.current);
+    if (ref.current) {
+      observer.observe(ref.current);
+      if (ref.current.parentElement) observer.observe(ref.current.parentElement);
+    }
     void document.fonts?.ready.then(measure);
     return () => observer.disconnect();
   }, [measure]);
@@ -169,7 +179,7 @@ function usePing(state: ShownState): boolean {
   useEffect(() => {
     const landed = state === 'saved' || (state === 'live' && (previous.current === 'reconnecting' || previous.current === 'offline'));
     previous.current = state;
-    if (!landed) return;
+    if (!landed) { setPinged(false); return; }
     setPinged(true);
     const timer = setTimeout(() => setPinged(false), 900);
     return () => clearTimeout(timer);

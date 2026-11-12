@@ -5,7 +5,14 @@ use std::{
     io::{self, Write},
     path::{Path, PathBuf},
     sync::{Arc, Mutex, OnceLock},
+    time::Instant,
 };
+
+static STARTED: OnceLock<Instant> = OnceLock::new();
+
+pub fn begin_startup() {
+    STARTED.get_or_init(Instant::now);
+}
 
 #[derive(Clone)]
 pub struct Log(Arc<Mutex<Writer>>);
@@ -47,6 +54,11 @@ impl Writer {
 }
 
 impl Log {
+    pub fn milestone(&self, stage: &str) {
+        let elapsed = STARTED.get_or_init(Instant::now).elapsed().as_millis();
+        self.write(format!("[startup] {stage} elapsed_ms={elapsed}"));
+    }
+
     pub fn open(directory: &Path) -> Self {
         let _ = fs::create_dir_all(directory);
         let mut writer = Writer {

@@ -2,3 +2,9 @@
 .card-metrics { flex: 0 0 auto; color: inherit; font: 500 var(--text-ui-size)/var(--text-ui-leading) 'Geist Mono', monospace; font-variant-numeric: tabular-nums; }
 .card-metrics > .card-metrics-effort, .card-metrics > .priority-icon, .card-metrics-effort > span { color: inherit; font: inherit; }
 .card-metrics svg { flex-shrink: 0; }
+.card-questions-metric { display: inline-flex; flex: 0 0 auto; align-items: center; gap: 2px; color: inherit; white-space: nowrap; font: 700 11px/16px 'Geist Mono', monospace; font-variant-numeric: tabular-nums; }
+.card-questions-metric svg { flex: 0 0 auto; }
+.deck-card-pending-dot { width: 6px; height: 6px; flex: none; border-radius: 50%; background: var(--accent); }
+/* 2026-11-12: a Doc's volume reads in the band's metric figures — one element on the tile, the open card, Hand and
+   Vision; the exact count stays in the tooltip. */
+.doc-word-count { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 700 var(--tile-metric-size)/16px var(--font-sans); font-variant-numeric: tabular-nums; }

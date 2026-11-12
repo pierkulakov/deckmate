@@ -10,13 +10,13 @@ function collection() {
 }
 
 describe('idle interface assets', () => {
-  it('loads all UI font faces, including the Cyrillic subsets and editor before section chunks', async () => {
-    const { queue, tasks } = collection(); const load = vi.fn(async () => []);
+  it('warms visible UI fonts without requesting the editor face', async () => {
+    const { queue, tasks } = collection(); const load = vi.fn(async (_font: string, _sample: string) => []);
     vi.stubGlobal('document', { fonts: { load } }); warmInterfaceFonts(queue);
     for (const task of tasks) await task.run(new AbortController().signal);
-    expect(tasks).toHaveLength(9); expect(tasks.every(task => task.priority === 0)).toBe(true);
+    expect(tasks).toHaveLength(6); expect(tasks.every(task => task.priority === 0)).toBe(true);
     expect(load).toHaveBeenCalledWith('500 14px "Geist Mono"', '0123456789');
-    expect(load).toHaveBeenCalledWith('400 14px "Roboto Mono Variable"', 'Markdown Карточка');
+    expect(load.mock.calls.some(([font]) => font.includes('Roboto Mono'))).toBe(false);
     expect(load).toHaveBeenCalledWith('700 14px "Source Sans 3"', 'Deckmate Карточка');
   });
 

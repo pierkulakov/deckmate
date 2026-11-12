@@ -17,6 +17,8 @@ export interface CardOptions {
   handOrder?: Record<string, number>;
   /** Acceptance date YYYY-MM-DD, written on completion; feeds the Done pile and auto-archive. */
   doneAt?: string | null;
+  /** 2026-11-12: reassignment must not erase the ownership evidence used by independent acceptance. */
+  previousOwnerIds?: string[];
 }
 
 export interface BulkOutcome {
@@ -34,7 +36,7 @@ export type BulkChange =
   | { kind: 'create-parent'; cardId: string; title: string; deckId: string | null }
   | { kind: 'promote-parent'; cardId: string; sourceHash: string; expectedParentId: string | null; deckId: string | null }
   | { kind: 'parent'; parentId: string | null; parentSourceHash: string | null }
-  | { kind: 'options'; patch: Omit<CardOptions, 'kindOverride' | 'handMemberIds' | 'tags'> }
+  | { kind: 'options'; patch: Omit<CardOptions, 'kindOverride' | 'handMemberIds' | 'tags' | 'previousOwnerIds'> }
   | { kind: 'hand'; memberId: string; mode: 'add' | 'remove' }
   | { kind: 'tags'; tags: string[]; mode: 'add' | 'remove' }
   | { kind: 'convert'; cardKind: 'task' | 'doc'; deckId: string | null }

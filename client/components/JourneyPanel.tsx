@@ -9,6 +9,7 @@ import { Markdown } from './Markdown.tsx';
 import { journeyStepTitle } from './journey-step-title.ts';
 import { JourneyOperationBadge, JourneyOperationNotice, JourneyOption, useJourneyApplyBlocked } from './JourneyOperationNotice.tsx';
 import { failureMessage } from '../failure-message.ts';
+import { copyText } from '../clipboard.ts';
 import { readFreshCatalog } from '../catalog-store.ts';
 import { Button } from './ui/button.tsx';
 import { EmptyState } from './EmptyState.tsx';
@@ -160,8 +161,7 @@ export function CatalogReferenceLink({ kind, id, source }: { kind: 'c' | 'p' | '
     return () => window.clearTimeout(timer);
   }, [copied]);
   async function copy() {
-    try { await navigator.clipboard.writeText(href); setCopied('copied'); }
-    catch { setCopied('error'); }
+    setCopied(await copyText(href) ? 'copied' : 'error');
   }
   const feedback = copied === 'copied' ? t.copied : '';
   const message = copied === 'error' ? t.copyError : feedback;
@@ -171,8 +171,6 @@ export function CatalogReferenceLink({ kind, id, source }: { kind: 'c' | 'p' | '
     <span className="catalog-reference-feedback" role="status" aria-live="polite" aria-atomic="true">{message}</span>
   </div>;
 }
-
-export { JourneyEditor as JourneyTemplatePanel } from './JourneyEditor.tsx';
 
 function stepSelection(journey: CatalogJourney, requested: Set<string>, applied: Set<string>): Set<string> {
   const selected = new Set<string>();

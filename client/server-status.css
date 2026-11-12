@@ -12,24 +12,35 @@
 .server-status-sizer { visibility: hidden; pointer-events: none; }
 .server-status-stack { display: grid; }
 .server-status-stack > span { grid-area: 1 / 1; }
-.server-status, .server-status-sizer { display: inline-flex; align-items: center; gap: 6px; padding: 3px 9px 3px 7px; }
-.server-status-stack, .server-status-labels { font-size: 12px; font-weight: 500; line-height: 1; white-space: nowrap; }
+.server-status, .server-status-sizer { display: inline-flex; align-items: center; gap: 6px; padding: 4px 8px; }
+.server-status-sizer { height: 22px; }
+.server-status-stack, .server-status-labels { font-size: 12px; font-weight: 600; line-height: 1; white-space: nowrap; }
 /* 2026-11-10: a deliberate exception to the Foil Rule — the Live badge stays a capsule;
    every save shows in it. */
-.server-status { position: relative; isolation: isolate; border: 0; background: transparent; border-radius: 999px; cursor: pointer; min-height: 24px; }
+.server-status { position: relative; isolation: isolate; border: 0; background: transparent; border-radius: 11px; cursor: pointer; min-height: 22px; }
 .server-status:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
-.server-status::before { content: ''; position: absolute; inset: 0; z-index: -1; border-radius: inherit;
-  background: color-mix(in srgb, var(--server-color) 11%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--server-color) 24%, transparent);
-  transform-origin: left center; transform: scaleX(var(--status-face-scale, 1)); transition: transform var(--motion-material) var(--ease-out); }
+/* The middle stretches on the compositor; the 11px end caps never scale and stay round. */
+.server-status-face { position: absolute; inset: 50% 0 auto; z-index: -1; height: 22px; transform: translateY(-50%); pointer-events: none; }
+.server-status-face::before, .server-status-face::after, .server-status-face > span { position: absolute; top: 0; bottom: 0;
+  background: var(--ground); background: color-mix(in srgb, var(--server-color) 11%, transparent); border: 1px solid var(--server-color); border-color: color-mix(in srgb, var(--server-color) 24%, transparent); }
+.server-status-face::before { content: ''; left: 0; width: 11px; border-right: 0; border-radius: 11px 0 0 11px; }
+.server-status-face > span { left: 11px; right: 11px; border-left: 0; border-right: 0; transform-origin: left center;
+  transform: scaleX(var(--status-middle-scale, 1)); transition: transform var(--motion-material) var(--ease-out); }
+.server-status-face::after { content: ''; right: 0; width: 11px; border-left: 0; border-radius: 0 11px 11px 0;
+  transform: translateX(var(--status-cap-shift, 0px)); transition: transform var(--motion-material) var(--ease-out); }
+@media (hover: hover) {
+  .server-status:hover .server-status-face::before, .server-status:hover .server-status-face::after, .server-status:hover .server-status-face > span {
+    background: color-mix(in srgb, var(--server-color) 19%, transparent); }
+}
 .server-status-dot { position: relative; flex: 0 0 auto; width: 8px; height: 8px; border-radius: 50%; background: var(--server-color); }
 
 /* Every label occupies the same cell: the widest one sets the width, the active one fades and slides in. */
 .server-status-labels { display: grid; overflow: hidden; }
-.server-status-labels > span { grid-area: 1 / 1; justify-self: start; color: color-mix(in srgb, var(--server-color) 72%, var(--ink)); opacity: 0; transform: translateY(3px); }
+.server-status-labels > span { grid-area: 1 / 1; justify-self: start; color: var(--ink); color: color-mix(in srgb, var(--server-color) 72%, var(--ink)); opacity: 0; transform: translateY(3px); }
 /* 2026-11-09: stacked labels must not crossfade into an unreadable pair of states. Only the arriving label moves. */
 .server-status-labels > span.is-active { opacity: 1; transform: none;
   transition: opacity var(--motion-feedback) var(--ease-out), transform var(--motion-material) var(--ease-out); }
-:root:not(.dark) .server-status.is-live .server-status-labels > span.is-active { color: color-mix(in srgb, var(--server-live) 50%, var(--ink)); }
+:root:not(.dark) .server-status-labels > span.is-active { color: color-mix(in srgb, var(--server-color) 46%, var(--ink)); }
 
 .server-status.is-saving .server-status-dot { animation: server-status-breathe calc(var(--motion-spring-quick) * 3) ease-in-out infinite; }
 .server-status.is-reconnecting .server-status-dot { animation: server-status-breathe calc(var(--motion-panel) * 10) ease-in-out infinite; }
@@ -53,18 +64,20 @@
 .server-status-facts dd { margin: 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .server-status-facts .is-number { font-family: 'Geist Mono', monospace; font-variant-numeric: tabular-nums; }
 
-/* 2026-11-06: below 1180 the label gives way with the source label and the search (workspace.css): its slot is
-   reserved at the longest label ("Reconnecting...", longer in Russian) and cut the Timeline tab at 1024. The dot keeps
-   the state at a glance; the detail panel carries the full text, and the aria-label never depends on the labels. */
+/* Below 1180 the live label gives way to the tabs; other states keep their text even without animation or color. */
 @media (max-width: 1180px) {
   .server-status-sizer, .server-status-labels { display: none; }
-  .server-status { padding: 3px 7px; }
-  .server-status.is-offline .server-status-labels, .mission-control .server-status-labels { display: grid; }
+  .server-status:not(.is-live) .server-status-labels, .mission-control .server-status-labels { display: grid; }
+  .server-status-labels > span:not(.is-active) { display: none; }
   .mission-control .server-status-sizer { display: inline-flex; }
+}
+/* Keep the tab labels whole beside a visible status just above the two-row breakpoint. */
+@media (min-width: 861px) and (max-width: 900px) {
+  .global-topbar:has(.server-status:not(.is-live)) .global-tabs button { padding-inline: var(--space-2); }
 }
 @media (pointer: coarse) { .server-status { min-width: var(--control-target-touch, 44px); min-height: var(--control-target-touch, 44px); } }
 
 @media (prefers-reduced-motion: reduce) {
-  .server-status::before, .server-status-labels > span.is-active { transition: none; }
+  .server-status-face::after, .server-status-face > span, .server-status-labels > span.is-active { transition: none; }
   .server-status.is-saving .server-status-dot, .server-status.is-reconnecting .server-status-dot, .server-status.is-pinged .server-status-dot::after, .server-status-card { animation: none !important; }
 }

@@ -1,14 +1,15 @@
 import type { DataSource } from '../src/workspace-contracts.ts';
 
-export type View = 'deck' | 'hand' | 'timeline' | 'vision';
+export type View = 'deck' | 'hand' | 'decisions' | 'timeline' | 'vision';
 
-export function cardNavigation(href: string, cardId: string, source: DataSource): URL {
+export function cardNavigation(href: string, cardId: string, source: DataSource, panel?: 'questions'): URL {
   const url = new URL(href);
   const query = new URLSearchParams({ view: 'deck', catalogSource: source, scope: 'all', card: cardId });
   for (const key of ['handMember', 'hands', 'handTab']) {
     const value = url.searchParams.get(key);
     if (value !== null) query.set(key, value);
   }
+  if (panel) query.set('cardPanel', panel);
   url.search = query.toString();
   url.hash = '';
   return url;

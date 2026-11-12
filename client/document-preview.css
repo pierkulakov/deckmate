@@ -5,13 +5,12 @@
 .document-preview-overlay { position: fixed; inset: 0; z-index: var(--z-preview-overlay); background: var(--scrim); animation: backdrop-fade var(--motion-panel) ease-out; }
 .document-preview-pane { position: fixed; z-index: var(--z-preview-pane); top: var(--space-3); right: var(--space-3); bottom: var(--space-3); width: min(980px, calc(100vw - 2 * var(--space-3))); max-height: calc(100dvh - 2 * var(--space-3)); min-width: 0; font-weight: 400; outline: none; animation: sheet-slide var(--motion-panel) var(--ease-panel); }
 .document-preview-pane.is-expanded { inset: var(--space-3); width: auto; }
-.document-preview-header { background: var(--surface); }
-.document-preview-navigation { display: flex; align-items: center; gap: var(--space-2); min-width: 0; }
+.document-preview-header { align-items: flex-start; background: var(--surface); }
+.document-preview-navigation { display: flex; flex: 1; align-items: flex-start; gap: var(--space-2); min-width: 0; }
 .document-preview-navigation > .ui-button, .document-preview-file-icon { flex-shrink: 0; }
 .document-preview-file-icon { display: grid; place-items: center; color: var(--muted); }
 .document-preview-heading { min-width: 0; }
-.document-preview-heading h2 { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.document-preview-heading p { margin: var(--space-1) 0 0; color: var(--muted); font-size: var(--text-help-size); line-height: var(--text-help-leading); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.document-preview-heading p { margin: var(--space-1) 0 0; color: var(--muted); font-size: var(--text-help-size); line-height: var(--text-help-leading); overflow-wrap: anywhere; }
 .document-preview-actions { display: flex; flex-shrink: 0; gap: var(--space-2); }
 .document-preview-toolbar { display: flex; flex: 0 0 auto; flex-wrap: wrap; align-items: center; gap: var(--space-2); padding: var(--space-2) var(--space-4); border-bottom: 1px solid var(--line); background: var(--ground); }
 .document-preview-mode { flex-shrink: 0; }

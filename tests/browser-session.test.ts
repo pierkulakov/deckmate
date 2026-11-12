@@ -1,15 +1,16 @@
 import { EventEmitter } from 'node:events';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { spawn } from 'node:child_process';
-import { mkdtempSync } from 'node:fs';
+import { mkdtempSync, readFileSync } from 'node:fs';
 import { rm } from 'node:fs/promises';
 import { connectToHeadlessBrowser, openHeadlessBrowser } from '../tools/layout-capture.ts';
 import { createBrowserSession } from './browser-session.ts';
+import { startSharedHeadlessBrowser, useSharedHeadlessBrowsers } from '../tools/headless-browser.ts';
 
 vi.mock('node:child_process', () => ({ spawn: vi.fn() }));
 vi.mock('node:fs', async importOriginal => ({
   ...await importOriginal<typeof import('node:fs')>(),
-  mkdtempSync: vi.fn(), existsSync: () => true,
+  mkdtempSync: vi.fn(), readFileSync: vi.fn(), existsSync: () => true,
 }));
 vi.mock('node:fs/promises', () => ({ rm: vi.fn() }));
 vi.mock('./browser-fixture.ts', () => ({ browserFixtureUrl: (fixture: string) => `http://fixture/${fixture}/` }));
@@ -25,6 +26,7 @@ class BrowserProcess extends EventEmitter {
 class PageSocket extends EventTarget {
   static OPEN = 1;
   static latest: PageSocket;
+  static all: PageSocket[] = [];
   readyState = 1;
   commands: { id: number; method: string; params: any }[] = [];
   respond = true;
@@ -33,6 +35,7 @@ class PageSocket extends EventTarget {
   constructor(readonly url: string) {
     super();
     PageSocket.latest = this;
+    PageSocket.all.push(this);
     queueMicrotask(() => this.dispatchEvent(new Event('open')));
   }
   message(data: object) { this.dispatchEvent(new MessageEvent('message', { data: JSON.stringify(data) })); }
@@ -43,7 +46,10 @@ class PageSocket extends EventTarget {
     if (!this.respond) return;
     queueMicrotask(() => {
       if (this.errorReply) { this.message({ id: command.id, error: { message: 'CDP rejected command' } }); return; }
-      const result = command.method.startsWith('Runtime.') ? { result: { value: this.runtimeValue } } : { data: 'image' };
+      let result: object = { data: 'image' };
+      if (command.method.startsWith('Runtime.')) result = { result: { value: this.runtimeValue } };
+      if (command.method === 'Target.createBrowserContext') result = { browserContextId: `context-${PageSocket.all.indexOf(this)}` };
+      if (command.method === 'Target.createTarget') result = { targetId: `page-${PageSocket.all.indexOf(this)}` };
       this.message({ id: command.id, result });
     });
   }
@@ -53,6 +59,7 @@ class PageSocket extends EventTarget {
 let browser: BrowserProcess;
 beforeEach(() => {
   browser = new BrowserProcess();
+  PageSocket.all = [];
   vi.mocked(spawn).mockImplementation((command: any) => {
     if (command === 'powershell') return new BrowserProcess() as any;
     if (command === 'taskkill') {
@@ -64,6 +71,7 @@ beforeEach(() => {
   });
   let profiles = 0;
   vi.mocked(mkdtempSync).mockImplementation(() => `profile-${++profiles}`);
+  vi.mocked(readFileSync).mockReturnValue('9222\n/devtools/browser/test\n');
   vi.mocked(rm).mockResolvedValue(undefined);
   vi.stubEnv('DECKMATE_BROWSER', 'default-browser');
   vi.stubGlobal('WebSocket', PageSocket);
@@ -228,5 +236,27 @@ describe('shared browser session', () => {
       .toEqual(['--user-data-dir=profile-1', '--user-data-dir=profile-2']);
     vi.mocked(rm).mockRejectedValueOnce(new Error('profile locked'));
     await expect(second.close()).rejects.toThrow('profile locked');
+
+    browser = new BrowserProcess();
+    const shared = await startSharedHeadlessBrowser();
+    const firstScope = useSharedHeadlessBrowsers([shared.connection]);
+    await openHeadlessBrowser({ width: 1440, height: 900, scale: 1 });
+    const firstControl = PageSocket.all.at(-2)!;
+    expect(firstControl.commands).toContainEqual(expect.objectContaining({ method: 'Target.createBrowserContext', params: { disposeOnDetach: true } }));
+    expect(firstControl.commands).toContainEqual(expect.objectContaining({ method: 'Target.createTarget',
+      params: expect.objectContaining({ background: true, newWindow: true, width: 1440, height: 900 }) }));
+    await firstScope();
+    expect(firstControl.commands).toContainEqual(expect.objectContaining({ method: 'Target.disposeBrowserContext' }));
+    expect(browser.exitCode).toBeNull();
+
+    const secondScope = useSharedHeadlessBrowsers([shared.connection]);
+    const next = await openHeadlessBrowser();
+    const secondControl = PageSocket.all.at(-2)!;
+    expect(secondControl).not.toBe(firstControl);
+    await next.close();
+    await secondScope();
+    expect(secondControl.commands.filter(command => command.method === 'Target.disposeBrowserContext')).toHaveLength(1);
+    expect(vi.mocked(spawn).mock.calls.filter(([command]) => command === 'default-browser')).toHaveLength(3);
+    await shared.close();
   });
 });

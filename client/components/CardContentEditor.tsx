@@ -17,8 +17,7 @@ import { CatalogReferenceLink } from './JourneyPanel.tsx';
 import { Button } from './ui/button.tsx';
 import { defineText, textNow, useText } from '../i18n.ts';
 import { moveFocus } from '../focus.ts';
-import { OpenQuestions, questionReadingTree } from './OpenQuestions.tsx';
-import { parseOpenQuestions } from '../../src/open-questions.ts';
+import { questionReadingTree } from './OpenQuestions.tsx';
 import '../card-editor.css';
 
 const text = defineText({
@@ -67,7 +66,7 @@ const text = defineText({
   rebaseFailed: 'Не удалось загрузить актуальную версию. Черновик и конфликт сохранены.',
   titleRequired: 'Введите название карточки.',
   tooLong: 'Название ограничено 1000 знаками, содержимое — 200000 знаками.',
-  notConfirmed: 'Изменения не подтверждены. Черновик сохранён; проверьте сообщение каталога.',
+  notConfirmed: 'Сохранение не подтверждено. Черновик остался в редакторе. Проверьте карточку и сообщение об ошибке перед повтором.',
   saveUnconfirmed: 'Не удалось подтвердить сохранение. Черновик остался в редакторе; повторите после проверки источника.',
   editTitle: 'Редактировать название и содержимое',
   readOnly: 'Проект открыт только для чтения.',
@@ -126,7 +125,7 @@ async function fetchCardContent(cardId: string, source: WorkspaceSnapshot['sourc
   return result as CardContent;
 }
 
-export function CardContentEditor({ card, catalog, snapshot, writable, pending, blocked, headingRef, onEdit, onEditingChange, onQuestionsActiveChange, questionsDisabled = false, onCancelEdit, titleActions, footerActions, footerTarget, bodyAfter, onOpenCard, focusMode = false, onFocusModeExit, hideJourneyStepLink = false }: {
+export function CardContentEditor({ card, catalog, snapshot, writable, pending, blocked, headingRef, onEdit, onEditingChange, onEditorOpenChange, onCancelEdit, titleActions, footerActions, footerTarget, bodyAfter, onOpenCard, focusMode = false, onFocusModeExit, hideJourneyStepLink = false }: {
   card: CatalogCard;
   catalog: CatalogView;
   snapshot: WorkspaceSnapshot;
@@ -136,8 +135,7 @@ export function CardContentEditor({ card, catalog, snapshot, writable, pending, 
   headingRef: RefObject<HTMLHeadingElement | null>;
   onEdit: (action: CatalogAction) => Promise<boolean>;
   onEditingChange: (editing: boolean) => void;
-  onQuestionsActiveChange?: (active: boolean) => void;
-  questionsDisabled?: boolean;
+  onEditorOpenChange?: (open: boolean) => void;
   onCancelEdit?: () => void;
   titleActions?: ReactNode;
   footerActions?: ReactNode;
@@ -173,6 +171,7 @@ export function CardContentEditor({ card, catalog, snapshot, writable, pending, 
   useEffect(() => { setEditRequest(null); }, [cardKey]);
   const [currentContent, setCurrentContent] = useState<CardContent | null>(null);
   const [editing, setEditing] = useState(false);
+  const editButtonRef = useRef<HTMLButtonElement>(null);
   // The whole card is one plain Markdown text; its first line is the title.
   const [draft, setDraft] = useState('');
   const [saving, setSaving] = useState(false);
@@ -190,12 +189,11 @@ export function CardContentEditor({ card, catalog, snapshot, writable, pending, 
   // the editor and the file keep the full text.
   const readingMarkdown = useMemo(() => hideJourneyStepLink ? splitJourneyStepLink(shownContent.markdown, card.journey).body : shownContent.markdown,
     [hideJourneyStepLink, shownContent.markdown, card.journey]);
-  const questionsShown = card.kind === 'doc' && !focusMode && Boolean(onQuestionsActiveChange && onOpenCard);
+  const questionsShown = !focusMode;
   const tree = useMemo(() => {
     const parsed = parseEditorMarkdown(readingMarkdown);
     return questionsShown ? questionReadingTree(parsed) : parsed;
   }, [readingMarkdown, questionsShown]);
-  const questions = useMemo(() => parseOpenQuestions(shownContent.markdown), [shownContent.markdown]);
   const base = baseline.current;
   const contentDirty = editing && base !== null && draft !== composeDraft(base.title, base.markdown);
   const revisionChanged = editing && base !== null
@@ -233,6 +231,7 @@ export function CardContentEditor({ card, catalog, snapshot, writable, pending, 
 
   useEffect(() => { onEditingChange(contentDirty || saving); }, [contentDirty, saving, onEditingChange]);
   useEffect(() => () => onEditingChange(false), [onEditingChange]);
+  useEffect(() => { onEditorOpenChange?.(editing); return () => onEditorOpenChange?.(false); }, [editing, onEditorOpenChange]);
 
   // Focus Mode opens the card's editor once per entry; Save or Cancel returns to the rendered card.
   // Layout phase: the reading view never flashes before the text box.
@@ -387,6 +386,7 @@ export function CardContentEditor({ card, catalog, snapshot, writable, pending, 
   }
 
   async function persistContent(base: ContentBaseline, draftTitle: string, draftMarkdown: string) {
+    const returnToEdit = editing;
     setSaving(true);
     setNotice('');
     try {
@@ -395,6 +395,8 @@ export function CardContentEditor({ card, catalog, snapshot, writable, pending, 
       if (saved) {
         setContent({ cardId: card.id, title: draftTitle, markdown: draftMarkdown, sourceHash: base.sourceHash });
         finishEditing();
+        // Only closing the full editor returns to Edit; saving a reading-mode checklist keeps its own focus.
+        if (returnToEdit && !focusMode) requestAnimationFrame(() => moveFocus(editButtonRef.current, { preventScroll: true }));
       } else {
         // 2026-11-03: a failed quick checkbox edit becomes an explicit draft instead of disappearing.
         setEditing(true);
@@ -419,7 +421,7 @@ export function CardContentEditor({ card, catalog, snapshot, writable, pending, 
     {saveStatus && <span className={'card-content-save-status' + (calmStatus ? ' is-calm' : '')} role="status" title={calmStatus ? saveStatus : undefined}>
       {calmStatus ? <><FileCheck2 size={14} aria-hidden="true" /><span className="visually-hidden">{saveStatus}</span></> : saveStatus}</span>}
     <div className="card-content-reading-actions">{footerActions}
-      {writable && <Button type="button" size="sm" className="card-content-edit-action" aria-label={t.editCard} disabled={Boolean(loadFailure) || pending || saving || blocked} onClick={startEditing}><Pencil size={14} />{t.edit}</Button>}
+      {writable && <Button ref={editButtonRef} type="button" size="sm" className="card-content-edit-action" aria-label={t.editCard} disabled={Boolean(loadFailure) || pending || saving || blocked} onClick={startEditing}><Pencil size={14} />{t.edit}</Button>}
     </div>
   </footer>;
   const comparison = currentContent ?? fallbackContent;
@@ -448,7 +450,6 @@ export function CardContentEditor({ card, catalog, snapshot, writable, pending, 
           onTaskToggle={content && writable && !loadFailure ? (offset, checked) => void toggleTask(offset, checked) : undefined}
           taskToggleDisabled={loading || pending || saving || blocked} /> : <p className="card-content-empty">{t.empty}</p>}
       </div>
-      {questionsShown && onQuestionsActiveChange && onOpenCard && <OpenQuestions card={{ ...card, markdown: shownContent.markdown, sourceHash: shownContent.sourceHash, openQuestions: questions.questions, openQuestionWarnings: questions.warnings }} catalog={catalog} source={snapshot.source} writable={writable} disabled={questionsDisabled || saving || pending || loading} onEdit={onEdit} onSelect={onOpenCard} onActiveChange={onQuestionsActiveChange} />}
       {!focusMode && bodyAfter}
       {notice && <p className="card-content-notice" role="status">{notice}</p>}
       {!focusMode && !footerTarget && readingFooter}

@@ -1,14 +1,14 @@
 /* One compact card face; state stays on the strip and selection uses the deck tile's mint ring. */
 .catalog-results:has(> .card-family-panel) { align-self: stretch; }
-.card-family-panel { --family-tool-size: 30px; --family-row-tool-size: 24px; flex: 0 1 379px; width: 379px; min-width: 0; min-height: 100%; padding: var(--space-3) var(--space-3) var(--space-6); background: var(--canvas); }
+.card-family-panel { --family-tool-size: 30px; --family-row-tool-size: 24px; container: card-family / inline-size; flex: 0 1 379px; width: 379px; min-width: 0; min-height: 100%; padding: var(--space-3) var(--space-3) var(--space-6); background: var(--canvas); }
 .card-family-parent-heading h2, .card-family-heading h2 { margin: 0; color: var(--ink); font-size: var(--text-ui-size); font-weight: 600; line-height: var(--text-ui-leading); white-space: nowrap; }
-.card-family-parent-heading { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); min-height: var(--family-tool-size); margin-bottom: var(--space-2); }
+.card-family-parent-heading { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-2); min-height: var(--family-tool-size); margin-bottom: var(--space-2); }
 .card-family-parent-actions { display: flex; flex-shrink: 0; gap: var(--space-1); }
 .card-family-parent-empty { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.6; }
 .card-family-parent-slot { margin-top: var(--space-3); }
 .card-family-subcards-slot { margin-top: var(--space-6); }
-.card-family-heading { display: flex; align-items: center; gap: var(--space-2); min-height: var(--family-tool-size); margin-bottom: var(--space-3); }
-.card-family-heading-title { display: flex; align-items: center; gap: var(--space-1); min-width: 0; }
+.card-family-heading { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); min-height: var(--family-tool-size); margin-bottom: var(--space-3); }
+.card-family-heading-title { display: flex; flex: 0 0 auto; align-items: center; gap: var(--space-1); min-width: 0; }
 /* 2026-11-09: a Sub Card without a deck is an indication, not a block; the heading count and row badge use the quiet warning tone in both themes. */
 .card-family-no-deck-count { flex: 0 0 auto; padding: 0 6px; border: 1px solid color-mix(in srgb, var(--warning-ink) 35%, var(--line)); border-radius: var(--control-radius); background: var(--warning-bg); color: var(--warning-ink); font-size: 10px; font-weight: 500; line-height: 14px; }
 .card-family-actions { display: flex; flex-shrink: 0; gap: var(--space-1); margin-left: auto; }
@@ -18,7 +18,10 @@
 .card-family-heading .ui-button[aria-pressed="true"], .card-family-heading .ui-button[aria-expanded="true"], .card-family-heading .ui-button.is-active { border-color: var(--mark); background: var(--mark-tint); color: var(--mark); }
 @media (hover: hover) { .card-family-heading .ui-button:is([aria-pressed="true"], [aria-expanded="true"], .is-active):hover:not(:disabled) { border-color: var(--mark); background: var(--mark-tint-strong); color: var(--mark); } }
 /* Change order groups cards into lanes by the selected property. */
-.card-family-order-menu { min-width: 160px; }
+.dropdown.card-family-order-menu { min-width: 160px; }
+/* 2026-11-12: body portals share the card menu layer above the phone's full-screen focus shell. */
+.dropdown.card-family-menu, .dropdown.card-family-order-menu { z-index: 90; }
+.card-family-menu .dropdown-item > svg { flex-shrink: 0; }
 .card-family-order-check { display: inline-flex; flex-shrink: 0; width: 14px; }
 .card-family-group { display: flex; align-items: baseline; gap: 6px; margin: 8px 0 0; color: var(--muted); font-size: 12px; font-weight: 600; line-height: 14px; }
 .card-family-group:first-child { margin-top: 0; }
@@ -51,6 +54,8 @@
 /* 2026-11-11: an emoji is wider than its font size, so at the title's size it stood out to the right of the owner
    avatar below it. It takes the avatar's 16px box, centered, and the two share one axis. */
 .card-family-row-title .card-title-tags .card-tag-emoji { width: var(--space-4); font-size: 12px; text-align: center; }
+/* 2026-11-11: the smaller emoji hung 3px below the middle of the title's capitals; the marker rises to meet them. */
+.card-family-row-title .card-title-tags { vertical-align: 1px; }
 .card-family-row-tags { position: relative; z-index: 1; display: flex; align-items: center; flex: 0 1 auto; min-width: 0; max-width: 42%; }
 .card-family-row-tags .card-tags { max-width: 100%; }
 .card-family-row-tags .card-tags > :first-child:not(:last-child) { flex-shrink: 0; max-width: 50%; }
@@ -231,10 +236,19 @@ button.card-parent-picker-option { width: 100%; background: transparent; color: 
 
 .card-family-popover-hero > .card-tags { grid-column: 1 / -1; }
 .card-family-popover-hero { --tag-personal-foreground: var(--tag-personal-on-tint); }
+/* 2026-11-12: a resized desktop column can be narrower than a phone; its tools need the same overflow menu. */
+@container card-family (max-width: 320px) {
+  .card-family-heading .card-family-secondary { display: none; }
+  .card-family-heading .card-family-overflow { display: inline-flex; }
+  .card-family-row-details { flex-wrap: wrap; }
+  .card-family-row-summary { flex-basis: 100%; }
+}
 @media (max-width: 480px), (pointer: coarse) {
   .card-family-heading .card-family-secondary { display: none; }
   .card-family-heading .card-family-overflow { display: inline-flex; }
 }
+/* 2026-11-12: wrapped action labels leave room beside the phone menu for its ordering submenu. */
+@media (max-width: 480px) { .dropdown.card-family-menu { width: min-content; } }
 @media (pointer: coarse) {
   .card-family-panel, .card-family-drag-overlay { --family-tool-size: var(--control-target-touch); --family-row-tool-size: var(--control-target-touch); }
   .card-family-actions, .card-family-heading-title, .card-family-row-actions { gap: var(--space-2); }

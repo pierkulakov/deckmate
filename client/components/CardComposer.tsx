@@ -1,4 +1,5 @@
-import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
+import { primaryModifierPressed } from '../shortcut-format.ts';
 import { SlidersHorizontal, Trash2, X } from 'lucide-react';
 import { deckAcceptsCard, newCardDeckId, type CardKind, type CardPriority, type CatalogDeck, type CatalogView } from '../../src/catalog-contracts.ts';
 import type { WorkspaceSnapshot } from '../../src/workspace-contracts.ts';
@@ -15,6 +16,10 @@ import { Button } from './ui/button.tsx';
 import { defineText, useLang, useText } from '../i18n.ts';
 import { moveFocus } from '../focus.ts';
 import { kindLabel, priorityLabel } from '../locales/common.ts';
+// 2026-11-12: New Card can open before the card preview has installed their shared shell styles.
+import '../card-preview.css';
+import '../card-focus-mode.css';
+import '../card-editor.css';
 import '../card-composer.css';
 
 const text = defineText({
@@ -182,9 +187,10 @@ export function CardComposer({ catalog, snapshot, initialDeckId, initialParentId
   // 2026-11-08: without an explicit deck the card lands in the project Inbox when it takes the kind, else in no deck at all.
   const autoDeck = catalog.decks.find(deck => deck.id === newCardDeckId(null, catalog.inboxDeckId, catalog.decks, kind));
   const targetDeck = selectedDeck ?? (deckId === '' ? autoDeck : undefined);
-  const availableDecks = catalog.decks.filter(deck => !parentId || deckAcceptsCard(deck.kind, 'task') || deckAcceptsCard(deck.kind, 'doc'));
-  const parentCards = catalog.cards.filter(card => (card.kind === 'hero' || card.kind === 'doc')
-    && card.id !== draftId && !card.parentId && !card.journey && !card.archived && !card.deleted);
+  const availableDecks = useMemo(() => catalog.decks.filter(deck => !parentId || deckAcceptsCard(deck.kind, 'task') || deckAcceptsCard(deck.kind, 'doc')),
+    [catalog.decks, parentId]);
+  const parentCards = useMemo(() => catalog.cards.filter(card => (card.kind === 'hero' || card.kind === 'doc')
+    && card.id !== draftId && !card.parentId && !card.journey && !card.archived && !card.deleted), [catalog.cards, draftId]);
   const effortNumber = effort.trim() ? Number(effort) : null;
   const effortValid = effortNumber === null || (Number.isFinite(effortNumber) && effortNumber >= 0);
   const canWrite = snapshot.source === 'sandbox' && snapshot.writable;
@@ -327,7 +333,7 @@ export function CardComposer({ catalog, snapshot, initialDeckId, initialParentId
   function handleKeyDown(event: KeyboardEvent<HTMLElement>) {
     if (event.defaultPrevented || event.nativeEvent.isComposing) return;
     if (event.key === 'Escape') { event.preventDefault(); requestClose(); }
-    if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') { event.preventDefault(); void save(); }
+    if (primaryModifierPressed(event) && event.key === 'Enter') { event.preventDefault(); void save(); }
   }
 
   return <aside ref={composer} className="card-preview has-action-rail card-composer" aria-label={t.newCardPanel} onKeyDown={handleKeyDown}>
@@ -369,7 +375,7 @@ export function CardComposer({ catalog, snapshot, initialDeckId, initialParentId
         </section>
         <footer className="card-preview-material-band card-composer-band">
           <Button type="button" variant="ghost" size="sm" className="card-preview-property-shortcut" disabled={busy} aria-label={t.effortLabel(effort || t.notSet)} title={t.editEffort} onClick={() => toggleProperties('effort')}><span>{t.effort}</span><EffortIcon size={19} /><strong>{effort || '—'}</strong></Button>
-          <Button type="button" variant="ghost" size="sm" className="card-preview-property-shortcut" disabled={busy} aria-label={t.priorityLabel(priority ? priorityLabel(priority, lang) : t.notSet)} title={t.editPriority} onClick={() => toggleProperties('priority')}><span>{t.priority}</span><PriorityIcon priority={priority || null} size={18} /><strong>{priority ? priorityLabel(priority, lang) : '—'}</strong></Button>
+          <Button type="button" variant="ghost" size="sm" className="card-preview-property-shortcut" disabled={busy} aria-label={t.priorityLabel(priority ? priorityLabel(priority, lang) : t.notSet)} title={t.editPriority} onClick={() => toggleProperties('priority')}><span>{t.priority}</span><PriorityIcon priority={priority || null} size={18} /></Button>
         </footer>
       </div>
     </div>

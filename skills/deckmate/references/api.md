@@ -1,6 +1,6 @@
 # HTTP actions used by this skill
 
-Create and change cards only through a running local Deckmate server with the intended project open, never by writing card files by hand. If `http://127.0.0.1:4317` does not answer, start `npx deckmate --no-open` in the project folder in the background and wait for a response. If it cannot start, stop and tell the person; do not use a file-based fallback. Stop a server you started yourself when finished. CLI `report`, `state` and `ask` remain available without a server; their guarded writes probe the [configured port](cli.md#common-options). Do not write to an unrelated server or use these action names as `deckmate project` commands.
+These actions cover only what the `deckmate` MCP server and `deckmate project` commands cannot do: card text edits, dependencies, Hand, tags, Runs and milestones, members, decks and Tracks, Journeys, Vision boards. Card creation is MCP `create_cards` / `deckmate project create`, and state or property changes are MCP `update_card` / `deckmate project update` — neither needs this page. HTTP writes still need a running local Deckmate server with the intended project open, never card files by hand. If `http://127.0.0.1:4317` does not answer, start `npx deckmate --no-open` in the project folder in the background and wait for a response. If it cannot start, stop and tell the person; do not use a file-based fallback. Stop a server you started yourself when finished. CLI `report`, `state`, `ask`, `create` and `update` find the project's own running server and otherwise write the files ([common options](cli.md#common-options)). Do not write to an unrelated server or use these action names as `deckmate project` commands.
 
 ## Authorize and protect writes
 
@@ -14,7 +14,7 @@ Create and change cards only through a running local Deckmate server with the in
 
 ## Card content
 
-Use `POST /api/catalog` with the shared fields above; success returns the updated catalog.
+Use `POST /api/catalog` with the shared fields above; success returns the updated catalog. Creation through this action is for tools without the MCP or CLI route: prefer MCP `create_cards` or `deckmate project create`, which derive the retry-safe ID and need no hashes.
 - `create-card`: `cardId: "card:<uuid>"`, `kind: "task" | "hero" | "doc"`, `title`, `markdown`, `deckId`, `trackIds`, `parentId`, `owner`, `effort`, `priority`. Send unset parent/owner/effort/priority as `null`, Tracks as `[]`; `deckId: null` uses a compatible Inbox or leaves the card Unassigned. Task starts `not-started`; Hero/Doc state is null.
 
 Minimal creation sequence: (1) `GET /api/snapshot?source=sandbox` for `token`; (2) `GET /api/catalog?source=sandbox` for `manifestHash`; (3) `POST /api/catalog` with the token/actor headers above and this body:
@@ -30,7 +30,7 @@ Minimal creation sequence: (1) `GET /api/snapshot?source=sandbox` for `token`; (
 
 ## Change an existing card
 
-Keep the canonical `cardId`; use `POST /api/catalog` with the shared fields and the card's fresh `sourceHash`. Preserve unchanged values in actions that replace a complete property/link list.
+Keep the canonical `cardId`; use `POST /api/catalog` with the shared fields and the card's fresh `sourceHash`. State, owner, effort, priority, deck, tracks and parent change through MCP `update_card` / `deckmate project update` without hashes; these HTTP actions remain for clients that write through the server. Preserve unchanged values in actions that replace a complete property/link list.
 - `set-card-properties`: `cardId`, `sourceHash`, `owner`, `effort`, `priority` (all required). Owner is a nonblank single line ≤120 characters or null; effort is finite ≥0 or null; priority is `high | medium | low` or null. Member IDs/aliases resolve to labels on this write, unlike the CLI Owner search filter. Owner does not assign a Hand.
 - `set-card-links`: `cardId`, `sourceHash`, `deckId`, `trackIds` (all required). Deck is a compatible existing ID or null; Tracks are the full unique list of existing IDs (≤100), or `[]` to clear. Take IDs from `map`; moving the card preserves its identity.
 - `set-card-dependencies`: `cardId`, `sourceHash`, `dependsOn` (all required). Send the full unique list of canonical prerequisite IDs (≤200), or `[]` to clear. Only active native non-Journey cards support this action; prerequisites must exist and be active, with no self-link or cycle. Legacy dependencies stay source-managed; Journey dependencies stay Journey-managed.
@@ -102,10 +102,11 @@ Use `POST /api/catalog`; obtain canonical IDs and hashes from the catalog or CLI
 
 ## Questions and answers
 
-Prefer CLI `ask` when a rule Doc already exists. These actions remain HTTP-only and require a running server.
-- `raise-decision`: top-level rule Doc `cardId` and `sourceHash`, zero-based `questionIndex`, exact `questionText`, new `taskCardId: "card:<UUIDv4>"`, compatible Task/Mixed `deckId`, and human `memberId`. It creates a child Decision Task, adds it to that human's Hand, and links it from the question; keep the same task ID on retry.
-- `record-decision`: rule Doc `cardId`, `sourceHash`, `questionIndex`, exact `questionText`, `answer`, and human `memberId`. With that human's approval it moves the answer to `## Decided` (legacy `## Решено`), removes the open item, and accepts its Decision Task.
-- If only acceptance failed, inspect the saved answer and accept the existing Task normally; do not duplicate it. Read the saved rule Doc to verify the answer because a bounded brief may omit it.
+Prefer CLI `question`, `answer` and `apply` (or their MCP tools) for the complete route. The underlying actions require fresh card and manifest hashes.
+- `ask-question`: the concerned card's `cardId` and `sourceHash`, `text`, registered-member `assignee` (human or agent, or null), and optional `target` (`c-ref` or `c-ref#section`). It stores the question on that same card and does not create a separate Task. The CLI/MCP `ask` wrapper only permits a human addressee; without `to`, it picks the first registered human or leaves the question unaddressed if there is none.
+- `record-decision`: the same card's `cardId`, `sourceHash`, zero-based `questionIndex`, exact `questionText`, `answer`, and human `memberId`. With that human's approval it moves the answer to `## Decided` (legacy `## Решено`) and removes the open item.
+- `apply-decision`: `cardId`, `sourceHash`, zero-based `decisionIndex`, the saved `answer`, and an optional `note` of at most 2000 characters (CLI and MCP), saved beside the applied mark as an application note. Call it only after editing the decision target; then reread the card's `applied` mark.
+- A Task with any open question is excluded from `next` until the question is answered, even if no addressee is named. An applied decision leaves the pending pool. Read the saved card to verify both transitions because a bounded brief may omit their text.
 
 ## Vision boards
 

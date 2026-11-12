@@ -1,4 +1,5 @@
 import { DatabaseSync, type StatementSync } from 'node:sqlite';
+import { createHash } from 'node:crypto';
 import { defineText, serverText } from './i18n.ts';
 import type { SearchSnippets } from './search-hits.ts';
 import type {
@@ -218,6 +219,17 @@ function prepareReferenceTables(catalog: ProjectCatalog): PreparedReferenceTable
   ];
 }
 
+function catalogFingerprint(root: string, cards: Map<string, PreparedCard>, tables: PreparedReferenceTable[]): string {
+  // 2026-11-12: version the indexed representation, not file dates; every stored column and relation contributes.
+  const hash = createHash('sha256').update(JSON.stringify(['deckmate-index-1', root]));
+  for (const { key } of cards.values()) hash.update(key).update('\0');
+  for (const { table, rows } of tables) {
+    hash.update(table).update('\0');
+    for (const { key } of rows.values()) hash.update(key).update('\0');
+  }
+  return hash.digest('hex');
+}
+
 export class ProjectIndex {
   private readonly database: DatabaseSync;
   private readonly statements = new Map<string, StatementSync>();
@@ -225,20 +237,33 @@ export class ProjectIndex {
   private shadowCards = new Map<string, string>();
   private shadowReferences = new Map<ReferenceTable, Map<string, string>>();
   private shadowRoot: string | null = null;
+  private shadowFingerprint: string | null = null;
 
   constructor(filename: string) {
     // 2026-11-03: the CLI and server may rebuild the same disposable cache.
     this.database = new DatabaseSync(filename, { timeout: 5000 });
     try {
+      const schemaVersion = this.database.prepare('PRAGMA schema_version').get()?.schema_version;
       this.database.exec(SCHEMA_SQL);
       // 2026-11-03: upgrade disposable indexes without losing readers' current snapshot.
       this.database.exec('BEGIN IMMEDIATE');
       try {
         const columns = this.database.prepare('PRAGMA table_info(cards)').all();
         if (!columns.some(column => column.name === 'attributes_json')) this.database.exec("ALTER TABLE cards ADD COLUMN attributes_json TEXT NOT NULL DEFAULT '{}'");
+        // 2026-11-12: recreated tables and schema upgrades invalidate fingerprints from an older representation.
+        if (schemaVersion !== this.database.prepare('PRAGMA schema_version').get()?.schema_version) {
+          this.database.exec("DELETE FROM meta WHERE key = 'catalog_fingerprint'");
+        }
         this.database.exec('COMMIT');
       } catch (error) { this.database.exec('ROLLBACK'); throw error; }
       this.database.exec("INSERT OR IGNORE INTO meta (key, value) VALUES ('root_identity', ''), ('indexed_at', '')");
+      if (this.database.prepare("SELECT value FROM meta WHERE key = 'catalog_fingerprint'").get()) {
+        // 2026-11-12: a matching fingerprint only permits reuse of a structurally sound SQLite/FTS snapshot.
+        if (this.database.prepare('PRAGMA quick_check(1)').get()?.quick_check !== 'ok') {
+          throw Object.assign(new Error('Corrupt SQLite index'), { errcode: 11 });
+        }
+        this.database.exec("INSERT INTO cards_fts(cards_fts) VALUES('integrity-check')");
+      }
     } catch (error) {
       // A failed constructor leaves no instance for the caller to close.
       this.database.close();
@@ -310,41 +335,52 @@ export class ProjectIndex {
     // 2026-11-05: cards and reference rows compare against the last committed snapshot; root changes rebuild everything.
     const rows = new Map(catalog.cards.map(card => [card.id, preparedCard(card)]));
     const referenceTables = prepareReferenceTables(catalog);
-    const fullRebuild = this.shadowRoot !== catalog.rootIdentity;
+    const fingerprint = catalogFingerprint(catalog.rootIdentity, rows, referenceTables);
     this.database.exec('BEGIN IMMEDIATE');
     try {
-      if (fullRebuild) {
-        for (const sql of [
-          'DELETE FROM card_tracks', 'DELETE FROM cards_fts', 'DELETE FROM cards',
-          'DELETE FROM documents', 'DELETE FROM spaces', 'DELETE FROM decks', 'DELETE FROM tracks',
-        ]) this.statement(sql).run();
-        for (const prepared of rows.values()) this.insertCardRow(prepared);
-      } else {
-        for (const id of this.shadowCards.keys()) {
-          if (rows.has(id)) continue;
-          this.statement('DELETE FROM cards_fts WHERE card_id = ?').run(id);
-          this.statement('DELETE FROM card_tracks WHERE card_id = ?').run(id);
-          this.statement('DELETE FROM cards WHERE id = ?').run(id);
+      // 2026-11-12: compare inside the writer transaction; another CLI/server may have replaced this cache.
+      const stored = this.statement("SELECT value FROM meta WHERE key = 'catalog_fingerprint'").get()?.value;
+      const fullRebuild = this.shadowRoot !== catalog.rootIdentity || stored !== this.shadowFingerprint;
+      // 2026-11-12: fresh Markdown was still read and hashed; an identical index needs no FTS work.
+      if (stored !== fingerprint) {
+        if (fullRebuild) {
+          for (const sql of [
+            'DELETE FROM card_tracks', 'DELETE FROM cards_fts', 'DELETE FROM cards',
+            'DELETE FROM documents', 'DELETE FROM spaces', 'DELETE FROM decks', 'DELETE FROM tracks',
+          ]) this.statement(sql).run();
+          for (const prepared of rows.values()) this.insertCardRow(prepared);
+        } else {
+          for (const id of this.shadowCards.keys()) {
+            if (rows.has(id)) continue;
+            this.statement('DELETE FROM cards_fts WHERE card_id = ?').run(id);
+            this.statement('DELETE FROM card_tracks WHERE card_id = ?').run(id);
+            this.statement('DELETE FROM cards WHERE id = ?').run(id);
+          }
+          for (const prepared of rows.values()) {
+            if (this.shadowCards.get(prepared.card.id) === prepared.key) continue;
+            if (this.shadowCards.has(prepared.card.id)) {
+              this.statement(`UPDATE cards SET kind = ?, path = ?, version = ?, title = ?, state = ?, owner = ?, owner_folded = ?,
+                markdown = ?, source_hash = ?, range_start = ?, range_end = ?, deck_id = ?, parent_id = ?, attributes_json = ? WHERE id = ?`)
+                .run(prepared.card.kind, prepared.card.path, prepared.card.version, prepared.card.title, prepared.card.state, prepared.card.owner,
+                  prepared.card.owner === null ? null : folded(prepared.card.owner), prepared.card.markdown, prepared.card.sourceHash,
+                  prepared.card.range === null ? null : prepared.card.range.start, prepared.card.range === null ? null : prepared.card.range.end,
+                  prepared.card.deckId, prepared.card.parentId, prepared.attributes, prepared.card.id);
+              this.replaceCardTracks(prepared.card);
+              this.replaceCardSearch(prepared.card);
+            } else this.insertCardRow(prepared);
+          }
         }
-        for (const prepared of rows.values()) {
-          if (this.shadowCards.get(prepared.card.id) === prepared.key) continue;
-          if (this.shadowCards.has(prepared.card.id)) {
-            this.statement(`UPDATE cards SET kind = ?, path = ?, version = ?, title = ?, state = ?, owner = ?, owner_folded = ?,
-              markdown = ?, source_hash = ?, range_start = ?, range_end = ?, deck_id = ?, parent_id = ?, attributes_json = ? WHERE id = ?`)
-              .run(prepared.card.kind, prepared.card.path, prepared.card.version, prepared.card.title, prepared.card.state, prepared.card.owner,
-                prepared.card.owner === null ? null : folded(prepared.card.owner), prepared.card.markdown, prepared.card.sourceHash,
-                prepared.card.range === null ? null : prepared.card.range.start, prepared.card.range === null ? null : prepared.card.range.end,
-                prepared.card.deckId, prepared.card.parentId, prepared.attributes, prepared.card.id);
-            this.replaceCardTracks(prepared.card);
-            this.replaceCardSearch(prepared.card);
-          } else this.insertCardRow(prepared);
-        }
+        this.replaceReferenceTables(referenceTables, fullRebuild);
       }
-      this.replaceReferenceTables(referenceTables, fullRebuild);
-      this.statement('INSERT INTO meta (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value')
-        .run('root_identity', catalog.rootIdentity);
-      this.statement('INSERT INTO meta (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value')
-        .run('indexed_at', new Date().toISOString());
+      // 2026-11-12: only reopening preserves the timestamp; in-process invalidations also refresh journal panels.
+      if (stored !== fingerprint || this.shadowRoot !== null) {
+        this.statement('INSERT INTO meta (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value')
+          .run('root_identity', catalog.rootIdentity);
+        this.statement('INSERT INTO meta (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value')
+          .run('indexed_at', new Date().toISOString());
+        this.statement('INSERT INTO meta (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value')
+          .run('catalog_fingerprint', fingerprint);
+      }
       this.database.exec('COMMIT');
     } catch (error) {
       this.database.exec('ROLLBACK');
@@ -355,6 +391,7 @@ export class ProjectIndex {
       new Map([...references].map(([identity, prepared]) => [identity, prepared.key])),
     ]));
     this.shadowRoot = catalog.rootIdentity;
+    this.shadowFingerprint = fingerprint;
   }
 
   search(query: CatalogQuery = {}): CatalogCard[] {

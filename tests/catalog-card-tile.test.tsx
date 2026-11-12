@@ -124,23 +124,40 @@ it('uses one decorative, scalable effort mark and preserves long values', () => 
   expect(renderTile({ kind: 'hero', effort: 0 })).toContain('<strong>0</strong>');
 });
 
-it('restores the Doc type icon and centered owner while keeping its excerpt and quiet question text', () => {
+it('places Doc questions on the band without covering the excerpt', () => {
   // Its own hash: tiles remember text-derived values per card revision, and other tests render card:tile with other text.
-  const doc: Partial<CatalogCard> = { kind: 'doc', state: null, sourceHash: 'doc-page', markdown: 'Watch a new player arrive.\n\n## Working notes\nCan they find the lantern?', openQuestions: [{ text: 'Question?', taskRef: null }] };
+  const doc: Partial<CatalogCard> = { kind: 'doc', state: null, sourceHash: 'doc-page', markdown: 'Watch a new player arrive.\n\n## Working notes\nCan they find the lantern?', openQuestions: [{ text: 'Question?', taskRef: null, assignee: null, target: null }] };
   const html = renderTile(doc);
-  expect(html).toContain('class="deck-card-doc-kind" role="img" title="Doc Card"');
-  expect(html).toContain('>Questions: 1</span>');
+  expect(html).toContain('class="card-questions-metric" role="img" title="Open questions: 1" aria-label="Open questions: 1"');
+  expect(html).toContain('<span class="doc-word-count" role="img" aria-label="12 words" title="12 words"><span aria-hidden="true">12w</span></span>');
+  expect(html.indexOf('deck-card-band')).toBeLessThan(html.indexOf('card-questions-metric'));
+  expect(html).toContain('lucide-message-circle-question');
+  expect(html).not.toContain('>Questions: 1</span>');
   expect(html).not.toContain('deck-card-doc-words');
-  expect(html).toContain('lucide-notebook');
+  expect(renderTile({ kind: 'doc' })).toContain('lucide-notebook');
   expect(html).not.toContain('Markdown');
   expect(html).toContain('<span class="deck-card-doc-excerpt" aria-hidden="true"><span>Watch a new player arrive.</span><b>Working notes</b><span>Can they find the lantern?</span></span>');
   expect(html).toContain('class="deck-card-owner-medallion"><span class="deck-card-owner" title="Owner: Alex"');
   expect(html).toContain('card-owner-avatar');
   expect(renderTile({ kind: 'task' })).not.toContain('deck-card-doc-excerpt');
+  expect(renderTile({ kind: 'doc', state: null, sourceHash: 'doc-empty', markdown: '' })).not.toContain('doc-word-count');
   setLang('ru');
   const russian = renderTile(doc);
-  expect(russian).toContain('>Вопросов: 1</span>');
-  expect(russian).toContain('class="deck-card-doc-kind"');
+  expect(russian).toContain('aria-label="Открытых вопросов: 1"');
+  expect(russian).not.toContain('>Вопросов: 1</span>');
+  expect(russian).toContain('<span class="doc-word-count" role="img" aria-label="12 слов" title="12 слов"><span aria-hidden="true">12 сл.</span></span>');
+});
+
+it.each(['task', 'hero', 'doc'] as const)('shows questions and pending decisions on a %s tile', kind => {
+  const card = { kind, openQuestions: [{ text: 'Question?', taskRef: null, assignee: 'maya', target: null }],
+    decisions: [{ index: 0, question: 'Question?', answer: 'Answer', by: 'Maya', date: '2026-11-12', target: null, applied: null }] };
+  const html = renderTile(card);
+  expect(html).toContain('aria-label="Open questions: 1"');
+  expect(html).toContain('deck-card-pending-dot');
+  expect(html).toContain('Decision to apply');
+  if (kind === 'task') expect(html).toContain('Waiting on @maya');
+  const applied = { ...card, decisions: [{ ...card.decisions[0], applied: '2026-11-12' }] };
+  expect(renderTile(applied)).not.toContain('deck-card-pending-dot');
 });
 
 it('replaces a finished Hero owner with the accepted medallion but retains the owner in the opener name', () => {

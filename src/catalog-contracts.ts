@@ -87,12 +87,49 @@ export interface CatalogCard extends CardOptions {
   createdAt?: string | null;
   updatedAt?: string | null;
   journey?: { journeyId: string; version: number; stepId: string; instanceId: string };
-  // Rule cards: the question count comes from src/open-questions.ts; absent/null means no open-questions section.
+  // 2026-11-12: Markdown is authoritative for questions and decisions on every card kind.
   openQuestions?: CatalogOpenQuestion[] | null;
   openQuestionWarnings?: string[];
+  decisions?: CatalogDecision[];
 }
 
-export interface CatalogOpenQuestion { text: string; taskRef: string | null }
+export interface CatalogOpenQuestion { text: string; taskRef: string | null; assignee: string | null; target: string | null }
+
+export interface CatalogDecision {
+  index: number;
+  question: string | null;
+  answer: string;
+  by: string | null;
+  recordedBy?: string;
+  assignee?: string;
+  date: string | null;
+  target: string | null;
+  applied: string | null;
+}
+
+export function waitingOn(card: CatalogCard): string[] | null {
+  if (card.kind !== 'task' || !card.openQuestions?.length) return null;
+  return [...new Set(card.openQuestions.flatMap(question => question.assignee === null ? [] : [question.assignee]))];
+}
+
+export function isPendingDecision(decision: Pick<CatalogDecision, 'question' | 'applied'>): boolean {
+  return decision.question !== null && decision.applied === null;
+}
+
+export function pendingDecisions(catalog: Pick<ProjectCatalog, 'cards'>): Array<{ card: CatalogCard; decision: CatalogDecision }> {
+  return catalog.cards.flatMap(card => (card.decisions ?? [])
+    .filter(isPendingDecision).map(decision => ({ card, decision })));
+}
+
+/** 2026-11-12: retries compare the same identity before planning and again under the catalog write lock. */
+export function hasMatchingQuestion(questions: readonly CatalogOpenQuestion[],
+  decisions: readonly (Pick<CatalogDecision, 'question' | 'target'> & { assignee?: string | null })[],
+  expected: Pick<CatalogOpenQuestion, 'text' | 'assignee' | 'target'>, cardRef: string): boolean {
+  const matches = (text: string | null, assignee: string | null | undefined, target: string | null) =>
+    text === expected.text && (assignee ?? null) === expected.assignee && (target ?? cardRef) === (expected.target ?? cardRef);
+  return questions.some(question => matches(question.text, question.assignee, question.target))
+    || decisions.some(decision => matches(decision.question, decision.assignee, decision.target));
+}
 
 // Attachment files live in the data project. Their list is stored
 // alongside them in the managed attachments.md file (server/attachments.ts).
@@ -485,11 +522,15 @@ export type CatalogEdit = { manifestHash: string; sourceHash?: string } & (
   // Step lesson: `- text — author, YYYY-MM-DD ($c-…)` is appended to the lessons section of the
   // step text. cardId — the Task this step created, where the mistake happened; author — the request actor (x-deckmate-actor).
   | { action: 'add-journey-step-lesson'; journeyId: string; journeyHash: string; stepId: string; cardId: string; text: string }
-  // An open question creates a decision Task under the Doc, assigned to the member and added to their Hand, with a link in the item.
-  // Idempotent by taskCardId: a retry finishes the missing steps and never creates a second Task or link.
+  // 2026-11-12: compatibility alias for assigning an existing question; never creates a separate Task.
   | { action: 'raise-decision'; cardId: string; sourceHash: string; questionIndex: number; questionText: string; taskCardId: string; deckId: string; memberId: string }
-  // An answer adds `- answer — member, YYYY-MM-DD` to the decided section, removes the question, and accepts its linked Task.
+  // 2026-11-12: answers retain the question and target, await application, and complete a legacy linked Task if present.
   | { action: 'record-decision'; cardId: string; sourceHash: string; questionIndex: number; questionText: string; answer: string; memberId: string }
+  // 2026-11-12: a question lives on the card it is about and names its addressee in its own line (@member); no separate task.
+  // An open question on a Task means the Task waits for the answer. `assignee` is a member ID or null.
+  | { action: 'ask-question'; cardId: string; sourceHash: string; text: string; assignee: string | null; target?: string | null }
+  | { action: 'assign-question'; cardId: string; sourceHash: string; questionIndex: number; questionText: string; assignee: string | null }
+  | { action: 'apply-decision'; cardId: string; sourceHash: string; decisionIndex: number; answer: string; note?: string }
   // Full replacement of dependsOn: repeating the same list writes nothing.
   | { action: 'set-card-dependencies'; cardId: string; sourceHash: string; dependsOn: string[] }
   /** Hand order, 2026-11-04: every open card of the member's hand in the new order; sourceHash guards freshness. */

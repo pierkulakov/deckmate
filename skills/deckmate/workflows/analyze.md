@@ -1,10 +1,10 @@
-# Analyze one area of the game against a lens
+# Analyze one area against a lens
 
-**When:** the person asks what the game needs in one area (`fx`, `units`, `map-editor`, …), what is missing, or whether an idea deserves production. **Not this:** auditing board hygiene or rules-vs-cards fit → `workflows/audit.md`; cutting a feature into a Hero and child Tasks → `workflows/plan.md`.
+**When:** the person asks what the game or software product needs in one area (`fx`, `units`, `map-editor`, …), what is missing, or whether an idea deserves production. **Not this:** auditing board hygiene or rules-vs-cards fit → `workflows/audit.md`; cutting a feature into a Hero and child Tasks → `workflows/plan.md`.
 **Person:** names the area, answers the questions, picks an option, approves the card list.
 **Agent:** establishes the rules and the code facts, brings 2–3 options with one recommendation, creates cards only after approval.
 
-Input as in the router: profile `tasks/deckmate-project.md` (missing → suggest `/deckmate profile` first); lens `tasks/deckmate-lenses/<area>.md`, then `lenses/<area>.md`, lowercase — if missing, the closest `area` / `title` match among `lenses/*.md`, told to the person; none fits → work without a lens and say so. Genre `tasks/deckmate-genres/<genre>.md`, then `genres/<genre>.md`, guides research when the profile has no references. Engine from project files: `ProjectSettings/ProjectVersion.txt` → `unity`, `*.uproject` → `unreal`, `project.godot` → `godot`, otherwise `none`; open `engines/<engine>.md` only for a detected engine.
+Input as in the router: profile `tasks/deckmate-project.md` (missing → suggest `/deckmate profile` first); lens `tasks/deckmate-lenses/<area>.md`, then `lenses/<area>.md`, lowercase — if missing, the closest `area` / `title` match among `lenses/*.md`, told to the person; none fits → work without a lens and say so. Genre `tasks/deckmate-genres/<genre>.md`, then `genres/<genre>.md`, guides research when the profile has no references. Engine from project files: `ProjectSettings/ProjectVersion.txt` → `unity`, `*.uproject` → `unreal`, `project.godot` → `godot`, otherwise `none`; open `engines/<engine>.md` only for a detected engine. For a software area, use its users, products and technical references instead of players and games, and skip genre and game-specific lenses unless they genuinely apply.
 
 Run every command as `deckmate project <command> … --data <project>` (variants in the router), adding `--read-only` until the person approves changes. Command syntax and output fields live in `references/cli.md`.
 
@@ -21,7 +21,7 @@ Run every command as `deckmate project <command> … --data <project>` (variants
    → drop options that conflict with the profile's `principles` and name the violated principle. For an unvalidated idea the first option is a cheap prototype or external test: one hypothesis, evidence to collect, success and stop criteria — no full production before that evidence.
 6. Recommend — one option in a single line: reason plus a reference from `research.md`.
 7. Cards after approval — show the list: title, Visible / Work / Done, deck, owner, effort (`workflows/plan.md`)
-   → After approval, confirm your ID in the [members roster](team.md). Create or change cards only through the running server's UI / HTTP `create-card`, following the [server startup rule](../references/api.md); never write card files by hand. Check `map` warnings, then `find`. Move new Tasks to `discussing`: `state <c-ref> discussing --member <you>` without `--read-only` (`references/cli.md#state`; not for Hero/Doc). Never lift a project-wide read-only restriction; leave the approved list in the summary instead. Keep `{out}/summary.md` ≤ 30 lines: three main gaps against the profile's `goal`, recommendation, questions with recipients, links to role responses; show the first 10 lines and path.
+   → After approval, confirm your ID in the [members roster](team.md). Create the approved cards with `deckmate project create "<title>" --deck <deck-id> --member <you>` (MCP `create_cards` is the same step); never write card files by hand. Check `map` warnings, then `find`. Move new Tasks to `discussing`: `state <c-ref> discussing --member <you>` without `--read-only` (`references/cli.md#state`; not for Hero/Doc). Never lift a project-wide read-only restriction; leave the approved list in the summary instead. Keep `{out}/summary.md` ≤ 30 lines: three main gaps against the profile's `goal`, recommendation, questions with recipients, links to role responses; show the first 10 lines and path.
 
 ## Done when
 - `{out}/summary.md` names the gaps, the recommendation, and the questions with recipients; after approval the new Tasks sit in `discussing` (`find --state discussing --fields brief`).
@@ -37,7 +37,7 @@ Run every command as `deckmate project <command> … --data <project>` (variants
 
 ## Assignment: research
 **References: {area} — {date}.** Project `{project}` is read-only. Profile: `{profile}`. Genre: `{genre}`. Lens: `{lens}`. Engine: `{engine}`. An empty path means the file is missing.
-1. Use the profile to guide research: `genre`, `platform`, `references` (inspect each game's `take`), and `players`. If the profile has no references, use the genre file; if that is missing too, use the lens's References section.
+1. Use the profile to guide research: `genre`, `platform`, `references` (inspect each game's `take`), and `players`. If the profile has no references, use the genre file; if that is missing too, use the lens's References section. For a software product, use its `references` and comparable products with their users instead of games and player communities.
 2. Find 4–6 games that handle “{area}” well, starting with these references: what to inspect, how to measure it, and a link (GDC, engine documentation, analysis, or timestamped video).
 3. Find 3–5 player discussions about the area in the `players` communities, otherwise Steam, Reddit, or forums: praise, complaints, a quote ≤ 15 words, and a link.
 4. Omit claims without links; if web access fails, use available project references, mark external claims unverified and list what needs later checking. Do not invent sources.

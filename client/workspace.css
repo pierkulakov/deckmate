@@ -78,8 +78,18 @@
   .mission-control .mission-control-workspace-list { max-height: 38dvh; }
 }
 .mission-control-project > .is-workspace-summary { padding-block: var(--space-2); background: transparent; }
+.mission-control-sections button[aria-current="page"] { color: var(--mark); background: var(--mark-tint); box-shadow: inset 2px 0 var(--mark); }
+.mission-control-sections button[aria-current="page"] > svg { color: var(--mark); }
+.mission-control-sections button > .mission-control-count { display: inline; flex: 0 0 auto; margin-inline-start: auto; }
 .mission-control .mission-control-workspace { margin-top: var(--space-3); }
 .mission-control .mission-control-workspace-add { border-radius: var(--control-radius); }
+/* 2026-11-12: a long workspace can scroll the menu; its exit stays visible and focused rows clear the pinned head. */
+.mission-control { scroll-padding-block-start: calc(52px + var(--space-2)); }
+.mission-control .mission-control-head { position: sticky; top: 0; z-index: 2; background: var(--surface); }
+@media (pointer: coarse) {
+  .global-topbar .topbar-shortcuts { min-width: var(--control-target-touch); min-height: var(--control-target-touch); }
+  .global-tabs button { min-height: var(--control-target-touch); }
+}
 @media (max-width: 760px) {
   .planning-view { padding: 22px 16px; }
   .vision-body { grid-template-columns: minmax(0, 1fr); overflow-y: auto; }

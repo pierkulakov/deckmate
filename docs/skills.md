@@ -29,6 +29,7 @@ Ask for `/deckmate <workflow>` in a compatible agent, or simply describe the sit
 | Resolve a blocker | `/deckmate ask <c-ref>` | A concrete question and a route to a recorded decision. |
 | Check another member's submission | `/deckmate review <c-ref>` | An independent review, return or recommendation for acceptance. |
 | Inspect board health | `/deckmate audit <deck, p-ref or project>` | Findings and proposals for the selected scope. |
+| Check board layout or where a new thing belongs | `/deckmate organize [about]` | A layout audit or a Deck/Hero/Sub Card/rule Doc proposal with source pointers, without moving cards. |
 | Investigate a game area | `/deckmate analyze <area>` | Evidence, options and proposed cards. |
 | Structure a game design document | `/deckmate gdd` | A game design document as decks, Heroes and rule Docs. |
 | Make a repeatable production process | `/deckmate journey` | A repeatable pipeline for objects of one type. |
@@ -37,7 +38,7 @@ Ask for `/deckmate <workflow>` in a compatible agent, or simply describe the sit
 
 ## One card through review
 
-This is a simulated pass on a temporary demo, not a claim that game assets were produced. Create it with `deckmate init <folder>`; in the checked run the equivalent was `node bin/deckmate.mjs init <folder>`. Add `{ id: builder, label: Builder Agent, kind: agent, aliases: [] }` to `members` in `tasks/deckmate.md`. Maya already exists in the demo. Put the Task “Plan sound for Tidekeeper Ferry” into builder's Hand in the UI or through the HTTP Hand action; ownership alone does not add it. The checked run used HTTP `bulk-edit-cards` with `change: { kind: hand, memberId: builder, mode: add }` and fresh hashes. See [HTTP actions](../skills/deckmate/references/api.md) and [team](../skills/deckmate/workflows/team.md). Use the c-ref printed by your own demo; refs can differ.
+This is a simulated pass on a temporary demo, not a claim that game assets were produced. Create it with `deckmate init <folder>`; in the checked run the equivalent was `node bin/deckmate.mjs init <folder>`. Add `{ id: builder, label: Builder Agent, kind: agent, aliases: [] }` to `members` in `tasks/deckmate.md`. Maya already exists in the demo. Put the Task “Plan sound for Tidekeeper Ferry” into builder's Hand in the UI or through the HTTP Hand action; ownership alone does not add it. The checked run used HTTP `bulk-edit-cards` with `change: { kind: hand, memberId: builder, mode: add }` and fresh hashes. See [HTTP actions](../skills/deckmate/references/api.md) and [team](../skills/deckmate/workflows/team.md); Hand membership is the one HTTP-only step here, while the commands below are the same operations the MCP server exposes as tools ([mcp.md](mcp.md)). Use the c-ref printed by your own demo; refs can differ.
 
 The following commands use `--data <project>` for the demo. Excerpts omit other fields:
 

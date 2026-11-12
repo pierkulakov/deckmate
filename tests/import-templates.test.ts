@@ -218,7 +218,7 @@ describe.skipIf(!browserPath)('Import and templates dialogs (browser)', () => {
     }
   });
 
-  it('maps a chosen CSV into glass sections with mono counters and no page overflow at 375px', async () => {
+  it.each([375, 768])('maps a chosen CSV into glass sections with mono counters and no page overflow at %ipx', async width => {
     await page.evaluate(`window.importTemplatesTest.render('csv')`);
     await until(`Boolean(document.querySelector('.csv-import-file-label')) && !document.querySelector('.csv-import-file-label input').disabled`);
     expect(await page.evaluate(`document.querySelector('.csv-import').classList.contains('dialog-panel')`)).toBe(true);
@@ -239,12 +239,14 @@ describe.skipIf(!browserPath)('Import and templates dialogs (browser)', () => {
     expect(await page.evaluate(`Boolean(document.querySelector('.csv-import-counts').compareDocumentPosition(document.querySelector('.csv-import-field')) & Node.DOCUMENT_POSITION_FOLLOWING)`)).toBe(true);
     expect(await page.evaluate(`document.querySelector('.csv-import-issues').textContent`)).toContain('row 4');
     expect(await page.evaluate(`document.querySelector('.csv-import-issues').textContent`)).toContain('only Task Cards have a state');
-    await viewport(375);
-    expect(await page.evaluate(`document.documentElement.scrollWidth <= 375`)).toBe(true);
-    expect(await page.evaluate(`document.querySelector('.csv-import').getBoundingClientRect().width <= 375`)).toBe(true);
+    await viewport(width);
+    expect(await page.evaluate(`document.documentElement.scrollWidth <= innerWidth`)).toBe(true);
+    expect(await page.evaluate(`document.querySelector('.csv-import').getBoundingClientRect().width <= innerWidth`)).toBe(true);
     // The wide table scrolls inside its own pane, never the page.
     expect(await page.evaluate(`document.querySelector('.csv-import-table-scroll').scrollWidth > document.querySelector('.csv-import-table-scroll').clientWidth`)).toBe(true);
-    expect(await page.evaluate(`document.querySelector('.csv-import-table-scroll').clientWidth <= 375 - 2 * 16 - 2 * 16`)).toBe(true);
+    expect(await page.evaluate(`document.querySelector('.csv-import-table-scroll').clientWidth <= innerWidth - 2 * 16 - 2 * 16`)).toBe(true);
+    expect(await fits('.csv-import-body')).toBe(true);
+    expect(await fits('.csv-import-preview')).toBe(true);
     expect(await page.evaluate(`getComputedStyle(document.querySelector('.csv-import-scroll-hint')).display !== 'none'`)).toBe(true);
     await page.evaluate(`document.documentElement.classList.add('dark')`);
     await delay(60);

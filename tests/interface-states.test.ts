@@ -2,7 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { openHeadlessBrowser, type HeadlessPage } from '../tools/layout-capture.ts';
 import { browserFixtureUrl } from './browser-fixture.ts';
 import { requireBrowser } from './browser-environment.ts';
-import { waitForLayout } from './browser-layout.ts';
+import { expectPageStateDuring, waitForLayout } from './browser-layout.ts';
 
 const browserPath = requireBrowser();
 describe.skipIf(!browserPath)('shared interface states and recovery (browser)', () => {
@@ -118,30 +118,6 @@ describe.skipIf(!browserPath)('shared interface states and recovery (browser)', 
     } finally {
       await page.send('Emulation.setEmulatedMedia', { features: [] });
     }
-  });
-
-  it.each([
-    { editMode: 'sandbox', source: 'sandbox', writable: true, description: '', action: null },
-    { editMode: 'direct', source: 'sandbox', writable: true, description: '', action: null },
-    { editMode: 'sandbox', source: 'live', writable: false, description: 'The original is open for reading only.', action: 'Open test copy →' },
-    { editMode: 'sandbox', source: 'sandbox', writable: false, description: 'The original is open for reading only.', action: 'Open test copy →' },
-    { editMode: 'direct', source: 'live', writable: false, description: 'This project is open for reading only.', action: null },
-    { editMode: 'read-only', source: 'live', writable: false, description: 'This project is open for reading only.', action: null },
-    { editMode: 'read-only', source: 'sandbox', writable: false, description: 'This project is open for reading only.', action: null },
-  ])('describes read-only access once for $editMode/$source/writable=$writable', async row => {
-    await reset();
-    const snapshot = { projectName: 'Interface states', token: 'test-token', iteration: { number: 1, goal: '', start: '' },
-      editMode: row.editMode, source: row.source, writable: row.writable };
-    expect(await page.evaluate(`statesTest.sourceAccess.readOnlyAccess(${JSON.stringify(snapshot)})`))
-      .toEqual({ description: row.description, action: row.action });
-    expect(await page.evaluate(`statesTest.sourceAccess.readOnlyDescription(${JSON.stringify(snapshot)})`)).toBe(row.description);
-    await page.evaluate(`statesTest.setLang('ru')`);
-    const access = await page.evaluate(`statesTest.sourceAccess.readOnlyAccess(${JSON.stringify(snapshot)})`) as { description: string; action: string | null };
-    let expectedRu = '';
-    if (row.description === 'The original is open for reading only.') expectedRu = 'Оригинал открыт только для чтения.';
-    else if (row.description === 'This project is open for reading only.') expectedRu = 'Проект открыт только для чтения.';
-    expect(access.description).toBe(expectedRu);
-    expect(access.action).toBe(row.action === null ? null : 'Открыть тестовую копию →');
   });
 
   it('fits a long Russian error message with its Retry at 375 px', async () => {
@@ -260,6 +236,28 @@ describe.skipIf(!browserPath)('shared interface states and recovery (browser)', 
     expect(await page.evaluate(`document.querySelectorAll('.planning-card-grid .is-multi-selected').length`)).toBe(0);
   });
 
+  it('planning: opens the lazy composer and restores an unsaved draft', async () => {
+    await reset('planning-scope');
+    await until(`Boolean(document.querySelector('.planning-rail [aria-label="Add card to plan"]:not(:disabled)'))`);
+    await page.send('Network.enable');
+    await page.send('Network.emulateNetworkConditions', { offline: false, latency: 350, downloadThroughput: -1, uploadThroughput: -1 });
+    try {
+      await page.evaluate(`document.querySelector('.planning-rail [aria-label="Add card to plan"]').click()`);
+      await expectPageStateDuring(page.evaluate, `Boolean(document.querySelector('.planning-collection-body')) && ![...document.querySelectorAll('.planning-details')].some(panel => !panel.childElementCount)`, 700);
+      await until(`Boolean(document.querySelector('.card-composer .card-edit-text'))`);
+    } finally {
+      await page.send('Network.emulateNetworkConditions', { offline: false, latency: 0, downloadThroughput: -1, uploadThroughput: -1 });
+    }
+    await page.evaluate(`statesTest.input('.card-composer .card-edit-text', 'Planning draft')`);
+    await page.evaluate(`document.querySelector('.card-composer [aria-label="Close New Card"]').click()`);
+    await until(`!document.querySelector('.card-composer') && !document.querySelector('.planning-rail [aria-label="Add card to plan"]').disabled`);
+    await page.evaluate(`document.querySelector('.planning-rail [aria-label="Add card to plan"]').click()`);
+    await until(`document.querySelector('.card-composer .card-edit-text')?.value === 'Planning draft'`);
+    expect(await page.evaluate(`Boolean(document.querySelector('.card-composer .card-draft-banner'))`)).toBe(true);
+    await page.evaluate(`document.querySelector('.card-composer .card-draft-banner button').click()`);
+    expect(page.consoleErrors).toEqual([]);
+  });
+
   it('planning: a Milestone conflict keeps the draft and blocks a second write until saved fields and hash are loaded together', async () => {
     await reset('planning-probe');
     await page.evaluate(`planningTest.setMode('form');planningTest.state.conflict=true`);
@@ -349,6 +347,41 @@ describe.skipIf(!browserPath)('shared interface states and recovery (browser)', 
       expect(await page.evaluate(`Array.from(document.querySelectorAll('.planning-calendar-day,.planning-calendar-milestone')).every(button=>{const r=button.getBoundingClientRect();return r.width>=44&&r.height>=44&&r.left>=0&&r.right<=innerWidth})`)).toBe(true);
     } finally {
       await page.send('Emulation.setTouchEmulationEnabled', { enabled: false });
+      await page.send('Emulation.setDeviceMetricsOverride', { width: 1280, height: 1000, deviceScaleFactor: 1, mobile: false });
+    }
+  });
+
+  it.each(['en', 'ru'])('planning: a %s Milestone summary stays inside the phone on keyboard focus and hover', async lang => {
+    await page.send('Emulation.setDeviceMetricsOverride', { width: 375, height: 812, deviceScaleFactor: 1, mobile: false });
+    try {
+      await reset('planning-probe');
+      await page.evaluate(`statesTest.setLang('${lang}');planningTest.setCatalog({...planningTest.catalog,milestones:[{...planningTest.catalog.milestones[0],title:'Проверка готовности интерфейса к выпуску и приёмке командой'}]});planningTest.setMode('calendar')`);
+      await until(`Boolean(document.querySelector('.planning-calendar-milestone'))`);
+      await waitForLayout(page.evaluate, '.planning-calendar-panel, .planning-calendar-milestone');
+      for (const key of ['ArrowRight', 'ArrowLeft']) {
+        const windowsVirtualKeyCode = key === 'ArrowRight' ? 39 : 37;
+        for (const type of ['keyDown', 'keyUp']) await page.send('Input.dispatchKeyEvent', { type, key, code: key, windowsVirtualKeyCode });
+      }
+      await until(`document.activeElement.classList.contains('planning-calendar-milestone')`);
+      const expectSummaryInside = async () => {
+        await until(`Boolean(document.querySelector('.planning-milestone-card'))`);
+        await waitForLayout(page.evaluate, '.planning-milestone-card');
+        expect(await page.evaluate(`(() => {
+          const card = document.querySelector('.planning-milestone-card');
+          const box = card.getBoundingClientRect();
+          return box.left >= 12 && box.right <= innerWidth - 12 && box.top >= 12 && box.bottom <= innerHeight - 12
+            && card.scrollWidth <= card.clientWidth;
+        })()`)).toBe(true);
+      };
+      await expectSummaryInside();
+      await page.evaluate(`document.activeElement.blur()`);
+      await until(`!document.querySelector('.planning-milestone-card')`);
+      const point = await page.evaluate(`(() => { const box=document.querySelector('.planning-calendar-milestone').getBoundingClientRect();return {x:box.x+box.width/2,y:box.y+box.height/2}; })()`);
+      await page.send('Input.dispatchMouseEvent', { type: 'mouseMoved', ...point });
+      await expectSummaryInside();
+      expect(page.consoleErrors).toEqual([]);
+    } finally {
+      await page.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 0, y: 0 });
       await page.send('Emulation.setDeviceMetricsOverride', { width: 1280, height: 1000, deviceScaleFactor: 1, mobile: false });
     }
   });
@@ -480,6 +513,8 @@ describe.skipIf(!browserPath)('shared interface states and recovery (browser)', 
     await reset(screen);
     if (screen === 'editor') {
       await until(`Boolean(document.querySelector('textarea'))`);
+      expect(await page.evaluate(`document.querySelector('textarea').getAttribute('role')`)).toBe('combobox');
+      expect(await page.evaluate(`document.querySelector('textarea').getAttribute('aria-expanded')`)).toBe('false');
       await page.evaluate(`document.querySelector('textarea').focus()`);
       await page.send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'End', code: 'End', windowsVirtualKeyCode: 35 });
       await page.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'End', code: 'End', windowsVirtualKeyCode: 35 });
@@ -492,6 +527,7 @@ describe.skipIf(!browserPath)('shared interface states and recovery (browser)', 
       await page.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'End', code: 'End', windowsVirtualKeyCode: 35 });
     }
     await until(`Boolean(document.querySelector('.ui-empty-filtered'))`);
+    if (screen === 'editor') expect(await page.evaluate(`document.querySelector('textarea').getAttribute('aria-expanded')`)).toBe('true');
     if (screen === 'quick') {
       expect(await page.evaluate(`document.querySelector('.ui-empty-filtered button').getBoundingClientRect().bottom <= document.querySelector('.deck-choice-list').getBoundingClientRect().bottom`)).toBe(true);
     }
@@ -560,8 +596,10 @@ describe.skipIf(!browserPath)('shared interface states and recovery (browser)', 
     try {
       await reset('status-offline');
       await until(`Boolean(document.querySelector('.server-status.is-offline'))`);
-      const point = await page.evaluate(`(()=>{const r=document.querySelector('.server-status').getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2,width:r.width,height:r.height}})()`);
+      const point = await page.evaluate(`(()=>{const button=document.querySelector('.server-status'),r=button.getBoundingClientRect(),face=button.querySelector('.server-status-face').getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+2,width:r.width,height:r.height,aboveFace:r.y+2<face.top}})()`);
       expect(point.width).toBeGreaterThanOrEqual(44); expect(point.height).toBeGreaterThanOrEqual(44);
+      expect(point.aboveFace).toBe(true);
+      expect(await page.evaluate(`document.querySelector('.server-status-face').getBoundingClientRect().height`)).toBe(22);
       await page.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: point.x, y: point.y }] });
       await page.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
       await until(`Boolean(document.querySelector('.server-status-card'))`);

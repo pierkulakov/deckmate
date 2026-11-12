@@ -8,7 +8,7 @@ import { catalogPath, parseManifestBytes, patchLegacyScalar, readManifest, valid
 import { readCardContent } from './card-content.ts';
 import { patchLegacyCardStates } from './card-properties.ts';
 import { validateOwner, validateEffort, validatePriority } from './card-property-validation.ts';
-import { prepareCardOptionsPatch, readCardOptions } from './card-options.ts';
+import { prepareCardOptionsPatch, previousOwnerPatch, readCardOptions } from './card-options.ts';
 import { readIteration } from './document.ts';
 import { validateCardFamily } from './card-family.ts';
 import { createManagedMarkdown, nativeCardPath, patchNativeCardFields, readNativeCard, readProjectMarkdown, replaceProjectMarkdown, validateNativeCardMetadata, type NativeCardMetadata } from './native-cards.ts';
@@ -176,6 +176,10 @@ export async function editCatalogBulk(root: string, edit: BulkEditRequest, actor
       if (Object.hasOwn(change, 'owner')) patch.owner = change.owner === null ? null : resolveMember(change.owner!.trim(), catalog.members ?? []) ?? change.owner!.trim();
       if (Object.hasOwn(change, 'effort')) patch.effort = change.effort;
       if (Object.hasOwn(change, 'priority')) patch.priority = change.priority;
+      if (patch.owner !== undefined) {
+        const history = previousOwnerPatch(card, catalog.members ?? [], patch.owner);
+        if (history) options(card, history);
+      }
       fields(card, patch);
     }
   } else if (change.kind === 'state') {
@@ -359,7 +363,9 @@ export async function editCatalogBulk(root: string, edit: BulkEditRequest, actor
         const normalized = value === false || value === null || (Array.isArray(value) && !value.length) ? undefined : value;
         return !isDeepStrictEqual(old, normalized);
       })).map(id => optionOwners.get(id)!);
-      publications.push({ ids: [...new Set(changed)], path: optionsPath, nextHash: plan.nextHash, publish: plan.publish });
+      const publication = { ids: [...new Set(changed)], path: optionsPath, nextHash: plan.nextHash, publish: plan.publish };
+      if (change.kind === 'properties') publications.unshift(publication);
+      else publications.push(publication);
     }
   }
   if (promotion) {

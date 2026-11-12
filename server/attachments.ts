@@ -12,6 +12,7 @@ import { projectLanguage } from './project-language.ts';
 import { resolveDataPath } from './data-paths.ts';
 import { decodeAssetDataUrl } from './asset-data-url.ts';
 import { checkDirectories, checkGuardedFile, guardedDirectory, sameIdentity, writeGuardedNewFile, type DirectoryGuard } from './guarded-files.ts';
+import { isPlainRecord } from './yaml-front-matter.ts';
 
 const messages = defineText({
   missingAttachment: (filename: string) => `Attachment file not found: ${filename}`,
@@ -151,11 +152,6 @@ const mimeByExtension: Record<string, { mime: string; kind: 'image' | 'pdf' }> =
   pdf: { mime: 'application/pdf', kind: 'pdf' },
 };
 
-function record(value: unknown): value is Record<string, unknown> {
-  return value !== null && typeof value === 'object' && !Array.isArray(value)
-    && [Object.prototype, null].includes(Object.getPrototypeOf(value));
-}
-
 function boundedText(value: unknown, limit: number): value is string {
   return typeof value === 'string' && value.length > 0 && value.length <= limit
     && !/[\u0000-\u001f\u007f]/u.test(value);
@@ -227,11 +223,11 @@ function validAddedAt(value: unknown): value is string {
 // 2026-11-09: retain the raw parse result for post-write verification; projecting known fields would hide data loss.
 function validateRegistry(value: unknown, cardId: string): asserts value is RegistryData {
   const key = attachmentKey(cardId);
-  if (!record(value) || value.schema !== 1 || value.card !== cardId) throw new Error(serverText(messages).registryCardMismatch);
+  if (!isPlainRecord(value) || value.schema !== 1 || value.card !== cardId) throw new Error(serverText(messages).registryCardMismatch);
   const filesValue = value.files;
   if (!Array.isArray(filesValue) || filesValue.length > maximumRegistryEntries) throw new Error(serverText(messages).invalidAttachmentList);
   const filePaths = filesValue.map(entry => {
-    if (!record(entry) || !boundedText(entry.file, 300) || !isCardAttachmentPath(entry.file, key)) throw new Error(serverText(messages).invalidRegistryPath);
+    if (!isPlainRecord(entry) || !boundedText(entry.file, 300) || !isCardAttachmentPath(entry.file, key)) throw new Error(serverText(messages).invalidRegistryPath);
     const extension = entry.file.split('.').pop() as keyof typeof mimeByExtension;
     const expected = mimeByExtension[extension];
     const { name, kind, mime, bytes, addedAt, addedBy } = entry;

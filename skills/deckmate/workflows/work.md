@@ -8,7 +8,7 @@
 
 1. Confirm the acting registered member and authorized project root; use [Common options](../references/cli.md#common-options) to check the source selection.
    For a member argument, run `deckmate project next <member> --data <project>`.
-   → Take `card.ref` and confirm it is an approved, ready Task ([next](../references/cli.md#next)); selection does not start it. For a given c-ref, skip selection, not the reads below.
+   → If `decision` is returned, edit its supplied target and run `apply <card> <index> --rev <decision.rev>` (MCP `apply_decision`), then repeat `next`; pending decisions come before cards, and their indexes are zero-based. Otherwise take `card.ref` and confirm it is an approved, ready Task ([next](../references/cli.md#next)); selection does not start it. For a given c-ref, skip selection, not the reads below. For submit-only work, keep that stage: read the current brief and the supplied evidence, then submit the existing report (step 9) without restarting the Task.
 2. Read `deckmate project brief <c-ref> --budget 1500 --data <project>`.
    → Read the Task, dependencies, rules to read next, latest report, and recorded return feedback ([brief](../references/cli.md#brief)). On first read, save its `sourceHash`, the current ISO timestamp with timezone, and a Git base when available. Retain that checkpoint for a return or resumed session.
 3. Follow required ranges with `deckmate project show <c-ref> --lines <a-b> --data <project>`.

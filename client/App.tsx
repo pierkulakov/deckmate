@@ -21,16 +21,19 @@ import { DeckmateMark } from './components/DeckmateMark.tsx';
 import { matchShortcut, shortcutTargetBlocked } from './keyboard-shortcuts.ts';
 import { cardNavigation, viewNavigation, type View } from './app-navigation.ts';
 import { afterFirstScreen, browserWarmupEnvironment, WarmupQueue } from './first-screen-warmup.ts';
-import { preparedNavigation, preparedResource, type PreparedResource } from './prepared-resource.ts';
+import { preparedNavigation, preparedResource, preload, type PreparedResource } from './prepared-resource.ts';
 import { warmInterfaceFonts, warmVisibleImages } from './warmup-assets.ts';
 import { prepareEntrance } from './prepared-motion.ts';
 import { currentSourceLabels, readOnlyAccess } from './source-access.ts';
 import { ErrorState } from './components/ErrorState.tsx';
 import { moveFocus } from './focus.ts';
 import { useSelectEscapeGuard } from './select-escape.ts';
+import { DecisionCount, DecisionPoolMenu } from './components/DecisionPoolMenu.tsx';
+import { HandIcon } from './components/HandIcon.tsx';
 
 const deckResource = preparedResource(() => import('./components/Deck.tsx').then(module => ({ default: module.Deck })));
 const handResource = preparedResource(() => import('./components/Hand.tsx').then(module => ({ default: module.Hand })));
+const decisionsResource = preparedResource(() => import('./components/DecisionPool.tsx').then(module => ({ default: module.DecisionPoolView })));
 const timelineResource = preparedResource(() => import('./components/TimelineView.tsx').then(module => ({ default: module.TimelineView })));
 const visionResource = preparedResource(() => import('./components/Vision.tsx'));
 const membersResource = preparedResource(() => import('./components/MembersEditor.tsx').then(module => ({ default: module.MembersEditor })));
@@ -38,22 +41,21 @@ const csvResource = preparedResource(() => import('./components/CsvImport.tsx').
 const templatesResource = preparedResource(() => import('./components/ProjectTemplates.tsx').then(module => ({ default: module.ProjectTemplates })));
 const Deck = lazy(deckResource.load);
 const Hand = lazy(handResource.load);
+const DecisionPoolView = lazy(decisionsResource.load);
 const TimelineView = lazy(timelineResource.load);
 const Vision = lazy(visionResource.load);
 const MembersEditor = lazy(membersResource.load);
 const CsvImport = lazy(csvResource.load);
 const ProjectTemplates = lazy(templatesResource.load);
-const viewResources = { deck: deckResource, hand: handResource, timeline: timelineResource, vision: visionResource };
-// 2026-11-10: intent preloads must not replace lazy's error handling when a cached interface has stale chunk URLs.
-function preload(resource: PreparedResource<unknown>) { void resource.load().catch(() => {}); }
+const viewResources = { deck: deckResource, hand: handResource, decisions: decisionsResource, timeline: timelineResource, vision: visionResource };
 const tabs: readonly View[] = ['hand', 'deck', 'timeline', 'vision'];
 function locationView(): View {
   const selected = new URLSearchParams(location.search).get('view');
   if (selected === 'sprint') return 'timeline';
-  return tabs.includes(selected as View) ? selected as View : 'deck';
+  return selected === 'decisions' || tabs.includes(selected as View) ? selected as View : 'deck';
 }
 const text = defineText({
-  hand: 'Hand', deck: 'Decks', timeline: 'Timeline', vision: 'Vision',
+  hand: 'Hand', deck: 'Decks', decisions: 'To apply', timeline: 'Timeline', vision: 'Vision',
   sectionFailedTitle: 'This section could not be opened',
   sectionFailedDescription: 'The interface may have been updated on the server. Reload the app.',
   reloadInterface: 'Reload interface',
@@ -82,7 +84,7 @@ const text = defineText({
   otherLanguage: 'Русский',
   interfaceLanguage: 'Interface language',
 }, {
-  hand: 'Hand', deck: 'Decks', timeline: 'Timeline', vision: 'Vision',
+  hand: 'Hand', deck: 'Decks', decisions: 'К внесению', timeline: 'Timeline', vision: 'Vision',
   sectionFailedTitle: 'Не удалось открыть раздел',
   sectionFailedDescription: 'Интерфейс мог обновиться на сервере. Перезагрузите приложение.',
   reloadInterface: 'Обновить интерфейс',
@@ -144,16 +146,6 @@ export default function App() {
       warmup.current = queue;
       warmInterfaceFonts(queue);
       queue.add({ key: 'visible-images', priority: 1, run: () => warmVisibleImages(queue) });
-      const resources = [deckResource, handResource, timelineResource, membersResource, csvResource, templatesResource, visionResource];
-      resources.forEach((resource, index) => queue.add({ key: 'section:' + index, priority: 10 + index, run: resource.load }));
-      queue.add({ key: 'card-controls', priority: 20, run: async signal => {
-        const { warmCardControls } = await import('./warmup-controls.tsx');
-        if (!signal.aborted) await warmCardControls(source, signal);
-      } });
-      queue.add({ key: 'vision-canvas', priority: 30, run: async signal => {
-        const module = await visionResource.load();
-        if (!signal.aborted) await module.warmVisionCanvas(signal);
-      } });
     });
     return () => { cancel(); warmup.current?.dispose(); warmup.current = null; };
   }, [workspace.snapshot?.source]);
@@ -267,7 +259,7 @@ export default function App() {
         if (destination.changed) setNavigationKey(value => value + 1);
       });
       history.replaceState(history.state, '', destination.url);
-      emitSignal({ type: 'view', view: next });
+      if (next !== 'decisions') emitSignal({ type: 'view', view: next });
     });
   }, [navigation, view, workspace.source]);
   useEffect(() => {
@@ -293,10 +285,10 @@ export default function App() {
     window.addEventListener('keydown', switchTab);
     return () => window.removeEventListener('keydown', switchTab);
   }, [editing, navigate]);
-  function openCard(id: string) {
+  function openCard(id: string, panel?: 'questions') {
     if (editing) return;
     navigation.run(deckResource, () => {
-      const destination = cardNavigation(location.href, id, workspace.source);
+      const destination = cardNavigation(location.href, id, workspace.source, panel);
       if (destination.href !== location.href) history.pushState(null, '', destination);
       startTransition(() => {
         setLegacySprint(false);
@@ -333,6 +325,7 @@ export default function App() {
     if (!snapshot) return <div className="loading-state" aria-live="polite"><LoaderCircle className="spin" size={22} /><p>{t.loading}</p></div>;
     if (view === 'deck') return <Deck snapshot={snapshot} refreshKey={workspace.updatedAt} onEditing={onEditing} onStartFromTemplate={() => openPanel(templatesResource, () => setTemplatesOpen(true))} onImportCsv={deckId => openPanel(csvResource, () => { setImportDeckId(deckId); setImportOpen(true); })} />;
     if (view === 'hand') return <Hand key={snapshot.source} snapshot={snapshot} refreshKey={workspace.updatedAt} onOpenCard={openCard} onOpenMembers={() => openPanel(membersResource, () => setMembersOpen(true))} />;
+    if (view === 'decisions') return <DecisionPoolView key={snapshot.source} snapshot={snapshot} refreshKey={workspace.updatedAt} onOpen={id => openCard(id, 'questions')} />;
     if (view === 'timeline') return <TimelineView key={snapshot.source} snapshot={snapshot} refreshKey={workspace.updatedAt} selectCurrentRun={legacySprint} onOpenCard={openCard} onEditing={onEditing} />;
     // 2026-11-06: no fallback text: Vision shows its own «Opening board…» plate in the canvas; a second one here sat above the toolbar
     // line without the spinner, so the same words jumped down when the chunk arrived.
@@ -359,6 +352,10 @@ export default function App() {
                 : t.modeReadOnly}</span></div></div>
             <WorkspaceProjects open={sidebarOpen} disabled={editing} />
           </section>
+          <nav className="mission-control-sections" aria-label={t.projectSections}>
+            <button type="button" disabled={editing || !snapshot} aria-current={view === 'hand' ? 'page' : undefined} onPointerEnter={() => preload(handResource)} onFocus={() => preload(handResource)} onClick={() => { setSidebarOpen(false); navigate('hand'); }}><HandIcon size={18} /><span>{t.hand}</span></button>
+            <DecisionPoolMenu snapshot={snapshot} refreshKey={workspace.updatedAt} disabled={editing || !snapshot} current={view === 'decisions'} onPrepare={() => preload(decisionsResource)} onOpen={() => { setSidebarOpen(false); navigate('decisions'); }} />
+          </nav>
           <nav className="mission-control-menu" aria-label={t.appMenu}>
             <button type="button" disabled={editing || !snapshot} onPointerEnter={() => preload(templatesResource)} onFocus={() => preload(templatesResource)} onClick={event => openPanel(templatesResource, () => { setSidebarOpen(false); setTemplatesOpen(true); }, event.currentTarget)}><Layers size={18} aria-hidden="true" /><span>{t.projectTemplates}</span></button>
             <button type="button" disabled={editing || !snapshot} onPointerEnter={() => preload(membersResource)} onFocus={() => preload(membersResource)} onClick={event => openPanel(membersResource, () => { setSidebarOpen(false); setMembersOpen(true); }, event.currentTarget)}><UserRound size={18} aria-hidden="true" /><span>{t.members}<small>{t.membersCaption}</small></span></button>
@@ -372,7 +369,7 @@ export default function App() {
         </Dialog.Content></Dialog.Portal>
     </Dialog.Root>
     {/* 2026-11-11: narrow navigation follows the tools in both reading and keyboard order. */}
-    <div className="workspace"><header ref={topbar} className="topbar global-topbar"><div className="breadcrumb"><Button ref={menuTrigger} variant="ghost" size="icon" className="mission-control-trigger" aria-label={t.openMenu} aria-haspopup="dialog" aria-expanded={sidebarOpen} onClick={() => setSidebarOpen(true)}><DeckmateMark /></Button>{!phoneHeader && <ServerStatus connection={workspace.connection} snapshot={snapshot} updatedAt={workspace.updatedAt} />}</div>
+    <div className="workspace"><header ref={topbar} className="topbar global-topbar"><div className="breadcrumb"><Button ref={menuTrigger} variant="ghost" size="icon" className="mission-control-trigger" aria-label={t.openMenu} aria-describedby={snapshot ? 'mission-control-pending-count' : undefined} aria-haspopup="dialog" aria-expanded={sidebarOpen} onClick={() => setSidebarOpen(true)}><DeckmateMark />{snapshot && <DecisionCount snapshot={snapshot} refreshKey={workspace.updatedAt} trigger />}</Button>{!phoneHeader && <ServerStatus connection={workspace.connection} snapshot={snapshot} updatedAt={workspace.updatedAt} />}</div>
       {!narrowHeader && tabNavigation}<div className="topbar-actions">
       {!phoneHeader && <div className="topbar-view-slot" ref={attachViewActions} />}
       {snapshot ? <GlobalSearch snapshot={snapshot} refreshKey={workspace.updatedAt} onOpenCard={openCard} onOpenDeck={openDeck} disabled={editing} />

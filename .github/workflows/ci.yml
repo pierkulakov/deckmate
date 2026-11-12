@@ -31,17 +31,15 @@ jobs:
           node-version-file: package.json
           cache: npm
           cache-dependency-path: package-lock.json
-      - run: npm ci
+      - run: npm ci --prefer-offline
       - run: npm run typecheck
       - run: npx vitest run --project unit
       - run: npm run build
       - run: npm pack --ignore-scripts --dry-run
 
-  # The browser project runs one file at a time, so it is split into shards that
-  # run in parallel; together they cover every browser file (2026-11-10). It runs
-  # on Windows with Edge, the engine of the desktop app's WebView2; a second
-  # system added only runner differences (pointer, fonts), while file, path and
-  # process behaviour stays covered on both systems by the unit job.
+  # 2026-11-12: measured durations balance three serial shards without dropping files.
+  # Windows Edge covers the desktop WebView2 engine; unit jobs cover filesystem
+  # and process behaviour on both systems. Required checks depend on every shard.
   browser:
     name: browser (${{ matrix.os }}, ${{ matrix.shard }}/3)
     runs-on: ${{ matrix.os }}
@@ -71,7 +69,7 @@ jobs:
           node-version-file: package.json
           cache: npm
           cache-dependency-path: package-lock.json
-      - run: npm ci
+      - run: npm ci --prefer-offline
       - run: npx vitest run --project browser --shard="$SHARD"
 
   # The main ruleset requires the `checks (ubuntu-latest)` and `checks (windows-latest)`
@@ -130,7 +128,7 @@ jobs:
           node-version-file: package.json
           cache: npm
           cache-dependency-path: package-lock.json
-      - run: npm ci
+      - run: npm ci --prefer-offline
       # A debug shell serves dist/server/main.js from this checkout, so the client
       # and server must be built before the self-test (2026-11-09).
       - run: npm run build
@@ -142,12 +140,14 @@ jobs:
           rustup show
           cargo --version
           rustc --version
-      - name: Cache Rust dependencies
+      # The target folder is cached too, so clippy and tests reuse compiled dependencies (2026-11-12).
+      - name: Cache Rust dependencies and build output
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
+            desktop/src-tauri/target
           key: cargo-${{ runner.os }}-${{ hashFiles('desktop/src-tauri/Cargo.lock', 'desktop/src-tauri/rust-toolchain.toml') }}
           restore-keys: cargo-${{ runner.os }}-
       # Both components are on the runner image; the explicit add keeps the job

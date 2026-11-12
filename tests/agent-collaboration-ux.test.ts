@@ -61,6 +61,12 @@ describe.skipIf(!browserPath)('agent collaboration on a private demo (browser + 
     const image = await page!.send('Page.captureScreenshot', { format: 'png' });
     await writeFile(path.join(after, name + '.png'), Buffer.from(image.result.data, 'base64'));
   }
+  // 2026-11-12: questions live in the card's Questions panel, opened from the card rail, not in the card text.
+  async function openQuestions() {
+    await until(`Boolean(document.querySelector('.card-preview-open-questions:not(:disabled)'))`);
+    if (await page!.evaluate(`document.querySelector('.card-preview-open-questions').getAttribute('aria-pressed') !== 'true'`)) await click('.card-preview-open-questions');
+    await until(`Boolean(document.querySelector('.open-question-answer-action:not(:disabled)'))`);
+  }
   async function cli(args: string[]) {
     return execute(process.execPath, ['tools/project.ts', ...args, '--data', root], {
       cwd: process.cwd(), windowsHide: true,
@@ -160,8 +166,8 @@ describe.skipIf(!browserPath)('agent collaboration on a private demo (browser + 
     await select('select[aria-label="Действующий участник"]', 'leo');
     await until(`localStorage.getItem('deckmate-current-member') === 'leo'`);
     await click('.notifications-close');
-    await until(`Boolean(document.querySelector('.open-question-actions button:last-child:not(:disabled)'))`);
-    await click('.open-question-actions button:last-child');
+    await openQuestions();
+    await click('.open-question-answer-action');
     expect(await page!.evaluate(`document.querySelector('.open-question-answer select').value`)).toBe('leo');
     await capture('03-answer-leo-ru');
     await page!.callFunction(`function() { const field = document.querySelector('.open-question-answer textarea'); Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set.call(field, 'Use the checked build.'); field.dispatchEvent(new Event('input', { bubbles: true })); }`);
@@ -175,7 +181,7 @@ describe.skipIf(!browserPath)('agent collaboration on a private demo (browser + 
     await capture('04-decision-recorded-ru');
   }, 30000);
 
-  it('does not change authorship when viewing an agent Hand and requires explicit human confirmation for an agent or no selection', async () => {
+  it('does not change authorship when viewing an agent Hand and requires a human author for an agent or no selection', async () => {
     await navigate({ view: 'hand', handMember: 'leo' });
     await until(`Boolean(document.querySelector('.hand-member-picker select'))`);
     await select('.hand-member-picker select', 'build-agent');
@@ -185,11 +191,16 @@ describe.skipIf(!browserPath)('agent collaboration on a private demo (browser + 
     for (const actor of ['build-agent', '']) {
       await page!.callFunction(`function(actor) { if (actor) localStorage.setItem('deckmate-current-member', actor); else localStorage.removeItem('deckmate-current-member'); }`, actor);
       await navigate({ card: docId });
-      await until(`Boolean(document.querySelector('.open-question-actions button:last-child:not(:disabled)'))`);
-      await click('.open-question-actions button:last-child');
-      expect(await page!.evaluate(`document.querySelector('.open-question-answer select').value`)).toBe('');
-      expect(await page!.evaluate(`document.querySelector('.open-question-answer').innerText`)).toContain('Выберите человека для записи решения');
+      await openQuestions();
+      await click('.open-question-answer-action');
+      const author = await page!.evaluate(`document.querySelector('.open-question-answer select').value`);
+      expect(author).toBe('');
+      expect(await page!.evaluate(`document.querySelector('.open-question-author').innerText`)).toContain('От имени:');
+      expect(await page!.evaluate(`Array.from(document.querySelector('.open-question-answer select').options, option => option.value)`)).not.toContain('build-agent');
+      await page!.callFunction(`function() { const field = document.querySelector('.open-question-answer textarea'); Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set.call(field, 'Use the verified scene.'); field.dispatchEvent(new Event('input', { bubbles: true })); }`);
       expect(await page!.evaluate(`document.querySelector('.open-question-answer-footer button:last-child').disabled`)).toBe(true);
+      await select('.open-question-answer select', 'leo');
+      expect(await page!.evaluate(`document.querySelector('.open-question-answer-footer button:last-child').disabled`)).toBe(false);
       await capture(actor ? '06-agent-needs-human-ru' : '07-unselected-needs-human-ru');
     }
     await page!.send('Emulation.setDeviceMetricsOverride', { width: 375, height: 1000, deviceScaleFactor: 1, mobile: false });
@@ -198,6 +209,10 @@ describe.skipIf(!browserPath)('agent collaboration on a private demo (browser + 
     await delay(200);
     expect(await page!.evaluate(`document.querySelector('.open-question-answer').scrollWidth <= document.querySelector('.open-question-answer').clientWidth`)).toBe(true);
     await capture('08-human-prompt-375-ru');
+    await click('.open-question-answer-footer button:last-child');
+    await until(`!document.querySelector('.open-question-answer')`);
+    const markdown = await readFile(path.join(root, `cards/${docId.slice(5)}.md`), 'utf8');
+    expect(markdown).toContain('Use the verified scene. — Leo Park,');
     await page!.send('Emulation.setDeviceMetricsOverride', { width: 1280, height: 1000, deviceScaleFactor: 1, mobile: false });
   }, 30000);
 

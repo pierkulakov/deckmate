@@ -22,10 +22,10 @@
 @media (max-width: 640px) { .card-focus-mode-column { width: calc(100% - 32px); padding-top: 48px; } }
 
 /* 2026-11-11: a phone opens the existing focus layer with its compact context and panel rail. */
-.card-focus-mode:has(.card-preview-layout) { z-index: 80; overflow: hidden; }
-.card-focus-mode:has(.card-preview-layout) > .card-focus-mode-column { width: 100%; height: 100%; padding: 0; }
-.card-focus-mode:has(.card-preview-layout) > .card-focus-mode-back { z-index: 10; top: 12px; left: 12px; width: 28px; height: 28px; }
-.card-focus-mode:has(.card-preview-layout) > .card-focus-mode-screen { display: none; }
+.card-focus-mode.has-card-layout { z-index: 80; overflow: hidden; }
+.card-focus-mode.has-card-layout > .card-focus-mode-column { width: 100%; height: 100%; padding: 0; }
+.card-focus-mode.has-card-layout > .card-focus-mode-back { z-index: 10; top: 12px; left: 12px; width: 28px; height: 28px; }
+.card-focus-mode.has-card-layout > .card-focus-mode-screen { display: none; }
 .card-focus-mode .card-preview-layout { height: 100%; }
 .card-focus-mode .card-preview.has-action-rail { display: flex; flex-direction: column; gap: 0; height: 100%; max-height: none; border-radius: 0; overflow: hidden; }
 .card-focus-mode .card-preview-main { display: flex; flex: 1; flex-direction: column; width: 100%; min-height: 0; height: auto; padding: 0; }
@@ -64,9 +64,13 @@
   .card-composer .card-edit-save-hint { display: none; }
 }
 @media (pointer: coarse) {
-  .card-focus-mode:has(.card-preview-layout) { --card-mobile-panel-top: 108px; }
-  .card-focus-mode:has(.card-preview-layout) > .card-focus-mode-back { top: var(--space-2); width: var(--control-target-touch); height: var(--control-target-touch); }
-  .card-focus-mode:has(.card-preview-layout) > .card-focus-mode-back::before { content: none; }
+  /* 2026-11-12: standalone Focus Mode has no card-preview ancestor to supply the editor's touch targets. */
+  .card-focus-mode:not(.has-card-layout) :is(.card-focus-mode-back, .card-focus-mode-screen) { top: var(--space-2); width: var(--control-target-touch); height: var(--control-target-touch); }
+  .card-focus-mode:not(.has-card-layout) :is(.card-focus-mode-back, .card-focus-mode-screen)::before { content: none; }
+  .card-focus-mode:not(.has-card-layout) :is(.card-edit-save, .card-edit-link) { min-height: var(--control-target-touch); height: auto; }
+  .card-focus-mode.has-card-layout { --card-mobile-panel-top: 108px; }
+  .card-focus-mode.has-card-layout > .card-focus-mode-back { top: var(--space-2); width: var(--control-target-touch); height: var(--control-target-touch); }
+  .card-focus-mode.has-card-layout > .card-focus-mode-back::before { content: none; }
   .card-focus-mode .card-preview-header { left: 64px; min-height: var(--control-target-touch); }
   .card-focus-mode .card-preview-context :is(.deck-picker-pill, .deck-picker-open) { min-height: var(--control-target-touch); }
   .card-focus-mode .card-preview-action-rail { padding-top: 60px; }

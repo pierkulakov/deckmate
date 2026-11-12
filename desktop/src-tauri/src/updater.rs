@@ -735,6 +735,25 @@ async fn install_locked(app: &AppHandle) {
     }
 }
 
+pub async fn confirm_mcp_sessions(app: &AppHandle, count: usize) -> bool {
+    if count == 0 {
+        return true;
+    }
+    let language = app::state(app).language();
+    let result = menu::dialog(
+        app,
+        texts::text(&language, "installAndRestart"),
+        &texts::format(&language, "mcpUpdateWarning", "count", count),
+        MessageDialogButtons::OkCancelCustom(
+            texts::text(&language, "continueUpdate").into(),
+            texts::text(&language, "later").into(),
+        ),
+        MessageDialogKind::Warning,
+    )
+    .await;
+    chosen(&result, &language, "continueUpdate")
+}
+
 fn open_downloads(app: &AppHandle) {
     app::state(app).log.write("updater opening download page");
     window::open_external(

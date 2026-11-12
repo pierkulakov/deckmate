@@ -5,6 +5,7 @@ import { ArrowDownWideNarrow, ArrowUpNarrowWide, CircleHelp, Globe, UserRound } 
 import { useId, useState } from 'react';
 import type { MouseEvent, ReactNode } from 'react';
 import { canBeSecondary, canCompact, type CardOrderKey, type CardOrdering as CardOrderingValue, type CardSortStep, type SortDirection, type TagScope } from '../catalog-ordering.ts';
+import { shortcutDisplay, shortcutPlatform } from '../shortcut-format.ts';
 import '../card-ordering.css';
 import '../deck-panels.css';
 
@@ -21,13 +22,15 @@ const text = defineText({
   ascending: "ascending",
   descending: "descending",
   flipHint: (label: string, direction: string) => `${label} · ${direction}. Click again to reverse.`,
-  multiSortHint: "Adds secondary orders; Ctrl+click an order for the same effect",
+  multiSortHint: (key: string) => `Adds secondary orders; ${key} an order for the same effect`,
   compactHint: "All cards in one lane",
   hideEmptyHint: "Hides empty zones in Manual order",
   resetHint: "Restore the default Deck order",
   saveHint: "Use this Deck order for anyone without a personal order",
   helpPrimary: "Click an order to make it the primary one",
-  helpSecondary: "Ctrl+click (⌘ on Mac) adds a secondary order, like the Multi Sort switch",
+  helpSecondary: (key: string) => `${key} adds a secondary order, like the Multi Sort switch`,
+  helpSecondaryWindows: 'Ctrl+click (⌘ on Mac) adds a secondary order, like the Multi Sort switch',
+  multiSortKey: 'Ctrl+click',
   helpDefault: "Reset / Save manage this deck's default order",
   uiPriority: "Priority",
   uiHighLow: "High → low",
@@ -71,13 +74,15 @@ const text = defineText({
   ascending: "по возрастанию",
   descending: "по убыванию",
   flipHint: (label: string, direction: string) => `${label} · ${direction}. Повторное нажатие меняет направление.`,
-  multiSortHint: "Добавляет вторичные порядки; Ctrl+клик по кнопке порядка — то же без переключателя",
+  multiSortHint: (key: string) => `Добавляет дополнительные критерии сортировки; ${key} по кнопке порядка — то же без переключателя`,
   compactHint: "Все карточки в одной полосе",
   hideEmptyHint: "Скрывает пустые зоны ручного порядка",
   resetHint: "Вернуть порядок колоды по умолчанию",
   saveHint: "Сделать этот порядок порядком колоды для всех, кто ещё не выбрал свой",
   helpPrimary: "Щелчок по порядку делает его основным",
-  helpSecondary: "Ctrl+клик (⌘ на Mac) добавляет вторичный порядок — как переключатель мультисортировки",
+  helpSecondary: (key: string) => `${key} добавляет дополнительный критерий сортировки — как переключатель мультисортировки`,
+  helpSecondaryWindows: 'Ctrl+щелчок (⌘ на Mac) добавляет дополнительный критерий сортировки — как переключатель мультисортировки',
+  multiSortKey: 'Ctrl+щелчок',
   helpDefault: "Сбросить / Сохранить — порядок колоды по умолчанию",
   uiPriority: "Приоритет",
   uiHighLow: "Высокий → низкий",
@@ -209,7 +214,7 @@ export function CardOrdering({ value, onChange, disabled = false, inDeck = false
           <Tooltip.Portal>
             <Tooltip.Content className="card-ordering-help-card" side="bottom" align="end" sideOffset={6}>
               <p>{t.helpPrimary}</p>
-              <p>{t.helpSecondary}</p>
+              <p>{shortcutPlatform() === 'mac' ? t.helpSecondary(shortcutDisplay({ key: 'Click', modifiers: ['primary'] })) : t.helpSecondaryWindows}</p>
               <p>{t.helpDefault}</p>
             </Tooltip.Content>
           </Tooltip.Portal>
@@ -269,7 +274,7 @@ export function CardOrdering({ value, onChange, disabled = false, inDeck = false
           })}
         </div>
         <div className="card-ordering-switches">
-          <Switch label={t.uiMultiSort} checked={multiSort} disabled={manual} hint={t.multiSortHint}
+          <Switch label={t.uiMultiSort} checked={multiSort} disabled={manual} hint={t.multiSortHint(shortcutDisplay({ key: 'Click', modifiers: ['primary'] }, t.multiSortKey))}
             onChange={checked => { setMultiSortMode(checked); if (!checked && value.then.length) onChange({ ...value, then: [] }); }} />
           <Switch label={t.uiCompact} checked={value.compact && canCompact(value.order)} disabled={!canCompact(value.order)} hint={t.compactHint}
             onChange={checked => onChange({ ...value, compact: checked })} />

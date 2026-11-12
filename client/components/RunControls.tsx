@@ -31,7 +31,7 @@ const text = defineText({
   conflict: 'The plan changed. Review the refreshed data before saving again.',
   reload: 'Load saved settings', reloadHint: 'Another edit changed this schedule. Load the saved settings before editing again.',
   removed: 'This schedule was removed. Your draft is kept; cancel to return to Timeline.',
-  discard: 'Discard these unsaved settings?', schedules: 'Run schedules', newSchedule: 'New schedule',
+  discard: 'Discard these unsaved settings?', schedules: 'Run schedules',
   keepEditing: 'Keep editing', discardChanges: 'Discard changes',
 }, {
   settings: 'Настройки Run', shortName: 'Короткое имя', color: 'Цвет',
@@ -51,7 +51,7 @@ const text = defineText({
   conflict: 'План изменился. Проверьте обновлённые данные перед повторным сохранением.',
   reload: 'Загрузить сохранённые настройки', reloadHint: 'Расписание изменено извне. Загрузите сохранённые настройки перед новой правкой.',
   removed: 'Расписание удалено. Черновик сохранён; отмените правку, чтобы вернуться в Timeline.',
-  discard: 'Отменить несохранённые настройки?', schedules: 'Расписания Run', newSchedule: 'Новое расписание',
+  discard: 'Отменить несохранённые настройки?', schedules: 'Расписания Run',
   keepEditing: 'Продолжить правку', discardChanges: 'Отменить изменения',
 });
 

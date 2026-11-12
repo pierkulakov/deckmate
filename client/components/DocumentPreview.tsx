@@ -10,6 +10,7 @@ import { Button } from './ui/button.tsx';
 import { defineText, textNow, useText } from '../i18n.ts';
 import { moveFocus } from '../focus.ts';
 import { catalogStore } from '../catalog-store.ts';
+import { formatShortcut } from '../shortcut-format.ts';
 import '../document-preview.css';
 
 const copy = defineText({
@@ -29,7 +30,7 @@ const copy = defineText({
   sidePane: 'Side panel',
   fullWindow: 'Full window',
   close: 'Close document',
-  closeShortcut: 'Close · Esc',
+  closeShortcut: (key: string) => `Close · ${key}`,
   view: 'Document view',
   source: 'Source',
   original: 'Original',
@@ -54,7 +55,7 @@ const copy = defineText({
   sidePane: 'Боковая панель',
   fullWindow: 'На всё окно',
   close: 'Закрыть документ',
-  closeShortcut: 'Закрыть · Esc',
+  closeShortcut: (key: string) => `Закрыть · ${key}`,
   view: 'Вид документа',
   source: 'Исходник',
   original: 'Оригинал',
@@ -250,7 +251,7 @@ export function DocumentPreviewProvider({ children }: { children: ReactNode }) {
                 aria-label={expanded ? t.restorePane : t.expand} title={expanded ? t.sidePane : t.fullWindow}>
                 {expanded ? <Minimize2 size={17} /> : <Maximize2 size={17} />}
               </Button>
-              <Dialog.Close asChild><Button type="button" size="icon" variant="ghost" aria-label={t.close} title={t.closeShortcut}><X size={18} /></Button></Dialog.Close>
+              <Dialog.Close asChild><Button type="button" size="icon" variant="ghost" aria-label={t.close} title={t.closeShortcut(formatShortcut({ key: 'Escape' }).display)}><X size={18} /></Button></Dialog.Close>
             </div>
           </header>
           <div className="document-preview-toolbar">

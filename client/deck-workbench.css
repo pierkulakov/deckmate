@@ -61,13 +61,6 @@
   .deck-open-toolbar .deck-toolbar-search { flex: 1 1 120px; max-width: none; }
   .deck-open-toolbar .deck-mine-toggle { margin-left: 0; }
 }
-/* Every deck header button shares a green tooltip with an arrow. */
-.deck-header-hint { z-index: 160; max-width: 340px; padding: 6px 10px; border: .67px solid var(--mint-edge, var(--line)); border-radius: var(--glass-radius); background: var(--mint, var(--accent-soft)); color: var(--mint-ink, var(--ink)); font-size: 12px; line-height: 16px; box-shadow: var(--shadow); }
-.deck-header-hint svg { fill: var(--mint, var(--accent-soft)); }
-/* Shortcut chips in a hint: the global kbd keycap, white on the mint tooltip so the key reads as a key. */
-.deck-header-hint-keys { display: inline-flex; align-items: center; gap: 2px; margin-left: 8px; vertical-align: middle; }
-.deck-header-hint kbd { background: var(--count-face); color: var(--mint-ink, var(--ink)); }
-.deck-header-hint-note { display: block; margin-top: 2px; opacity: .8; }
 /* 2026-11-10: My Cards uses the shared chosen mark before search, keeping the same compact footprint. */
 /* 2026-11-10: Journey, My cards and Archive/Trash share one 13px label (they were 14, 12 and 11). */
 .deck-open-toolbar .deck-mine-toggle { flex-shrink: 0; margin-left: auto; padding: 0 9px; font-size: 13px; line-height: 16px; }

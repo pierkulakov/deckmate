@@ -1,5 +1,5 @@
 import { boardColumns, type CatalogCard, type CatalogDeckManualOrder, type CardPriority, type MilestoneRecord, type RunRecord } from '../src/catalog-contracts.ts';
-import { compareManualFallback, completeDeckManualOrder } from '../src/catalog-manual-order.ts';
+import { compareManualFallback, completeDeckManualOrder, effortValue } from '../src/catalog-manual-order.ts';
 import { defineText, locale, textNow } from './i18n.ts';
 import { priorityLabel, stateLabel } from './locales/common.ts';
 import { runChoiceLabel } from './run-label.ts';
@@ -98,10 +98,6 @@ function dateValue(value: string | null | undefined): number | null {
   if (!value) return null;
   const parsed = Date.parse(value);
   return Number.isFinite(parsed) ? parsed : null;
-}
-
-function effortValue(card: CatalogCard): number | null {
-  return typeof card.effort === 'number' && Number.isFinite(card.effort) && card.effort >= 0 ? card.effort : null;
 }
 
 /** Where one card stands in one order: its lane identity and the value the direction compares; null value — always last. */

@@ -4,9 +4,14 @@ import type { CatalogCard, CatalogView } from '../../src/catalog-contracts.ts';
 import type { CatalogAction } from '../../client/useCatalog.ts';
 import { CardPreview } from '../../client/components/CardPreview.tsx';
 import { CardFamilyPanel } from '../../client/components/CardFamily.tsx';
+import { DecisionPool } from '../../client/components/DecisionPool.tsx';
+import { CatalogCardTile } from '../../client/components/CatalogCardTile.tsx';
+import { buildCatalogLookups } from '../../client/catalog-lookups.ts';
+import type { Decision, Question } from '../../client/question-model.ts';
 import { setLang } from '../../client/i18n.ts';
 import { shortcutTargetBlocked } from '../../client/keyboard-shortcuts.ts';
 import { shortReference } from '../../src/references.ts';
+import { parseOpenQuestions } from '../../src/open-questions.ts';
 import '../../client/styles.css';
 import '../../client/card-material.css';
 
@@ -24,7 +29,9 @@ let editFailure: 'conflict' | 'network' | null = null;
 let holdEdit = false;
 let finishEdit: (() => void) | undefined;
 let refreshCard: (() => void) | undefined;
-interface Options { backlinks?: number; journey?: boolean; tags?: number; title?: string; owner?: string; markdown?: string; dependencies?: boolean; archived?: boolean; deleted?: boolean; writable?: boolean; pending?: boolean; lang?: 'en' | 'ru'; theme?: 'light' | 'dark'; family?: boolean; kind?: CatalogCard['kind']; state?: CatalogCard['state'] }
+let removeQuestion: (() => void) | undefined;
+let updateQuestions: ((questions: Question[]) => void) | undefined;
+interface Options { deckLayout?: boolean; backlinks?: number; journey?: boolean; tags?: number; title?: string; owner?: string; markdown?: string; dependencies?: boolean; archived?: boolean; deleted?: boolean; writable?: boolean; pending?: boolean; lang?: 'en' | 'ru'; theme?: 'light' | 'dark'; family?: boolean; kind?: CatalogCard['kind']; state?: CatalogCard['state']; people?: number; agents?: boolean; questions?: Question[]; decisions?: Decision[]; pool?: boolean }
 const noop = () => {};
 let outerEscapes = 0;
 window.addEventListener('keydown', event => { if (event.key === 'Escape' && !shortcutTargetBlocked(event)) outerEscapes++; }, true);
@@ -49,14 +56,18 @@ window.fetch = async (input, init) => {
 function Fixture({ options }: { options: Options }) {
   const [card, setCard] = useState<CatalogCard>({ id: 'card:preview', kind: options.kind ?? 'task', title: options.title ?? 'Review the work', markdown: options.markdown ?? 'Card text remains visible.', path: 'cards/preview.md', range: null, version: null,
     state: options.state === undefined ? 'review' : options.state, owner: options.owner ?? 'Maya Chen', sourceHash: options.markdown === undefined ? 'card-hash' : 'content-' + options.markdown, deckId: null, trackIds: [], parentId: null, effort: 2, priority: 'medium',
+    openQuestions: options.questions ?? parseOpenQuestions(options.markdown ?? 'Card text remains visible.').questions,
+    ...(options.decisions ? { decisions: options.decisions } : {}),
     tags: Array.from({ length: options.tags ?? 0 }, (_, index) => `Длинный тег проекта ${index + 1}`), archived: options.archived, deleted: options.deleted,
     dependsOn: options.dependencies ? ['card:dependency'] : [],
     ...(options.journey ? { journey: { journeyId: 'pipeline', instanceId: 'instance', stepId: 'step', version: 1 } } : {}) });
   current = card;
   const child = { ...card, id: 'card:child', parentId: card.id, kind: 'task', title: 'Полное название Sub Card '.repeat(20), state: 'started', journey: undefined } as CatalogCard;
   const catalog: CatalogView = { rootIdentity: 'first-batch', documents: [], cards: options.family ? [card, child] : [card], spaces: [], decks: [], tracks: [], warnings: [], formatLanguage: 'en', manifestHash: 'manifest-hash', optionsHash: 'options-hash', configured: true, indexedAt: '',
-    members: [{ id: 'maya', label: 'Maya Chen', kind: 'human', aliases: [] }], runs: [], milestones: [] };
+    members: [{ id: 'maya', label: 'Maya Chen', kind: 'human', aliases: [] }, { id: 'lee', label: 'Lee', kind: 'human', aliases: [] }].slice(0, options.people ?? 1) as CatalogView['members'], runs: [], milestones: [] };
   if (options.dependencies) catalog.cards.push({ ...card, id: 'card:dependency', title: 'Завершить подготовку', state: 'not-started', dependsOn: [] });
+  if (options.agents) catalog.members!.push({ id: 'build-agent', label: 'Build Agent', kind: 'agent', aliases: [] });
+  if (options.pool) catalog.cards.push({ ...card, id: 'card:rules', title: 'Правила боя', openQuestions: [], decisions: [], markdown: 'Правила.' } as CatalogCard);
   if (options.backlinks) {
     const reference = '/r/' + shortReference('c', 'card:preview');
     const link = `[Target](${reference}?source=sandbox)`;
@@ -70,6 +81,8 @@ function Fixture({ options }: { options: Options }) {
   if (options.journey) catalog.journeys = [{ id: 'pipeline', title: 'Pipeline', version: 1, deckId: 'assets', path: 'tasks/journeys/pipeline/index.md', fileHash: 'journey-hash',
     steps: [{ id: 'step', title: 'Step', markdown: '', deckId: 'work', owner: null, dependsOn: [] }] }];
   refreshCard = () => setCard(previous => ({ ...previous, sourceHash: previous.sourceHash + '-refreshed' }));
+  removeQuestion = () => setCard(previous => ({ ...previous, openQuestions: [], sourceHash: previous.sourceHash + '-refreshed' }));
+  updateQuestions = questions => setCard(previous => ({ ...previous, openQuestions: questions, sourceHash: previous.sourceHash + '-refreshed' }));
   async function edit(action: CatalogAction) {
     await fetch('/api/catalog', { method: 'POST', body: JSON.stringify(action) });
     if (holdEdit) await new Promise<void>(resolve => { finishEdit = resolve; });
@@ -89,11 +102,16 @@ function Fixture({ options }: { options: Options }) {
   }
   const snapshot = { projectName: 'First batch', source: 'sandbox' as const, writable: options.writable ?? true, editMode: 'direct' as const,
     token: 'fixture-token', iteration: { number: 1, goal: '', start: '' } };
-  return <div style={{ width: 'min(496px, 100%)', margin: '24px auto' }}>
+  const content = <div style={{ width: 'min(496px, 100%)', margin: '24px auto' }}>
+    {options.pool && <><header><DecisionPool catalog={catalog} onOpen={id => { const next = catalog.cards.find(item => item.id === id); if (next) { selections.push(next.id); setCard(next); } }} /></header>
+      <CatalogCardTile card={card} lookups={buildCatalogLookups(catalog.cards)} members={catalog.members ?? []} selected={false} checked={false} selectionActive={false} disabled={false} onOpen={noop} onToggle={noop} onFamilyOpen={noop} /></>}
     <CardPreview card={card} catalog={catalog} snapshot={snapshot}
       writable={options.writable ?? true} pending={options.pending ?? false} onClose={noop} onSelect={next => { selections.push(next.id); setCard(next); }} onDirtyChange={noop} onEdit={edit} onShowTagCards={tag => tagSearches.push(tag)} />
     {options.family && <CardFamilyPanel hero={card} card={card} children={[child]} openedId={card.id} catalog={catalog} disabled={false} writable={false} onOpen={noop} onCreate={noop} onAttach={noop} />}
   </div>;
+  return options.deckLayout ? <div className="catalog-content-layout" style={{ display: 'flex', gap: 16 }}>
+    {content}<div className="catalog-results" style={{ flex: 1, minHeight: 800 }}><button type="button">Another card</button></div>
+  </div> : content;
 }
 function render(options: Options = {}) {
   requests.length = 0; selections.length = 0; tagSearches.length = 0; historyCursors.length = 0; historyFails = false; holdHistory = false; holdEdit = false; outerEscapes = 0; editFailure = null;
@@ -101,5 +119,5 @@ function render(options: Options = {}) {
   document.documentElement.classList.toggle('dark', options.theme === 'dark');
   root.render(<Fixture key={++instance} options={options} />);
 }
-Object.assign(window, { firstBatch: { render, requests, selections, tagSearches, historyCursors, failEdit: (failure: typeof editFailure) => { editFailure = failure; }, holdEdit: () => { holdEdit = true; }, finishEdit: () => { holdEdit = false; finishEdit?.(); }, outerEscapes: () => outerEscapes, failHistory: (fail: boolean) => { historyFails = fail; }, holdHistory: () => { holdHistory = true; }, finishHistory: () => { holdHistory = false; finishHistory?.(); } } });
+Object.assign(window, { firstBatch: { render, requests, selections, tagSearches, historyCursors, removeQuestion: () => removeQuestion?.(), updateQuestions: (questions: Question[]) => updateQuestions?.(questions), failEdit: (failure: typeof editFailure) => { editFailure = failure; }, holdEdit: () => { holdEdit = true; }, finishEdit: () => { holdEdit = false; finishEdit?.(); }, outerEscapes: () => outerEscapes, failHistory: (fail: boolean) => { historyFails = fail; }, holdHistory: () => { holdHistory = true; }, finishHistory: () => { holdHistory = false; finishHistory?.(); } } });
 render();

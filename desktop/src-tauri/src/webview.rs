@@ -571,6 +571,11 @@ unsafe fn install_console(
             let Ok(value) = serde_json::from_str::<serde_json::Value>(&parameters) else {
                 return Ok(());
             };
+            if value["type"] == "info" && value["args"][0]["value"] == "deckmate:board-data-painted"
+            {
+                log.milestone("board-data-painted");
+                return Ok(());
+            }
             if !matches!(value["type"].as_str(), Some("warning" | "error")) {
                 return Ok(());
             }
@@ -645,8 +650,10 @@ pub async fn board_script(window: &WebviewWindow, origin: Option<String>) -> Res
             showStartScreen: () => invoke('board_show_start_screen'),
             setDirty: dirty => invoke('board_set_dirty', {{ dirty }})
           }}) }});
+          {}
         }})();"#,
-                serde_json::to_string(&origin).unwrap()
+                serde_json::to_string(&origin).unwrap(),
+                include_str!("board-startup.js")
             );
             let sender = std::sync::Arc::new(std::sync::Mutex::new(Some(sender)));
             let callback_sender = sender.clone();

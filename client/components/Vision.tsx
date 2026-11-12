@@ -32,7 +32,6 @@ import { desktopBoard } from '../desktop-bridge.ts';
 import { deferredVisionScene, sanitizeVisionScene, visionSceneSignature } from '../vision-scene.ts';
 import { BoardSceneSafetyError, boardImageMimeTypes, boardSafetyText, boardVideoAddress, isSafeBoardEmbed, isSafeBoardImage, isSafeBoardLink, maximumBoardBytes, maximumBoardImageBytes, sanitizeBoardScene, type BoardSafetyIssue } from '../../src/board-scene-safety.ts';
 import '../vision.css';
-import { warmMount } from '../warmup-mount.tsx';
 
 const text = defineText({
   newScheme: 'New board',
@@ -197,22 +196,6 @@ const text = defineText({
 });
 
 const emptyScene: BoardScene = { type: 'excalidraw', version: 2, elements: [], appState: {}, files: {} };
-function VisionCanvasWarmup() {
-  const lang = useLang();
-  // 2026-11-11: the canvas writes a regional tag to html.lang; only the app store owns the interface language.
-  return <Excalidraw initialData={{ elements: [] }} langCode={locale(lang)}
-    theme={document.documentElement.classList.contains('dark') ? 'dark' : 'light'} viewModeEnabled
-    UIOptions={{ canvasActions: { loadScene: false, saveToActiveFile: false } }} />;
-}
-export async function warmVisionCanvas(signal: AbortSignal) {
-  await warmMount(<VisionCanvasWarmup />, signal);
-  if (signal.aborted) return;
-  // 2026-11-10: Assistant belongs to Excalidraw's CSS, so the app font warmup cannot load it before this chunk installs it.
-  for (const weight of [400, 500, 600, 700]) {
-    if (signal.aborted) return;
-    await document.fonts.load(`${weight} 14px Assistant`);
-  }
-}
 // Vision has no shortcuts of its own: the overview lists the app-wide ones, as in Hand.
 const visionShortcutScreens: readonly ShortcutScreen[] = ['app'];
 type Props = { snapshot: WorkspaceSnapshot; refreshKey: number; dark: boolean; onEditing: (value: boolean) => void; onOpenCard: (id: string) => void };
@@ -744,7 +727,7 @@ export default function Vision({ snapshot, refreshKey, dark, onEditing, onOpenCa
             {document && <CatalogReferenceLink kind="v" id={document.id} source={snapshot.source} />}
           </div>
         </div>
-        <button type="button" className="action-mint vision-new-board" disabled={editing || opening} onClick={() => display(null)}><Plus size={15} aria-hidden="true" /><span>{t.newBoard}</span></button>
+        <button type="button" className="action-mint vision-new-board" aria-label={t.newBoard} title={t.newBoard} disabled={editing || opening} onClick={() => display(null)}><Plus size={15} aria-hidden="true" /><span>{t.newBoard}</span></button>
       </div>
       <div className="page-tools">
         <select className="control-field vision-board-picker" aria-label={t.board} value={document?.id ?? ''} disabled={editing || opening} onChange={event => { if (event.target.value) void open(event.target.value); else display(null); }}>

@@ -2,14 +2,16 @@
 import { createContext, memo, useContext, useEffect, useMemo, useState } from 'react';
 import type { CSSProperties, PointerEvent, ReactNode } from 'react';
 import { useDraggable } from '@dnd-kit/core';
-import { Check, CircleHelp, Crown, Eye, GripVertical, Hourglass, ListChecks, NotebookText, Play } from 'lucide-react';
+import { Check, Crown, Eye, GripVertical, Hourglass, ListChecks, NotebookText, Play } from 'lucide-react';
 import type { CardKind, CatalogCard, CatalogMember, CatalogView } from '../../src/catalog-contracts.ts';
 import { openDependencies } from '../../src/dependency-contracts.ts';
 import { catalogDocExcerpt, type DocExcerptBlock } from '../doc-excerpt.ts';
+import { pendingDecisionsOf } from '../question-model.ts';
 import { sameCardTileData, type CardTileCatalog, type CardTileLookups } from '../card-tile-equality.ts';
 import { familyChildren } from '../catalog-lookups.ts';
 import { HOVER_CARD_SHORTCUTS, markShortcutPropertyHover, matchShortcut, shortcutTargetBlocked } from '../keyboard-shortcuts.ts';
 import { CardFaceStatus, CardHandIndicator, cardFaceStatus, cardHandStatus } from './CardIndicators.tsx';
+import { DocWordCount, OpenQuestionsBadge } from './CardMetrics.tsx';
 import { statusClass } from './StatusMenu.tsx';
 import { CardFamilyPopover, SubCardProgress } from './CardFamily.tsx';
 import { useJustFinished } from '../done-impact.ts';
@@ -29,7 +31,6 @@ const text = defineText({
   transferCard: (title: string) => 'Move to deck: ' + title,
   transferHint: 'Move to deck · Space and arrow keys',
   transferLimit: 'You can move up to 1,000 selected cards',
-  openQuestions: (count: string) => 'Open questions: ' + count,
   open: 'Open',
   deselect: 'Deselect',
   select: 'Select',
@@ -44,12 +45,12 @@ const text = defineText({
   acceptedCount: (done: string, total: string) => `${done} of ${total}`,
   progress: (count: string) => `${count} accepted; segment length is Sub Card effort`,
   quickSettings: (title: string) => 'Quick Settings: ' + title,
+  pendingDecisions: (count: number) => count === 1 ? 'Decision to apply: 1' : `Decisions to apply: ${count}`,
 }, {
   docCard: 'Doc Card',
   transferCard: (title: string) => 'Перенести в колоду: ' + title,
   transferHint: 'Перенести в колоду · Пробел и стрелки',
   transferLimit: 'Можно перенести до 1000 выбранных карточек',
-  openQuestions: (count: string) => 'Открытых вопросов: ' + count,
   open: 'Открыть',
   deselect: 'Снять выбор',
   select: 'Выбрать',
@@ -64,6 +65,7 @@ const text = defineText({
   acceptedCount: (done: string, total: string) => `${done} из ${total}`,
   progress: (count: string) => `${count} принято; длина сегмента — оценка Sub Card`,
   quickSettings: (title: string) => 'Быстрые настройки: ' + title,
+  pendingDecisions: (count: number) => `Решений к внесению: ${count}`,
 });
 
 /** 2026-11-11: a band metric opens Quick Settings on its own tab where the tile can be edited; elsewhere the same mark is static. */
@@ -90,9 +92,6 @@ export const taskStateIcons: Record<string, typeof Hourglass> = { done: Check, s
 export const emptyCards: CatalogCard[] = [];
 const emptyExcerpt: DocExcerptBlock[] = [];
 
-// 2026-11-10: Deck.tsx still provides indexedAt; keep its export until that caller can remove the unused provider.
-export const CardAttachmentRefreshContext = createContext<string | undefined>(undefined);
-
 export const CardTransferContext = createContext<{ available: boolean; enabled: boolean; active: boolean; canDrag: (cardId: string) => boolean; sourceIds?: ReadonlySet<string> }>({
   available: false, enabled: false, active: false, canDrag: () => false,
 });
@@ -117,18 +116,6 @@ export function useCardTransferDrag(card: CatalogCard) {
     title={enabled ? t.transferHint : t.transferLimit}
     onKeyDown={event => { if (enabled) drag.listeners?.onKeyDown?.(event); }}><GripVertical size={14} aria-hidden="true" /></button> : null;
   return { ...drag, isDragging: drag.isDragging || Boolean(context.sourceIds?.has(card.id)), enabled, anyDragging: context.active, onPointerDown, handle };
-}
-
-/** Rule Doc question count from its open-questions section, shared by tiles and table rows. */
-export function OpenQuestionsBadge({ card }: { card: CatalogCard }) {
-  const t = useText(text);
-  const lang = useLang();
-  const count = card.kind === 'doc' ? card.openQuestions?.length ?? 0 : 0;
-  if (!count) return null;
-  const warnings = card.openQuestionWarnings ?? [];
-  const formattedCount = formatNumber(count, 3, lang);
-  const title = t.openQuestions(formattedCount) + (warnings.length ? '. ' + warnings.join(' ') : '');
-  return <span className={'catalog-card-open-questions' + (warnings.length ? ' has-warning' : '')} title={title} aria-label={title}><CircleHelp size={12} strokeWidth={2.4} aria-hidden="true" />{formattedCount}</span>;
 }
 
 interface CatalogCardTileProps {
@@ -192,6 +179,7 @@ function CardTileFace({ card, lookups, members, tagDefinitions, currentMemberId,
   const status = cardFaceStatus(card, lookups, lang);
   const hand = cardHandStatus(card, members, currentMemberId, handPositions, lang);
   const active = !card.archived && !card.deleted;
+  const pendingDecisions = active ? pendingDecisionsOf(card).length : 0;
   const effortLabel = card.effort == null ? '—' : formatNumber(card.effort, 20, lang);
   const heroEffortLabel = heroEffort == null ? '' : formatNumber(heroEffort, 20, lang);
   const tileEffortLabel = card.kind === 'hero' ? heroEffortLabel || '—' : effortLabel;
@@ -212,7 +200,7 @@ function CardTileFace({ card, lookups, members, tagDefinitions, currentMemberId,
     owner ? ownerLabel : '', hand?.accessible, progressLabel, familyDone ? doneLabel : '',
     card.kind === 'hero' && heroEffortLabel ? t.totalEffort(heroEffortLabel) : '', card.effort != null ? t.effort(effortLabel) : '',
     card.kind !== 'doc' && card.priority ? t.priority(priorityLabel(card.priority, lang)) : '',
-    card.tags?.length ? t.tags(card.tags.join(', ')) : ''].filter(Boolean).join(', ');
+    card.tags?.length ? t.tags(card.tags.join(', ')) : '', pendingDecisions ? t.pendingDecisions(pendingDecisions) : ''].filter(Boolean).join(', ');
   const style = { '--tilt-x': '0deg', '--tilt-y': '0deg', '--glare-x': '50%', '--glare-opacity': 0 } as CSSProperties;
   const canStart = active && card.kind === 'task' && card.state !== 'started' && Boolean(onStart) && !disabled;
   function startWithSpace(event: KeyboardEvent) {
@@ -243,8 +231,10 @@ function CardTileFace({ card, lookups, members, tagDefinitions, currentMemberId,
           {excerpt.length > 0 && <span className="deck-card-doc-excerpt" aria-hidden="true">{excerpt.map((block, index) => block.heading ? <b key={index}>{block.text}</b> : <span key={index}>{block.text}</span>)}</span>}
           <span className="deck-card-face-meta">
             {/* 2026-11-11: the face carries no workflow word — the band and the accessible name say the state; blockers and open questions keep their line. */}
-            <CardFaceStatus status={status} hideWorkflow hideDue />
-            {active && (hand || owner || canConfigure || familyDone || card.tags?.length) && <span className="deck-card-hand-row"><CardHandIndicator hand={hand} /></span>}
+            <CardFaceStatus status={status} hideWorkflow hideDue hideQuestions />
+            {active && (hand || owner || canConfigure || familyDone || card.tags?.length || pendingDecisions || (card.kind !== 'doc' && card.openQuestions?.length)) && <span className="deck-card-hand-row">
+              <CardHandIndicator hand={hand} />{card.kind !== 'doc' && <OpenQuestionsBadge card={card} />}{pendingDecisions > 0 && <span className="deck-card-pending-dot" title={t.pendingDecisions(pendingDecisions)} aria-hidden="true" />}
+            </span>}
           </span>
         </button>
         {active && <TagColorIndicator tags={card.tags} definitions={tagDefinitions} disabled={disabled} />}
@@ -268,7 +258,7 @@ function CardTileFace({ card, lookups, members, tagDefinitions, currentMemberId,
         {active && card.kind === 'hero' && (tasks.length > 0
           ? <SubCardProgress cards={tasks} cardsById={lookups.cardById} />
           : <span className="sub-card-progress" {...(children.length ? { 'aria-hidden': true } : { role: 'img', title: t.noSubCards, 'aria-label': t.noSubCards })}><span className="sub-card-progress-segment" /></span>)}
-        {active && card.kind === 'doc' && <div className="deck-card-identity"><span className="deck-card-doc-kind" role="img" title={cardKinds.doc} aria-label={cardKinds.doc}><NotebookText size={17} strokeWidth={2.25} aria-hidden="true" /></span></div>}
+        {active && card.kind === 'doc' && <div className="deck-card-identity">{card.openQuestions?.length ? <OpenQuestionsBadge card={card} /> : <span className="deck-card-doc-kind" role="img" title={cardKinds.doc} aria-label={cardKinds.doc}><NotebookText size={17} strokeWidth={2.25} aria-hidden="true" /></span>}<DocWordCount card={card} /></div>}
       </div>
     </article>
   </div>;

@@ -4,7 +4,7 @@ import { isMechanicPath, parseDocument } from '../src/markdown.ts';
 import { markdownParser } from '../src/markdown-model.ts';
 import type { ByteRange, ParsedDocument } from '../src/contracts.ts';
 import type { CardContent, CatalogEdit } from '../src/catalog-contracts.ts';
-import { editNativeCardContent, nativeCardPath, readNativeCard, readProjectMarkdown, replaceProjectMarkdown } from './native-cards.ts';
+import { editNativeCardContent, nativeCardPath, patchManagedMarkdown, readNativeCard, readProjectMarkdown, replaceProjectMarkdown } from './native-cards.ts';
 import { canonicalDataPath } from '../src/brand-compat.ts';
 import { cardStateMarkWords } from '../src/format-vocabulary.ts';
 
@@ -435,7 +435,7 @@ function parseBomText(bytes: Buffer): string {
   return new TextDecoder('utf-8', { fatal: true }).decode(bytes);
 }
 
-function reportBodyRange(reference: LegacyRef, bytes: Buffer): ByteRange {
+function legacyBodyRange(reference: LegacyRef, bytes: Buffer): ByteRange {
   if (reference.kind === 'doc') return readDocLayout(reference.path, bytes).bodyRange;
   const mechanic = parseMechanic(reference.path, bytes);
   const range = reference.kind === 'hero'
@@ -443,6 +443,48 @@ function reportBodyRange(reference: LegacyRef, bytes: Buffer): ByteRange {
     : mechanic.tasks.find(section => section.version === reference.key)?.bodyRange;
   if (!range) throw new CardContentError(404, serverText(messages).cardNotFound);
   return range;
+}
+
+/** 2026-11-12: target pointers include the card heading, but never neighboring legacy cards. */
+export function cardSourceRange(cardId: string, bytes: Buffer): ByteRange {
+  if (cardId.startsWith('card:')) return { start: 0, end: bytes.length };
+  const reference = parseLegacyRef(cardId);
+  if (reference.kind === 'doc') return { start: 0, end: bytes.length };
+  const mechanic = parseMechanic(reference.path, bytes);
+  if (reference.kind === 'hero') {
+    const hero = mechanic.heroes.find(section => section.number === reference.key);
+    if (hero) return { start: hero.headingLine.start, end: hero.introRange.end };
+  } else {
+    const slice = mechanic.document.slices.find(section => section.ver === reference.key);
+    if (slice) return slice.range;
+  }
+  throw new CardContentError(404, serverText(messages).cardNotFound);
+}
+
+/** 2026-11-12: structured body edits must not insert an absent H1 or rewrite a title/frontmatter. */
+export async function updateCardBody(root: string, edit: Pick<UpdateEdit, 'cardId' | 'sourceHash' | 'markdown'>,
+  beforePublish?: () => Promise<void>): Promise<string[]> {
+  const markdown = validatedBody(edit.markdown);
+  if (edit.cardId.startsWith('card:')) {
+    const file = await readNativeCard(root, edit.cardId);
+    if (!file) throw new CardContentError(404, serverText(messages).cardNotFound);
+    if (file.fileHash !== edit.sourceHash) throw new Error('CARD_CONFLICT');
+    const candidate = patchManagedMarkdown(file, {}, markdown);
+    if (candidate.equals(file.bytes)) return [];
+    await replaceProjectMarkdown(root, file.card.path, edit.sourceHash, candidate, beforePublish);
+    return [file.card.path];
+  }
+  const reference = parseLegacyRef(edit.cardId);
+  const bytes = await readProjectMarkdown(root, reference.path);
+  if (digest(bytes) !== edit.sourceHash) throw new Error('CARD_CONFLICT');
+  const range = legacyBodyRange(reference, bytes);
+  const newline = fileNewline(parseBomText(bytes));
+  const body = replacementBody(bytes, range, markdown, newline, true);
+  const candidate = Buffer.concat([bytes.subarray(0, range.start), bodySeparator(bytes, range.start, body, newline), body, bytes.subarray(range.end)]);
+  if (candidate.equals(bytes)) return [];
+  if (isMechanicPath(reference.path)) assertStructureUnchanged(reference.path, bytes, candidate);
+  await replaceProjectMarkdown(root, reference.path, edit.sourceHash, candidate, beforePublish);
+  return [reference.path];
 }
 
 /** 2026-11-05: keep the exact published hash for a subsequent state write or a guarded rollback. */
@@ -484,12 +526,12 @@ export async function appendCardReport(root: string, relative: string,
     candidate = Buffer.concat([previousBytes, Buffer.from(addition)]);
   } else {
     const reference = parseLegacyRef(edit.cardId);
-    const range = reportBodyRange(reference, previousBytes);
+    const range = legacyBodyRange(reference, previousBytes);
     candidate = patchLegacyContent(reference, previousBytes, validatedTitle(content.title), markdown);
     const prefix = range.start === range.end ? bodySeparator(previousBytes, range.start, Buffer.from(addition), newline) : Buffer.alloc(0);
     const inserted = Buffer.concat([prefix, Buffer.from(addition)]);
     const appendOnly = Buffer.concat([previousBytes.subarray(0, range.end), inserted, previousBytes.subarray(range.end)]);
-    const nextRange = reportBodyRange(reference, candidate);
+    const nextRange = legacyBodyRange(reference, candidate);
     if (!candidate.equals(appendOnly) || !candidate.subarray(nextRange.start, nextRange.end).toString('utf8').endsWith(addition)) {
       throw new CardContentError(422, serverText(messages).reportBoundary);
     }

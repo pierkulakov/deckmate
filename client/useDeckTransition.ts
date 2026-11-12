@@ -84,10 +84,9 @@ export function useDeckTransition(page: RefObject<HTMLElement | null>, openDeckI
     const ready = () => {
       if (!section.isConnected) return;
       // 2026-11-10: opening lands on the deck's title, not on Close: a focused Close opened its "Close deck" tooltip right
-      // away. Both directions focus quietly — no ring on the title or on the cover just left (Escape lit the
-      // whole cover); the next Tab shows the ring as usual.
+      // away. The title stays quiet; returning to a cover keeps the keyboard ring so its position is visible.
       const target = snapshot.direction === 'open' ? section.querySelector<HTMLElement>('.deck-open-toolbar .page-title') : coverOf(section, snapshot.deckId);
-      moveFocus(target, { preventScroll: true, quiet: true });
+      moveFocus(target, { preventScroll: true, quiet: snapshot.direction === 'open' });
     };
     stop.current = snapshot.direction === 'open' ? arrive(section, snapshot, ready) : comeBack(section, snapshot, ready);
     if (!stop.current) ready();

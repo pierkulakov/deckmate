@@ -48,8 +48,9 @@
 .csv-import-column-unused { color: var(--muted); }
 .csv-import-field { display: flex; flex-direction: column; gap: 6px; max-width: 360px; color: var(--muted); font-size: 12px; font-weight: 500; }
 .csv-import-field select { width: 100%; padding-inline: 10px; font-size: 13px; }
-.csv-import-table-scroll { overflow-x: auto; border: 1px solid var(--line); border-radius: var(--glass-radius); }
-.csv-import-preview table { width: 100%; border-collapse: collapse; font-size: 12px; line-height: 1.45; background: transparent; }
+/* 2026-11-12: hidden metric labels must stay inside the table's scrollport rather than widening the dialog body. */
+.csv-import-table-scroll { position: relative; overflow-x: auto; border: 1px solid var(--line); border-radius: var(--glass-radius); }
+.csv-import-preview table { width: 100%; min-width: 760px; border-collapse: collapse; font-size: 12px; line-height: 1.45; background: transparent; }
 .csv-import-preview th { text-align: left; padding: 8px 10px; color: var(--muted); font-size: 10px; font-weight: 500; white-space: nowrap; }
 .csv-import-preview td { padding: 7px 10px; border-top: 1px solid var(--line); vertical-align: top; overflow-wrap: anywhere; }
 .csv-import-preview tbody tr.is-error td, .csv-import-preview tbody tr.is-skip td { color: var(--muted); }
@@ -65,9 +66,9 @@
    creating action is text-only, so it keeps its label at phone widths (2026-11-10). */
 @media (max-width: 420px) { .csv-import-foot .action-mint { width: auto; padding: 0 12px 0 9px; } }
 @media (prefers-reduced-motion: reduce) { .csv-import { animation: none; } }
-@media (max-width: 760px) {
-  .csv-import { width: calc(100vw - 20px); }
-  .csv-import-preview table { min-width: 760px; }
+@media (max-width: 760px) { .csv-import { width: calc(100vw - 20px); } }
+/* 2026-11-12: the table needs its reading width after the dialog and panel insets, including tablet-sized windows. */
+@media (max-width: 860px) {
   .csv-import-cell-title { min-width: 220px; max-width: 320px; }
   .csv-import-scroll-hint { display: block; }
 }

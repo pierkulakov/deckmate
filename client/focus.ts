@@ -21,8 +21,7 @@ if (typeof window !== 'undefined' && typeof window.addEventListener === 'functio
 }
 
 /** Focuses an element with the keyboard ring when the last input was a key, and without it after a click or a tap.
- *  `quiet` returns focus to a place the person just left (a closed deck's cover) without a ring even after a key: the
- *  place is already obvious, and the next Tab or arrow shows the ring as usual (2026-11-10). */
+ *  `quiet` suppresses the ring for a destination that should not call attention to itself, such as the opened deck's title. */
 export function moveFocus(element: HTMLElement | null | undefined, options: Omit<FocusOptions, 'focusVisible'> & { quiet?: boolean } = {}): void {
   const { quiet = false, ...focusOptions } = options;
   element?.focus({ ...focusOptions, focusVisible: !quiet && lastInput === 'keyboard' });

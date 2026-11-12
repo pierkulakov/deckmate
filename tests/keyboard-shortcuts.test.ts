@@ -13,6 +13,9 @@ beforeEach(() => setLang('en'));
 afterAll(() => vi.unstubAllGlobals());
 
 describe('shortcut labels and matching', () => {
+  it('exposes the physical key and modifiers for the select-all shortcut', () => {
+    expect(ALL_SHORTCUTS.find(item => item.id === 'bulk-select-all')?.combo).toEqual({ key: 'KeyA', modifiers: ['primary'] });
+  });
   it('registers open-card H independently of hover and bulk, including the Russian layout', () => {
     const event = { code: 'KeyH', key: 'р', altKey: false, ctrlKey: false, metaKey: false, shiftKey: false } as KeyboardEvent;
     expect(matchShortcut(event, OPEN_CARD_SHORTCUTS)?.id).toBe('open-card-hand');

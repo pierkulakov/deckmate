@@ -57,7 +57,8 @@ it('rejects unknown options, single-dash flags and unknown commands with a hint'
   const unknownOption = await expectRejected(['--bogus'], /Unknown option --bogus\. Run deckmate project --help to list the commands and their options\./u);
   expect(unknownOption).toContain('deckmate project');
   await expectRejected(['-x'], /Unknown option -x\./u);
-  await expectRejected(['show', 'c-1a2b3c4d5e', '--tracks', 'sound'], /Unknown option --tracks\./u);
+  await expectRejected(['show', 'c-1a2b3c4d5e', '--colour', 'red'], /Unknown option --colour\./u);
+  await expectRejected(['show', 'c-1a2b3c4d5e', '--tracks', 'sound'], /--tracks is not available for show\./u);
   await expectRejected(['totally-unknown'], /Unknown command "totally-unknown"\. Commands: /u);
 });
 

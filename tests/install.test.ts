@@ -142,9 +142,10 @@ it('shuts down while the browser event socket is still connected', async () => {
   const directory = await mkdtemp(path.join(tmpdir(), 'deckmate-install-'));
   directories.push(directory);
   const app = await createApp({ editMode: 'read-only', dataRoot: directory, writeRoot: null, port: 4317, projectName: 'Socket demo', python: 'unavailable-python' });
-  const headers = { host: '127.0.0.1:4317' };
-  const { token } = (await app.inject({ url: '/api/snapshot', headers })).json();
+  // 2026-11-12: the server admits the Host of the port it actually listens on, so the test speaks to that port.
   const address = await app.listen({ host: '127.0.0.1', port: 0 });
+  const headers = { host: new URL(address).host };
+  const { token } = (await app.inject({ url: '/api/snapshot', headers })).json();
   const socket = new WebSocket(address.replace('http:', 'ws:') + '/api/events?token=' + token, { headers });
   let deadline: ReturnType<typeof setTimeout> | undefined;
   try {

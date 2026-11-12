@@ -14,11 +14,13 @@ import {
 } from '../attachments.ts';
 import { defineText, textNow, useText } from '../i18n.ts';
 import { failureMessage } from '../failure-message.ts';
+import { copyText } from '../clipboard.ts';
 import { attachmentMarkdown, removeAttachmentLinks } from '../attachment-markdown.ts';
 import { subscribeCardAttachments } from '../card-attachment-events.ts';
 import { ErrorState } from './ErrorState.tsx';
 import { LoadingState } from './LoadingState.tsx';
 import { EmptyState } from './EmptyState.tsx';
+import { formatShortcut } from '../shortcut-format.ts';
 import '../attachments-panel.css';
 
 const text = defineText({
@@ -42,7 +44,7 @@ const text = defineText({
   nextNewest: 'Next image (older)',
   nextOldest: 'Next image (newer)',
   panel: (title: string) => `Card attachments ${title}`,
-  uploadHint: 'PNG, JPEG, WebP, GIF, PDF · up to 10 MB · Ctrl+V — paste',
+  uploadHint: (shortcut: string) => `PNG, JPEG, WebP, GIF, PDF · up to 10 MB · ${shortcut} — paste`,
   saving: 'Saving…',
   copyLink: 'Copy link for the card text',
   copied: 'Copied',
@@ -88,7 +90,7 @@ const text = defineText({
   nextNewest: 'Следующее изображение (старее)',
   nextOldest: 'Следующее изображение (новее)',
   panel: (title: string) => `Вложения карточки ${title}`,
-  uploadHint: 'PNG, JPEG, WebP, GIF, PDF · до 10 МБ · Ctrl+V — вставка из буфера',
+  uploadHint: (shortcut: string) => `PNG, JPEG, WebP, GIF, PDF · до 10 МБ · ${shortcut} — вставка из буфера`,
   saving: 'Сохранение…',
   copyLink: 'Скопировать ссылку для текста',
   copied: 'Скопировано',
@@ -322,7 +324,7 @@ export function AttachmentsPanel({ card, catalog, writable, onEdit, resource }: 
         <input ref={fileInput} type="file" multiple hidden accept="image/png,image/jpeg,image/webp,image/gif,application/pdf"
           onChange={(event) => { void uploadFiles(Array.from(event.target.files ?? []), 'browse'); event.target.value = ''; }} />
         <span className="attachments-drop-text">{t.dropAttachmentOr} <button type="button" className="attachments-browse" disabled={uploadDisabled}
-          title={t.uploadHint} onClick={() => fileInput.current?.click()}>{t.browse}</button></span>
+          title={t.uploadHint(formatShortcut({ key: 'KeyV', modifiers: ['primary'] }).display)} onClick={() => fileInput.current?.click()}>{t.browse}</button></span>
         {busy && <LoaderCircle size={14} className="spin attachments-busy" aria-label={t.saving} />}
       </div>}
       {error && <p className="attachments-message is-error" role="alert">{error}</p>}
@@ -398,8 +400,7 @@ function AttachmentCopyButton({ cardPath, attachment }: { cardPath: string; atta
     return () => window.clearTimeout(timer);
   }, [feedback]);
   async function copyLink() {
-    try { await navigator.clipboard.writeText(attachmentMarkdown(cardPath, attachment)); setFeedback('copied'); }
-    catch { setFeedback('failed'); }
+    setFeedback(await copyText(attachmentMarkdown(cardPath, attachment)) ? 'copied' : 'failed');
   }
   return <span className="attachment-copy-control">
     <Button type="button" variant="ghost" size="icon" aria-label={t.copyLink} title={t.copyLink} data-copied={feedback === 'copied' || undefined}

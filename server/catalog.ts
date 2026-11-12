@@ -1,26 +1,26 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { lstat, readFile, readdir, realpath, stat } from 'node:fs/promises';
+import { lstat, readFile, readdir, realpath } from 'node:fs/promises';
 import path from 'node:path';
 import { isDeepStrictEqual } from 'node:util';
 import { isMap, isScalar, isSeq, parse, parseDocument as parseYamlDocument, stringify, type YAMLMap, type YAMLSeq } from 'yaml';
 import { isMechanicPath, parseDocument } from '../src/markdown.ts';
 import { markdownParser } from '../src/markdown-model.ts';
-import { appendCardReport, readCardContent, readHeroSections, updateCardContent } from './card-content.ts';
+import { appendCardReport, readCardContent, readHeroSections, updateCardBody, updateCardContent } from './card-content.ts';
 import type { CatalogCard, CatalogDeck, CatalogDeckManualOrder, CatalogDeckZone, CatalogEdit, CatalogMember, CatalogSpace, CatalogTrack, CatalogView, DeckKind } from '../src/catalog-contracts.ts';
-import { deckAcceptsCard, deckCanBeInbox, newCardDeckId } from '../src/catalog-contracts.ts';
+import { deckAcceptsCard, deckCanBeInbox, hasMatchingQuestion, newCardDeckId } from '../src/catalog-contracts.ts';
 import { memberIdForOwner, resolveMember } from '../src/members.ts';
-import { cardReportAuthor, linkDecisionTask, openQuestionsOf, parseOpenQuestions, recordDecision } from '../src/open-questions.ts';
+import { appendQuestion, applyDecision, assignQuestion, cardReportAuthor, catalogDecisionOf, catalogQuestionOf, decisionAnswerText, openQuestionsOf, parseCardQuestions, parseDecisionTarget, parseOpenQuestions, recordDecision, resolvedDecisionsOf } from '../src/open-questions.ts';
 import { resolveReference, shortReference } from '../src/references.ts';
 import { containedFile } from './config.ts';
-import { parseCached } from './parse-cache.ts';
+import { parseCached, parseFileCached, type FileParse } from './parse-cache.ts';
 import { assertCatalogCoverFile, isCatalogCoverPath, storeCatalogCover, type StoredCatalogCover } from './catalog-covers.ts';
-import { createManagedMarkdown, editNativeCard, editNativeCardParent, editNativeCardProperties, nativeCardPath, patchManagedMarkdown, patchNativeCardFields, readNativeCard, readNativeCards, readProjectMarkdown, replaceProjectMarkdown, validateNativeCardMetadata, type NativeCardFile, type NativeCardMetadata } from './native-cards.ts';
+import { createManagedMarkdown, editNativeCard, editNativeCardParent, editNativeCardProperties, nativeCardPath, patchNativeCardFields, readNativeCard, readNativeCards, readProjectMarkdown, replaceProjectMarkdown, validateNativeCardMetadata, type NativeCardFile, type NativeCardMetadata } from './native-cards.ts';
 import { applyJourney, createJourney, readJourneys } from './journeys.ts';
 import { bundledJourneyTemplatesDirectory, journeyTemplateDirectories, readJourneyTemplates } from './journey-templates.ts';
 import { patchLegacyCardStates, updateLegacyCardState } from './card-properties.ts';
 import { validateOwner, validateEffort, validatePriority } from './card-property-validation.ts';
 import type { CardOptions } from '../src/bulk-contracts.ts';
-import { cardOptionsPath, prepareCardOptionsPatch, readCardOptions, sourceComments, type CardOptionsPatch } from './card-options.ts';
+import { cardOptionsPath, prepareCardOptionsPatch, previousOwnerPatch, readCardOptions, sourceComments, type CardOptionsPatch } from './card-options.ts';
 import { getCatalogHands, localIsoDate, selectCatalogHand } from '../src/catalog-hand.ts';
 import { appendCardsToDeckOrder, completeDeckManualOrder } from '../src/catalog-manual-order.ts';
 import { prepareProjectTag, projectTagsPath, readProjectTags } from './project-tags.ts';
@@ -29,9 +29,10 @@ import { canonicalDataPath } from '../src/brand-compat.ts';
 import { validateCardFamily } from './card-family.ts';
 import { heroCountedTasks } from '../src/hero-done.ts';
 import { deckTypeChangeIssue } from '../src/deck-type-policy.ts';
-import { catalogFileChanged, currentCatalogSnapshot, readCatalogSnapshot } from './catalog-snapshot.ts';
+import { currentCatalogSnapshot, readCatalogSnapshot } from './catalog-snapshot.ts';
 import { defineText, serverText, serverLang } from './i18n.ts';
-import { cardStates, cardStateWords, markerWords, projectFormatLanguage, readCardState, writeCardState, writeMarker, type CardState, type FormatLanguage } from '../src/format-vocabulary.ts';
+import { cardStates, cardStateWords, projectFormatLanguage, readCardState, writeCardState, type CardState, type FormatLanguage } from '../src/format-vocabulary.ts';
+import { decisionTargetRange } from './decision-target.ts';
 
 const catalogText = defineText({
   invalidMembers: "Invalid project member list.",
@@ -125,21 +126,17 @@ const catalogText = defineText({
   newCardText: "Card text must be a string of up to 200000 characters.",
   newCardTracks: "Invalid Tracks for the new card.",
   newCardZone: "Invalid zone for the new card.",
-  questionDoc: "An open question belongs to a rule Doc card.",
   humanDecision: "A human must make the decision: the member must have kind: human.",
   questionIndex: "Question index must be a nonnegative integer.",
   questionText: "The current question text is required.",
-  decisionId: "The retry key must be a Task ID of the form card:<uuid>.",
-  decisionDeck: "The decision Task needs a Task or Mixed deck.",
+  questionBody: "The question must be one nonempty line of up to 2000 characters.",
+  questionBoundary: "The new question could not be recognized. Check Markdown boundaries and pass the addressee and target separately.",
+  questionTarget: "The answer target must be a card reference with an optional heading fragment.",
+  decisionIndex: "Decision index must be a nonnegative integer.",
   questionChanged: "The question in “Open questions” has changed. Refresh the card.",
-  decisionAlreadyLinked: "This decision Task is already linked to another question on the card.",
-  decisionStage: "decision Task",
-  memberHandStage: "member Hand",
-  decisionMissing: "Decision Task not found after creation.",
-  questionLinkStage: "link in the “Open questions” item",
-  repeatRaiseDecision: "Retry raise-decision with the same taskCardId: completed stages will be skipped.",
   answerEmpty: "The answer must be a nonempty string.",
-  decidedStage: "“Решено” entry",
+  decisionNote: "The application note must be a string of up to 2000 characters without NUL.",
+  decidedStage: "“Decided” entry",
   acceptDecisionStage: "decision Task acceptance",
   repeatRecordDecision: "Retrying record-decision is safe: the recorded answer will not be duplicated.",
   coverCleanup: "The catalog was not saved and the new cover could not be safely removed.",
@@ -175,8 +172,8 @@ const catalogText = defineText({
   missingEntryCard: (entry: { cardId: string }) => `Card not found: ${entry.cardId}`,
   explicitYaml: (key: string) => `${key} must be an explicit YAML value.`,
   explicitYamlField: (key: string) => `${key} must be an explicit YAML value.`,
-  decisionIdTaken: (existing: { id: string }) => `taskCardId is already used by card ${existing.id}.`,
   questionTaskMissing: (taskRef: string) => `Question Task ${taskRef} not found in the catalog.`,
+  questionTaskUnrelated: (taskRef: string) => `Question Task ${taskRef} is not a child Task of this card.`,
   linkedJourneys: (deck: { title: string }, journeyBlockers: { title: string }[]) => `First delete the Journeys linked to deck “${deck.title}”: ${journeyBlockers.map(journey => `“${journey.title}”`).join(', ')}.`,
   partialChanges: (updated: string[], changes: readonly unknown[], pending: string[], error: unknown) => `Some changes were saved: ${updated.length} of ${changes.length}. Saved: ${updated.join(', ')}. Pending: ${pending.join(', ') || 'none'}. Refresh the catalog before retrying. ${error instanceof Error ? error.message : String(error)}`,
   guardianActor: (deck: { title: string } | undefined, guardianNames: string[], actorName: string) => `Only a Guardian can accept a card in deck “${deck!.title}”: ${guardianNames.join(', ')}. Request author ${actorName} is not a Guardian.`,
@@ -274,20 +271,16 @@ const catalogText = defineText({
   newCardText: "Текст карточки — строка до 200000 символов.",
   newCardTracks: "Некорректные треки новой карточки.",
   newCardZone: "Некорректная зона новой карточки.",
-  questionDoc: "Открытый вопрос живёт в Doc-карточке правила.",
   humanDecision: "Решение принимает человек: участник должен быть kind: human.",
   questionIndex: "Номер вопроса — целое неотрицательное число.",
   questionText: "Нужен текущий текст вопроса.",
-  decisionId: "Ключ повтора — идентификатор задачи вида card:<uuid>.",
-  decisionDeck: "Нужна колода Task/Mixed для задачи «Решение».",
+  questionBody: "Вопрос — одна непустая строка до 2000 символов.",
+  questionBoundary: "Новый вопрос не распознан. Проверьте границы Markdown и передайте адресата и цель отдельными полями.",
+  questionTarget: "Цель ответа — ссылка на карточку и, при необходимости, раздел.",
+  decisionIndex: "Номер решения — целое неотрицательное число.",
   questionChanged: "Вопрос в «Открыто» изменился — обновите карточку.",
-  decisionAlreadyLinked: "Эта задача «Решение» уже привязана к другому вопросу карточки.",
-  decisionStage: "задача «Решение»",
-  memberHandStage: "рука участника",
-  decisionMissing: "Задача «Решение» не найдена после создания.",
-  questionLinkStage: "ссылка в пункте «Открыто»",
-  repeatRaiseDecision: "Повторите raise-decision с тем же taskCardId: готовые этапы пропустятся.",
   answerEmpty: "Ответ должен быть непустой строкой.",
+  decisionNote: "Примечание о внесении — строка до 2000 символов без NUL.",
   decidedStage: "запись «Решено»",
   acceptDecisionStage: "принятие задачи «Решение»",
   repeatRecordDecision: "Повтор record-decision безопасен: записанный ответ не дублируется.",
@@ -324,8 +317,8 @@ const catalogText = defineText({
   missingEntryCard: (entry: { cardId: string }) => `Карточка не найдена: ${entry.cardId}`,
   explicitYaml: (key: string) => `${key} должен быть явным YAML-значением.`,
   explicitYamlField: (key: string) => `${key} должно быть явным YAML-значением.`,
-  decisionIdTaken: (existing: { id: string }) => `taskCardId уже занят карточкой ${existing.id}.`,
   questionTaskMissing: (taskRef: string) => `Задача вопроса ${taskRef} не найдена в каталоге.`,
+  questionTaskUnrelated: (taskRef: string) => `Задача вопроса ${taskRef} не является подзадачей этой карты.`,
   linkedJourneys: (deck: { title: string }, journeyBlockers: { title: string }[]) => `Сначала удалите Journey, связанные с колодой «${deck.title}»: ${journeyBlockers.map(journey => `«${journey.title}»`).join(', ')}.`,
   partialChanges: (updated: string[], changes: readonly unknown[], pending: string[], error: unknown) => `Часть изменений сохранена: ${updated.length} из ${changes.length}. Сохранены: ${updated.join(', ')}. Остались: ${pending.join(', ') || 'нет'}. Обновите каталог перед повтором. ${error instanceof Error ? error.message : String(error)}`,
   guardianActor: (deck: { title: string } | undefined, guardianNames: string[], actorName: string) => `Принять карточку колоды «${deck!.title}» может только страж: ${guardianNames.join(', ')}. Автор запроса ${actorName} — не страж.`,
@@ -577,34 +570,81 @@ function legacyOwnerNote(markdown: string, state: string): string | undefined {
   return pattern.exec(lines[0])?.[1].replace(/^[ ,—]+|[ ,—]+$/gu, '') || undefined;
 }
 
-/** Parse a file's cards and its Doc card's open questions as a pure function of bytes (2026-11-04).
+/** Parse a file's cards and their questions as a pure function of bytes (2026-11-12).
  * Cache by content hash; resolve owners from the manifest when assembling the view. */
-interface ParsedFileCards { documentTitle: string; sourceHash: string; cards: CatalogCard[]; questions: ReturnType<typeof parseOpenQuestions> }
+type ParsedCardQuestions = ReturnType<typeof parseCardQuestions>;
+interface ParsedFileCards { documentTitle: string; cards: CatalogCard[]; questions: Map<string, ParsedCardQuestions> }
 
 function parseFileCards(relative: string, bytes: Buffer, sourceHash: string): ParsedFileCards {
   const markdown = bytes.toString('utf8');
   const common = { path: relative, sourceHash, deckId: null, trackIds: [], parentId: null };
   const documentTitle = contentTitle(markdown, relative);
   const cards: CatalogCard[] = [{ ...common, id: `doc:${relative}`, kind: 'doc', version: null, title: documentTitle, state: null, owner: null, range: null, markdown }];
+  const questions = new Map<string, ParsedCardQuestions>();
   if (!isMechanicPath(relative)) {
-    return { documentTitle, sourceHash, cards, questions: parseOpenQuestions(markdown, serverLang()) };
+    questions.set(cards[0].id, parseCardQuestions(markdown, serverLang()));
+    return { documentTitle, cards, questions };
   }
   const document = parseDocument(relative, bytes, serverLang());
   const heroIds = new Map<string, string>();
+  const ranges = new Map<string, { start: number; end: number }>();
   // An epic includes the introduction after its H2, up to the first slice or next epic.
   for (const section of readHeroSections(document)) {
     heroIds.set(section.number, section.id);
+    ranges.set(section.id, section.introRange);
     cards.push({ ...common, id: section.id, kind: 'hero', version: section.number, title: section.title, state: null, owner: null, range: null,
       markdown: bytes.subarray(section.introRange.start, section.introRange.end).toString('utf8') });
   }
   for (const slice of document.slices) {
+    ranges.set(`task:${relative}#${slice.ver}`, slice.range);
     const sliceMarkdown = bytes.subarray(slice.range.start, slice.range.end).toString('utf8');
     const ownerNote = legacyOwnerNote(sliceMarkdown, slice.state);
     cards.push({ ...common, id: `task:${relative}#${slice.ver}`, kind: 'task', version: slice.ver,
       title: slice.title, state: slice.state, owner: null, ...(ownerNote ? { ownerNote } : {}), range: slice.range, iteration: slice.iter || null,
       parentId: heroIds.get(slice.ver.split('.')[0]) ?? null, markdown: sliceMarkdown });
   }
-  return { documentTitle, sourceHash, cards, questions: openQuestionsOf(document.tree, serverLang()) };
+  // 2026-11-12: children own their question sections; the same items must not reappear on the file's Doc.
+  const bom = Number(markdown.startsWith('\uFEFF')) * 3;
+  const childRanges = [...ranges].map(([id, range]) => ({ id, ...range })).sort((left, right) => left.start - right.start);
+  const children = new Map(cards.map(card => [card.id, [] as typeof document.tree.children]));
+  let rangeIndex = 0;
+  let characterOffset = 0;
+  let byteOffset = bom;
+  // 2026-11-12: disjoint card ranges and mdast nodes are ordered; partition once instead of filtering the whole tree per card.
+  for (const node of document.tree.children) {
+    const offset = node.position!.start.offset!;
+    byteOffset += Buffer.byteLength(document.text.slice(characterOffset, offset));
+    characterOffset = offset;
+    while (rangeIndex < childRanges.length && childRanges[rangeIndex].end <= byteOffset) rangeIndex++;
+    const range = childRanges[rangeIndex];
+    const id = range && byteOffset >= range.start ? range.id : cards[0].id;
+    children.get(id)!.push(node);
+  }
+  for (const card of cards) {
+    const tree = { ...document.tree, children: children.get(card.id)! };
+    const depth = card.id.startsWith('doc:') ? 2 : undefined;
+    questions.set(card.id, { ...openQuestionsOf(tree, serverLang(), depth), decisions: resolvedDecisionsOf(tree, depth) });
+  }
+  return { documentTitle, cards, questions };
+}
+
+const maximumConcurrentReads = 32;
+
+async function mapFiles<T, Result>(files: readonly T[], read: (file: T) => Promise<Result>): Promise<Result[]> {
+  const results = new Array<Result>(files.length);
+  let next = 0;
+  let failed = false;
+  let failure: unknown;
+  async function worker() {
+    while (!failed && next < files.length) {
+      const index = next++;
+      try { results[index] = await read(files[index]); }
+      catch (error) { if (!failed) { failed = true; failure = error; } }
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(maximumConcurrentReads, files.length) }, worker));
+  if (failed) throw failure;
+  return results;
 }
 
 /** A directory-tree fingerprint combines each file's content hash and path to cache parsed templates. */
@@ -632,20 +672,33 @@ async function directoryDigest(root: string, relativeDirectory: string): Promise
     }));
   }
   await visit('');
-  const hashes = await Promise.all(files.sort().map(async (file) => `${digest(await readFile(path.join(directory, file)))} ${file}`));
+  const hashes = await mapFiles(files.sort(), async file => `${digest(await readFile(path.join(directory, file)))} ${file}`);
   return digest(hashes.join('\n'));
 }
 
-/** Best-effort filesystem dates support sorting by last update and creation date (2026-11-04). */
-async function fileDates(root: string, relative: string): Promise<{ createdAt: string | null; updatedAt: string | null }> {
-  try {
-    const info = await stat(await containedFile(root, relative));
-    return { createdAt: Number.isFinite(info.birthtimeMs) ? info.birthtime.toISOString() : null, updatedAt: Number.isFinite(info.mtimeMs) ? info.mtime.toISOString() : null };
-  } catch { return { createdAt: null, updatedAt: null }; }
+interface FileDates { createdAt: string | null; updatedAt: string | null }
+interface FileDetails { dates: FileDates; mtimeMs: number | null }
+type ReadFileDates = (relative: string) => Promise<FileDetails>;
+
+/** 2026-11-12: resolve each dates-only directory once per scan; source reads retain their own guarded checks. */
+function fileDateReader(root: string): ReadFileDates {
+  const directories = new Map<string, Promise<string>>();
+  return async relative => {
+    try {
+      const directory = path.posix.dirname(relative);
+      let resolved = directories.get(directory);
+      if (!resolved) { resolved = containedFile(root, directory); directories.set(directory, resolved); }
+      const info = await lstat(path.join(await resolved, path.posix.basename(relative)));
+      if (!info.isFile()) return { mtimeMs: null, dates: { createdAt: null, updatedAt: null } };
+      return { mtimeMs: Number.isFinite(info.mtimeMs) ? info.mtimeMs : null, dates: {
+        createdAt: Number.isFinite(info.birthtimeMs) ? info.birthtime.toISOString() : null,
+        updatedAt: Number.isFinite(info.mtimeMs) ? info.mtime.toISOString() : null,
+      } };
+    } catch { return { mtimeMs: null, dates: { createdAt: null, updatedAt: null } }; }
+  };
 }
 
-type FileDates = Awaited<ReturnType<typeof fileDates>>;
-type FileResult = { relative: string; parsed: ParsedFileCards; dates: FileDates; warning?: never }
+type FileResult = { relative: string; parsed: FileParse<ParsedFileCards>; dates: FileDates; warning?: never }
   | { relative: string; parsed?: never; warning: string };
 interface CatalogInputs {
   rootDirectory: string;
@@ -667,7 +720,7 @@ const catalogInputs = new WeakMap<CatalogView, CatalogInputs>();
 // projects or revisions. Live views own the data; even weak lookup keys are bounded.
 const latestInputs = new Map<string, WeakRef<CatalogInputs>>();
 const maximumInputContexts = 16;
-const nativeQuestions = new WeakMap<NativeCardFile, ReturnType<typeof parseOpenQuestions>>();
+const nativeQuestions = new WeakMap<NativeCardFile, ParsedCardQuestions>();
 
 function inputContext(rootDirectory: string): string {
   return JSON.stringify([rootDirectory, serverLang()]);
@@ -679,14 +732,12 @@ function previousInputs(rootDirectory: string): CatalogInputs | undefined {
   return inputs?.rootDirectory === rootDirectory && inputs.language === serverLang() ? inputs : undefined;
 }
 
-async function readLegacyFile(root: string, relative: string, previous?: FileResult): Promise<FileResult | null> {
+async function readLegacyFile(root: string, relative: string, datesOf: ReadFileDates, previous?: FileResult): Promise<FileResult | null> {
   try {
-    const [bytes, dates] = await Promise.all([readProjectMarkdown(root, relative), fileDates(root, relative)]);
-    const sourceHash = digest(bytes);
-    const parsed = previous?.relative === relative && previous.parsed?.sourceHash === sourceHash
-      ? previous.parsed
-      : parseCached('project-file', JSON.stringify([relative, sourceHash]), bytes.length, () => parseFileCards(relative, bytes, sourceHash));
-    return { relative, parsed, dates };
+    const [bytes, details] = await Promise.all([readProjectMarkdown(root, relative), datesOf(relative)]);
+    const parsed = parseFileCached('project-file', relative, bytes, details.mtimeMs,
+      sourceHash => parseFileCards(relative, bytes, sourceHash), previous?.parsed);
+    return { relative, parsed, dates: details.dates };
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null;
     return { relative, warning: `${relative}: ${error instanceof Error ? error.message : String(error)}` };
@@ -701,8 +752,27 @@ async function readTemplates(root: string): Promise<CatalogInputs['templateCatal
     () => readJourneyTemplates(bundledDirectory, root));
 }
 
-async function nativeFileDates(root: string, native: CatalogInputs['native']): Promise<Map<string, FileDates>> {
-  return new Map(await Promise.all(native.files.map(async file => [file.card.path, await fileDates(root, file.card.path)] as const)));
+async function nativeFileDates(datesOf: ReadFileDates, native: CatalogInputs['native']): Promise<Map<string, FileDates>> {
+  return new Map(await mapFiles(native.files, async file => [file.card.path, (await datesOf(file.card.path)).dates] as const));
+}
+
+/** 2026-11-12: batch explicit native invalidations without duplicating the native reader's guards or parser. */
+async function readCatalogNativeCards(rootDirectory: string, selectedPaths?: readonly string[], previous?: CatalogInputs['native']): Promise<CatalogInputs['native']> {
+  if (selectedPaths === undefined) return readNativeCards(rootDirectory, undefined, previous);
+  const language = serverLang();
+  const paths = [...new Set(selectedPaths)].filter(relative => /^cards\/[^/]+\.md$/iu.test(relative)).sort();
+  const previousFiles = new Map(previous?.files.map(file => [file.card.path, file]));
+  const files: NativeCardFile[] = [];
+  const warnings: string[] = [];
+  for (let start = 0; start < paths.length; start += maximumConcurrentReads) {
+    const batch = paths.slice(start, start + maximumConcurrentReads);
+    const prior = previous ? { ...previous, files: batch.flatMap(relative => previousFiles.get(relative) ?? []) } : undefined;
+    const result = await readNativeCards(rootDirectory, batch, prior);
+    if (result.warnings.some(warning => warning.startsWith('cards:'))) return result;
+    files.push(...result.files);
+    warnings.push(...result.warnings);
+  }
+  return { rootDirectory, language, files, warnings: [...new Set(warnings)].sort() };
 }
 
 async function readFullProjectCatalog(root: string): Promise<CatalogView> {
@@ -712,11 +782,13 @@ async function readFullProjectCatalog(root: string): Promise<CatalogView> {
   const rootDirectory = await realpath(root);
   const language = serverLang();
   const previous = previousInputs(rootDirectory);
+  const datesOf = fileDateReader(rootDirectory);
   const { files, warnings: scanWarnings } = await markdownFiles(rootDirectory);
-  const fileResults = await Promise.all(files.map(relative => readLegacyFile(rootDirectory, relative, previous?.legacyFiles.get(relative))));
-  const legacyFiles = new Map(fileResults.filter((result): result is FileResult => result !== null).map(result => [result.relative, result]));
-  const native = await readNativeCards(root, undefined, previous?.native);
-  const nativeDates = await nativeFileDates(root, native);
+  const results = await mapFiles(files, relative => readLegacyFile(rootDirectory, relative, datesOf, previous?.legacyFiles.get(relative)));
+  const legacyFiles = new Map<string, FileResult>();
+  for (const result of results) if (result) legacyFiles.set(result.relative, result);
+  const native = await readCatalogNativeCards(rootDirectory, undefined, previous?.native);
+  const nativeDates = await nativeFileDates(datesOf, native);
   const journeyCatalog = await readJourneys(root);
   const templateCatalog = await readTemplates(root);
   return assembleCatalog({ rootDirectory, language, source, options, tags, legacyFiles, scanWarnings, native, nativeDates, journeyCatalog, templateCatalog });
@@ -741,10 +813,11 @@ export async function refreshProjectCatalog(root: string, previous: CatalogView,
   const rootDirectory = await realpath(root);
   if (!inputs || inputs.rootDirectory !== rootDirectory || inputs.language !== serverLang()) return readFullProjectCatalog(root);
   const changed = new Set([...changedPaths].map(canonicalDataPath));
+  const datesOf = fileDateReader(rootDirectory);
   const legacyFiles = new Map(inputs.legacyFiles);
-  const legacyChanges = await Promise.all([...changed].filter(isLegacyCatalogPath).map(async relative => ({
-    relative, result: await readLegacyFile(rootDirectory, relative, inputs.legacyFiles.get(relative)),
-  })));
+  const legacyChanges = await mapFiles([...changed].filter(isLegacyCatalogPath), async relative => ({
+    relative, result: await readLegacyFile(rootDirectory, relative, datesOf, inputs.legacyFiles.get(relative)),
+  }));
   for (const { relative, result } of legacyChanges) {
     if (result === null) legacyFiles.delete(relative);
     else legacyFiles.set(relative, result);
@@ -755,13 +828,13 @@ export async function refreshProjectCatalog(root: string, previous: CatalogView,
   if (nativePaths.length) {
     // 2026-11-05: an inaccessible cards directory has no usable baseline; recovery must discover its contents once.
     const incomplete = inputs.native.warnings.some(warning => warning.startsWith('cards:'));
-    const refreshed = await readNativeCards(root, incomplete ? undefined : nativePaths, inputs.native);
+    const refreshed = await readCatalogNativeCards(rootDirectory, incomplete ? undefined : nativePaths, inputs.native);
     const directoryUnavailable = refreshed.warnings.some(warning => warning.startsWith('cards:'));
     const files = new Map((directoryUnavailable ? [] : inputs.native.files).map(file => [file.card.path, file]));
     nativeDates = directoryUnavailable ? new Map() : new Map(inputs.nativeDates);
     for (const relative of nativePaths) { files.delete(relative); nativeDates.delete(relative); }
     for (const file of refreshed.files) files.set(file.card.path, file);
-    for (const [relative, dates] of await nativeFileDates(root, refreshed)) nativeDates.set(relative, dates);
+    for (const [relative, dates] of await nativeFileDates(datesOf, refreshed)) nativeDates.set(relative, dates);
     native = {
       rootDirectory, language: inputs.language,
       files: [...files.keys()].sort().map(relative => files.get(relative)!),
@@ -785,9 +858,8 @@ function assembleCatalog(inputs: CatalogInputs): CatalogView {
   const documents: CatalogView['documents'] = [];
   const cards: CatalogCard[] = [];
   const warnings: string[] = [...inputs.scanWarnings];
-  // Open questions are parsed with the file, using its content hash for native cards.
-  // kindOverride can also turn a slice into a Doc; cache that parse by the slice's text hash.
-  const questionsByCardId = new Map<string, ReturnType<typeof parseOpenQuestions>>();
+  // 2026-11-12: raw-card parses survive kind changes and projection without reparsing Markdown.
+  const questionsByCardId = new Map<string, ParsedCardQuestions>();
   const ownerByNote = new Map<string, string | null>();
   const ownerOf = (note: string): string | null => {
     let owner = ownerByNote.get(note);
@@ -797,9 +869,10 @@ function assembleCatalog(inputs: CatalogInputs): CatalogView {
   const fileResults = [...inputs.legacyFiles.keys()].sort().map(relative => inputs.legacyFiles.get(relative)!);
   for (const result of fileResults) {
     if (result.warning !== undefined) { warnings.push(result.warning); continue; }
-    documents.push({ path: result.relative, title: result.parsed.documentTitle, hash: result.parsed.sourceHash });
-    questionsByCardId.set(`doc:${result.relative}`, result.parsed.questions);
-    for (const card of result.parsed.cards) {
+    const parsed = result.parsed.value;
+    documents.push({ path: result.relative, title: parsed.documentTitle, hash: result.parsed.sourceHash });
+    for (const [id, questions] of parsed.questions) questionsByCardId.set(id, questions);
+    for (const card of parsed.cards) {
       // Cached cards are immutable; copy them before applying view options and membership.
       const copy = { ...card, ...result.dates };
       if (copy.ownerNote !== undefined) copy.owner = ownerOf(copy.ownerNote);
@@ -810,15 +883,13 @@ function assembleCatalog(inputs: CatalogInputs): CatalogView {
     const owner = resolveMember(file.card.owner, members) ?? file.card.owner;
     cards.push({ ...file.card, ...nativeDates.get(file.card.path), owner, ...(file.card.owner && owner !== file.card.owner ? { ownerNote: file.card.owner } : {}) });
     documents.push({ path: file.document.path, title: file.document.title, hash: file.document.hash });
-    if (file.card.kind === 'doc') {
-      let questions = nativeQuestions.get(file);
-      if (!questions) {
-        questions = parseCached('doc-questions', JSON.stringify([file.card.path, file.card.sourceHash]), file.card.markdown.length,
-          () => parseOpenQuestions(file.card.markdown, serverLang()));
-        nativeQuestions.set(file, questions);
-      }
-      questionsByCardId.set(file.card.id, questions);
+    let questions = nativeQuestions.get(file);
+    if (!questions) {
+      questions = parseCached('doc-questions', JSON.stringify([file.card.path, file.card.sourceHash]), file.card.markdown.length,
+        () => parseCardQuestions(file.card.markdown, serverLang()));
+      nativeQuestions.set(file, questions);
     }
+    questionsByCardId.set(file.card.id, questions);
   }
   warnings.push(...native.warnings);
   documents.push(...journeyCatalog.documents);
@@ -869,11 +940,10 @@ function assembleCatalog(inputs: CatalogInputs): CatalogView {
   // so the Hand pile, dependencies and the agent queue never see a mark the tile does not show.
   const heroesWithTasks = new Set(heroCountedTasks(cards.filter(card => !card.archived && !card.deleted)).map(card => card.parentId));
   for (const card of cards) if (card.kind === 'hero' && heroesWithTasks.has(card.id)) card.state = null;
-  // 2026-11-04: the Doc's open-question entry is authoritative; question counts and warnings are derived.
+  // 2026-11-12: every kind projects the same question and decision grammar without copying child items.
   for (const card of cards) {
-    if (card.kind !== 'doc') continue;
-    const parsed = questionsByCardId.get(card.id)
-      ?? parseCached('doc-questions', JSON.stringify(['text', digest(card.markdown)]), card.markdown.length, () => parseOpenQuestions(card.markdown, serverLang()));
+    const parsed = questionsByCardId.get(card.id)!;
+    if (parsed.decisions.length) card.decisions = parsed.decisions.map(catalogDecisionOf);
     if (parsed.questions === null) continue;
     const questionWarnings = [...parsed.warnings];
     for (const question of parsed.questions) {
@@ -886,7 +956,7 @@ function assembleCatalog(inputs: CatalogInputs): CatalogView {
       else if (!task) questionWarnings.push(serverText(catalogText).missingQuestionTask(question, card));
       else if (task.state === 'done') questionWarnings.push(serverText(catalogText).acceptedQuestionTask(question, card));
     }
-    card.openQuestions = parsed.questions.map(question => ({ text: question.text, taskRef: question.taskRef }));
+    card.openQuestions = parsed.questions.map(catalogQuestionOf);
     card.openQuestionWarnings = questionWarnings;
   }
   const view: CatalogView = { rootIdentity: digest(rootDirectory), formatLanguage: manifestLanguage(source), documents, cards, spaces: source.manifest.spaces, decks: source.manifest.decks,
@@ -1961,7 +2031,7 @@ export function validateCardState(catalog: CatalogView, card: CatalogCard, edit:
       const isActorAuthor = (author: string) => author === actor.id || resolveMember(author, members) === actor.label;
       const reported = reportAuthors.some(isActorAuthor);
       const hasOtherWork = (Boolean(card.owner) && !ownsCard) || reportAuthors.some(author => !isActorAuthor(author));
-      if (ownsCard || reported || (reporting && !hasOtherWork)) throw new Error(serverText(catalogText).selfAcceptance);
+      if (ownsCard || reported || card.previousOwnerIds?.includes(actor.id) || (reporting && !hasOtherWork)) throw new Error(serverText(catalogText).selfAcceptance);
     }
     const refusal = guardianAcceptanceRefusal(catalog, card, actorMemberId, edit.acceptedBy);
     if (refusal) throw new Error(refusal);
@@ -2020,9 +2090,8 @@ async function setCardAttributes(root: string, source: ManifestSource, edit: Ext
       if (!current || (current.state ?? 'not-started') !== state) throw new Error('CARD_CONFLICT');
       if ((card.id.startsWith('card:') || started) && current.sourceHash !== persistedSourceHash) throw new Error('CARD_CONFLICT');
     };
-    const writeOptions = async (changes: Record<string, CardOptionsPatch>): Promise<string[]> => {
-      const options = await readCardOptions(root);
-      const plan = await prepareCardOptionsPatch(root, options.hash, changes);
+    const writeOptions = async (changes: Record<string, CardOptionsPatch>, expectedHash: string): Promise<string[]> => {
+      const plan = await prepareCardOptionsPatch(root, expectedHash, changes);
       if (!plan.changed) return [];
       await plan.publish(verifyStateSaved);
       return [cardOptionsPath];
@@ -2063,9 +2132,11 @@ async function setCardAttributes(root: string, source: ManifestSource, edit: Ext
     if (startHandMemberId !== null) stages.push({
       title: serverText(catalogText).handStage,
       run: async () => {
+        // 2026-11-12: a batch snapshot cannot authorize replacing newer Hand membership or slots.
+        const fresh = await refreshProjectCatalog(root, await readProjectCatalog(root), [cardOptionsPath]);
+        const current = fresh.cards.find(item => item.id === card.id);
         // 2026-11-09: a repeated start must not reshuffle a hand the card is already in; only a missing membership is completed.
-        if ((card.state ?? 'not-started') === state && (card.handMemberIds ?? []).includes(startHandMemberId)) return [];
-        const fresh = await readProjectCatalog(root);
+        if ((card.state ?? 'not-started') === state && (current?.handMemberIds ?? []).includes(startHandMemberId)) return [];
         const hand = selectCatalogHand(getCatalogHands(fresh), startHandMemberId, serverLang());
         // Starting a card puts it first in the hand, even when full, without changing other hand members.
         const order = [card.id, ...hand.cards.filter(item => item.state !== 'done' && item.id !== card.id).map(item => item.id)];
@@ -2078,20 +2149,21 @@ async function setCardAttributes(root: string, source: ManifestSource, edit: Ext
           if (id === card.id && !(item.handMemberIds ?? []).includes(startHandMemberId)) patch.handMemberIds = [...new Set([...item.handMemberIds ?? [], startHandMemberId])];
           changes[id] = patch;
         }
-        return writeOptions(changes);
+        return writeOptions(changes, fresh.optionsHash ?? '');
       },
     });
     if (card.state === 'done' || state === 'done' || card.doneAt != null) stages.push({
       // The acceptance date drives the done pile's weekly badge and auto-archiving.
       title: serverText(catalogText).acceptedDateStage,
       run: async () => {
-        const current = (await readProjectCatalog(root)).cards.find(item => item.id === card.id);
+        const fresh = await refreshProjectCatalog(root, await readProjectCatalog(root), [cardOptionsPath]);
+        const current = fresh.cards.find(item => item.id === card.id);
         // 2026-11-09: retries must keep the original acceptance date, including after midnight.
         let doneAt: string | null = null;
         if (state === 'done') doneAt = localIsoDate();
         if (state === 'done' && card.state === 'done' && current?.doneAt) doneAt = current.doneAt;
         if ((current?.doneAt ?? null) === doneAt) return [];
-        return writeOptions({ [card.id]: { doneAt } });
+        return writeOptions({ [card.id]: { doneAt } }, fresh.optionsHash ?? '');
       },
     });
     return runDecisionStages(stages, serverText(catalogText).repeatState);
@@ -2099,23 +2171,33 @@ async function setCardAttributes(root: string, source: ManifestSource, edit: Ext
   validateOwner(edit.owner); validateEffort(edit.effort); validatePriority(edit.priority);
   const owner = edit.owner === null ? null : resolveMember(edit.owner.trim(), catalog.members ?? []) ?? edit.owner.trim();
   const changes = { owner, effort: edit.effort, priority: edit.priority };
-  if (card.id.startsWith('card:')) {
-    const changed = await editNativeCardProperties(root, card.id, edit.sourceHash, changes, verify);
-    return changed ? [card.path] : [];
-  }
-  const entry = source.manifest.membership.find(candidate => candidate.card === card.id);
-  const changedKeys = (['owner', 'effort', 'priority'] as const).filter(key => !entry || !Object.hasOwn(entry, key) || entry[key] !== changes[key]);
-  if (changedKeys.length === 0) return [];
-  if (!source.bytes) {
-    const manifest = { ...source.manifest, membership: [{ card: card.id, ...changes }] };
-    validateManifest(manifest);
-    if (!await createManagedMarkdown(root, catalogPath, manifest, workspaceHeader(manifestLanguage(source)), verify)) throw new Error('CATALOG_CONFLICT');
-  } else {
-    let patched = source;
-    for (const key of changedKeys) patched = parseManifestBytes(patchLegacyScalar(patched, card.id, key, changes[key]));
-    await replaceProjectMarkdown(root, catalogPath, edit.manifestHash, patched.bytes!, verify);
-  }
-  return [catalogPath];
+  const publishProperties = async (): Promise<string[]> => {
+    if (card.id.startsWith('card:')) {
+      const changed = await editNativeCardProperties(root, card.id, edit.sourceHash, changes, verify);
+      return changed ? [card.path] : [];
+    }
+    const entry = source.manifest.membership.find(candidate => candidate.card === card.id);
+    const changedKeys = (['owner', 'effort', 'priority'] as const).filter(key => !entry || !Object.hasOwn(entry, key) || entry[key] !== changes[key]);
+    if (changedKeys.length === 0) return [];
+    if (!source.bytes) {
+      const manifest = { ...source.manifest, membership: [{ card: card.id, ...changes }] };
+      validateManifest(manifest);
+      if (!await createManagedMarkdown(root, catalogPath, manifest, workspaceHeader(manifestLanguage(source)), verify)) throw new Error('CATALOG_CONFLICT');
+    } else {
+      let patched = source;
+      for (const key of changedKeys) patched = parseManifestBytes(patchLegacyScalar(patched, card.id, key, changes[key]));
+      await replaceProjectMarkdown(root, catalogPath, edit.manifestHash, patched.bytes!, verify);
+    }
+    return [catalogPath];
+  };
+  const history = previousOwnerPatch(card, catalog.members ?? [], owner);
+  if (!history) return publishProperties();
+  // 2026-11-12: persist the previous owner before publishing a reassignment, even if the second stage fails.
+  const plan = await prepareCardOptionsPatch(root, catalog.optionsHash ?? '', { [card.id]: history });
+  return runDecisionStages([
+    { title: serverText(catalogText).ownerStage, run: async () => { await plan.publish(verify); return [cardOptionsPath]; } },
+    { title: serverText(catalogText).ownerStage, run: publishProperties },
+  ], serverText(catalogText).repeatState);
 }
 
 /** 2026-11-04: store the complete order of a member's open hand cards as slots in Card Options. */
@@ -2138,8 +2220,7 @@ async function reorderHand(root: string, edit: Extract<CatalogEdit, { action: 'r
   for (const [index, id] of order.entries()) {
     changes[id] = { handOrder: { ...byId.get(id)!.handOrder ?? {}, [hand.member.id]: index } };
   }
-  const options = await readCardOptions(root);
-  const plan = await prepareCardOptionsPatch(root, options.hash, changes);
+  const plan = await prepareCardOptionsPatch(root, catalog.optionsHash ?? '', changes);
   if (!plan.changed) return [];
   await plan.publish();
   return [cardOptionsPath];
@@ -2235,8 +2316,6 @@ type RaiseDecisionEdit = Extract<CatalogEdit, { action: 'raise-decision' }>;
 type RecordDecisionEdit = Extract<CatalogEdit, { action: 'record-decision' }>;
 type DecisionEdit = RaiseDecisionEdit | RecordDecisionEdit;
 
-const escapedPattern = (text: string): string => text.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&');
-
 /**
  * Apply compound-action stages sequentially; failures report completed and remaining stages.
  * After any saved stage, mark errors saved: return 200 with a warning, and let a retry finish the work.
@@ -2258,158 +2337,155 @@ async function runDecisionStages(stages: Array<{ title: string; run: () => Promi
   return [...new Set(paths)];
 }
 
-/** Resolve the rule's Doc card, human owner, and current editable body, excluding legacy YAML/H1. */
-async function readRuleCard(root: string, edit: DecisionEdit): Promise<{ card: CatalogCard; member: CatalogMember; markdown: string; sourceHash: string }> {
+/** 2026-11-12: question writes use the same body boundaries as the content editor. */
+async function readQuestionCard(root: string, edit: { cardId: string; manifestHash: string }) {
   const catalog = await readProjectCatalog(root);
   if (catalog.manifestHash !== edit.manifestHash) throw new Error('CATALOG_CONFLICT');
   const card = catalog.cards.find(candidate => candidate.id === edit.cardId);
   if (!card) throw new Error(serverText(catalogText).cardMissing);
-  if (card.kind !== 'doc') throw new Error(serverText(catalogText).questionDoc);
-  const member = (catalog.members ?? []).find(candidate => candidate.id === edit.memberId);
+  const content = await readCardContent(root, card.id);
+  const sectionDepth = card.id.startsWith('doc:') && isMechanicPath(card.path) ? 2 : undefined;
+  return { catalog, card, markdown: content.markdown, sourceHash: content.sourceHash, sectionDepth };
+}
+
+async function readRuleCard(root: string, edit: DecisionEdit) {
+  const rule = await readQuestionCard(root, edit);
+  const member = (rule.catalog.members ?? []).find(candidate => candidate.id === edit.memberId);
   if (!member) throw new Error(serverText(catalogText).memberMissing);
   if (member.kind !== 'human') throw new Error(serverText(catalogText).humanDecision);
-  const content = await readCardContent(root, card.id);
-  return { card, member, markdown: content.markdown, sourceHash: content.sourceHash };
+  return { ...rule, member };
 }
 
-/** Publish Doc content with update-card-content primitives; sourceHash guards the write. */
-async function writeRuleDoc(root: string, card: CatalogCard, sourceHash: string, markdown: string, manifestHash: string): Promise<string[]> {
-  const verifyManifest = () => verifyManifestHash(root, manifestHash);
-  if (card.id.startsWith('card:')) {
-    const file = await readNativeCard(root, card.id);
-    if (!file || file.fileHash !== sourceHash) throw new Error('CARD_CONFLICT');
-    const bytes = patchManagedMarkdown(file, {}, markdown);
-    if (bytes.equals(file.bytes)) return [];
-    await replaceProjectMarkdown(root, card.path, sourceHash, bytes, verifyManifest);
-    return [card.path];
-  }
-  const content = await readCardContent(root, card.id);
-  return updateCardContent(root, { action: 'update-card-content', manifestHash, cardId: card.id, sourceHash, title: content.title, markdown }, verifyManifest, true);
+/** 2026-11-12: parser-prepared edits preserve mixed EOLs instead of normalizing an unrelated body. */
+async function writeQuestionCard(root: string, card: CatalogCard, sourceHash: string, markdown: string, manifestHash: string): Promise<string[]> {
+  return updateCardBody(root, { cardId: card.id, sourceHash, markdown }, () => verifyManifestHash(root, manifestHash));
 }
 
-/** 2026-11-05: the framing sentences of a decision Task's body, in the project's format language; both sections are named by their markers. */
-const decisionTaskText: Record<FormatLanguage, { fromRule: (rule: string, section: string) => string; answerNote: (section: string) => string }> = {
-  en: {
-    fromRule: (rule, section) => `A question from the rule ${rule}, section “${section}”:`,
-    answerNote: section => `The human's answer is recorded by the record-decision command in the rule's “${section}” section.`,
-  },
-  ru: {
-    fromRule: (rule, section) => `Вопрос из правила ${rule}, раздел «${section}»:`,
-    answerNote: section => `Ответ человека записывается командой record-decision в «${section}» правила.`,
-  },
-};
-
-/**
- * Turn an open question into a decision Task with a Doc parent, human owner, hand entry, and backlink.
- * Retries with the same taskCardId skip completed stages; check sourceHash only when writing the question.
- */
-async function raiseDecision(root: string, edit: RaiseDecisionEdit, source: ManifestSource): Promise<string[]> {
+function validateQuestionSelection(edit: { questionIndex: number; questionText: string }): void {
   if (!Number.isInteger(edit.questionIndex) || edit.questionIndex < 0) throw new Error(serverText(catalogText).questionIndex);
   if (typeof edit.questionText !== 'string' || !edit.questionText.trim()) throw new Error(serverText(catalogText).questionText);
-  if (typeof edit.taskCardId !== 'string' || !edit.taskCardId.startsWith('card:')) throw new Error(serverText(catalogText).decisionId);
-  if (typeof edit.deckId !== 'string' || !edit.deckId) throw new Error(serverText(catalogText).decisionDeck);
-  const rule = await readRuleCard(root, edit);
-  const questions = parseOpenQuestions(rule.markdown, serverLang()).questions;
-  const question = questions?.[edit.questionIndex];
-  if (!question || question.text !== edit.questionText.trim()) throw new Error(serverText(catalogText).questionChanged);
-  // A decision Task cannot serve two questions; the parser would flag the duplicate reference.
-  const taskReference = shortReference('c', edit.taskCardId);
-  if (questions?.some((other, index) => index !== edit.questionIndex && other.taskRef === taskReference)) {
-    throw new Error(serverText(catalogText).decisionAlreadyLinked);
+}
+
+function validateQuestionAssignee(catalog: CatalogView, assignee: string | null): void {
+  if (assignee !== null && !catalog.members?.some(member => member.id === assignee)) throw new Error(serverText(catalogText).memberMissing);
+}
+
+async function editQuestion(root: string, source: ManifestSource,
+  edit: Extract<CatalogEdit, { action: 'ask-question' | 'assign-question' }>): Promise<string[]> {
+  const rule = await readQuestionCard(root, edit);
+  validateQuestionAssignee(rule.catalog, edit.assignee);
+  let markdown: string;
+  if (edit.action === 'ask-question') {
+    if (typeof edit.text !== 'string' || !edit.text.trim() || edit.text.length > 2000 || /[\r\n\u0000]/u.test(edit.text)) {
+      throw new Error(serverText(catalogText).questionBody);
+    }
+    let target: string | null = null;
+    if (edit.target != null) {
+      if (typeof edit.target !== 'string') throw new Error(serverText(catalogText).questionTarget);
+      const destination = parseDecisionTarget(edit.target);
+      if (!destination) throw new Error(serverText(catalogText).questionTarget);
+      target = destination.ref + (destination.fragment ? `#${destination.fragment}` : '');
+    }
+    const text = decisionAnswerText(edit.text, rule.markdown);
+    const questions = parseOpenQuestions(rule.markdown, serverLang(), rule.sectionDepth).questions ?? [];
+    if (target !== null) await decisionTargetRange(root, rule.catalog, target);
+    const resolved = resolvedDecisionsOf(markdownParser.parse(rule.markdown), rule.sectionDepth);
+    if (hasMatchingQuestion(questions, resolved, { text, assignee: edit.assignee, target }, shortReference('c', rule.card.id))) return [];
+    const depth = /^(?:hero|task):/u.test(rule.card.id) ? 4 : 2;
+    markdown = appendQuestion(rule.markdown, edit.text.trim(), edit.assignee, target, manifestLanguage(source), depth, rule.sectionDepth);
+    const appended = parseOpenQuestions(markdown, serverLang(), rule.sectionDepth).questions;
+    const question = appended?.at(-1);
+    if (appended?.length !== questions.length + 1 || question?.text !== text || question.assignee !== edit.assignee || question.target !== target) {
+      throw new Error(serverText(catalogText).questionBoundary);
+    }
+  } else {
+    validateQuestionSelection(edit);
+    markdown = assignQuestion(rule.markdown, edit.questionIndex, edit.questionText, edit.assignee, serverLang(), rule.sectionDepth);
   }
-  const questionTitle = question.text;
-  const formatLanguage = manifestLanguage(source);
-  const decisionMarker = writeMarker('decision', formatLanguage);
-  const openQuestionsMarker = writeMarker('openQuestions', formatLanguage);
-  const decidedMarker = writeMarker('decided', formatLanguage);
-  const bodyText = decisionTaskText[formatLanguage];
-  const docReference = shortReference('c', rule.card.id);
-  const item = rule.markdown.slice(question.start, question.end).trimEnd();
-  const taskMarkdown = `${bodyText.fromRule(`[${rule.card.title}](/r/${docReference})`, openQuestionsMarker)}\n\n${item}\n\n${bodyText.answerNote(decidedMarker)}\n`;
-  const stages: Array<{ title: string; run: () => Promise<string[]> }> = [
-    {
-      title: serverText(catalogText).decisionStage,
-      run: async () => {
-        const existing = (await readProjectCatalog(root)).cards.find(candidate => candidate.id === edit.taskCardId);
-        if (existing) {
-          const matchingTitle = markerWords('decision').some(marker => existing.title === `${marker} ${questionTitle}`);
-          const linked = question.taskRef === taskReference;
-          const matchingBody = linked || (await readCardContent(root, existing.id)).markdown === taskMarkdown;
-          if (existing.kind !== 'task' || existing.parentId !== rule.card.id || (!linked && (!matchingTitle || !matchingBody))) {
-            throw new Error(serverText(catalogText).decisionIdTaken(existing));
-          }
-          return [];
-        }
-        return createCard(root, { action: 'create-card', cardId: edit.taskCardId, kind: 'task', title: `${decisionMarker} ${questionTitle}`,
-          markdown: taskMarkdown,
-          deckId: edit.deckId, trackIds: [], parentId: rule.card.id, owner: rule.member.label, effort: null, priority: null, manifestHash: edit.manifestHash });
-      },
-    },
-    {
-      title: serverText(catalogText).memberHandStage,
-      run: async () => {
-        const fresh = await readProjectCatalog(root);
-        const task = fresh.cards.find(candidate => candidate.id === edit.taskCardId);
-        if (!task) throw new Error(serverText(catalogText).decisionMissing);
-        const bulk = await (await import('./catalog-bulk.ts')).editCatalogBulk(root, { action: 'bulk-edit-cards',
-          cards: [{ cardId: task.id, sourceHash: task.sourceHash }], manifestHash: edit.manifestHash, optionsHash: fresh.optionsHash ?? '',
-          change: { kind: 'hand', memberId: edit.memberId, mode: 'add' } });
-        return bulk.changedPaths;
-      },
-    },
-    {
-      title: serverText(catalogText).questionLinkStage,
-      run: async () => {
-        const fresh = await readCardContent(root, rule.card.id);
-        const updated = linkDecisionTask(fresh.markdown, edit.questionIndex, edit.questionText, edit.taskCardId, serverLang(), formatLanguage);
-        // The link already exists, so this stage needs neither a write nor the previous sourceHash.
-        if (updated === fresh.markdown) return [];
-        if (fresh.sourceHash !== edit.sourceHash) throw new Error('CARD_CONFLICT');
-        return writeRuleDoc(root, rule.card, edit.sourceHash, updated, edit.manifestHash);
-      },
-    },
-  ];
-  return runDecisionStages(stages, serverText(catalogText).repeatRaiseDecision);
+  if (markdown === rule.markdown) return [];
+  if (rule.sourceHash !== edit.sourceHash) throw new Error('CARD_CONFLICT');
+  return writeQuestionCard(root, rule.card, edit.sourceHash, markdown, edit.manifestHash);
+}
+
+/** 2026-11-12: old callers can address a question without creating work or changing an existing Task. */
+async function raiseDecision(root: string, edit: RaiseDecisionEdit, source: ManifestSource): Promise<string[]> {
+  await readRuleCard(root, edit);
+  return editQuestion(root, source, { action: 'assign-question', cardId: edit.cardId, sourceHash: edit.sourceHash,
+    manifestHash: edit.manifestHash, questionIndex: edit.questionIndex, questionText: edit.questionText, assignee: edit.memberId });
+}
+
+async function applyDecisionAnswer(root: string, edit: Extract<CatalogEdit, { action: 'apply-decision' }>): Promise<string[]> {
+  if (!Number.isInteger(edit.decisionIndex) || edit.decisionIndex < 0) throw new Error(serverText(catalogText).decisionIndex);
+  if (typeof edit.answer !== 'string' || !edit.answer.trim()) throw new Error(serverText(catalogText).answerEmpty);
+  if (edit.note !== undefined && (typeof edit.note !== 'string' || edit.note.length > 2000 || edit.note.includes('\u0000'))) {
+    throw new Error(serverText(catalogText).decisionNote);
+  }
+  const rule = await readQuestionCard(root, edit);
+  const markdown = applyDecision(rule.markdown, edit.decisionIndex, edit.answer, localIsoDate(), serverLang(), rule.sectionDepth, edit.note);
+  if (markdown === rule.markdown) return [];
+  if (rule.sourceHash !== edit.sourceHash) throw new Error('CARD_CONFLICT');
+  return writeQuestionCard(root, rule.card, edit.sourceHash, markdown, edit.manifestHash);
+}
+
+function questionDecisionTask(catalog: CatalogView, cardId: string, taskRef: string): CatalogCard {
+  let task: CatalogCard | null = null;
+  try { task = resolveReference(catalog.cards, 'c', taskRef, serverLang()); }
+  catch { /* 2026-11-12: a dangling or ambiguous reference cannot authorize accepting another card. */ }
+  if (!task) throw new Error(serverText(catalogText).questionTaskMissing(taskRef));
+  if (task.kind !== 'task' || task.parentId !== cardId) throw new Error(serverText(catalogText).questionTaskUnrelated(taskRef));
+  return task;
 }
 
 /**
  * Move an open question to the resolved section as an answer with author and local date, and accept its Task.
  * A persisted identical answer makes retries no-ops; a changed question conflicts.
  */
-async function recordDecisionAnswer(root: string, source: ManifestSource, edit: RecordDecisionEdit): Promise<string[]> {
-  if (!Number.isInteger(edit.questionIndex) || edit.questionIndex < 0) throw new Error(serverText(catalogText).questionIndex);
-  if (typeof edit.questionText !== 'string' || !edit.questionText.trim()) throw new Error(serverText(catalogText).questionText);
+async function recordDecisionAnswer(root: string, source: ManifestSource, edit: RecordDecisionEdit, actorMemberId: string | null): Promise<string[]> {
+  validateQuestionSelection(edit);
   if (typeof edit.answer !== 'string' || !edit.answer.trim()) throw new Error(serverText(catalogText).answerEmpty);
   const rule = await readRuleCard(root, edit);
+  const actor = rule.catalog.members?.find(member => member.id === actorMemberId);
+  if (actorMemberId !== null && !actor) throw new Error(serverText(catalogText).memberMissing);
+  const recordedBy = actor?.kind === 'agent' ? actor.label : undefined;
   const ruleText = edit.answer.replace(/\s+/gu, ' ').trim();
-  const question = parseOpenQuestions(rule.markdown, serverLang()).questions?.[edit.questionIndex];
-  // On retries after saving, compare the answer text because the date may have changed.
-  const recorded = new RegExp(`^- ${escapedPattern(ruleText)} — ${escapedPattern(rule.member.label)}, \\d{4}-\\d{2}-\\d{2}$`, 'mu');
-  if (!question || question.text !== edit.questionText.trim()) {
-    if (recorded.test(rule.markdown)) return [];
-    throw new Error(serverText(catalogText).questionChanged);
+  const question = parseOpenQuestions(rule.markdown, serverLang(), rule.sectionDepth).questions?.[edit.questionIndex];
+  let taskRef = question?.taskRef ?? null;
+  let recorded = false;
+  if (!question || question.text !== edit.questionText.trim() || rule.sourceHash !== edit.sourceHash) {
+    // 2026-11-12: the shared grammar handles both formats; new entries also verify the original question on retries.
+    const answerText = decisionAnswerText(ruleText, rule.markdown);
+    const previous = resolvedDecisionsOf(markdownParser.parse(rule.markdown), rule.sectionDepth).find(entry =>
+      entry.answer === answerText && entry.author === rule.member.label && entry.recordedBy === (recordedBy ?? null) && entry.date !== null
+      && (entry.question === null || entry.question === edit.questionText.trim()));
+    if (previous) {
+      recorded = true;
+      taskRef = previous.taskRef;
+    } else if (!question || question.text !== edit.questionText.trim()) throw new Error(serverText(catalogText).questionChanged);
   }
-  const taskRef = question.taskRef;
+  // 2026-11-12: a Markdown link is not authority to accept unrelated work, including on a saved-answer retry.
+  if (taskRef) {
+    const task = questionDecisionTask(rule.catalog, rule.card.id, taskRef);
+    validateCardState(rule.catalog, task, { action: 'set-card-state', cardId: task.id, sourceHash: task.sourceHash,
+      state: 'done', acceptedBy: rule.member.label, manifestHash: edit.manifestHash }, actorMemberId);
+  }
   const formatLanguage = manifestLanguage(source);
   const stages: Array<{ title: string; run: () => Promise<string[]> }> = [
     {
       title: serverText(catalogText).decidedStage,
       run: async () => {
+        if (recorded) return [];
         if (rule.sourceHash !== edit.sourceHash) throw new Error('CARD_CONFLICT');
-        const updated = recordDecision(rule.markdown, edit.questionIndex, edit.questionText, edit.answer, rule.member.label, localIsoDate(), serverLang(), formatLanguage);
-        return writeRuleDoc(root, rule.card, edit.sourceHash, updated, edit.manifestHash);
+        const updated = recordDecision(rule.markdown, edit.questionIndex, edit.questionText, edit.answer, rule.member.label, localIsoDate(), serverLang(), formatLanguage, rule.sectionDepth, recordedBy);
+        return writeQuestionCard(root, rule.card, edit.sourceHash, updated, edit.manifestHash);
       },
     },
     {
       title: serverText(catalogText).acceptDecisionStage,
       run: async () => {
         if (!taskRef) return [];
-        let task: CatalogCard | null = null;
-        try { task = resolveReference((await readProjectCatalog(root)).cards, 'c', taskRef, serverLang()); }
-        catch { task = null; }
-        if (!task) throw new Error(serverText(catalogText).questionTaskMissing(taskRef));
+        const task = questionDecisionTask(await readProjectCatalog(root), rule.card.id, taskRef);
         return setCardAttributes(root, source, { action: 'set-card-state', cardId: task.id, sourceHash: task.sourceHash,
-          state: 'done', acceptedBy: rule.member.label, manifestHash: edit.manifestHash });
+          state: 'done', acceptedBy: rule.member.label, manifestHash: edit.manifestHash }, actorMemberId);
       },
     },
   ];
@@ -2481,8 +2557,10 @@ export async function editProjectCatalog(root: string, edit: CatalogEdit, actorM
   if (edit.action === 'set-deck-zones') return setDeckZones(root, source, edit);
   if (edit.action === 'move-cards-in-deck') return moveCardsInDeck(root, source, edit);
   if (edit.action === 'set-inbox-deck') return setInboxDeck(root, source, edit);
+  if (edit.action === 'ask-question' || edit.action === 'assign-question') return editQuestion(root, source, edit);
+  if (edit.action === 'apply-decision') return applyDecisionAnswer(root, edit);
   if (edit.action === 'raise-decision') return raiseDecision(root, edit, source);
-  if (edit.action === 'record-decision') return recordDecisionAnswer(root, source, edit);
+  if (edit.action === 'record-decision') return recordDecisionAnswer(root, source, edit, actorMemberId);
   if (edit.action === 'create-journey' || edit.action === 'apply-journey') {
     const catalog = await readProjectCatalog(root);
     if (catalog.manifestHash !== edit.manifestHash) throw new Error('CATALOG_CONFLICT');

@@ -3,6 +3,7 @@
 import type { ServerConfig } from '../../server/config.ts';
 import type { CatalogMember, CatalogView } from '../../src/catalog-contracts.ts';
 import { getCatalogHands, selectCatalogHand } from '../../src/catalog-hand.ts';
+import { AgentToolError } from '../../src/agent-tools.ts';
 import type { DataSource } from '../../src/workspace-contracts.ts';
 
 export interface CommandContext {
@@ -19,6 +20,13 @@ export type CommandOptions = ReadonlyMap<string, string>;
 
 export interface CommandModule {
   run(context: CommandContext, positionals: string[], options: CommandOptions): Promise<void>;
+}
+
+/** Prints a tool failure as JSON and sets the exit code; any other error propagates unchanged. */
+export function printToolFailure(error: unknown): void {
+  if (!(error instanceof AgentToolError)) throw error;
+  console.log(JSON.stringify(error.toFailure()));
+  process.exitCode = 1;
 }
 
 /**

@@ -4,6 +4,54 @@ Notable changes are grouped by version using [Keep a Changelog](https://keepacha
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-11-13
+
+### Agents
+
+- **MCP server.** `deckmate mcp` serves MCP clients over standard input and output with eleven tools: `next`, `brief`, `create_cards`, `update_card`, `report`, `ask`, `question`, `answer`, `apply_decision`, `search` and the read-only `organize`. The project comes from `--data`, `DECKMATE_DATA` or the nearest project folder, and the acting member from the call, a configured default or the recognized client; `rev` rejects writes over newer edits, `create_cards` is retry-safe, and every error names its next step. `deckmate project create`, `update` and `organize` run the same operations; `skills install` registers the server where a portable launch line exists and protects differing entries and local skill edits from replacement without `--force`.
+- **Questions and decisions.** `ask` writes a question on the card it concerns, with an answer target; a Task with an open question is not eligible for `next` until it is answered. `question` returns the question context for a `c-…#N` ref, `answer` records the approved answer, `next` returns a pending decision before ordinary cards with its exact target, and `apply_decision` records the incorporation once the target has been edited.
+- **Board layout and `organize`.** One shared rule set now reaches the installed AGENTS.md block, the `/deckmate` skill and MCP instructions; the read-only `organize` tool and `deckmate project organize` audit placement or recommend a deck, Hero/Sub Card and rule Doc with source pointers. Install also lists possible board-rule conflicts outside its managed AGENTS.md block without changing them.
+- **Skill writes through MCP or the CLI.** The `/deckmate` skill creates and changes cards with the MCP tools or `deckmate project create` / `update`; HTTP stays for operations without a tool or command, such as card text, dependencies, Hand, Runs and milestones, Journeys and boards. docs/catalog.md, docs/api.md and the READMEs now point agents at the MCP route first.
+
+### Data reliability and security
+
+- **Questions and decisions on every card.** Questions keep an inline addressee and optional answer target on Task, Hero and Doc cards without creating Decision Tasks. Recorded answers retain the question and its options, enter a pending-application pool and are marked applied separately; legacy answers remain applied. Guarded writes, target line pointers and activity support retrying without duplicates.
+- **Coordinated writes.** Agent operations discover the running server by project, or write directly when none is running; an interprocess lock prevents writes to the same project from interleaving. Direct writes skip the project's Python board script and say so, while writes through a running board keep its normal rebuild.
+- **Batched card creation.** Batched card creation sends one write request per batch, uses one interprocess lock, and refreshes the catalog index once afterward, reducing per-card requests and refreshes.
+- **Safer MCP operations.** MCP `report.file` must be inside the project. Loading `.env.local` is restricted, and MCP messages have a size limit. On Windows a Job Object contains the server process; Desktop warns before updating while agents are connected.
+- **Write-lock recovery.** The project write lock and its recovery guard are published complete in one atomic step, so a process paused while recovering a dead lock can no longer remove the lock of a writer that started meanwhile.
+
+### Performance
+
+- **Faster server start.** The server answers its first request before the project is loaded and waits for the project only where a request needs it; the SQLite index is reused when the files are unchanged, and Node's compile cache is enabled. In measurements the first response came 21–58% sooner and a cold catalog 37–41% sooner.
+- **Faster MCP handshake.** `deckmate mcp` answers `initialize`, `tools/list` and `ping` without opening the project, about five times faster; the project opens on the first tool call.
+- **Faster catalog reads.** Cards are parsed in one pass with bounded reads and a content-verified parse cache; a cold read of 10,000 cards dropped from 18 to 11.5 seconds with identical results.
+- **Smaller first load.** Heavy screens and editors load on demand while the previous screen stays visible; the initial JavaScript is 16% smaller and the initial CSS 22% smaller.
+- **Faster checks.** Browser tests reuse one browser per run with a disposable context per page, `npm run test:fast` overlaps unit tests with three browser shards on one fixture build, and CI balances its browser shards by measured time and caches Rust build output; the full local suite now finishes in minutes instead of most of an hour.
+- **Immediate desktop window.** The desktop window appears at once; when the last project opens automatically, a startup screen shows while the bundled server starts in parallel.
+
+### Interface
+
+- **Questions panel and decisions to apply.** Questions are excluded from reading text: the open card's rail has a Questions tab with a count, and a Task awaiting an answer shows a note that opens it. **Answer** records the decision; the question-link action copies its link, and decisions show their to-apply/applied state. Card tiles also show open-question counts; the main menu's To apply item and its trigger show the pending-decision pool and count.
+- **Doc word counts.** Doc tiles, the open card, Hand and Vision show a localized word count of the readable Markdown, so document sizes are comparable at a glance.
+- **Card details.** Agent activity has an avatar, and the new Sub Card form has a material band.
+- **Board details.** Deck tiles count tasks in review separately from open cards; the sidebar has a focus ring, and family rows show the tag icon.
+- **Server-status capsule.** The server-status capsule shows connection and save states without shifting the header.
+- **Keyboard hints.** Shortcut labels adapt to the platform and expose readable key names to assistive technology across the board and the editor.
+- **Screen polish.** Touch targets no longer overlap in Manual zones, the Table and Focus Mode; Hand and Timeline show dates and remaining effort again, and the Hand queue and Milestone hints stay on screen; Sub Card rows, mobile menus, long document paths, CSV import and keyboard focus in Journey and the start screen were tidied.
+- **Question drafts.** A typed answer or question survives a click outside the panel, and an answer is never saved to a different question after the card changes on disk.
+
+### Desktop shell
+
+- **MCP without a separate runtime.** `Deckmate.exe mcp` runs the bundled Node.js runtime, so Windows clients need no separate install; pass the executable's path in the client configuration.
+- **Update coordination.** Before an in-app update, Desktop warns about active Desktop MCP sessions and starts no new ones during installation; continuing can interrupt them. Direct Node sessions and a manual portable replacement are not covered.
+- **Process cleanup.** Windows starts the server, the project initializer and the Desktop MCP child inside a Job Object before execution, so their process trees close with the shell.
+
+### Documentation
+
+- **MCP guide.** docs/mcp.md describes the `deckmate mcp` server for MCP clients: connecting through `skills install` or a manual launch line (including `Deckmate.exe mcp` and `--check`), how the project and the acting member are found, the eleven tools with their parameters and response shapes, rev guards, retry-safe creation, error `next` steps, response limits, and the matching `deckmate project` commands.
+- **Board and data guides.** The catalog contract describes the question and decision format with its write actions, the API reference lists those actions and the CLI question commands, the UI map and design notes cover the Questions panel and the to-apply pool, and the README screenshots are refreshed.
+
 ## [0.7.1] - 2026-11-11
 
 ### Agents
@@ -247,7 +295,8 @@ First public release.
 - Third-party notices: `dist/client/third-party-licenses.md` now carries full license texts for bundled packages that ship no license file and for code embedded in prebuilt packages (Chevrotain, Langium, the vscode-languageserver libraries and lodash-es inside `@mermaid-js/parser`, js-yaml inside `mermaid`); the build fails on an empty section or on undeclared embedded code.
 - Source-checkout instructions also open the demo, and the `/deckmate` analyze and audit workflows move new cards to `discussing` after creating them.
 
-[Unreleased]: https://github.com/pierkulakov/deckmate/compare/v0.7.1...HEAD
+[Unreleased]: https://github.com/pierkulakov/deckmate/compare/v0.8.0...HEAD
+[0.8.0]: https://github.com/pierkulakov/deckmate/compare/v0.7.1...v0.8.0
 [0.7.1]: https://github.com/pierkulakov/deckmate/compare/v0.7.0...v0.7.1
 [0.7.0]: https://github.com/pierkulakov/deckmate/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/pierkulakov/deckmate/compare/v0.5.0...v0.6.0

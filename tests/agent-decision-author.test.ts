@@ -12,7 +12,7 @@ let app: FastifyInstance | undefined;
 let root: string | undefined;
 afterEach(async () => { await app?.close(); if (root) await rm(root, { recursive: true, force: true }); });
 
-it.each(['leo', 'build-agent', undefined])('records the explicitly confirmed human in Markdown and the journal (ambient actor: %s)', async actor => {
+it.each(['leo', 'build-agent', undefined])('retains the human answer and the actual recording actor (%s)', async actor => {
   root = await mkdtemp(path.join(tmpdir(), 'deckmate-decision-author-'));
   await mkdir(path.join(root, 'tasks'));
   const manifest = emptyManifest();
@@ -43,7 +43,8 @@ it.each(['leo', 'build-agent', undefined])('records the explicitly confirmed hum
   expect(markdown).toContain('Use the checked build. — Leo Park,');
   expect(markdown).not.toContain('— Maya Chen');
   const history = (await app.inject({ url: `/api/card-activity?source=sandbox&cardId=${encodeURIComponent(card.id)}`, headers })).json();
-  expect(history.events.find((event: { action: string }) => event.action === 'record-decision'), JSON.stringify({ history, warnings: response.json().warnings })).toMatchObject({ actorMemberId: 'leo' });
+  expect(markdown).toContain(actor === 'build-agent' ? '— Leo Park, via Build Agent,' : '— Leo Park, 20');
+  expect(history.events.find((event: { action: string }) => event.action === 'record-decision'), JSON.stringify({ history, warnings: response.json().warnings })).toMatchObject({ actorMemberId: actor ?? 'leo' });
   const retry = await app.inject({ method: 'POST', url: '/api/catalog', headers: authorized, payload });
   expect(retry.statusCode).toBe(200);
   const repeated = (await app.inject({ url: `/api/card-activity?source=sandbox&cardId=${encodeURIComponent(card.id)}`, headers })).json();

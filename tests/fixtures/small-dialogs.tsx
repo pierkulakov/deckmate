@@ -2,6 +2,7 @@ import { createRoot } from 'react-dom/client';
 import { MembersEditor } from '../../client/components/MembersEditor.tsx';
 import { QuickCapture } from '../../client/components/QuickCapture.tsx';
 import { ShortcutsHelp } from '../../client/components/ShortcutsHelp.tsx';
+import type { ShortcutScreen } from '../../client/keyboard-shortcuts.ts';
 import { setLang } from '../../client/i18n.ts';
 import type { CatalogAction } from '../../client/useCatalog.ts';
 import type { CatalogCard, CatalogView } from '../../src/catalog-contracts.ts';
@@ -43,7 +44,7 @@ window.fetch = async (input, init) => {
   return Response.json({});
 };
 
-function render(scene: 'members' | 'quick' | 'shortcuts', options: { lang?: 'en' | 'ru'; theme?: 'light' | 'dark' } = {}) {
+function render(scene: 'members' | 'quick' | 'shortcuts', options: { lang?: 'en' | 'ru'; theme?: 'light' | 'dark'; screens?: ShortcutScreen[] } = {}) {
   setLang(options.lang === 'ru' ? 'ru' : 'en');
   document.documentElement.classList.toggle('dark', options.theme !== 'light');
   const key = ++instance;
@@ -51,7 +52,7 @@ function render(scene: 'members' | 'quick' | 'shortcuts', options: { lang?: 'en'
   else if (scene === 'quick') root.render(<QuickCapture key={key} snapshot={snapshot} refreshKey={0} onOpenCard={id => opened.push(id)} />);
   else root.render(<>
     <div id="topbar-shortcuts" />
-    <ShortcutsHelp key={key} screens={['app', 'deck']} writable />
+    <ShortcutsHelp key={key} screens={options.screens ?? ['app', 'deck']} writable />
   </>);
 }
 

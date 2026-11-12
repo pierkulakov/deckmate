@@ -15,6 +15,11 @@ export function preparedResource<Value>(loader: () => Promise<Value>): PreparedR
   };
 }
 
+// 2026-11-12: intent preloads must leave failures to the foreground error boundary.
+export function preload(resource: PreparedResource<unknown>): void {
+  void resource.load().catch(() => {});
+}
+
 // 2026-11-10: keep the old screen interactive until import evaluation and CSS installation finish.
 // A later navigation wins even when an older chunk arrives last; failed imports still reach React's boundary.
 export function preparedNavigation() {

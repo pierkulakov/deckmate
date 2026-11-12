@@ -40,7 +40,10 @@
 }
 
 .deck-card-identity { display: flex; align-items: center; color: inherit; }
-.catalog-card-doc .deck-card-identity { gap: 4px; height: 16px; margin-bottom: 0; }
+/* 2026-11-12: the Doc kind mark keeps the left of the band and the document volume takes the right, as on the metrics row. */
+.catalog-card-doc .deck-card-identity { gap: 4px; height: 16px; margin-bottom: 0; justify-content: space-between; }
+.catalog-card-doc .deck-card-identity > .card-questions-metric { max-width: calc(50% - 14px); overflow: hidden; }
+.catalog-card-doc .deck-card-identity > .doc-word-count { max-width: calc(50% - 14px); }
 .deck-card-doc-kind > svg { width: var(--tile-metric-icon); height: var(--tile-metric-icon); }
 .deck-card-doc-kind { display: inline-flex; flex: 0 0 auto; }
 /* 2026-11-11: one 16px row for every tile. The owner medallion never moves or grows it: the left metric stops short of

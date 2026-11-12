@@ -1,7 +1,7 @@
 /* Attachments share the 379 px Properties column. Use theme tokens so the light theme stays usable. */
 
 /* 2026-11-06: the same 12 px inset and 355 px content as Properties, so switching the two panels keeps one left edge. */
-.attachments-panel { display: flex; flex-direction: column; gap: 24px; width: 379px; min-width: 0; max-width: 100%; padding: 12px 12px 32px; color: var(--ink); background: var(--canvas); font-size: 12px; line-height: 14px; }
+.attachments-panel { container: attachments / inline-size; display: flex; flex-direction: column; gap: 24px; width: 379px; min-width: 0; max-width: 100%; padding: 12px 12px 32px; color: var(--ink); background: var(--canvas); font-size: 12px; line-height: 14px; }
 
 /* 2026-11-10: the panel heading keeps its compact caps and uses the Foil 600 weight. */
 .attachments-heading { display: flex; align-items: center; gap: 24px; min-height: 24px; }
@@ -12,7 +12,9 @@
 .attachments-tools .ui-button:hover:not(:disabled) { border-color: var(--button-line); background: var(--hover); }
 .attachments-tools .ui-button[aria-expanded="true"], .attachments-tools .ui-button.is-active { border-color: var(--mark); background: var(--mark-tint); color: var(--mark); }
 .attachments-tools .ui-button:is([aria-expanded="true"], .is-active):hover:not(:disabled) { border-color: var(--mark); background: var(--mark-tint-strong); color: var(--mark); }
+/* 2026-11-12: filters must share the card menu layer above the phone's full-screen focus shell. */
 .attachments-menu { min-width: 160px; }
+.dropdown.attachments-menu { z-index: 90; }
 .attachments-menu-check { display: inline-flex; flex-shrink: 0; width: 14px; }
 
 /* 2026-11-10: the drop box keeps its dimensions and uses the Foil 2px field corner and quiet line. */
@@ -57,6 +59,12 @@
 .attachments-file > svg { flex-shrink: 0; }
 .attachments-file > span { min-width: 0; overflow: hidden; color: var(--ink); font-size: 14px; line-height: 16px; white-space: nowrap; text-overflow: ellipsis; }
 .attachments-file > small { flex-shrink: 0; margin-left: auto; color: var(--danger); font-size: 12px; }
+/* 2026-11-12: in a narrow column the uploader name moves to its own line instead of shrinking to zero beside the actions. */
+@container attachments (max-width: 320px) {
+  .attachments-row-head { flex-wrap: wrap; }
+  .attachments-row-author { flex: 1; }
+  .attachments-row-actions { flex-basis: 100%; justify-content: flex-end; }
+}
 
 /* Image viewer: zoom, pan and navigation between card images. The scrim is the darker --scrim-heavy token: images need a near-black field. */
 .attachment-viewer-overlay { position: fixed; inset: 0; z-index: var(--z-viewer-overlay); background: var(--scrim-heavy); }

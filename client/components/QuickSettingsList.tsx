@@ -5,12 +5,13 @@ import { defineText, locale, useLang, useText } from '../i18n.ts';
 import { moveFocus } from '../focus.ts';
 import '../deck-picker.css';
 import { usePreparedEntrance } from '../prepared-motion.ts';
+import { Keys } from './Keys.tsx';
 
 const text = defineText(
   { searchLabel: (title: string) => `Search ${title}`, choose: (title: string) => `Choose ${title}`,
     current: 'current', beforeKeys: 'Use ', beforeEnter: ' to navigate, ', afterEnter: ' to ', confirm: 'confirm' },
   { searchLabel: (title: string) => `Поиск: ${title}`, choose: (title: string) => `Выбрать: ${title}`,
-    current: 'текущее', beforeKeys: '', beforeEnter: ' — выбор, ', afterEnter: ' — ', confirm: 'подтвердить' });
+    current: 'текущее', beforeKeys: '', beforeEnter: ' — выбор, ', afterEnter: ' — ', confirm: 'подтвердить' });
 
 export interface QuickSettingsChoice {
   key: string;
@@ -106,7 +107,7 @@ export function QuickSettingsList({ title, choices, current, disabled, searchDis
           : <EmptyState />)}
       </div>
     </div>
-    <p className="deck-choice-hint">{t.beforeKeys}{tabs && <kbd>←</kbd>}<kbd>↑</kbd><kbd>↓</kbd>{tabs && <kbd>→</kbd>}{t.beforeEnter}<kbd>Enter</kbd>{t.afterEnter}<button type="button" className="deck-choice-confirm" disabled={disabled || activeIndex < 0} onClick={() => choose(filtered[activeIndex]?.key)}>{t.confirm}</button>.</p>
+    <p className="deck-choice-hint">{t.beforeKeys}{tabs && <Keys combo={{ key: 'ArrowLeft' }} />}<Keys combo={{ key: 'ArrowUp' }} /><Keys combo={{ key: 'ArrowDown' }} />{tabs && <Keys combo={{ key: 'ArrowRight' }} />}{t.beforeEnter}<Keys combo={{ key: 'Enter' }} />{t.afterEnter}<button type="button" className="deck-choice-confirm" disabled={disabled || activeIndex < 0} onClick={() => choose(filtered[activeIndex]?.key)}>{t.confirm}</button>.</p>
   </div>;
 }
 

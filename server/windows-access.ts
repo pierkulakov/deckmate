@@ -7,10 +7,17 @@ let sequence = 0;
 const pending = new Map<number, AccessRequest>();
 
 // 2026-11-12: one pipe-bound helper amortizes PowerShell startup; checking each lock must not stall other writers.
+// 2026-11-13: an elevated administrator's new files are owned by the Administrators group rather than the user;
+// that group already counts as a trusted writer, so it is an acceptable owner only for such a process.
 const script = `
   $ErrorActionPreference = 'Stop'
   [Console]::InputEncoding = [Text.Encoding]::UTF8
-  $user = [Security.Principal.WindowsIdentity]::GetCurrent().User
+  $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
+  $user = $identity.User
+  $owners = @($user.Value)
+  if ((New-Object Security.Principal.WindowsPrincipal($identity)).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
+    $owners += 'S-1-5-32-544'
+  }
   while ($null -ne ($line = [Console]::ReadLine())) {
     $request = $null
     try {
@@ -18,7 +25,7 @@ const script = `
       foreach ($target in @($request.filename, $request.parent)) {
         if (!$target) { continue }
         $acl = Get-Acl -LiteralPath $target
-        if ($acl.GetOwner([Security.Principal.SecurityIdentifier]).Value -ne $user.Value) { throw 'owner' }
+        if ($acl.GetOwner([Security.Principal.SecurityIdentifier]).Value -notin $owners) { throw 'owner' }
         if ($request.restrict -and $target -eq $request.filename) {
           $private = New-Object Security.AccessControl.DirectorySecurity
           $private.SetOwner($user)

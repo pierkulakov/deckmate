@@ -488,11 +488,13 @@ it.each(['dead', 'empty', 'invalid'])('recovers an abandoned %s reaper after a c
   const old = new Date(Date.now() - 1000);
   await utimes(reaper, old, old);
   let active = 0;
+  // 2026-11-13: this case checks recovery and mutual exclusion, not speed; three serialized atomic publications with
+  // the Windows ACL check did not fit a 200 ms acquisition budget on CI runners.
   await Promise.all([1, 2, 3].map(() => withProjectWriteLock(root, async () => {
     expect(active++).toBe(0);
     expect(JSON.parse(await readFile(filename, 'utf8')).pid).toBe(process.pid);
     active -= 1;
-  }, { timeoutMs: 200, retryMs: 2, staleMs: 100 })));
+  }, { timeoutMs: 2_000, retryMs: 2, staleMs: 100 })));
   await expect(readFile(reaper)).rejects.toMatchObject({ code: 'ENOENT' });
   await expect(readFile(`${reaper}.reap`)).rejects.toMatchObject({ code: 'ENOENT' });
 });

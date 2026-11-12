@@ -835,12 +835,21 @@ export async function createApp(config: ServerConfig, options: { deferStartup?: 
     await new Promise<void>((resolve, reject) => sockets.close(error => error ? reject(error) : resolve()));
   });
   app.addHook('onClose', async () => {
+    // 2026-11-13: a cold Windows PowerShell for the coordination ACL check can take seconds on a slow machine, and the
+    // desktop shell kills a server that has not stopped within its own deadline. Deferred startup and discovery
+    // therefore get a bounded wait; a registration left behind names a dead process and the next discovery removes it.
+    const deadline = Date.now() + 1_500;
+    const settle = <Value>(promise: Promise<Value> | undefined) => new Promise<Value | undefined>(resolve => {
+      const timer = setTimeout(() => resolve(undefined), Math.max(0, deadline - Date.now()));
+      timer.unref();
+      void Promise.resolve(promise).then(value => { clearTimeout(timer); resolve(value); }, () => { clearTimeout(timer); resolve(undefined); });
+    });
     try {
-      await projectStartup?.catch(() => {});
+      await settle(projectStartup);
       await catalog?.close();
       await boards?.close();
     } finally {
-      try { await (await registration)?.(); }
+      try { await settle((await settle(registration))?.()); }
       catch { /* 2026-11-12: stale discovery data must not prevent the remaining shutdown hooks. */ }
     }
   });

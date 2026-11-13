@@ -56,6 +56,22 @@ it('rejects a denied ACL and rejects all pending checks when the helper exits', 
 
 it('fails closed and terminates the helper when its response deadline expires', async () => {
   vi.useFakeTimers();
+  // 2026-11-13: a cold helper may need up to twenty seconds for its first answer under parallel load.
+  const pending = check('C:\\blocked', undefined, false).catch(error => error);
+  let settled = false;
+  void pending.then(() => { settled = true; });
+  await vi.advanceTimersByTimeAsync(5000);
+  expect(settled).toBe(false);
+  await vi.advanceTimersByTimeAsync(15_000);
+  expect(await pending).toBeInstanceOf(Error);
+  expect(child.kill).toHaveBeenCalledOnce();
+});
+
+it('keeps the five-second deadline once the helper has answered', async () => {
+  vi.useFakeTimers();
+  const first = check('C:\\first', undefined, false);
+  child.stdout.write('1:ok\n');
+  await first;
   const pending = check('C:\\blocked', undefined, false).catch(error => error);
   await vi.advanceTimersByTimeAsync(5000);
   expect(await pending).toBeInstanceOf(Error);

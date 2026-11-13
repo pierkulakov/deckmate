@@ -18,6 +18,8 @@ describe.skipIf(!browserPath)('one-step Hero return (browser)', () => {
   const selected = (id: string) => `new URLSearchParams(location.search).get('card') === 'card:${id}'`;
 
   async function click(selector: string) {
+    // 2026-11-14: preview parts such as tags render after the card content arrives; a slow runner reaches the click first.
+    await until(`document.querySelector(${JSON.stringify(selector)})`);
     const point = await callFunction(`selector => { const element = document.querySelector(selector); element.scrollIntoView({ block: 'nearest' });
       const box = element.getBoundingClientRect(); return { x: box.x + box.width / 2, y: box.y + box.height / 2 }; }`, selector);
     await send('Input.dispatchMouseEvent', { type: 'mouseMoved', ...point });

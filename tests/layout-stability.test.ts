@@ -37,9 +37,12 @@ describe.skipIf(!browserPath)('language layout stability (browser)', () => {
   async function startMeasurement(selector: string, observeShifts = false) {
     await waitForLayout(evaluate, selector);
     await evaluate(`(() => {
-      const nodes = [...new Set([...document.querySelectorAll(${JSON.stringify(selector)}),
+      const candidates = [...new Set([...document.querySelectorAll(${JSON.stringify(selector)}),
         ...(window.layoutScrollports ?? []).filter(node => node.isConnected)])];
       const geometry = node => { const r = node.getBoundingClientRect(); return [r.x, r.y, r.width, r.height, node.scrollLeft, node.scrollTop]; };
+      // 2026-11-14: virtual grids may recycle cells that start outside the viewport; only nodes a person can see are held still.
+      const visible = node => { const r = node.getBoundingClientRect(); return r.bottom > 0 && r.top < innerHeight && r.right > 0 && r.left < innerWidth; };
+      const nodes = candidates.filter(node => node === document.documentElement || visible(node));
       const before = nodes.map(geometry);
       const started = performance.now(), layoutShifts = [];
       const collect = entries => entries.filter(entry => entry.startTime >= started).forEach(entry => layoutShifts.push({

@@ -201,7 +201,11 @@ function render(scene: 'app' | 'bulk' = 'app', options: { lang?: Lang; theme?: s
 Object.assign(window, { shellTest: {
   render,
   bulkChanges,
-  startSave: (duration = 200) => { const finish = beginSave(); setTimeout(() => finish(true), duration); },
+  startSave: (duration: number | null = 200) => {
+    const finish = beginSave();
+    if (duration !== null) setTimeout(() => finish(true), duration);
+    return () => finish(true);
+  },
   disconnect: (hold = false) => { holdReconnect = hold; snapshotFails = true; sockets.forEach(socket => socket.disconnect()); },
   setLang,
   get shutdownCalls() { return shutdownCalls; },

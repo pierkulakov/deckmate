@@ -20,6 +20,7 @@ describe.skipIf(!browserPath)('card state shortcuts on the real Deck', () => {
     await delay(80);
   }
   async function click(selector: string) {
+    await until(`Boolean(document.querySelector(${JSON.stringify(selector)}))`);
     await page.callFunction('selector => document.querySelector(selector).click()', selector);
     await delay(70);
   }
@@ -85,7 +86,7 @@ describe.skipIf(!browserPath)('card state shortcuts on the real Deck', () => {
     await hover();
     await key('w', 'KeyW');
     await click('.card-review-return');
-    await until(`Boolean(document.querySelector('.journey-return-reason input'))`);
+    await until(`Boolean(document.querySelector('.journey-return-reason input')) && document.activeElement === document.querySelector('.journey-return-reason input')`);
     await page.send('Input.insertText', { text: 'Исправить результат' });
     await page.evaluate(`window.cardStateTest.failEdit('conflict')`);
     await click('.journey-return-actions button:last-child');
@@ -116,13 +117,21 @@ describe.skipIf(!browserPath)('card state shortcuts on the real Deck', () => {
   it('preserves hover-Space assignment, start and stop outside Review and direct W completion', async () => {
     await render({ state: 'not-started' });
     await hover();
-    for (let index = 0; index < 3; index++) await key(' ', 'Space');
+    const states = ['planned', 'working', 'planned'];
+    for (const [index, state] of states.entries()) {
+      await key(' ', 'Space');
+      // 2026-11-14: the next shortcut is ignored while the preceding write is still locked.
+      await until(`window.cardStateTest.requests.length === ${index + 1}
+        && Boolean(document.querySelector('${reviewTile} .deck-state-${state} .deck-card-open:not(:disabled)'))
+        && document.querySelector('${reviewTile} .deck-card-owner')?.title.includes('Maya Chen')`);
+    }
     expect(await page.evaluate('window.cardStateTest.requests')).toMatchObject([
       { action: 'bulk-edit-cards', change: { kind: 'properties', owner: 'Maya Chen' } },
       { action: 'set-card-state', state: 'started' },
       { action: 'set-card-state', state: 'not-started' },
     ]);
     await key('w', 'KeyW');
+    await until('window.cardStateTest.requests.length === 4');
     expect(await page.evaluate('window.cardStateTest.requests[3]')).toMatchObject({ action: 'set-card-state', state: 'done' });
   });
 

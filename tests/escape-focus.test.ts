@@ -183,11 +183,13 @@ describe.skipIf(!browserPath)('one Escape per layer (browser)', () => {
     expect(await page.evaluate('document.documentElement.hasAttribute("data-tab-focus")')).toBe(false);
   }
   async function pauseDepartingTips() {
-    // 2026-11-13: paused exits expose stale Escape ownership independently of worker speed.
-    await page.evaluate(`new MutationObserver(() => {
-      for (const tip of document.querySelectorAll('.card-tag-tooltip[data-state="closed"], .journey-track-tip[data-state="closed"]'))
-        for (const animation of tip.getAnimations()) animation.pause();
-    }).observe(document.body, { subtree: true, attributes: true, attributeFilter: ['data-state'] })`);
+    // 2026-11-14: a distinct paused exit keeps Radix Presence mounted even after the entry animation finishes.
+    await page.evaluate(`(() => {
+      const style = document.createElement('style');
+      style.textContent = '@keyframes escape-test-exit { to { opacity: 0; } }'
+        + '.card-tag-tooltip[data-state="closed"], .journey-track-tip[data-state="closed"] { animation: escape-test-exit 1s paused; }';
+      document.head.append(style);
+    })()`);
   }
   afterAll(async () => { await page?.close(); }, 20000);
 
@@ -296,11 +298,14 @@ describe.skipIf(!browserPath)('one Escape per layer (browser)', () => {
       await tabsTo(face); await key('Enter');
       await until('Boolean(document.querySelector(".card-preview .tag-badge-link"))');
       await pauseDepartingTips();
+      // 2026-11-14: rapid Tab traversal can leave the tag before its tooltip commits.
+      await tabsTo('.card-preview .tag-badge-link');
+      await until('Boolean(document.querySelector(".card-tag-tooltip[data-state]:not([data-state=closed])"))');
       await tabsTo('.card-preview-owner-shortcut'); await key('Enter');
       await until('document.activeElement.matches(".deck-choice-search")');
       await key('A', 'KeyA'); await key('l', 'KeyL'); await key('e', 'KeyE'); await key('x', 'KeyX');
       await key('ArrowDown');
-      expect(await page.evaluate('Boolean(document.querySelector(".card-tag-tooltip[data-state=closed]"))')).toBe(true);
+      await until('Boolean(document.querySelector(".card-tag-tooltip[data-state=closed]"))');
       await key('Escape');
       await until('!document.querySelector(".deck-picker-popover")');
       await expectRestored('.card-preview-owner-shortcut');

@@ -7,7 +7,11 @@ import { motionMetrics, replayPathError, sampleMotion, untilMotionReady, type Mo
 import { handSlotDrag } from './helpers/cold-motion-actions.ts';
 
 const browserPath = requireBrowser();
-const click = (selector: string) => `document.querySelector(${JSON.stringify(selector)}).click()`;
+const click = (selector: string) => `(() => {
+  const element = document.querySelector(${JSON.stringify(selector)});
+  if (!element || element.matches(':disabled')) throw Error('Motion action is not ready: ' + ${JSON.stringify(selector)});
+  element.click();
+})()`;
 const cover = '.deck-transition-ghost [data-deck-cover="top"] || .deck-view [data-deck-cover="top"] .catalog-deck-cover || .deck-view [data-deck-cover="top"]';
 
 async function coldPage(rate: number, query = '') {
@@ -36,7 +40,20 @@ function expectDeckPath(sample: MotionSample) {
     const expected = from[axis] + (to[axis] - from[axis]) * frame.progress!;
     expect(Math.abs(frame.box![axis] - expected), `axis ${axis} at ${frame.time}ms`).toBeLessThanOrEqual(2);
   }
-  expect(motionMetrics(sample).activeMaxFrameMs).toBeLessThanOrEqual(50);
+  expect(motionMetrics(sample).clockErrorMs).toBeLessThanOrEqual(.01);
+  const prepared = sample.frames.filter(frame => frame.clocks.some(clock => clock.role === 'target' && clock.playState === 'paused'));
+  expect(prepared.length).toBeGreaterThan(0);
+  for (const frame of prepared) for (let axis = 0; axis < 4; axis++) {
+    expect(Math.abs(frame.box![axis] - from[axis]), `prepared axis ${axis}`).toBeLessThanOrEqual(2);
+  }
+  for (const frame of moving) {
+    const travel = frame.clocks.find(clock => clock.role === 'target')!;
+    const clip = frame.clocks.find(clock => clock.role === 'clip')!;
+    expect(clip).toBeDefined();
+    expect(clip.duration).toBe(travel.duration);
+    expect(clip.easing).toBe(travel.easing);
+    expect(clip.progress).toBeCloseTo(travel.progress!, 5);
+  }
 }
 
 describe.skipIf(!browserPath)('cold motion matches replay (browser)', () => {
@@ -47,11 +64,18 @@ describe.skipIf(!browserPath)('cold motion matches replay (browser)', () => {
       await page.evaluate(`document.documentElement.style.setProperty('--motion-feedback', '.15s')`);
       const opening: MotionSample[] = [], closing: MotionSample[] = [];
       for (let replay = 0; replay < 2; replay++) {
-        opening.push(await sampleMotion(page, cover, `${click('.catalog-cover-item [data-deck-cover="top"]')};
-          requestAnimationFrame(() => { window.revealTiming = document.querySelector('.catalog-workbench').getAnimations().map(a => a.effect.getTiming()); });`));
-        const reveal = await page.evaluate(`window.revealTiming.find(timing => timing.delay >= 200)`);
-        expect(reveal.duration).toBe(150);
-        closing.push(await sampleMotion(page, cover, click('.deck-open-toolbar button')));
+        const opened = await sampleMotion(page, cover, click('.catalog-cover-item [data-deck-cover="top"]'), 800,
+          { synchronized: { clip: '.deck-transition-layer', reveal: '.catalog-workbench' } });
+        opening.push(opened);
+        const reveals = opened.frames.flatMap(frame => frame.clocks.filter(clock => clock.role === 'reveal'));
+        expect(reveals.length).toBeGreaterThan(0);
+        const travel = opened.frames.flatMap(frame => frame.clocks).find(clock => clock.role === 'target')!;
+        for (const reveal of reveals) {
+          expect(reveal.duration).toBe(150);
+          expect(reveal.delay).toBe(travel.duration);
+          if (reveal.currentTime! <= reveal.delay) expect(reveal.progress).toBe(0);
+        }
+        closing.push(await sampleMotion(page, cover, click('.deck-open-toolbar button'), 800, { synchronized: { clip: '.deck-transition-layer' } }));
       }
       for (const sample of [...opening, ...closing]) expectDeckPath(sample);
       expectSameLanding(...opening as [MotionSample, MotionSample]);
@@ -67,8 +91,8 @@ describe.skipIf(!browserPath)('cold motion matches replay (browser)', () => {
       await waitForLayout(page.evaluate, '.catalog-results');
       expect(await page.evaluate(`getComputedStyle(document.querySelector('.catalog-results-body')).display`)).toBe('contents');
       const previous = new Map<string, MotionSample>();
-      async function record(name: string, selector: string, action: string) {
-        const sample = await sampleMotion(page, selector, action);
+      async function record(name: string, selector: string, action: string, ready = 'true') {
+        const sample = await sampleMotion(page, selector, action, 800, { ready });
         const last = previous.get(name);
         if (last) expectSameLanding(last, sample);
         previous.set(name, sample);
@@ -83,7 +107,7 @@ describe.skipIf(!browserPath)('cold motion matches replay (browser)', () => {
           expect(frame.box![0]).toBeLessThanOrEqual(landing[0] + 5.1);
           expect(Math.abs(frame.box![1] - landing[1])).toBeLessThanOrEqual(2);
         }
-        expect(motionMetrics(preview).activeMaxFrameMs).toBeLessThanOrEqual(50);
+        expect(motionMetrics(preview).clockErrorMs).toBeLessThanOrEqual(.01);
         await untilMotionReady(page, `document.querySelector('.card-title-edit:not(:disabled)')`);
         for (const panel of ['properties', 'attachments', 'dependencies', 'questions', 'history']) {
           const action = click(`.card-preview-action-rail button[aria-controls$="-${panel}"]`);
@@ -93,13 +117,18 @@ describe.skipIf(!browserPath)('cold motion matches replay (browser)', () => {
           await page.evaluate(action);
         }
         // 2026-11-13: the shell jumps by the parent strip; the content panel owns the entrance and comparable progress.
-        const child = await record('child', '.card-preview-panel[data-panel="content"]', click('[data-journey-card-id="card:1"]'));
-        const returned = await record('return', '.card-preview-panel[data-panel="content"]', click('.card-preview-parent'));
-        for (const sample of [child, returned]) expect(sample.frames.filter(frame => frame.progress !== null && frame.progress > 0 && frame.progress < 1).length).toBeGreaterThanOrEqual(5);
+        const child = await record('child', '.card-preview-panel[data-panel="content"]', click('[data-journey-card-id="card:1"]'),
+          `document.querySelector('.card-preview-task')`);
+        const returned = await record('return', '.card-preview-panel[data-panel="content"]', click('.card-preview-parent'),
+          `document.querySelector('.card-preview-hero')`);
+        for (const [name, sample] of [['child', child], ['return', returned]] as const) {
+          expect(sample.frames.filter(frame => frame.progress !== null && frame.progress > 0 && frame.progress < 1).length,
+            `${name}: ${JSON.stringify(sample.frames.filter(frame => frame.clocks.length))}`).toBeGreaterThanOrEqual(5);
+        }
         await page.evaluate(`Object.defineProperty(navigator, 'clipboard', {configurable:true, value:{writeText: async () => {}}})`);
         const toast = await record('toast', '.card-id-feedback:not(:empty)', click('.card-id-chip'));
         expect(toast.frames.filter(frame => frame.progress !== null && frame.progress > 0 && frame.progress < 1).length).toBeGreaterThanOrEqual(5);
-        expect(motionMetrics(toast).activeMaxFrameMs).toBeLessThanOrEqual(50);
+        expect(motionMetrics(toast).clockErrorMs).toBeLessThanOrEqual(.01);
         await page.evaluate(click('.card-preview-tools button'));
         await waitForLayout(page.evaluate, '.catalog-results');
       }
@@ -123,6 +152,21 @@ describe.skipIf(!browserPath)('cold motion matches replay (browser)', () => {
     } finally { await page.close(); }
   });
 
+  it('keeps sampling a retained panel until its replacement commits and animates', async () => {
+    const page = await coldPage(1, '&entrance');
+    try {
+      await page.evaluate(click('#show'));
+      await waitForLayout(page.evaluate, '#entrance-target');
+      const sample = await sampleMotion(page, '#entrance-target', `
+        window.previousEntrance = document.querySelector('#entrance-target');
+        setTimeout(() => { ${click('#hide')}; requestAnimationFrame(() => { ${click('#show')}; }); }, 200);
+      `, 50, { ready: `document.querySelector('#entrance-target') && document.querySelector('#entrance-target') !== window.previousEntrance` });
+      expect(sample.frames.some(frame => frame.progress !== null && frame.progress > 0 && frame.progress < 1)).toBe(true);
+      expect(motionMetrics(sample).clockErrorMs).toBeLessThanOrEqual(.01);
+      expect(page.consoleErrors).toEqual([]);
+    } finally { await page.close(); }
+  });
+
   it.each([1, 4])('replays the Hand lift and expansion without a new path, CPU ×%s', async rate => {
     const page = await coldPage(rate);
     try {
@@ -141,7 +185,7 @@ describe.skipIf(!browserPath)('cold motion matches replay (browser)', () => {
       }
       expectSameLanding(...lift as [MotionSample, MotionSample]);
       expectSameLanding(...expansion as [MotionSample, MotionSample]);
-      for (const sample of lift) expect(motionMetrics(sample).activeMaxFrameMs).toBeLessThanOrEqual(50);
+      for (const sample of lift) expect(motionMetrics(sample).clockErrorMs).toBeLessThanOrEqual(.01);
       expect(page.consoleErrors).toEqual([]);
     } finally { await page.close(); }
   }, 20000);
@@ -181,7 +225,7 @@ describe.skipIf(!browserPath)('cold motion matches replay (browser)', () => {
           const expected = sample.frames[0].box![0] + 30 * (1 - frame.progress!);
           expect(Math.abs(frame.box![0] - expected)).toBeLessThanOrEqual(2);
         }
-        expect(motionMetrics(sample).activeMaxFrameMs).toBeLessThanOrEqual(50);
+        expect(motionMetrics(sample).clockErrorMs).toBeLessThanOrEqual(.01);
         await waitForLayout(page.evaluate, '.hand-panel');
       }
       expectSameLanding(...samples as [MotionSample, MotionSample]);

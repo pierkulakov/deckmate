@@ -206,6 +206,7 @@ export async function createApp(config: ServerConfig, options: { deferStartup?: 
   // 2026-11-09: the running package's version; the literal here said 0.1.0 since the first release.
   const packageVersion = readFile(packagePath('package.json'), 'utf8')
     .then(text => (JSON.parse(text) as { version: string }).version, () => 'unknown');
+  const discoveryCancellation = new AbortController();
   let registration: Promise<(() => Promise<void>) | undefined> | undefined;
   app.addHook('onListen', async () => {
     const address = app.server.address();
@@ -221,7 +222,7 @@ export async function createApp(config: ServerConfig, options: { deferStartup?: 
     // 2026-11-12: discovery is optional; an inaccessible cache must not break serving or graceful shutdown.
     registration = packageVersion.then(async version => {
       const { registerRunningServer } = await import('./server-discovery.ts');
-      return registerRunningServer(config, config.writeRoot!, address.port, version);
+      return registerRunningServer(config, config.writeRoot!, address.port, version, discoveryCancellation.signal);
     })
       .catch(() => undefined);
   });
@@ -859,6 +860,7 @@ export async function createApp(config: ServerConfig, options: { deferStartup?: 
   // 2026-11-05: upgraded browser sockets must close before Fastify waits for the HTTP server.
   app.addHook('preClose', async () => {
     closing = true;
+    discoveryCancellation.abort();
     clearInterval(historyTimer);
     clearInterval(runScheduleTimer);
     // 2026-11-12: active API requests may await the initial scan; close it before Fastify drains those requests.
@@ -870,22 +872,23 @@ export async function createApp(config: ServerConfig, options: { deferStartup?: 
     await new Promise<void>((resolve, reject) => sockets.close(error => error ? reject(error) : resolve()));
   });
   app.addHook('onClose', async () => {
-    // 2026-11-13: a cold Windows PowerShell for the coordination ACL check can take seconds on a slow machine, and the
-    // desktop shell kills a server that has not stopped within its own deadline. Deferred startup and discovery
-    // therefore get a bounded wait; a registration left behind names a dead process and the next discovery removes it.
-    const deadline = Date.now() + 1_500;
-    const settle = <Value>(promise: Promise<Value> | undefined) => new Promise<Value | undefined>(resolve => {
-      const timer = setTimeout(() => resolve(undefined), Math.max(0, deadline - Date.now()));
-      timer.unref();
-      void Promise.resolve(promise).then(value => { clearTimeout(timer); resolve(value); }, () => { clearTimeout(timer); resolve(undefined); });
-    });
     try {
-      await settle(projectStartup);
-      await settle(catalog?.close());
-      await settle(boards?.close());
+      // 2026-11-14: project writes and SQLite must really finish before a successful exit; discovery's
+      // optional cache cleanup must not consume their drain budget or turn a failed close into success.
+      await projectStartup?.catch(() => {});
+      const drained = await Promise.allSettled([catalog?.close(), boards?.close()]);
+      const failed = drained.find(result => result.status === 'rejected');
+      if (failed?.status === 'rejected') throw failed.reason;
     } finally {
-      try { await settle((await settle(registration))?.()); }
-      catch { /* 2026-11-12: stale discovery data must not prevent the remaining shutdown hooks. */ }
+      // 2026-11-14: unpublished discovery is cancelled in preClose. An already acquired lock still needs
+      // its normal release; a stale registration after this bounded cleanup is reaped by the next discovery.
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      try {
+        await Promise.race([
+          registration?.then(cleanup => cleanup?.()).catch(() => {}),
+          new Promise<void>(resolve => { timer = setTimeout(resolve, 1_500); timer.unref(); }),
+        ]);
+      } finally { clearTimeout(timer); }
       if (process.platform === 'win32') (await import('./windows-access.ts')).closeWindowsAccess();
     }
   });

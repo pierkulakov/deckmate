@@ -17,7 +17,7 @@ const documentShim = {
   createTextNode: (text: string) => { const node = new Node('#text'); node.textContent = text; return node; },
 };
 const context = { URL } as { URL: typeof URL; DeckmateWhatsNew?: { parseChangelog: (text: string) => Section[]; pickSections: (sections: Section[], from: string | null, to: string) => Section[]; renderSection: (section: Section, doc: typeof documentShim) => Node } };
-runInNewContext(readFileSync('desktop/launcher/whats-new.js', 'utf8'), context);
+runInNewContext(readFileSync('client/desktop/whats-new.js', 'utf8'), context);
 const { parseChangelog, pickSections, renderSection } = context.DeckmateWhatsNew!;
 const versions = (sections: Section[]) => Array.from(sections, section => section.version);
 
@@ -56,9 +56,9 @@ describe('What’s new changelog', () => {
     const heading = new Node('h1');
     const root = { removeAttribute: () => {} };
     const failure = { ok: false, message: 'Не удалось прочитать журнал изменений' };
-    runInNewContext(readFileSync('desktop/launcher/whats-new.js', 'utf8'), {
+    runInNewContext(readFileSync('client/desktop/whats-new.js', 'utf8'), {
       URL,
-      window: { __TAURI_INTERNALS__: { invoke: async () => failure } },
+      window: { __TAURI_INTERNALS__: { invoke: async () => failure }, prepareDeckmatePage: async () => {} },
       document: { getElementById: (id: string) => id === 'heading' ? heading : root },
     });
     await expect.poll(() => heading.textContent).toBe(failure.message);

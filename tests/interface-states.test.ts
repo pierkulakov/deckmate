@@ -36,6 +36,7 @@ describe.skipIf(!browserPath)('shared interface states and recovery (browser)', 
     await reset();
     await page.evaluate(`statesTest.setLang('${lang}')`);
     await until(`document.documentElement.lang === '${lang}'`);
+    await until(`Boolean(document.querySelector('.ui-loading-plate [role=status]'))`);
     expect(await page.evaluate(`document.querySelectorAll('.ui-empty[role=status]').length`)).toBe(3);
     expect(await page.evaluate(`document.querySelectorAll('.ui-error[role=alert]').length`)).toBe(3);
     const body = await page.evaluate('document.body.innerText');

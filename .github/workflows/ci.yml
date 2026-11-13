@@ -132,6 +132,8 @@ jobs:
       # A debug shell serves dist/server/main.js from this checkout, so the client
       # and server must be built before the self-test (2026-11-09).
       - run: npm run build
+      # 2026-11-13: generate_context! embeds the desktop frontend at compile time.
+      - run: npm run build:desktop
       - name: Show the pinned Rust toolchain
         # rust-toolchain.toml selects the audited version and components; show it
         # here so a runner provisioning failure is not buried inside cargo.

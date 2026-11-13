@@ -6,10 +6,7 @@ use std::{
     },
     time::{Duration, Instant},
 };
-use tauri::{
-    menu::{MenuEvent, MenuId},
-    Manager, WebviewWindow,
-};
+use tauri::{Manager, WebviewWindow};
 use webview2_com::{
     AcceleratorKeyPressedEventHandler, AddScriptToExecuteOnDocumentCreatedCompletedHandler,
     CallDevToolsProtocolMethodCompletedHandler, ContextMenuRequestedEventHandler,
@@ -89,16 +86,25 @@ unsafe fn install_handlers(
     controller: ICoreWebView2Controller,
 ) -> windows::core::Result<()> {
     let core = controller.CoreWebView2()?;
-    core.Settings()?
-        .cast::<ICoreWebView2Settings3>()?
-        .SetAreBrowserAcceleratorKeysEnabled(false)?;
     install_navigation(window, &core)?;
     install_popup_and_permissions(window, &core)?;
     install_process_failures(window, &core)?;
     install_context_menu(&core)?;
-    install_accelerator_keys(window, &controller)?;
-    install_zoom(window, &controller)?;
+    install_controls(window, &controller)?;
     install_console(window, &core)
+}
+
+pub unsafe fn install_controls(
+    window: &WebviewWindow,
+    controller: &ICoreWebView2Controller,
+) -> windows::core::Result<()> {
+    controller
+        .CoreWebView2()?
+        .Settings()?
+        .cast::<ICoreWebView2Settings3>()?
+        .SetAreBrowserAcceleratorKeysEnabled(false)?;
+    install_accelerator_keys(window, controller)?;
+    install_zoom(window, controller)
 }
 
 #[derive(Debug, PartialEq)]
@@ -465,6 +471,7 @@ fn accelerator(key: u16, control: bool, shift: bool) -> Option<Accelerator> {
         (VK_P, true, true) => "switchProject",
         (VK_R, true, false) => "reload",
         (VK_Q, true, false) => "quit",
+        (VK_W, true, false) => "closeWindow",
         (VK_F11, false, false) => "toggleFullScreen",
         (VK_F12, false, false) => "toggleDevTools",
         _ => return None,
@@ -504,6 +511,7 @@ unsafe fn install_accelerator_keys(
             args.SetHandled(true)?;
             let app = key_window.app_handle().clone();
             let dispatch = app.clone();
+            let window = key_window.clone();
             let _ = app.run_on_main_thread(move || {
                 let id = match action {
                     Accelerator::Menu(id) => Some(id.to_owned()),
@@ -518,7 +526,7 @@ unsafe fn install_accelerator_keys(
                     }
                 };
                 if let Some(id) = id {
-                    menu::handle(&dispatch, MenuEvent { id: MenuId(id) });
+                    menu::dispatch(&window, &id);
                 }
             });
             Ok(())
@@ -539,10 +547,9 @@ unsafe fn install_zoom(
             if let Some(controller) = controller {
                 let mut factor = 1.0;
                 controller.ZoomFactor(&mut factor)?;
-                let app = zoom_window.app_handle();
-                let stored = app::state(app).settings.lock().unwrap().zoom_factor;
+                let stored = window::zoom_factor(&zoom_window);
                 if stored != factor {
-                    window::set_zoom(app, factor);
+                    window::set_zoom(&zoom_window, factor);
                 }
             }
             Ok(())
@@ -609,6 +616,51 @@ unsafe fn install_console(
     )
 }
 
+pub async fn wait_for_local_page(window: &WebviewWindow) -> Result<(), String> {
+    let (sender, receiver) = tokio::sync::oneshot::channel();
+    window
+        .with_webview(move |webview| {
+            let sender = Arc::new(Mutex::new(Some(sender)));
+            let completed = sender.clone();
+            let callback = CallDevToolsProtocolMethodCompletedHandler::create(Box::new(
+                move |error, response| {
+                    let result = error.map_err(|error| error.to_string()).and_then(|()| {
+                        let value: serde_json::Value = serde_json::from_str(&response)
+                            .map_err(|error| error.to_string())?;
+                        if value["result"]["value"] == true {
+                            Ok(())
+                        } else {
+                            Err(format!("local page was not prepared: {value}"))
+                        }
+                    });
+                    if let Some(sender) = completed.lock().unwrap().take() {
+                        let _ = sender.send(result);
+                    }
+                    Ok(())
+                },
+            ));
+            let result = unsafe {
+                webview.controller().CoreWebView2().and_then(|core| {
+                    core.CallDevToolsProtocolMethod(
+                        &HSTRING::from("Runtime.evaluate"),
+                        &HSTRING::from(r#"{"expression":"window.deckmatePageReady","awaitPromise":true,"returnByValue":true}"#),
+                        &callback,
+                    )
+                })
+            };
+            if let Err(error) = result {
+                if let Some(sender) = sender.lock().unwrap().take() {
+                    let _ = sender.send(Err(error.to_string()));
+                }
+            }
+        })
+        .map_err(|error| error.to_string())?;
+    tokio::time::timeout(Duration::from_secs(4), receiver)
+        .await
+        .map_err(|error| error.to_string())?
+        .map_err(|error| error.to_string())?
+}
+
 pub async fn board_script(window: &WebviewWindow, origin: Option<String>) -> Result<(), String> {
     let shell = app::state(window.app_handle());
     let (sender, receiver) = tokio::sync::oneshot::channel();
@@ -632,15 +684,27 @@ pub async fn board_script(window: &WebviewWindow, origin: Option<String>) -> Res
                 let _ = sender.send(Ok(()));
                 return;
             };
+            let settings = shell.settings.lock().unwrap().clone();
+            let project_name = shell
+                .current
+                .lock()
+                .unwrap()
+                .as_ref()
+                .map(|current| crate::paths::project_name(&current.folder));
             let script = format!(
                 r#"(() => {{
           if (window.top !== window || location.origin !== {}) return;
           const invoke = window.__TAURI_INTERNALS__.invoke;
+          let display = {};
+          addEventListener('deckmate:display', event => {{ display = event.detail; }});
           let leaveApproved = false;
           addEventListener('deckmate:leave-approved', () => {{ leaveApproved = true; }});
           addEventListener('beforeunload', event => {{ if (leaveApproved) event.stopImmediatePropagation(); }}, true);
           void invoke('board_set_dirty', {{ dirty: false }}).catch(console.error);
           Object.defineProperty(window, 'deckmateBoard', {{ value: Object.freeze({{
+            get theme() {{ return display.theme; }},
+            get language() {{ return display.language; }},
+            projectName: {},
             recentProjects: () => invoke('board_recent_projects'),
             workspaceProjects: () => invoke('board_workspace_projects'),
             addToWorkspace: source => invoke('board_add_to_workspace', {{ source }}),
@@ -648,11 +712,15 @@ pub async fn board_script(window: &WebviewWindow, origin: Option<String>) -> Res
             moveInWorkspace: (folder, index) => invoke('board_move_in_workspace', {{ folder, index }}),
             switchProject: folder => invoke('board_switch_project', {{ folder }}),
             showStartScreen: () => invoke('board_show_start_screen'),
-            setDirty: dirty => invoke('board_set_dirty', {{ dirty }})
+            setDirty: dirty => invoke('board_set_dirty', {{ dirty }}),
+            setTheme: theme => invoke('board_set_theme', {{ theme }}),
+            setLanguage: lang => invoke('board_set_language', {{ lang }})
           }}) }});
           {}
         }})();"#,
                 serde_json::to_string(&origin).unwrap(),
+                serde_json::json!({"theme": settings.theme, "language": settings.language}),
+                serde_json::json!(project_name),
                 include_str!("board-startup.js")
             );
             let sender = std::sync::Arc::new(std::sync::Mutex::new(Some(sender)));
@@ -791,6 +859,7 @@ mod tests {
             (VK_P.0, true, true, "switchProject"),
             (VK_R.0, true, false, "reload"),
             (VK_Q.0, true, false, "quit"),
+            (VK_W.0, true, false, "closeWindow"),
             (VK_OEM_PLUS.0, true, false, "zoomIn"),
             (VK_ADD.0, true, true, "zoomIn"),
             (VK_OEM_MINUS.0, true, false, "zoomOut"),

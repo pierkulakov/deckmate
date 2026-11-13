@@ -15,4 +15,3 @@
    weight), which had hidden the open state: Metrics looked the same open and closed. */
 .journey-metrics.glass-panel { padding: var(--space-4); background: transparent; }
 .journey-metrics-scroll { max-width: 100%; overflow-x: auto; }
-.journey-metrics-scroll:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }

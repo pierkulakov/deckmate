@@ -55,7 +55,6 @@
 .journey-step-priority select { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; }
 .journey-step-priority:hover { outline: .67px solid color-mix(in srgb, var(--card-ink) 35%, transparent); outline-offset: 3px; }
 /* 2026-11-10: the hidden select is the control; the plate rings only for keyboard focus, never after a click. */
-.journey-step-priority:has(select:focus-visible) { outline: 2px solid var(--focus); outline-offset: 2px; }
 .journey-step-properties select option { background: var(--surface); font-weight: 400; }
 .journey-step-properties :is(input, select):hover:enabled, .journey-step-properties :is(input, select):focus { border-color: color-mix(in srgb, var(--card-ink) 35%, transparent); }
 .journey-step-properties input::placeholder { color: var(--card-muted); }
@@ -64,7 +63,6 @@
 .journey-step-rail .ui-button[aria-pressed="true"] { border-color: var(--mark); background: var(--mark-tint); color: var(--mark); }
 .journey-step-rail .ui-button[aria-pressed="true"]:hover:not(:disabled) { border-color: var(--mark); background: var(--mark-tint-strong); color: var(--mark); }
 .journey-step-rail .journey-step-delete:hover:not(:disabled) { color: var(--danger); }
-.journey-step-sheet :is(input, select):focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 @media (max-width: 440px) {
   .journey-step-sheet-body { grid-template-columns: minmax(0, 1fr) 24px; padding-inline: 8px; column-gap: 8px; }
   .journey-step-properties { gap: 8px; padding-inline: 12px; }

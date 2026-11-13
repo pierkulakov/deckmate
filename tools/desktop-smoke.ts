@@ -18,6 +18,8 @@ import { fileURLToPath } from 'node:url';
 import { freePort } from './free-port.ts';
 import { connectToHeadlessBrowser, type HeadlessPage } from './layout-capture.ts';
 import { clipboardAvailability } from './desktop-clipboard.ts';
+import { assertMenuStable, menuLayout } from './desktop-menu.ts';
+import type { DesktopProjectsResult, DesktopProjectsSnapshot, DesktopRecentProject } from '../client/desktop-bridge.ts';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const root = path.join(here, '..');
@@ -307,13 +309,17 @@ async function main(): Promise<number> {
   const temp = mkdtempSync(path.join(tmpdir(), 'deckmate-smoke-'));
   const settings = path.join(temp, 'settings');
   const demo = path.join(temp, 'demo');
+  const second = path.join(temp, 'second');
   const created = path.join(temp, 'new-project');
   const externalLog = path.join(temp, 'external-links.log');
-  const needles = [serverEntry, demo, created].map(norm);
+  const needles = [demo, second, created].map(norm);
   const cdpPort = await freePort();
   const launchShell = (askPolicy = 'rendererCrashedRepeatedly=startScreen', server = serverEntry) => spawn(exe, [], {
     env: {
       ...process.env,
+      APPDATA: path.join(temp, 'appdata'),
+      LOCALAPPDATA: path.join(temp, 'localappdata'),
+      WEBVIEW2_USER_DATA_FOLDER: path.join(settings, 'webview'),
       DECKMATE_DESKTOP_CDP_PORT: String(cdpPort),
       DECKMATE_DESKTOP_SETTINGS_DIR: settings,
       DECKMATE_DESKTOP_SERVER: server,
@@ -325,6 +331,11 @@ async function main(): Promise<number> {
     stdio: 'ignore',
     windowsHide: true,
   });
+  // 2026-11-13: seed two recents before launch so opening B must reorder [A, B].
+  mkdirSync(settings, { recursive: true });
+  writeFileSync(path.join(settings, 'desktop.json'), JSON.stringify({
+    recent: [second, demo].map(folder => ({ path: folder, name: path.basename(folder) })), lastProject: null,
+  }));
   let shell = launchShell();
   const killShell = (tree: boolean) => {
     if (shell.exitCode !== null || shell.signalCode !== null) return;
@@ -337,10 +348,12 @@ async function main(): Promise<number> {
     }
   };
   try {
-    const init = spawnSync(process.execPath, [path.join(root, 'bin', 'deckmate.mjs'), 'init', demo],
-      { encoding: 'utf8', timeout: 120000, windowsHide: true });
-    if (init.status !== 0) {
-      throw new SmokeFailure(`deckmate init demo exited with code ${init.status}: ${(init.stderr || init.stdout || '').slice(-300)}`);
+    for (const folder of [demo, second]) {
+      const init = spawnSync(process.execPath, [path.join(root, 'bin', 'deckmate.mjs'), 'init', folder],
+        { encoding: 'utf8', timeout: 120000, windowsHide: true });
+      if (init.status !== 0) {
+        throw new SmokeFailure(`deckmate init ${folder} exited with code ${init.status}: ${(init.stderr || init.stdout || '').slice(-300)}`);
+      }
     }
     pass('setup', `demo project created at ${demo}`);
 
@@ -361,7 +374,7 @@ async function main(): Promise<number> {
     const launcher = await page!.callFunction(`async () => {
       const bridge = window.deckmateDesktop;
       const wanted = ['getState', 'chooseFolder', 'openProject', 'createProject', 'removeRecent',
-        'addToWorkspace', 'removeFromWorkspace', 'moveInWorkspace', 'setLanguage', 'onStatus'];
+        'addToWorkspace', 'removeFromWorkspace', 'moveInWorkspace', 'setLanguage', 'setTheme', 'onStatus'];
       return {
         missing: wanted.filter(name => !bridge || typeof bridge[name] !== 'function'),
         state: bridge ? await bridge.getState() : null,
@@ -369,13 +382,13 @@ async function main(): Promise<number> {
     }`);
     if (launcher.missing.length) throw new SmokeFailure(`window.deckmateDesktop is missing methods: ${launcher.missing.join(', ')}`);
     const state = launcher.state;
-    if (!state || !Array.isArray(state.recent) || !Array.isArray(state.workspace) || state.workspace.length !== 0
+    if (!state || state.ok !== true || state.current !== null || !Array.isArray(state.recent) || !Array.isArray(state.projects) || state.projects.length !== 0
       || (state.lastProject !== null && typeof state.lastProject !== 'string')
       || typeof state.version !== 'string' || typeof state.deckmateVersion !== 'string'
-      || typeof state.locale !== 'string' || typeof state.language !== 'string') {
+      || typeof state.locale !== 'string' || typeof state.language !== 'string' || !['light', 'dark', 'system'].includes(state.theme)) {
       throw new SmokeFailure(`getState() has an unexpected shape: ${JSON.stringify(state)}`);
     }
-    pass('a', 'launcher loaded; deckmateDesktop has the 10 preload methods; getState has workspace/recent/lastProject/version/deckmateVersion/locale/language');
+    pass('a', 'launcher loaded; deckmateDesktop has the 11 preload methods; getState has ok/projects/current/recent/lastProject/version/deckmateVersion/locale/language/theme');
     const dirtyFromLauncher = await page!.callFunction(`async () => {
       try { return await window.__TAURI_INTERNALS__.invoke('board_set_dirty', { dirty: true }); }
       catch { return { ok: false }; }
@@ -385,21 +398,21 @@ async function main(): Promise<number> {
     if (untrustedAddition.ok !== false || untrustedAddition.code !== 'invalid-path') {
       throw new SmokeFailure(`launcher accepted an untrusted workspace path: ${JSON.stringify(untrustedAddition)}`);
     }
-    // 2026-11-09: CDP attaches after the first load, so current window bounds cannot detect an
-    // earlier flash. The debug initialization script samples visibility before page scripts and
-    // in the load event, before native PageLoadEvent::Finished shows the window.
-    const visibility = await page!.evaluate('window.__deckmateFirstLoadVisibility');
-    if (visibility?.atLoad !== 'hidden') {
-      throw new SmokeFailure(`window was visible before the launcher loaded: ${JSON.stringify(visibility)}`);
+    // 2026-11-13: the renderer paints under a hidden HWND; its visibilityState cannot stand in for native visibility.
+    const firstLoad = readFileSync(path.join(settings, 'server.log'), 'utf8');
+    if (!firstLoad.includes('main local loaded: native-visible=false')
+      || (await page!.evaluate(`performance.getEntriesByName('deckmate-local-page-prepared').length`)) !== 1) {
+      throw new SmokeFailure('the first local frame was not prepared beneath the hidden native window');
     }
     await poll(async () => (await page!.evaluate('document.visibilityState')) === 'visible',
       'the loaded launcher window to become visible', 10000);
-    pass('a-visibility', 'first load event was hidden; loaded launcher became visible');
+    pass('a-visibility', 'native window stayed hidden through load; prepared launcher became visible');
 
     // b. Opening the demo navigates to the local server and renders the board with only the board bridge.
     // A successful open resolves after the navigation, which destroys the execution context that
     // invoked it, so the result cannot be read back; success is the navigation itself.
     currentStep = 'b';
+    const beforeOpen = menuLayout(shell.pid!);
     await page!.callFunction(`folder => { void window.deckmateDesktop.openProject(folder); }`, demo);
     let boardOrigin = '';
     try {
@@ -418,6 +431,16 @@ async function main(): Promise<number> {
     const bridgeCheck = await page!.callFunction(`() => ({ board: typeof window.deckmateBoard, desktop: typeof window.deckmateDesktop })`);
     if (bridgeCheck.board !== 'object') throw new SmokeFailure('window.deckmateBoard is missing on the board page');
     if (bridgeCheck.desktop !== 'undefined') throw new SmokeFailure('window.deckmateDesktop leaked onto the board page');
+    const reordered = JSON.parse(readFileSync(path.join(settings, 'desktop.json'), 'utf8')).recent.map((entry: { path: string }) => norm(entry.path));
+    if (JSON.stringify(reordered) !== JSON.stringify([demo, second].map(norm))) throw new SmokeFailure(`second recent did not move first: ${JSON.stringify(reordered)}`);
+    pass('b-menu-reorder', JSON.stringify(assertMenuStable(beforeOpen, menuLayout(shell.pid!), 'launcher [A, B] → B')));
+    const beforeAdd = menuLayout(shell.pid!);
+    const added = await page!.callFunction(`() => window.deckmateBoard.addToWorkspace({ kind: 'current' })`);
+    if (!added.ok || added.projects.length !== 1 || norm(added.projects[0].path) !== norm(demo)) throw new SmokeFailure('current project was not added to workspace');
+    pass('b-menu-workspace', JSON.stringify(assertMenuStable(beforeAdd, menuLayout(shell.pid!), 'add current project to workspace')));
+    const removed = await page!.callFunction(`folder => window.deckmateBoard.removeFromWorkspace(folder)`, demo);
+    if (!removed.ok) throw new SmokeFailure('could not remove the workspace menu fixture');
+    assertMenuStable(beforeAdd, menuLayout(shell.pid!), 'remove current project from workspace');
     currentStep = 'b-clipboard';
     const clipboardAccess = clipboardAvailability();
     const skipClipboard = (step: string) => {
@@ -510,13 +533,16 @@ async function main(): Promise<number> {
       }
       return { recent, refused, launcherCommand };
     }`, 'C:\\not-in-recent') as {
-      recent?: { path: string; current?: boolean }[];
+      recent?: DesktopProjectsResult<DesktopRecentProject>;
       refused?: { ok?: boolean; code?: string };
       launcherCommand?: { ok?: boolean; code?: string };
     };
-    const demoEntry = (guard.recent ?? []).find(entry => norm(String(entry.path)) === norm(demo));
+    if (!guard.recent?.ok || norm(guard.recent.current ?? '') !== norm(demo)) {
+      throw new SmokeFailure(`recentProjects() has an unexpected shape: ${JSON.stringify(guard.recent)}`);
+    }
+    const demoEntry = guard.recent.projects.find(entry => norm(String(entry.path)) === norm(demo));
     if (!demoEntry) throw new SmokeFailure(`recentProjects() does not list the demo: ${JSON.stringify(guard.recent)}`);
-    if (demoEntry.current !== true) throw new SmokeFailure('recentProjects() does not mark the demo as current');
+    if (demoEntry.current !== true || demoEntry.missing !== false) throw new SmokeFailure('recentProjects() does not mark the demo as current and available');
     if (!guard.refused || guard.refused.ok !== false || guard.refused.code !== 'not-recent') {
       throw new SmokeFailure(`switchProject outside the recent list was not refused: ${JSON.stringify(guard.refused)}`);
     }
@@ -600,12 +626,15 @@ async function main(): Promise<number> {
       input.id = 'smoke-switch-edit'; document.body.append(input); input.focus();
     })()`);
     await page!.send('Page.bringToFront');
+    const beforeSwitch = menuLayout(shell.pid!);
     switchProjectShortcut(shell.pid!);
     await poll(launcherLoaded,
       'Ctrl+Shift+P to return to the launcher', 20000);
     await poll(async () => serverProcesses(needles).length === 0,
       'the demo server process to exit', 15000);
-    pass('e', 'native Ctrl+Shift+P from a CDP-focused editor returned to the launcher by virtual key; no demo server remains');
+    const afterSwitch = menuLayout(shell.pid!);
+    assertMenuStable(beforeSwitch, afterSwitch, 'Ctrl+Shift+P');
+    pass('e', `native Ctrl+Shift+P returned to the launcher; HMENU stayed ${afterSwitch.menu}; client origin stayed at ${afterSwitch.client.x},${afterSwitch.client.y}; no demo server remains`);
 
     currentStep = 'e-workspace';
     const launcherWorkspace = await page!.callFunction(`async folder => {
@@ -617,10 +646,12 @@ async function main(): Promise<number> {
       return { added, moved, state, removed };
     }`, demo);
     if (launcherWorkspace.added.ok !== true || launcherWorkspace.moved.ok !== true
-      || launcherWorkspace.state.workspace.length !== 1
-      || norm(launcherWorkspace.state.workspace[0].path) !== norm(demo)
-      || launcherWorkspace.state.workspace[0].missing !== false
-      || launcherWorkspace.removed.ok !== true || launcherWorkspace.removed.workspace.length !== 0) {
+      || launcherWorkspace.state.projects.length !== 1
+      || norm(launcherWorkspace.state.projects[0].path) !== norm(demo)
+      || launcherWorkspace.state.projects[0].missing !== false
+      || launcherWorkspace.state.projects[0].current !== false
+      || Object.values(launcherWorkspace as Record<string, DesktopProjectsSnapshot>).some(reply => reply.ok !== true || reply.current !== null || !Array.isArray(reply.projects) || 'workspace' in reply)
+      || launcherWorkspace.removed.ok !== true || launcherWorkspace.removed.projects.length !== 0) {
       throw new SmokeFailure(`launcher workspace contract failed: ${JSON.stringify(launcherWorkspace)}`);
     }
     pass('e-workspace', 'launcher added a recent folder, moved it, returned workspace state and removed it');
@@ -633,16 +664,17 @@ async function main(): Promise<number> {
     try {
       const failed = await page!.callFunction(`async folder => ({
         language: await window.deckmateDesktop.setLanguage('ru'),
+        theme: await window.deckmateDesktop.setTheme('dark'),
         recent: await window.deckmateDesktop.removeRecent('C:\\\\missing-smoke-project'),
         workspace: await window.deckmateDesktop.addToWorkspace(folder),
       })`, demo);
       if (Object.values(failed).some(result => (result as { ok: boolean; code: string }).ok !== false || (result as { code: string }).code !== 'save-failed')) {
         throw new SmokeFailure(`settings commands hid a failed save: ${JSON.stringify(failed)}`);
       }
-      await page!.callFunction(`() => removeRecent('C:\\\\missing-smoke-project')`);
-      if ((await page!.evaluate(`document.getElementById('status').dataset.phase`)) !== 'error') throw new SmokeFailure('removeRecent UI hid a failed save');
-      // 2026-11-11: a failed language save keeps the existing UI locale; clear the earlier error to verify this click reports its own.
-      await page!.evaluate(`setStatus(null); document.querySelector('[data-lang="en"]').click()`);
+      await page!.evaluate(`document.querySelector('.project-list-remove').click()`);
+      await poll(() => page!.evaluate(`document.getElementById('status').dataset.phase === 'error'`), 'recent save error', 5000);
+      // 2026-11-13: the language command must fail through the same visible control as a user action.
+      await page!.evaluate(`document.querySelector('.language-toggle').click()`);
       await poll(async () => (await page!.evaluate(`document.getElementById('status').dataset.phase === 'error' && document.getElementById('status-text').textContent.startsWith(document.documentElement.lang === 'ru' ? 'Не удалось сохранить настройки.' : 'Settings could not be saved.')`)) === true,
         'language save error to reach the status line', 5000);
     } finally {
@@ -684,10 +716,12 @@ async function main(): Promise<number> {
     const workspaceOrder = (projects: { path: string }[]) => projects.map(project => norm(project.path));
     const equalOrder = (projects: { path: string }[], expected: string[]) =>
       JSON.stringify(workspaceOrder(projects)) === JSON.stringify(expected.map(norm));
-    if (workspace.before.length !== 0 || workspace.current.ok !== true || workspace.recent.ok !== true
-      || !equalOrder(workspace.listed, [created, demo])
-      || workspace.listed[0].current !== true || workspace.listed[1].current !== false
-      || workspace.listed.some((project: { missing: boolean }) => project.missing !== false)
+    if (workspace.before.ok !== true || workspace.before.projects.length !== 0 || workspace.current.ok !== true || workspace.recent.ok !== true
+      || !equalOrder(workspace.listed.projects, [created, demo])
+      || workspace.listed.projects[0].current !== true || workspace.listed.projects[1].current !== false
+      || workspace.listed.projects.some((project: { missing: boolean }) => project.missing !== false)
+      || [workspace.before, workspace.current, workspace.recent, workspace.listed, workspace.moved, workspace.removed, workspace.restored]
+        .some(reply => reply.ok !== true || norm(reply.current ?? '') !== norm(created) || !Array.isArray(reply.projects) || 'workspace' in reply)
       || workspace.moved.ok !== true || !equalOrder(workspace.moved.projects, [demo, created])
       || workspace.removed.ok !== true || !equalOrder(workspace.removed.projects, [demo])
       || workspace.restored.ok !== true || !equalOrder(workspace.restored.projects, [demo, created])
@@ -721,8 +755,8 @@ async function main(): Promise<number> {
       if ((await page!.evaluate('window.__smokeOldProject')) === true) return false;
       return (await page!.callFunction(`async folder => {
         if (!window.deckmateBoard || !document.querySelector('${boardSelector}')) return false;
-        const projects = await window.deckmateBoard.workspaceProjects();
-        return projects.some(project => project.path.replace(/\\\\/g, '/').toLowerCase() === folder && project.current);
+        const result = await window.deckmateBoard.workspaceProjects();
+        return result.ok && result.projects.some(project => project.path.replace(/\\\\/g, '/').toLowerCase() === folder && project.current);
       }`, norm(demo))) === true;
     }, 'switchProject to the workspace-only project', 30000);
     if ((await page!.evaluate('location.origin')) !== boardOrigin) throw new SmokeFailure('project switch changed the saved board origin');

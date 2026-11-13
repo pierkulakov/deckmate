@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState, type CSSProperties } from 'react';
 import { contrastRatio, rgbOf, type Rgb } from './color-contrast.ts';
+import { loadDecodedImage } from './decoded-image.ts';
 
 // 2026-11-10: a deck cover takes its color from its own illustration so the card and picture read as one object.
 // At rest the cover is clear glass; selected, the glass fills with this color. The title keeps the page's ink in
@@ -105,22 +106,17 @@ const readColors = new Map<string, Lch | null>();
 function readArtColor(url: string): Promise<Lch | null> {
   let color = artColors.get(url);
   if (!color) {
-    color = new Promise<Lch | null>(resolve => {
-      const image = new Image();
-      image.onload = () => {
-        try {
-          // 60×42 keeps the 10:7 of the deck art and is plenty for a color; pixel art survives the downscale.
-          const canvas = document.createElement('canvas');
-          canvas.width = 60; canvas.height = 42;
-          const context = canvas.getContext('2d', { willReadFrequently: true });
-          if (!context) { resolve(null); return; }
-          context.drawImage(image, 0, 0, canvas.width, canvas.height);
-          resolve(leadingColor(context.getImageData(0, 0, canvas.width, canvas.height).data));
-        } catch { resolve(null); }
-      };
-      image.onerror = () => resolve(null);
-      image.src = url;
-    });
+    color = loadDecodedImage(url).then(image => {
+      try {
+        // 60×42 keeps the 10:7 of the deck art and is plenty for a color; pixel art survives the downscale.
+        const canvas = document.createElement('canvas');
+        canvas.width = 60; canvas.height = 42;
+        const context = canvas.getContext('2d', { willReadFrequently: true });
+        if (!context) return null;
+        context.drawImage(image, 0, 0, canvas.width, canvas.height);
+        return leadingColor(context.getImageData(0, 0, canvas.width, canvas.height).data);
+      } catch { return null; }
+    }, () => null);
     artColors.set(url, color.then(read => { readColors.set(url, read); return read; }));
   }
   return artColors.get(url)!;

@@ -119,7 +119,7 @@ export function CardEditForm({ draft, onDraftChange, catalog, source, path, card
     <span className="card-edit-save-group"><Keys className="card-edit-save-hint" variant="separate" combo={{ key: 'Enter', modifiers: ['primary'] }} />
       <button type="submit" form={formId} className="card-edit-save" disabled={!writable || busy || blocked || !parts.title}>{saving ? <><LoaderCircle size={14} className="spin" aria-hidden="true" /><span className="visually-hidden">{resolvedSaveLabel}</span></> : resolvedSaveLabel}</button></span>
   </footer>;
-  return <form id={formId} ref={formRef} className="card-edit" onKeyDown={handleKeyDown} onSubmit={event => { event.preventDefault(); onSave(); }}>
+  return <form id={formId} ref={formRef} className="card-edit" data-local-escape onKeyDown={handleKeyDown} onSubmit={event => { event.preventDefault(); onSave(); }}>
     <div className="card-edit-hint-row"><div className="card-edit-hints"><span className="card-edit-hint">{t.commandHintStart}<Keys combo={{ key: '/' }} /> <Keys combo={{ key: 'Enter' }} />{t.commandHintEnd}</span>
       {cardId && path && <AttachmentInsertMenu key={`${source}:${cardId}`} source={source} cardId={cardId} disabled={textDisabled || preview}
         onInsert={attachment => editorRef.current?.insert(attachmentMarkdown(path, attachment))} onFocusText={() => editorRef.current?.focus()} />}

@@ -1,10 +1,11 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { isValidElement, type ReactElement, type ReactNode } from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
 import { readFileSync } from 'node:fs';
 import { Excalidraw, restore } from '@excalidraw/excalidraw';
 import { EditorCommandMenu } from '../client/components/EditorCommandMenu.tsx';
 import { ShortcutsHelp } from '../client/components/ShortcutsHelp.tsx';
-import { ShortcutsHelpDialog } from '../client/components/ShortcutsHelpDialog.tsx';
+import { ShortcutsHelpContent } from '../client/components/ShortcutsHelpContent.tsx';
 import { useCardSelection } from '../client/components/CardSelection.tsx';
 import Vision from '../client/components/Vision.tsx';
 import { ALL_SHORTCUTS, matchShortcut, type ShortcutScreen } from '../client/keyboard-shortcuts.ts';
@@ -19,7 +20,7 @@ import type { WorkspaceSnapshot } from '../src/workspace-contracts.ts';
 const harnessPromise = vi.hoisted(() => import('./react-hook-harness.ts').then(module => module.createHookHarness()));
 const fixture = vi.hoisted(() => ({ catalog: null as CatalogView | null, catalogError: null as string | null, refresh: vi.fn() }));
 vi.hoisted(() => {
-  vi.stubGlobal('document', { documentElement: { lang: '' }, cookie: '' });
+  vi.stubGlobal('document', { documentElement: { lang: '', hasAttribute: () => false }, cookie: '' });
   vi.stubGlobal('localStorage', { getItem: () => null });
 });
 vi.mock('react', async original => ({
@@ -77,9 +78,9 @@ const board = { id: 'remembered', title: 'Existing board', hash: 'original-hash'
   scene: { type: 'excalidraw', version: 2, elements: [{ id: 'kept', type: 'rectangle', version: 1 }], appState: {}, files: {} } };
 const vision = () => Vision({ snapshot, refreshKey: 0, dark: false, onEditing: vi.fn(), onOpenCard: vi.fn() });
 const help = (screens: readonly ShortcutScreen[] = ['app'], writable = true) => ShortcutsHelp({ screens, writable, vision: true });
-const helpDialog = (screens: readonly ShortcutScreen[] = ['app'], writable = true) => ShortcutsHelpDialog({ open: true, screens, writable, vision: true, opener: null, onClose: vi.fn() });
+const helpDialog = (screens: readonly ShortcutScreen[] = ['app'], writable = true) => ShortcutsHelpContent({ screens, writable, vision: true });
 const canvas = () => find(element => element.type === Excalidraw);
-const button = (label: string) => find(element => element.props.onClick && (element.props.children === label || element.props.children?.includes?.(label)));
+const button = (label: string) => find(element => element.props.onClick && renderToStaticMarkup(element).replace(/<[^>]*>/gu, '') === label);
 async function settle(component = vision) { for (let index = 0; index < 30; index++) await Promise.resolve(); render(component); }
 
 beforeEach(() => {
@@ -88,8 +89,8 @@ beforeEach(() => {
   vi.stubGlobal('Element', Target); vi.stubGlobal('HTMLElement', Target);
   vi.stubGlobal('window', new EventTarget());
   vi.stubGlobal('navigator', { platform: 'Win32' });
-  vi.stubGlobal('document', { documentElement: { lang: '' }, cookie: '', activeElement: null,
-    getElementById: () => null, querySelectorAll: () => [], execCommand: () => false });
+  vi.stubGlobal('document', { documentElement: { lang: '', hasAttribute: () => false }, cookie: '', activeElement: null,
+    getElementById: () => null, querySelector: () => null, querySelectorAll: () => [], execCommand: () => false });
   vi.stubGlobal('localStorage', { getItem: (name: string) => stored.get(name) ?? null, setItem: (name: string, value: string) => stored.set(name, value), removeItem: (name: string) => stored.delete(name) });
   vi.stubGlobal('location', new URL('http://localhost/?view=vision'));
   vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, json: async () => [] })));
@@ -134,6 +135,13 @@ it('leaves ? inside the Vision canvas to Excalidraw and opens Deckmate help outs
   expect(find(element => element.props.vision === true).props.open).toBe(false);
   hooks.reset(); render(helpDialog);
   expect(nodes().some(element => element.props.children === 'The Vision canvas has its own shortcuts: focus the canvas and press ? for its help.')).toBe(true);
+});
+
+it('keeps cancellation when help contents have not loaded yet', () => {
+  render(help);
+  dispatch(key('Slash', '?', { shiftKey: true })); render(help);
+  find(element => element.props.vision === true).props.onClose(); render(help);
+  expect(find(element => element.props.vision === true).props.open).toBe(false);
 });
 
 it.each(['en', 'ru'] as const)('opens Info and Activity by a stable attribute in %s', lang => {

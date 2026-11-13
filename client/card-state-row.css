@@ -12,4 +12,3 @@
 }
 :root.dark .card-preview .card-preview-state-actions .card-state-button[data-filled="true"] { color: var(--ground); }
 .card-review-menu { min-width: 220px; }
-.card-review-menu:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }

@@ -10,7 +10,7 @@ import { bundledJourneyTemplatesDirectory, readJourneyTemplates } from './journe
 import { bundledDeckArt } from './deck-art.ts';
 import { packagePath } from './package-path.ts';
 import { journeyCardId, journeyInstanceId } from './journeys.ts';
-import { defineText, serverLang, serverText } from './i18n.ts';
+import { defineText, serverLang, serverText, type Lang } from './i18n.ts';
 import { templateText } from '../src/template-text.ts';
 
 const messages = defineText({
@@ -120,6 +120,60 @@ export async function listProjectTemplates(options: ProjectTemplateOptions = {})
   const journeys = bundledJourneys(options);
   for (const template of templates) await templateBundle(template, options, journeys);
   return templates;
+}
+
+async function templateFilesRevision(directories: string[]): Promise<string> {
+  const revisions: string[] = [];
+  async function visit(directory: string): Promise<void> {
+    let entries;
+    try { entries = await readdir(directory, { withFileTypes: true }); }
+    catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+      revisions.push(JSON.stringify([directory, 'missing']));
+      return;
+    }
+    revisions.push(JSON.stringify([directory, 'directory']));
+    await Promise.all(entries.map(async entry => {
+      const filename = path.join(directory, entry.name);
+      if (entry.isDirectory() && !entry.isSymbolicLink()) return visit(filename);
+      if (!entry.name.endsWith('.md') && !entry.name.endsWith('.webp')) return;
+      try {
+        const info = await lstat(filename, { bigint: true });
+        revisions.push(JSON.stringify([filename, String(info.mtimeNs), String(info.size), String(info.ctimeNs), String(info.mode)]));
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+        revisions.push(JSON.stringify([filename, 'missing']));
+      }
+    }));
+  }
+  await Promise.all(directories.map(visit));
+  return digest(revisions.sort().join('\n'));
+}
+
+export function createProjectTemplateList(options: ProjectTemplateOptions = {}): () => Promise<ProjectTemplate[]> {
+  const directories = [options.templatesRoot ?? packagePath('assets', 'project-templates'),
+    options.journeysRoot ?? bundledJourneyTemplatesDirectory(),
+    ...options.artRoot ? [options.artRoot] : [packagePath('assets', 'deck-art'), packagePath('dist', 'client', 'assets')]];
+  const entries = new Map<Lang, { revision?: string; templates?: ProjectTemplate[]; loading?: Promise<ProjectTemplate[]> }>();
+  return async () => {
+    const lang = serverLang();
+    let entry = entries.get(lang);
+    if (!entry) { entry = {}; entries.set(lang, entry); }
+    if (entry.loading) return entry.loading;
+    const cached = entry;
+    // 2026-11-13: the parse cache needs file bytes; metadata checks let this response cache avoid rereading installed assets.
+    // Share the in-flight scan too, so simultaneous dialog openings cannot multiply disk work.
+    cached.loading = (async () => {
+      const revision = await templateFilesRevision(directories);
+      if (cached.revision === revision && cached.templates) return cached.templates;
+      const templates = await listProjectTemplates(options);
+      cached.revision = revision;
+      cached.templates = templates;
+      return templates;
+    })();
+    try { return await cached.loading; }
+    finally { cached.loading = undefined; }
+  };
 }
 
 async function loadBundle(id: string, options: ProjectTemplateOptions): Promise<TemplateBundle> {

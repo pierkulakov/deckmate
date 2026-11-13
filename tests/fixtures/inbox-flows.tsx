@@ -152,7 +152,7 @@ function render(scene: 'family' | 'cover' | 'settings' | 'gallery' | 'capture', 
     return catalogStore('sandbox').refresh().then(() => {
       root.render(<DocumentPreviewProvider><div key={++instance} className="app-shell global-shell"><div className="workspace">
         <header className="topbar global-topbar">Deckmate</header>
-        <main className="workspace-main board-main"><Deck snapshot={snapshot} refreshKey={0} onEditing={noop} onStartFromTemplate={noop} /></main>
+        <main className="workspace-main board-main"><Deck snapshot={snapshot} refreshKey={0} onEditing={noop} onStartFromTemplate={() => opened.push('template')} /></main>
       </div></div></DocumentPreviewProvider>);
     });
   }

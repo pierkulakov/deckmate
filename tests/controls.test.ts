@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { openHeadlessBrowser, type HeadlessPage } from '../tools/layout-capture.ts';
-import { browserFixtureUrl } from './browser-fixture.ts';
+import { browserFixtureUrl, desktopFixtureUrl } from './browser-fixture.ts';
 import { requireBrowser } from './browser-environment.ts';
 import { contrastRatio } from '../client/color-contrast.ts';
 
@@ -459,27 +459,31 @@ describe.skipIf(!browserPath)('hairline controls and keyboard-only focus (browse
     await page.send('Emulation.setTouchEmulationEnabled', { enabled: false });
   });
 
-  it('gives keyboard focus exactly one indicator: the 2px ring 2px off, or a field’s own edge', async () => {
+  it('marks Tab navigation with one inner edge and keeps Escape restoration quiet', async () => {
     await open('light');
     await page.evaluate(`document.querySelector('#first').focus()`);
     await press('Tab');
     let state = await focusState();
     expect(state).toMatchObject({ id: 'outline', visible: true, rings: ['outline'] });
-    expect(state.outline).toEqual(['solid', '2px', '2px']);
-    // A pressed control reached by keyboard keeps the ring: the fill says what is chosen, the ring where the keyboard is.
+    expect(state.outline).toEqual(['solid', '2px', '-2px']);
+    // 2026-11-13: selection and keyboard position remain distinct without an outside contour.
     await press('Tab');
     expect(await focusState()).toMatchObject({ id: 'pressed', visible: true, rings: ['pressed'] });
-    // Enter on × returns focus by script, and now the keyboard is in use, so the opener rings.
+    // 2026-11-13: Enter continues the navigation begun with Tab.
     await page.evaluate(`document.querySelector('#target').focus()`);
     await press('Tab');
     expect((await focusState()).id).toBe('close');
     await press('Enter');
     expect(await focusState()).toMatchObject({ id: 'opener', visible: true, rings: ['opener'] });
-    // After a click, Escape handled on window still counts as the keyboard: the opener rings.
+    // 2026-11-13: Escape is a close shortcut, not a request to begin Tab navigation.
     await click('#outline');
     expect((await focusState()).visible).toBe(false);
     await press('Escape');
-    expect(await focusState()).toMatchObject({ id: 'opener', visible: true, rings: ['opener'] });
+    expect(await focusState()).toMatchObject({ id: 'opener', visible: false, rings: [] });
+    await press('Tab');
+    expect(await focusState()).toMatchObject({ id: 'target', visible: true, rings: ['target'], outline: ['solid', '2px', '-2px'] });
+    await press('Escape');
+    expect(await focusState()).toMatchObject({ id: 'opener', visible: false, rings: [] });
     // A text field is marked by its edge and the caret only.
     await page.evaluate(`document.querySelector('#button-disabled').previousElementSibling.focus()`);
     await press('Tab');
@@ -489,9 +493,70 @@ describe.skipIf(!browserPath)('hairline controls and keyboard-only focus (browse
     const field = await styleOf('#search');
     expect(field.borderColor).toBe(field.focus);
     expect(field.shadow).toContain('inset');
-    // Tabs: the selected tab carries its underline and, under the keyboard, the ring.
+    // 2026-11-13: the selected tab keeps its underline beside the shared inner edge.
     await page.evaluate(`document.querySelector('#segmented [aria-checked="false"]').focus()`);
     await press('Tab');
     expect(await focusState()).toMatchObject({ id: 'tab-due', visible: true, rings: ['tab-due'] });
+  });
+});
+
+describe.skipIf(!browserPath)('launcher shared foundation (browser)', () => {
+  it.each(['light', 'dark'])('%s: decodes built cover and card artwork from the computed CSS URLs', async theme => {
+    const page = await openHeadlessBrowser({ width: 1280, height: 820, scale: 1 });
+    try {
+      await page.send('Page.addScriptToEvaluateOnNewDocument', { source: `localStorage.setItem('deckmate-theme', '${theme}');` });
+      await page.send('Page.navigate', { url: desktopFixtureUrl() });
+      await page.evaluate(`new Promise(resolve => { function check() {
+        if (document.querySelector('#launcher:not([aria-busy])')) resolve(true); else requestAnimationFrame(check);
+      } check(); })`);
+      const artwork = await page.evaluate(`Promise.all([...document.querySelectorAll('.cover-art, .fan-card')].map(async node => {
+        const url = getComputedStyle(node).backgroundImage.slice(5, -2);
+        const image = new Image(); image.src = url;
+        const loaded = await image.decode().then(() => true, () => false);
+        return { url, loaded, width: image.naturalWidth, height: image.naturalHeight };
+      }))`) as { url: string; loaded: boolean; width: number; height: number }[];
+      expect(artwork).toHaveLength(5);
+      for (const image of artwork) {
+        expect(image.loaded, image.url).toBe(true);
+        expect(image.width, image.url).toBeGreaterThan(0);
+        expect(image.height, image.url).toBeGreaterThan(0);
+      }
+      expect(page.consoleErrors).toEqual([]);
+    } finally { await page.close(); }
+  });
+
+  it.each(['light', 'dark'])('%s: autofocus, click and Escape are quiet; Tab and Shift+Tab mark the inner edge at 375px', async theme => {
+    const page = await openHeadlessBrowser({ width: 375, height: 900, scale: 1 });
+    const key = async (key: string, shift = false) => {
+      for (const type of ['keyDown', 'keyUp']) await page.send('Input.dispatchKeyEvent', { type, key, code: key,
+        windowsVirtualKeyCode: key === 'Tab' ? 9 : 27, modifiers: shift ? 8 : 0 });
+    };
+    const state = () => page.evaluate(`(() => { const el = document.activeElement, s = getComputedStyle(el);
+      return { id: el.id, outline: [s.outlineStyle, s.outlineWidth, s.outlineOffset], shadow: s.boxShadow }; })()`);
+    try {
+      await page.send('Emulation.setFocusEmulationEnabled', { enabled: true });
+      await page.send('Page.addScriptToEvaluateOnNewDocument', { source: `localStorage.setItem('deckmate-language', 'ru'); localStorage.setItem('deckmate-theme', '${theme}');` });
+      await page.send('Page.navigate', { url: desktopFixtureUrl() });
+      await page.evaluate(`new Promise(resolve => { function check() {
+        if (document.activeElement?.id === 'open-folder') resolve(true); else requestAnimationFrame(check);
+      } check(); })`);
+      expect(await page.evaluate('document.documentElement.lang')).toBe('ru');
+      expect(await state()).toMatchObject({ id: 'open-folder', shadow: 'none' });
+      expect((await state()).outline[0]).toBe('none');
+      await key('Tab');
+      expect(await state()).toMatchObject({ id: 'create-project', outline: ['solid', '2px', '-2px'] });
+      await key('Tab', true);
+      expect(await state()).toMatchObject({ id: 'open-folder', outline: ['solid', '2px', '-2px'] });
+      const point = await page.evaluate(`(() => { const r = document.querySelector('#create-project').getBoundingClientRect(); return { x:r.x+r.width/2, y:r.y+r.height/2 }; })()`);
+      for (const type of ['mousePressed', 'mouseReleased']) await page.send('Input.dispatchMouseEvent', { type, ...point, button: 'left', clickCount: 1 });
+      await page.evaluate(`new Promise(resolve => { function check() { if (!document.querySelector('#create-panel').hidden) resolve(true); else requestAnimationFrame(check); } check(); })`);
+      expect((await state()).outline[0]).toBe('none');
+      await key('Escape');
+      expect(await state()).toMatchObject({ id: 'create-project', shadow: 'none' });
+      expect((await state()).outline[0]).toBe('none');
+      await key('Tab', true);
+      expect(await state()).toMatchObject({ id: 'open-folder', outline: ['solid', '2px', '-2px'] });
+      expect(page.consoleErrors).toEqual([]);
+    } finally { await page.close(); }
   });
 });

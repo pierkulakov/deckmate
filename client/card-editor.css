@@ -37,7 +37,6 @@
 .card-draft-banner-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; }
 .card-draft-banner-actions .ui-button { gap: 6px; height: 28px; padding: 0 10px; border: 0; border-radius: var(--control-radius); background: var(--draft-banner-button); color: var(--draft-banner-ink); font-weight: 600; }
 .card-draft-banner-actions .ui-button:hover:not(:disabled) { background: var(--draft-banner-button-hover); }
-.card-draft-banner-actions .ui-button:focus-visible { outline: 2px solid var(--draft-banner-ink); outline-offset: 2px; }
 .card-content-save-status { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; }
 .card-edit > .card-content-save-status { padding-inline: var(--space-2); }
 /* 2026-11-10: a full row belongs to the horizontal reading footer, not the editor's vertical flex column. */

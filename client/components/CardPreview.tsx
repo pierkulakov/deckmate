@@ -3,7 +3,7 @@ import { failureMessage } from '../failure-message.ts';
 import * as Dialog from '@radix-ui/react-dialog';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import type { RootContent } from 'mdast';
-import { Archive, ArchiveRestore, Bookmark, Check, Copy, Crown, Eye, History, Hourglass, Link2, LoaderCircle, MessageCircleQuestion, MoreHorizontal, Paperclip, Pause, Play, RotateCcw, Route, Scan, SlidersHorizontal, Trash2, Undo2, X } from 'lucide-react';
+import { Archive, ArchiveRestore, Bookmark, Check, Copy, Crown, Eye, FileText, History, Hourglass, Link2, LoaderCircle, MessageCircleQuestion, MoreHorizontal, Paperclip, Pause, Play, RotateCcw, Route, Scan, SlidersHorizontal, Trash2, Undo2, X } from 'lucide-react';
 import { deckAcceptsCard, type CardContent, type CatalogCard, type CatalogView } from '../../src/catalog-contracts.ts';
 import type { BulkChange } from '../../src/bulk-contracts.ts';
 import { openDependencies } from '../../src/dependency-contracts.ts';
@@ -88,6 +88,7 @@ const text = defineText({
   sandboxChanges: 'Changes are available in the test copy.',
   menuConflict: 'The card or catalog changed. Reopen the menu.',
   card: (title: string) => `Card: ${title}`,
+  docCard: 'Doc Card',
   noDeck: 'No deck',
   moveDeck: 'Move to another deck',
   closeCard: 'Close card',
@@ -204,6 +205,7 @@ const text = defineText({
   sandboxChanges: 'Изменения доступны в тестовой копии.',
   menuConflict: 'Карточка или каталог изменились. Откройте меню заново.',
   card: (title: string) => `Карточка: ${title}`,
+  docCard: 'Doc Card',
   noDeck: 'Без колоды',
   moveDeck: 'Переместить в другую колоду',
   closeCard: 'Закрыть карточку',
@@ -314,11 +316,13 @@ const openCardShortcuts = OPEN_CARD_SHORTCUTS;
 function shortcutKeys(id: string) { return openCardShortcuts.find(shortcut => shortcut.id === id)!.combo; }
 
 function CardIdChip({ cardId, feedback, onCopy }: { cardId: string; feedback?: 'copied' | 'failed'; onCopy: () => void }) {
+  const message = useRef<HTMLSpanElement>(null);
+  useLayoutEffect(() => prepareEntrance(message.current), [feedback]);
   const t = useText(text);
   const reference = shortReference('c', cardId);
   return <span className="card-id-control"><button type="button" className="card-id-chip" data-copied={feedback === 'copied' || undefined}
     title={t.copyReference(reference)} aria-label={t.copyReference(reference)} onClick={onCopy}>{reference}</button>
-    <span className="card-id-feedback" role="status" data-state={feedback}>{feedback === 'copied' && <><Check size={12} aria-hidden="true" />{t.copied}</>}{feedback === 'failed' && t.copyFailed}</span></span>;
+    <span ref={message} className="card-id-feedback" role="status" data-state={feedback}>{feedback === 'copied' && <><Check size={12} aria-hidden="true" />{t.copied}</>}{feedback === 'failed' && t.copyFailed}</span></span>;
 }
 
 // 2026-11-10: bracketed marks distinguish workflow actions from the app's circular help icons.
@@ -1103,6 +1107,7 @@ export function CardPreview({ card, catalog, snapshot, writable, pending, onClos
     <div ref={finishGlare.element} className={'card-preview-sheet' + (justDone ? ' is-just-done' : '')} inert={mobile && Boolean(panelOpen || familyVisible)} data-state={card.kind === 'task' ? card.state ?? undefined : undefined} data-family-done={familyDone || undefined}
       onPointerEnter={familyDone ? finishGlare.tilt : undefined} onPointerMove={familyDone ? finishGlare.tilt : undefined} onPointerLeave={familyDone ? finishGlare.reset : undefined}>
       {card.kind !== 'task' && <div className="card-preview-subcards-bar">
+        {card.kind === 'doc' && <span className="card-preview-kind"><FileText size={18} aria-hidden="true" /><span>{t.docCard}</span></span>}
         {card.kind === 'hero' && <div className="card-preview-family-actions">
           {supportsChildren && onShowFamily && <Button type="button" variant="outline" size="sm" className="card-preview-subcards-toggle" disabled={navigationLocked} aria-pressed={Boolean(familyVisible)} onClick={toggleFamily}><Crown size={20} aria-hidden="true" /><span>{t.subCardsCount(children.length)}</span></Button>}
           {heroMarkActions}
@@ -1169,16 +1174,16 @@ export function CardPreview({ card, catalog, snapshot, writable, pending, onClos
             source={snapshot.source} journeyPath={stepJourney?.path} />}
         </div>}
         {/* 2026-11-11: the open card shows its tags as they are; adding and removing them belongs to Properties. */}
-        {!contentEditing && tags.length > 0 && <div className="card-preview-tags">
+        {!editorOpen && tags.length > 0 && <div className="card-preview-tags">
           <CardTags tags={tags} definitions={catalog.projectTags} cardsById={cardsById}
             onOpenCard={openTagCard} onEditTags={() => showPanel('properties', 'tags')} disabled={navigationLocked} />
         </div>}
         <div className="card-preview-dock-row">
           {blockerCount > 0 && <button type="button" className="card-preview-blocker-note" disabled={panelSwitchDisabled} onClick={() => showPanel('dependencies')}>{t.blockers(blockerCount)}</button>}
           {waitingForAnswer && <button type="button" className="card-preview-blocker-note card-preview-question-waiting" disabled={panelSwitchDisabled} onClick={() => showPanel('questions')}><Hourglass size={14} aria-hidden="true" /><span>{waitingForAnswer}</span></button>}
-          {!contentEditing && <button type="button" className="card-preview-questions-shortcut" aria-label={t.showOpenQuestions(openQuestionCount, pendingDecisionCount)} disabled={panelSwitchDisabled || !exists} onClick={() => showPanel('questions')}><MessageCircleQuestion size={16} aria-hidden="true" />{t.questionsPanel}</button>}
+          {!editorOpen && <button type="button" className="card-preview-questions-shortcut" aria-label={t.showOpenQuestions(openQuestionCount, pendingDecisionCount)} disabled={panelSwitchDisabled || !exists} onClick={() => showPanel('questions')}><MessageCircleQuestion size={16} aria-hidden="true" />{t.questionsPanel}</button>}
           {card.kind === 'task' && card.dueDate && card.dueDate < localIsoDate() && card.state !== 'done' && <span className="card-preview-due-note">{t.overdue} · {card.dueDate}</span>}
-          {!contentEditing && <CardIdChip cardId={card.id} feedback={referenceFeedback?.state} onCopy={() => void copyReference(false)} />}
+          {!editorOpen && <CardIdChip cardId={card.id} feedback={referenceFeedback?.state} onCopy={() => void copyReference(false)} />}
           <div ref={setDockActions} className="card-preview-dock-actions" />
         </div>
       </div>
@@ -1187,7 +1192,7 @@ export function CardPreview({ card, catalog, snapshot, writable, pending, onClos
         {card.kind !== 'doc' && <Button type="button" variant="ghost" size="sm" className="card-preview-property-shortcut" disabled={quickDisabled} data-quick-settings-tab="effort" aria-haspopup="dialog" aria-expanded={quickSettings?.cardId === card.id && quickSettings.anchor.dataset.quickSettingsTab === 'effort'} data-shortcut-property="effort" data-shortcut-card-id={card.id} onPointerEnter={event => markShortcutPropertyHover(event.currentTarget, true)} onPointerLeave={event => markShortcutPropertyHover(event.currentTarget, false)} aria-label={t.effortLabel(String(displayedEffort ?? t.notSet))} title={t.editEffort} onClick={event => openQuickSettings('effort', event.currentTarget)}><span className="card-preview-property-label">{t.effort}</span><EffortIcon size={22} /><strong>{displayedEffort ?? '—'}</strong></Button>}
         <Button type="button" variant="ghost" size="sm" className="card-preview-owner-shortcut" disabled={quickDisabled} data-quick-settings-tab="owner" aria-haspopup="dialog" aria-expanded={quickSettings?.cardId === card.id && quickSettings.anchor.dataset.quickSettingsTab === 'owner'} aria-label={ownerLabel} title={ownerLabel} onClick={event => openQuickSettings('owner', event.currentTarget)}>{initials && <span className="card-preview-owner-initials" aria-hidden="true">{initials}</span>}{/* 2026-11-11: the corner badge names an agent; a person is already named by the initials. */}{(!initials || ownerMember?.kind === 'agent') && <CardOwnerAvatar owner={card.owner} members={catalog.members ?? []} />}</Button>
         {card.kind !== 'doc' && <Button type="button" variant="ghost" size="sm" className="card-preview-property-shortcut" disabled={quickDisabled} data-quick-settings-tab="priority" aria-haspopup="dialog" aria-expanded={quickSettings?.cardId === card.id && quickSettings.anchor.dataset.quickSettingsTab === 'priority'} data-shortcut-property="priority" data-shortcut-card-id={card.id} onPointerEnter={event => markShortcutPropertyHover(event.currentTarget, true)} onPointerLeave={event => markShortcutPropertyHover(event.currentTarget, false)} aria-label={t.priorityLabel(card.priority ? priorityLabel(card.priority, lang) : t.notSet)} title={t.editPriority} onClick={event => openQuickSettings('priority', event.currentTarget)}><span className="card-preview-property-label">{t.priority}</span><PriorityIcon priority={card.priority} size={22} /></Button>}
-        {card.kind === 'doc' && !contentEditing && <DocWordCount card={card} className="card-preview-word-count" />}
+        {card.kind === 'doc' && !editorOpen && <DocWordCount card={card} className="card-preview-word-count" />}
         {card.kind === 'hero' && <SubCardProgress cards={childTasks} cardsById={cardsById} />}
       </footer>
     </div>

@@ -238,7 +238,7 @@ export function Notifications({ snapshot, refreshKey, onOpenCard, open: controll
       <Bell size={18} aria-hidden="true" />{total > 0 && <span className="page-number">{total.toLocaleString(locale(lang))}</span>}
       {error && <span className="notifications-failure-mark" aria-hidden="true">!</span>}
     </Button></Dialog.Trigger>
-    <Dialog.Portal><Dialog.Content ref={prepareEntrance} className="notifications-panel dialog-panel" aria-describedby={undefined}
+    <Dialog.Portal><Dialog.Content ref={prepareEntrance} className={'notifications-panel dialog-panel' + (view ? ' has-data' : '')} aria-describedby={undefined}
       onInteractOutside={() => { interactedOutside.current = true; restoreFocus.current = false; }}
       onCloseAutoFocus={event => {
         event.preventDefault();
@@ -255,13 +255,13 @@ export function Notifications({ snapshot, refreshKey, onOpenCard, open: controll
       </select>
     </label>}
     <ErrorState variant="inline" className="notifications-error" message={error} onRetry={load} pending={loading} />
-    <LoadingState variant="keep-data" active={loading} message={t.loading} />
+    {!view && loading ? <LoadingState message={t.loading} /> : <LoadingState variant="keep-data" active={loading} message={t.loading} />}
     {visibleStacks.map(stack => viewerId && (collapsedBy[viewerId]?.[stack.id] ?? storedCollapsed(viewerId, stack.id) ?? compact)
       ? <CollapsedStack key={stack.id} stack={stack} buttonRef={focusOnMount(stack.id, 'pill')} onExpand={() => collapseStack(stack.id, false)} />
       : <NotificationStackView key={stack.id} stack={stack} canDismiss={Boolean(view?.writable && token) && !busy}
         onOpen={openCard} onDismiss={() => dismissStack(stack)}
         collapse={viewerId ? { ref: focusOnMount(stack.id, 'collapse'), onCollapse: () => collapseStack(stack.id, true) } : undefined} />)}
-    {!visibleStacks.length && !error && !loading && <p className="notifications-note" role="status">{view?.member ? t.noneFor(view.member.label) : t.none}</p>}
+    {!visibleStacks.length && !error && (view || !loading) && <p className="notifications-note" role="status">{view?.member ? t.noneFor(view.member.label) : t.none}</p>}
     {view && !view.writable && visibleStacks.some(stack => stack.dismissible) && <p className="notifications-note">{readOnlyDescription(snapshot)} {t.readOnly}</p>}
     {view?.warnings.map(warning => <p key={warning} className="notifications-note" role="status">{warning}</p>)}
       </div>

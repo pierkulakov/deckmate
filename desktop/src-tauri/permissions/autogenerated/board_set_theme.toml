@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-board-set-theme"
+description = "Enables the board_set_theme command without any pre-configured scope."
+commands.allow = ["board_set_theme"]
+
+[[permission]]
+identifier = "deny-board-set-theme"
+description = "Denies the board_set_theme command without any pre-configured scope."
+commands.deny = ["board_set_theme"]

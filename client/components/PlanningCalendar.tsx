@@ -255,7 +255,7 @@ export function PlanningCalendar({ open, selected, onClose, draft, onDraftChange
   if (draft?.kind === 'milestone') popoverTitle = t.createTitle;
   else if (draft?.kind === 'edit') popoverTitle = t.editTitle;
   else if (draft?.kind === 'configuration' && draft.configuration) popoverTitle = t.scheduleTitle;
-  return <Tooltip.Provider delayDuration={250}><aside ref={panelRef} className="planning-calendar-panel dialog-panel" aria-labelledby="planning-calendar-title">
+  return <Tooltip.Provider delayDuration={250}><aside ref={panelRef} className="planning-calendar-panel dialog-panel" aria-labelledby="planning-calendar-title" data-local-escape>
     <header className="planning-calendar-panel-header dialog-head">
       <h2 id="planning-calendar-title" className="dialog-title">{writable ? t.clickToAdd : t.calendar}</h2>
       {writable && <button ref={setupRef} type="button" className="planning-calendar-setup control" disabled={pending} aria-pressed={draft?.kind === 'configuration'} onClick={() => requestDraft(draft?.kind === 'configuration' ? null : { kind: 'configuration' })}><CalendarSync size={16} aria-hidden="true" /><span>{t.setupRuns}</span></button>}

@@ -336,7 +336,7 @@ export function CardComposer({ catalog, snapshot, initialDeckId, initialParentId
     if (primaryModifierPressed(event) && event.key === 'Enter') { event.preventDefault(); void save(); }
   }
 
-  return <aside ref={composer} className="card-preview has-action-rail card-composer" aria-label={t.newCardPanel} onKeyDown={handleKeyDown}>
+  return <aside ref={composer} className="card-preview has-action-rail card-composer" aria-label={t.newCardPanel} data-local-escape onKeyDown={handleKeyDown}>
     <div className="card-preview-main card-composer-main">
       <header className="card-preview-header">
         <div className="card-preview-context card-composer-context">

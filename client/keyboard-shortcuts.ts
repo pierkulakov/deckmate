@@ -351,7 +351,8 @@ export function matchShortcut(event: KeyboardEvent, shortcuts: readonly Shortcut
 }
 
 const textEntrySelector = 'input, textarea, select, [contenteditable]:not([contenteditable="false"]), [role="textbox"]';
-const floatingLayerSelector = '[role="dialog"], [role="alertdialog"], [role="menu"], [role="listbox"], dialog[open]';
+// 2026-11-13: non-dialog Radix layers must also block the deck's earlier window-capture handler.
+const floatingLayerSelector = '[role="dialog"], [role="alertdialog"], [role="menu"], [role="listbox"], dialog[open], [data-escape-layer]';
 let openCardTargets = 0;
 const hoverShortcutRoots = new Set<ParentNode>();
 

@@ -171,6 +171,20 @@ it('appends sorted vendored notices after filled sections with LF line endings',
   expect(fillThirdPartyNotices(output, notices).missing).toEqual([]);
 });
 
+it('allows a smaller entry point to omit notices and whole vendored hosts without weakening coverage of shipped code', () => {
+  const manifest = { notices, vendored: [vendoredEntry] };
+  const source = '# Licenses\n\n## kept - 1.0.0 (MIT)\n\nCopyright Kept\n';
+  expect(completeThirdPartyNotices(source, manifest, new Map(), true)).toBe(source);
+  expect(() => completeThirdPartyNotices(source, manifest, new Map())).toThrow('unused notices entries');
+  expect(() => completeThirdPartyNotices('# Licenses\n\n## empty - 1.0.0 (MIT)\n', manifest, new Map(), true))
+    .toThrow('bundled packages without license text');
+  const found = new Map([['host-pkg@1.0.0', new Set(['unknown@1.0.0'])]]);
+  expect(() => completeThirdPartyNotices(source, manifest, found, true)).toThrow('undeclared vendored code: unknown@1.0.0');
+  expect(() => completeThirdPartyNotices(source, manifest, found, true)).toThrow('vendored entries not found in the bundle: embedded@2.0.0');
+  found.set('host-pkg@1.0.0', new Set(['embedded@2.0.0']));
+  expect(completeThirdPartyNotices(source, manifest, found, true)).toContain('Copyright 2026 Embedded');
+});
+
 it('does not let another heading disguise an empty section', () => {
   const filled = fillThirdPartyNotices('# Licenses\n\n## missing - 1.0.0 (MIT)\n\n# Next\n\n## empty group\n', notices);
   expect(filled.missing).toEqual(['missing@1.0.0', 'empty group']);

@@ -28,7 +28,7 @@ vi.mock('@excalidraw/excalidraw', () => ({
   serializeAsJSON: (elements: unknown, appState: unknown, files: unknown) => JSON.stringify({ elements, appState, files }),
   convertToExcalidrawElements: (elements: unknown) => elements,
 }));
-vi.mock('../client/useCatalog.ts', () => ({ useCatalog: () => ({ catalog: null, error: null }) }));
+vi.mock('../client/useCatalog.ts', () => ({ useCatalog: () => ({ catalog: { cards: [], decks: [], members: [] }, error: null }) }));
 vi.mock('../client/components/JourneyPanel.tsx', () => ({ CatalogReferenceLink: () => null }));
 vi.mock('../client/onboarding/signals.ts', () => ({ emitSignal: vi.fn() }));
 

@@ -19,7 +19,6 @@
 .journey-catalog-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); align-items: start; gap: 16px; }
 .journey-catalog-tile { display: flex; flex-direction: column; min-width: 0; width: 100%; padding: 0; overflow: hidden; border: 0; border-radius: var(--glass-radius); background: var(--sidebar); color: var(--ink); text-align: left; }
 .journey-catalog-tile:hover { background: color-mix(in srgb, var(--sidebar) 88%, var(--ink)); }
-.journey-catalog-tile:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 .journey-catalog-preview { position: relative; display: flex; align-items: flex-start; gap: 10px; width: 100%; height: 102px; padding: 12px 13px 0; overflow: hidden; background: var(--journey-preview, var(--accent-soft)); }
 .journey-catalog-preview > .journey-mini { flex: 0 0 92px; width: 92px; height: 132px; box-shadow: none; pointer-events: none; }
 .journey-catalog-preview > .journey-mini > strong { padding: 8px 8px 0; font-size: 12px; font-weight: 700; line-height: 16px; }

@@ -22,8 +22,6 @@
   --sub-card-state-review: var(--plum);
   --sub-card-state-blocked: var(--danger);
   --sub-card-state-planned: var(--muted);
-  /* Highlight tone of the satin; Hero surfaces tint it with --hero-sheen (2026-11-05). */
-  --metal-sheen: #fff8e8;
   --metal-shadow: #241b24;
   /* 2026-11-08: warm shadow that deepens gold to amber without greying it. */
   --metal-amber: #6b3f0a;
@@ -61,7 +59,6 @@
 /* 2026-11-11: an editable metric is a button whose target fills the band's height; the tint shows only under the pointer. */
 button.deck-card-metric { cursor: pointer; }
 button.deck-card-metric::after { content: ''; position: absolute; inset: -3px -4px; border-radius: 4px; }
-button.deck-card-metric:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 @media (hover: hover) { button.deck-card-metric:hover:not(:disabled)::after { background: color-mix(in srgb, currentColor 14%, transparent); } }
 .deck-card-band .priority-icon { color: inherit; }
 /* 2026-11-11: the ribbon's darkest stop needs deeper ink than the flat silver and accepted bands. */
@@ -79,7 +76,6 @@ button.deck-card-metric:focus-visible { outline: 2px solid var(--focus); outline
 .deck-card-band > .deck-card-settings { position: absolute; z-index: 6; left: 50%; top: -12px; transform: translateX(-50%); display: grid; place-items: center; width: 23px; height: 23px; padding: 0; border: 0; border-radius: 50%; background: var(--card-face); color: var(--card-muted); opacity: 0; pointer-events: none; transition: opacity var(--motion-feedback); }
 .deck-card:focus-within .deck-card-settings, .deck-card-settings[aria-expanded="true"] { opacity: 1; pointer-events: auto; }
 .deck-card-owner-medallion + .deck-card-settings { opacity: 1; pointer-events: auto; background: transparent; }
-.deck-card-settings:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 @media (hover: hover) {
   .deck-card-space:hover .deck-card-settings { opacity: 1; pointer-events: auto; }
   .deck-card-settings:hover:not(:disabled) { background: color-mix(in srgb, var(--metal-base, var(--card-metal)) 16%, transparent); }

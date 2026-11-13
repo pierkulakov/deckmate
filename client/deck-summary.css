@@ -61,7 +61,6 @@
 .deck-overview-tracks button svg { flex-shrink: 0; }
 .deck-overview-tracks button span { overflow-wrap: anywhere; }
 /* 2026-11-06: the panel scrolls and clips 2 px left of the tracks; a ring at offset 0 stays whole. */
-.deck-overview-tracks button:focus-visible { outline-offset: 0; }
 @media (hover: hover) { .deck-overview-tracks button:hover:not(:disabled) { color: var(--ink); text-decoration: underline; text-underline-offset: 3px; } }
 .deck-overview-files { color: var(--muted); font-size: 12px; }
 .deck-overview-files summary { border-radius: var(--control-radius); font-weight: 500; cursor: pointer; }

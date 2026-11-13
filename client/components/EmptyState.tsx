@@ -7,12 +7,12 @@ import './states.css';
 const text = defineText({ empty: 'Nothing here yet.', filtered: 'Nothing found. Try a different query or filters.', reset: 'Reset search and filters' },
   { empty: 'Здесь пока пусто.', filtered: 'Ничего не найдено. Измените запрос или фильтры.', reset: 'Сбросить поиск и фильтры' });
 
-type Action = { label: string; onClick: () => void; disabled?: boolean };
+type Action = { label: string; icon?: ReactNode; onClick: () => void; disabled?: boolean };
 // 2026-11-10: `art` gives a large empty area (a whole tab, a card list, a catalog) its gray pixel scene and the scene
 // layout (states.css); small nested lists stay quiet and take no art.
 type EmptyStateProps = { message?: ReactNode; className?: string } & (
-  | { variant: 'first-run'; title: string; icon?: ReactNode; art?: EmptyArtScene; action?: Action | { hint: ReactNode }; primary?: boolean; secondary?: Action }
-  | { variant: 'filtered'; onReset: () => void; art?: EmptyArtScene; title?: string }
+  | { variant: 'first-run'; title: ReactNode; icon?: ReactNode; art?: EmptyArtScene; action?: Action | { hint: ReactNode }; primary?: boolean; secondary?: Action }
+  | { variant: 'filtered'; onReset: () => void; art?: EmptyArtScene; title?: ReactNode }
   | { variant?: 'quiet'; action?: Action }
 );
 
@@ -29,7 +29,7 @@ export function EmptyState(props: EmptyStateProps) {
     {props.variant === 'filtered' && <Button type="button" variant="outline" size="sm" onClick={props.onReset}>{t.reset}</Button>}
     {props.variant !== 'filtered' && props.action && ('hint' in props.action
       ? <p>{props.action.hint}</p>
-      : <Button type="button" variant={props.variant === 'first-run' && props.primary ? 'default' : 'outline'} size="sm" disabled={props.action.disabled} onClick={props.action.onClick}>{props.action.label}</Button>)}
+      : <Button type="button" variant={props.variant === 'first-run' && props.primary ? 'default' : 'outline'} size="sm" disabled={props.action.disabled} onClick={props.action.onClick}>{props.action.icon}{props.action.label}</Button>)}
     {props.variant === 'first-run' && props.secondary && <Button type="button" variant="ghost" size="sm" disabled={props.secondary.disabled} onClick={props.secondary.onClick}>{props.secondary.label}</Button>}
   </div>;
 }

@@ -1,7 +1,8 @@
 import { moveFocus } from '../focus.ts';
-// 2026-11-05: the Level panel docks under the top bar on the right: level, the XP line, chapters with their quests.
-// It is not modal — the page keeps working — and closes with the cross, Escape (focus inside) or the badge itself.
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+// 2026-11-13: Level stays non-modal so page controls remain available; Radix decides when it owns Escape.
+import { useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { DismissableLayer } from '@radix-ui/react-dismissable-layer';
+import { FocusScope } from '@radix-ui/react-focus-scope';
 import { Check, ChevronDown, ChevronRight, Lock, X } from 'lucide-react';
 import { defineText, locale, useLang, useText } from '../i18n.ts';
 import { chapterStatuses, earnedXp, levelOf, totalXp, type Chapter, type ChapterStatus, type Quest } from '../onboarding/model.ts';
@@ -159,7 +160,6 @@ export function LevelPanel({ projectKey, withoutDecks = false, onClose, onNaviga
   const recommendedChapter = chapters.find((_, index) => statuses[index] === 'open');
   const recommendedQuest = recommendedChapter?.quests.find(quest => !done.has(quest.id))?.id;
 
-  useEffect(() => { moveFocus(titleRef.current); }, []);
   // 2026-11-09: the page narrows by a root attribute instead of .global-shell:has(.level-panel). That :has() anchor sat
   // above the whole board, so every DOM change under it restyled every element of the page (a card open: twice ~2000).
   useLayoutEffect(() => {
@@ -170,10 +170,18 @@ export function LevelPanel({ projectKey, withoutDecks = false, onClose, onNaviga
   function toggleHint(questId: string) {
     setOpenHints(current => ({ ...current, [questId]: !(current[questId] ?? questId === recommendedQuest) }));
   }
+  function onEscapeKeyDown(event: KeyboardEvent) {
+    // 2026-11-13: Radix captures before local handlers; a focused surface must get its own Escape first.
+    if (event.isComposing || (event.target instanceof Element && event.target.closest('[data-local-escape]'))) return;
+    event.preventDefault();
+    event.stopPropagation();
+    onClose();
+  }
   const format = (value: number) => new Intl.NumberFormat(locale(lang)).format(value);
 
-  return <aside id="level-panel" className="level-panel" aria-label={t.regionLabel}
-    onKeyDown={event => { if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); onClose(); } }}>
+  // 2026-11-13: share the layer's mount lifecycle; focusing in layout exposed Level before it owned Escape.
+  return <FocusScope asChild onMountAutoFocus={event => { event.preventDefault(); moveFocus(titleRef.current); }} onUnmountAutoFocus={event => event.preventDefault()}>
+    <DismissableLayer asChild onEscapeKeyDown={onEscapeKeyDown}><aside id="level-panel" className="level-panel" aria-label={t.regionLabel} data-escape-layer="open">
     <header className="level-panel-head">
       <span className="level-panel-card" aria-hidden="true">{level.level}</span>
       <div className="level-panel-heading">
@@ -197,5 +205,5 @@ export function LevelPanel({ projectKey, withoutDecks = false, onClose, onNaviga
         {locked.map(chapter => <LockedChapter key={chapter.id} chapter={chapter} />)}
       </>}
     </div>
-  </aside>;
+  </aside></DismissableLayer></FocusScope>;
 }

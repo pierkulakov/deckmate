@@ -9,7 +9,6 @@
 .card-focus-mode-back::before, .card-focus-mode-screen::before { content: ''; position: absolute; inset: -6px; }
 .card-focus-mode-back:hover, .card-focus-mode-screen:hover { background: var(--hover); color: var(--ink); }
 .card-focus-mode-back:hover { border-color: var(--button-line); }
-.card-focus-mode-back:focus-visible, .card-focus-mode-screen:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 .card-focus-mode-column { width: min(530px, calc(100% - 96px)); margin: 0 auto; padding: 56px 0 96px; }
 
 /* The card's own reading and edit form, without the sheet's frame: one rule set, no second editor. */

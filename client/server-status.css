@@ -18,7 +18,6 @@
 /* 2026-11-10: a deliberate exception to the Foil Rule — the Live badge stays a capsule;
    every save shows in it. */
 .server-status { position: relative; isolation: isolate; border: 0; background: transparent; border-radius: 11px; cursor: pointer; min-height: 22px; }
-.server-status:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 /* The middle stretches on the compositor; the 11px end caps never scale and stay round. */
 .server-status-face { position: absolute; inset: 50% 0 auto; z-index: -1; height: 22px; transform: translateY(-50%); pointer-events: none; }
 .server-status-face::before, .server-status-face::after, .server-status-face > span { position: absolute; top: 0; bottom: 0;

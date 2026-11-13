@@ -95,6 +95,49 @@ it('deduplicates explicit concurrent refreshes but reads again after an event du
   expect(store.getSnapshot()).toMatchObject({ loading: false, error: null, catalog: { indexedAt: 'after-event' } });
 });
 
+it('retains unchanged entities across no-op refreshes, edits and reordered responses', async () => {
+  const store = new CatalogStore('sandbox');
+  const initial = view('initial');
+  initial.cards.push({ ...initial.cards[0], id: 'card:untouched', title: 'Keep this tile' });
+  fetchMock.mockResolvedValueOnce(response(initial)).mockResolvedValueOnce(response(initial));
+  await store.load();
+  const before = store.getSnapshot().catalog!;
+  await store.refresh();
+  expect(store.getSnapshot().catalog).toBe(before);
+  const updated = { ...initial, indexedAt: 'updated', cards: [{ ...initial.cards[0], state: 'started' }, initial.cards[1]] };
+  fetchMock.mockResolvedValueOnce(response(updated));
+  expect(await store.edit(snapshot, stateEdit())).toBe(true);
+  const after = store.getSnapshot().catalog!;
+  expect(after.cards[0]).not.toBe(before.cards[0]);
+  expect(after.cards[1]).toBe(before.cards[1]);
+  expect(after.members).toBe(before.members);
+  fetchMock.mockResolvedValueOnce(response({ ...updated, cards: [...updated.cards].reverse() }));
+  await store.refresh();
+  expect(store.getSnapshot().catalog!.cards).toEqual([...after.cards].reverse());
+  expect(store.getSnapshot().catalog!.cards[0]).toBe(before.cards[1]);
+  expect(before.cards[0].state).toBe('not-started');
+});
+
+it('never publishes an intermediate response superseded by a changed event', async () => {
+  const store = new CatalogStore('sandbox');
+  fetchMock.mockResolvedValueOnce(response(view('initial')));
+  await store.load();
+  const oldRead = deferred<Response>();
+  const latestRead = deferred<Response>();
+  fetchMock.mockReturnValueOnce(oldRead.promise).mockReturnValueOnce(latestRead.promise);
+  const shown: string[] = [];
+  store.subscribe(() => shown.push(store.getSnapshot().catalog!.cards[0].title));
+  const refreshing = store.refresh();
+  store.invalidate();
+  oldRead.resolve(response(view('superseded')));
+  await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
+  expect(store.getSnapshot().catalog!.cards[0].title).toBe('initial');
+  latestRead.resolve(response(view('current')));
+  await refreshing;
+  expect(shown).not.toContain('superseded');
+  expect(shown.at(-1)).toBe('current');
+});
+
 it('retries the current revision when a file event supersedes a failed GET', async () => {
   const store = new CatalogStore('sandbox');
   fetchMock.mockResolvedValueOnce(response(view('initial')));

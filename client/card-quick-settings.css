@@ -3,7 +3,6 @@
 .card-quick-tabs { display: flex; flex-shrink: 0; align-items: center; justify-content: space-between; padding: 12px 16px 0; }
 .card-quick-tabs button { display: grid; place-items: center; flex: 0 0 24px; width: 24px; height: 24px; padding: 0 4px; border: var(--control-hairline) solid var(--control-line); border-radius: var(--control-radius); background: transparent; color: var(--button-ink, var(--ink)); }
 @media (hover: hover) { .card-quick-tabs button:hover:not(:disabled):not([aria-selected="true"]) { border-color: var(--button-line); background: var(--hover); } }
-.card-quick-tabs button:focus-visible { outline-offset: 2px; }
 /* 2026-11-10, the Foil Rule: the selected tab carries the accent mark and tint instead of a filled face. */
 .card-quick-tabs button[aria-selected="true"] { border-color: var(--mark); background: var(--mark-tint); color: var(--mark); }
 @media (hover: hover) { .card-quick-tabs button[aria-selected="true"]:hover:not(:disabled) { border-color: var(--mark); background: var(--mark-tint-strong); color: var(--mark); } }

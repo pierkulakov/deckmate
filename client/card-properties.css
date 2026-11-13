@@ -53,11 +53,9 @@
 :root.dark { --tag-chip-off-ink: #e7dff7; }
 .card-properties-info { display: grid; place-items: center; width: 18px; height: 18px; padding: 0; border: 0; border-radius: var(--control-radius); color: var(--muted); background: transparent; cursor: help; }
 .card-properties-info:hover { color: var(--ink); background: var(--hover); }
-.card-properties-info:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
 .card-properties-info-tip { z-index: 160; max-width: 260px; padding: 8px 10px; border: 1px solid var(--line); border-radius: var(--glass-radius); color: var(--tag-foreground, var(--ink)); background: var(--tag-popover-background, var(--surface)); box-shadow: var(--shadow); font-size: 12px; line-height: 16px; animation: overlay-pop var(--motion-spring-quick) var(--ease-spring-quick); }
 .card-properties-tag-chip { position: relative; display: inline-flex; align-items: center; max-width: 100%; height: 24px; padding: 0 6px; overflow: hidden; border: var(--control-hairline) solid var(--control-line); border-radius: var(--control-radius); color: var(--tag-chip-off-ink); background: transparent; font-size: 12px; font-weight: 500; line-height: 16px; white-space: nowrap; cursor: pointer; }
 .card-properties-tag-chip:hover:not(:disabled) { border-color: var(--button-line); background: var(--hover); }
-.card-properties-tag-chip:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
 .card-properties-tag-chip:disabled { opacity: .5; cursor: default; }
 @media (prefers-reduced-motion: reduce) { .card-properties-tag-chip { transition: none; } }
 .card-properties-error { margin: 0; font-size: 12px; line-height: 16px; overflow-wrap: anywhere; }

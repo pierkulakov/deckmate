@@ -52,6 +52,7 @@ pub fn run() {
         std::process::exit(code);
     }
     let built = tauri::Builder::default()
+        .manage(window::Zoom::default())
         .plugin(tauri_plugin_single_instance::init(|app, _, _| {
             if let Some(window) = app.get_webview_window("main") {
                 let _ = window.unminimize();
@@ -73,6 +74,7 @@ pub fn run() {
             bridge::desktop_create_project,
             bridge::desktop_remove_recent,
             bridge::desktop_set_language,
+            bridge::desktop_set_theme,
             bridge::desktop_add_to_workspace,
             bridge::desktop_remove_from_workspace,
             bridge::desktop_move_in_workspace,
@@ -84,6 +86,8 @@ pub fn run() {
             bridge::board_switch_project,
             bridge::board_show_start_screen,
             bridge::board_set_dirty,
+            bridge::board_set_theme,
+            bridge::board_set_language,
             whats_new::whats_new_get
         ])
         .setup(|app| {
@@ -92,7 +96,6 @@ pub fn run() {
             app.manage(shell);
             // 2026-11-12: the sidecar does not need WebView2; overlap both startup paths.
             tauri::async_runtime::spawn(app::startup(app.handle().clone(), launch));
-            menu::rebuild(app.handle());
             window::create(app.handle())?;
             updater::start(app.handle().clone());
             Ok(())

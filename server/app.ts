@@ -2,7 +2,7 @@ import { planningBodySchema } from './planning-schema.ts';
 import { defineText, serverLang, serverText } from './i18n.ts';
 import Fastify, { type FastifyReply } from 'fastify';
 import { WebSocketServer, WebSocket } from 'ws';
-import { randomBytes } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { packagePath } from './package-path.ts';
@@ -24,6 +24,7 @@ import type { NotificationDismissRequest, NotificationWatchRequest } from '../sr
 import { memberIdPattern } from '../src/members.ts';
 import type { PlanningEdit } from '../src/planning-files.ts';
 import { registerRequestLang } from './i18n.ts';
+import { registerProjectTemplatesRoute } from './project-templates-route.ts';
 
 const messages = defineText({
   attachmentsChanged: "Attachments changed in the files. Refresh the panel and try again.",
@@ -80,6 +81,15 @@ const types: Record<string, string> = { '.html': 'text/html; charset=utf-8', '.j
 // 2026-11-07: Vision's /r/ embeds need same-origin frames; foreign sites and opaque sandbox origins remain blocked.
 const framingHeaders = { 'Content-Security-Policy': "frame-ancestors 'self'", 'X-Frame-Options': 'SAMEORIGIN' };
 
+function cachedImage(bytes: Buffer, reply: FastifyReply, ifNoneMatch: string | undefined, immutable = false) {
+  // 2026-11-13: project files can be edited in place; only fingerprinted bundle images are immutable.
+  const etag = '"' + createHash('sha256').update(bytes).digest('hex') + '"';
+  reply.header('Cache-Control', immutable ? 'public, max-age=31536000, immutable' : 'private, no-cache');
+  reply.header('ETag', etag);
+  const matches = ifNoneMatch?.split(',').some(value => value.trim() === '*' || value.trim().replace(/^W\//u, '') === etag);
+  return matches ? reply.code(304).send() : bytes;
+}
+
 /** 2026-11-06: a request path must be one clean relative path; everything else answers 404 before any filesystem call. */
 function servableRequestPath(value: unknown): value is string {
   return typeof value === 'string' && !/[\u0000-\u001f\u007f\\]/u.test(value) && !path.isAbsolute(value)
@@ -102,7 +112,7 @@ async function runAttachmentEdit(catalog: CatalogService, config: ServerConfig, 
   return catalog.get('sandbox');
 }
 
-export async function createApp(config: ServerConfig, options: { deferStartup?: boolean } = {}) {
+export async function createApp(config: ServerConfig, options: { deferStartup?: boolean; onStartupError?: (error: unknown) => void } = {}) {
   if (process.platform === 'win32') void import('./windows-access.ts').then(module => module.warmWindowsAccess(), () => {});
   const app = Fastify({ logger: false, bodyLimit: 512 * 1024,
     // 2026-11-07: malformed URLs bypass request hooks but still need the same-origin framing policy.
@@ -117,8 +127,24 @@ export async function createApp(config: ServerConfig, options: { deferStartup?: 
   const failedWatchSources = new Set<DataSource>();
   let closing = false;
   let repositoryError: typeof import('./repository.ts').RepositoryError | undefined;
+  const startupPending = new Set(['initialize', 'snapshot', 'catalog']);
+  let startupFailed = false;
+  // 2026-11-13: HTTP readiness precedes project loading; report its first failure without treating later edits as startup.
+  const startupRead = async <Value>(step: string, read: () => Promise<Value>): Promise<Value> => {
+    try {
+      const value = await read();
+      startupPending.delete(step);
+      return value;
+    } catch (error) {
+      if (!closing && !startupFailed && startupPending.has(step)) {
+        startupFailed = true;
+        options.onStartupError?.(error);
+      }
+      throw error;
+    }
+  };
   let projectStartup: Promise<void> | undefined;
-  const initializeProject = () => projectStartup ??= (async () => {
+  const initializeProject = () => projectStartup ??= startupRead('initialize', async () => {
     const [repositoryModule, catalogModule, boardsModule, notificationsModule] = await Promise.all([
       import('./repository.ts'), import('./catalog-service.ts'), import('./boards.ts'), import('./notifications.ts'),
     ]);
@@ -129,7 +155,7 @@ export async function createApp(config: ServerConfig, options: { deferStartup?: 
     boards = new boardsModule.Boards(config);
     notifications = new notificationsModule.NotificationService(config, catalog);
     await Promise.all([repository.initialize(), startWatchers()]);
-  })();
+  });
   let observedPlanningView: CatalogView | null = null;
   // 2026-11-05: burndown numbers change only through writes, so only a successful POST makes a planning point due.
   // 2026-11-07: GET /api/catalog may still write (carry Runs, auto-archive) as catalog housekeeping; that is not a planning edit.
@@ -219,16 +245,16 @@ export async function createApp(config: ServerConfig, options: { deferStartup?: 
     return reply.redirect(`/?view=deck&catalogSource=${source}&scope=all&card=${encodeURIComponent(card.id)}`);
   });
   app.get<{ Querystring: { source?: DataSource } }>('/api/snapshot', async request => ({
-    ...await repository.snapshot(request.query.source === 'live' ? 'live' : 'sandbox'), token,
+    ...await startupRead('snapshot', () => repository.snapshot(request.query.source === 'live' ? 'live' : 'sandbox')), token,
   }));
   app.get<{ Querystring: { source?: DataSource } }>('/api/catalog', async request => {
     const source = request.query.source === 'live' ? 'live' : 'sandbox';
-    const view = await catalog.get(source);
+    const view = await startupRead('catalog', () => catalog.get(source));
     if (source === 'sandbox') observedPlanningView = view;
     return view;
   });
   app.get('/api/onboarding-facts', async () => (await import('./onboarding-facts.ts')).readOnboardingFacts([config.writeRoot, config.dataRoot]));
-  app.get('/api/project-templates', async () => (await import('./project-templates.ts')).listProjectTemplates());
+  registerProjectTemplatesRoute(app);
   app.get<{ Params: { id: string }; Querystring: { source?: DataSource } }>('/api/project-templates/:id/plan', async (request, reply) => {
     const source = request.query.source === 'live' ? 'live' : 'sandbox';
     const { planProjectTemplate, ProjectTemplateNotFoundError } = await import('./project-templates.ts');
@@ -711,7 +737,8 @@ export async function createApp(config: ServerConfig, options: { deferStartup?: 
       }
     }
     reply.type(extension === '.md' ? 'text/plain; charset=utf-8' : types[extension]);
-    return readFile(filename).catch(error => {
+    return readFile(filename).then(bytes => types[extension]?.startsWith('image/')
+      ? cachedImage(bytes, reply, request.headers['if-none-match']) : bytes).catch(error => {
       if ((error as NodeJS.ErrnoException).code === 'ENOENT') return reply.code(404).send();
       throw error;
     });
@@ -726,8 +753,11 @@ export async function createApp(config: ServerConfig, options: { deferStartup?: 
       const requested = decodeURIComponent(request.url.split('?')[0]).replace(/^\/+/, '') || 'index.html';
       const relative = path.extname(requested) ? requested : 'index.html';
       const filename = await containedFile(clientRoot, relative);
-      reply.type(types[path.extname(filename)] ?? 'application/octet-stream');
-      return await readFile(filename);
+      const type = types[path.extname(filename)] ?? 'application/octet-stream';
+      reply.type(type);
+      const bytes = await readFile(filename);
+      return type.startsWith('image/')
+        ? cachedImage(bytes, reply, request.headers['if-none-match'], /^assets\/.+-[\w-]{8,}\.[a-z]+$/u.test(relative)) : bytes;
     } catch { return reply.code(404).send(serverText(messages).pageMissing); }
   });
 
@@ -740,6 +770,10 @@ export async function createApp(config: ServerConfig, options: { deferStartup?: 
       socket.destroy(); return;
     }
     sockets.handleUpgrade(request, socket, head, client => sockets.emit('connection', client, request));
+  });
+  sockets.on('connection', client => {
+    // 2026-11-13: initial watcher failures can precede the first browser connection or a reconnect.
+    for (const source of failedWatchSources) client.send(JSON.stringify({ type: 'watcher-error', source }));
   });
   const broadcast = (source: DataSource, relativePath: string) => {
     catalog?.invalidate(source, relativePath);

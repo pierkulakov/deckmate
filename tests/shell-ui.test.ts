@@ -3,7 +3,7 @@ import { createBrowserSession } from './browser-session.ts';
 import { requireBrowser } from './browser-environment.ts';
 import { expectPageStateDuring, waitForLayout } from './browser-layout.ts';
 import { version } from '../package.json';
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 
 const browserPath = requireBrowser();
@@ -38,7 +38,7 @@ describe.skipIf(!browserPath)('application shell (browser)', () => {
     await delay(80);
   }
   async function key(key: string) {
-    const keyCodes: Record<string, number> = { Escape: 27, Enter: 13, ArrowUp: 38, ArrowDown: 40, ' ': 32 };
+    const keyCodes: Record<string, number> = { Escape: 27, Enter: 13, Tab: 9, ArrowUp: 38, ArrowDown: 40, ' ': 32 };
     for (const type of ['keyDown', 'keyUp']) await send('Input.dispatchKeyEvent', { type, key, code: key === ' ' ? 'Space' : key, windowsVirtualKeyCode: keyCodes[key], text: type === 'keyDown' && key === 'Enter' ? '\r' : undefined });
     await delay(100);
   }
@@ -47,6 +47,7 @@ describe.skipIf(!browserPath)('application shell (browser)', () => {
     await evaluate(`window.shellTest.render(${JSON.stringify(scene)}, ${JSON.stringify(options)})`);
     await until(scene === 'bulk' ? `Boolean(document.querySelector('.bulk-actions'))` : `Boolean(document.querySelector('.global-search-field input') && document.querySelector('.catalog-view, .planning-view, .hand-view'))`);
     await evaluate('document.fonts.ready');
+    if (scene !== 'bulk') await until(`Boolean(document.querySelector('.first-screen[data-state="ready"]'))`);
   }
   async function workspace(options: object = {}, width = 1280) {
     await render('app', { workspace: true, ...options }, width);
@@ -58,6 +59,28 @@ describe.skipIf(!browserPath)('application shell (browser)', () => {
     await evaluate(`(()=>{const trigger=document.querySelector('.global-search-trigger');if(trigger?.getBoundingClientRect().width && trigger.getAttribute('aria-expanded')==='false')trigger.click()})()`);
     await evaluate(`(()=>{const input=document.querySelector('.global-search input');input.focus();Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(input,${JSON.stringify(query)});input.dispatchEvent(new Event('input',{bubbles:true}))})()`);
     await until(`Boolean(document.querySelector('.global-search-pop'))`);
+  }
+  async function waitForSearchResult(selector: string) {
+    // 2026-11-13: the popover commits before deferred results; Enter needs the focused combobox's active option.
+    await until(`(() => {
+      const input = document.querySelector('.global-search input');
+      const option = document.getElementById(input.getAttribute('aria-activedescendant'));
+      return document.activeElement === input && option?.getAttribute('aria-selected') === 'true'
+        && Boolean(option.querySelector(${JSON.stringify(selector)}));
+    })()`);
+  }
+  async function expectSearchClosed(width: number, query: string) {
+    const target = width === 375 ? '.global-search-trigger' : '.global-search input';
+    await until(`!document.querySelector('.global-search-pop')`);
+    expect(await evaluate(`(() => {
+      const input = document.querySelector('.global-search input');
+      const active = document.activeElement;
+      return { query: input.value, expanded: input.getAttribute('aria-expanded'),
+        triggerExpanded: document.querySelector('.global-search-trigger').getAttribute('aria-expanded'),
+        focusReturned: active.matches(${JSON.stringify(target)}), visible: active.getBoundingClientRect().width > 0,
+        tabFocus: document.documentElement.hasAttribute('data-tab-focus') };
+    })()`)).toEqual({ query, expanded: 'false', triggerExpanded: 'false', focusReturned: true, visible: true, tabFocus: false });
+    await expectPageStateDuring(evaluate, `!document.querySelector('.global-search-pop') && document.activeElement.matches(${JSON.stringify(target)})`, 200);
   }
   async function workspaceLayoutFailures() {
     return evaluate(`(() => {
@@ -125,13 +148,24 @@ describe.skipIf(!browserPath)('application shell (browser)', () => {
       await expectPageStateDuring(evaluate, `(() => {
         const panel = document.querySelector('.catalog-content-layout');
         return panel && getComputedStyle(panel).display !== 'none'
-          && (!panel.querySelector('.catalog-preview-slot') || Boolean(panel.querySelector('.card-composer .card-edit-text')));
+          && (!panel.querySelector('.catalog-preview-slot:not([hidden])') || Boolean(panel.querySelector('.card-composer .card-edit-text')));
       })()`, 700);
       await until(`Boolean(document.querySelector('.card-composer .card-edit-text'))`);
     } finally {
       await send('Network.emulateNetworkConditions', { offline: false, latency: 0, downloadThroughput: -1, uploadThroughput: -1 });
     }
     expect(session.errors).toEqual([]);
+  });
+
+  it.each(['preview', 'composer'])('keeps the covered phone card list in place while opening the %s sheet', async sheet => {
+    await render('app', { deck: true, layout: 'cards' }, 375);
+    await until(`Boolean(document.querySelector('.catalog-results .deck-card-open'))`);
+    await waitForLayout(evaluate, '.catalog-results');
+    const top = await evaluate(`document.querySelector('.catalog-results').getBoundingClientRect().top`);
+    await click(sheet === 'preview' ? '.catalog-results .deck-card-open' : '.deck-action-rail button[aria-label="New card"]');
+    await until(`Boolean(document.querySelector(${JSON.stringify(sheet === 'preview' ? '.card-focus-mode .card-preview' : '.card-composer .card-edit-text')}))`);
+    await waitForLayout(evaluate, '.catalog-results');
+    expect(await evaluate(`document.querySelector('.catalog-results').getBoundingClientRect().top`)).toBe(top);
   });
 
   it('cancels an intent warmup when New card opens without stealing editor focus', async () => {
@@ -301,10 +335,96 @@ describe.skipIf(!browserPath)('application shell (browser)', () => {
     }
   });
 
+  it.each([375, 1440])('focus F03 closes search from the field and retains visible header focus at %s px', async width => {
+    for (const theme of ['dark', 'light']) for (const query of ['Task 2', 'kind:task Task 2']) {
+      await render('app', { theme }, width);
+      await search(query);
+      await waitForSearchResult('.global-search-row[title$=": Task 2"]');
+      await key('Escape');
+      await expectSearchClosed(width, query);
+    }
+  });
+
+  it.each([375, 1440])('focus F04 closes search from tabbable results, tags and controls at %s px', async width => {
+    for (const theme of ['dark', 'light']) for (const [query, target] of [
+      ['Task 2', '.global-search-row[title$=": Task 2"]'],
+      ['gd:tasks', '.global-search-nav'],
+      ['#ar', '.global-search-tag-suggestion'],
+      ['kind:task Task 2', '.global-search-pill'],
+      ['Unmatched search query', '.global-search-syntax button'],
+    ]) {
+      await render('app', { theme, searchMetadata: true }, width);
+      await search(query);
+      await until(`Boolean(document.querySelector(${JSON.stringify(target)}))`);
+      for (let step = 0; step < 6; step++) {
+        if (await evaluate(`document.activeElement.matches(${JSON.stringify(target)})`)) break;
+        await key('Tab');
+      }
+      expect(await evaluate(`document.activeElement.matches(${JSON.stringify(target)}) && document.documentElement.hasAttribute('data-tab-focus')`)).toBe(true);
+      await key('Escape');
+      await expectSearchClosed(width, query);
+    }
+  });
+
+  it.each(['', 'Task 1'])('search opens the current query when Enter immediately follows input, after %j', async previous => {
+    await render('app', {}, 1280);
+    if (previous) {
+      await search(previous);
+      await waitForSearchResult('.global-search-row[title$=": Task 1"]');
+      await key('ArrowDown');
+    }
+    // 2026-11-13: one browser task prevents deferred results from settling between input and Enter.
+    const activeTitle = await evaluate(`(() => {
+      const input = document.querySelector('.global-search input');
+      input.focus();
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(input, 'Task 2');
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+      const active = document.getElementById(input.getAttribute('aria-activedescendant'));
+      const title = active?.querySelector('.global-search-row').title ?? null;
+      input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', bubbles: true, cancelable: true }));
+      return title;
+    })()`);
+    if (previous) expect(activeTitle).toMatch(/: Task 1/);
+    else expect(activeTitle).toBeNull();
+    await until(`new URLSearchParams(location.search).get('card') === 'card:shell-2'`);
+    await until(`Boolean(document.querySelector('.card-preview'))`);
+  });
+
+  it.each(['change', 'close', 'no matches'])('search cancels pending Enter on %s', async action => {
+    await render('app', {}, 1280);
+    await evaluate(`(() => {
+      const input = document.querySelector('.global-search input');
+      const type = value => {
+        Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(input, value);
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+      };
+      const press = key => input.dispatchEvent(new KeyboardEvent('keydown', { key, code: key, bubbles: true, cancelable: true }));
+      input.focus();
+      type(${JSON.stringify(action === 'no matches' ? 'Unmatched search query' : 'Task 2')});
+      press('Enter');
+      if (${JSON.stringify(action)} === 'change') { type('Task 3'); type('Task 2'); }
+      if (${JSON.stringify(action)} === 'close') press('Escape');
+    })()`);
+    if (action === 'change') await waitForSearchResult('.global-search-row[title$=": Task 2"]');
+    else if (action === 'close') {
+      await expectSearchClosed(1280, 'Task 2');
+      await evaluate(`document.querySelector('.global-tabs button').focus(); document.querySelector('.global-search input').focus()`);
+      await waitForSearchResult('.global-search-row[title$=": Task 2"]');
+    } else await until(`Boolean(document.querySelector('.global-search-empty.ui-empty'))`);
+    await expectPageStateDuring(evaluate, `!new URLSearchParams(location.search).has('card') && !document.querySelector('.card-preview')`, 200);
+    if (action === 'no matches') {
+      await search('Task 2');
+      await waitForSearchResult('.global-search-row[title$=": Task 2"]');
+      await expectPageStateDuring(evaluate, `!new URLSearchParams(location.search).has('card')`, 200);
+    }
+    await key('Enter');
+    await until(`new URLSearchParams(location.search).get('card') === 'card:shell-2'`);
+  });
+
   it.each(['en', 'ru'])('search uses the card status, owner name and one tag location in %s', async lang => {
     await render('app', { searchMetadata: true, lang }, 1280);
     await search('Task 0');
-    await until(`Boolean(document.querySelector('.global-search-row'))`);
+    await waitForSearchResult('.global-search-row[title$=": Task 0"]');
     const row = await evaluate(`(()=>{const row=[...document.querySelectorAll('.global-search-row')].find(e=>e.title.endsWith(': Task 0'));return {text:row.textContent,states:[...row.querySelectorAll('.card-face-state')].map(e=>e.textContent),statusTitle:row.querySelector('.card-face-status')?.title,due:row.querySelector('.card-face-due')?.textContent,tags:row.querySelectorAll('.card-tags').length,prefix:row.querySelectorAll('.tag-title-prefix').length}})()`);
     expect(row.states).toContain(lang === 'ru' ? 'Заблокирована' : 'Blocked');
     expect(row.statusTitle).toContain(lang === 'ru' ? 'Ждёт 1' : 'Waiting: 1');
@@ -356,7 +476,7 @@ describe.skipIf(!browserPath)('application shell (browser)', () => {
     await render('app', { searchMetadata: true, lang }, 1280);
     for (const query of ['ar', '#ar']) {
       await search(query);
-      await until(`Boolean(document.querySelector('.global-search-tag-suggestion'))`);
+      await waitForSearchResult('.global-search-tag-suggestion');
       expect(await evaluate(`(()=>{const row=document.querySelector('.global-search-tag-suggestion');return {name:row.querySelector('.tag-badge-name').textContent,glyph:row.querySelector('.tag-badge-glyph').textContent,count:row.querySelector('.page-number').textContent}})()`))
         .toEqual({ name: 'art', glyph: '🎨', count: '1' });
       await key('Enter');
@@ -408,8 +528,10 @@ describe.skipIf(!browserPath)('application shell (browser)', () => {
     await render('app', { view: 'hand', searchMetadata: true }, 1280);
     await evaluate(`history.replaceState(history.state,'',location.href+'&handMember=maya&hands=all');window.actingMemberBefore=localStorage.getItem('deckmate-current-member')`);
     await search('Task 0');
+    await waitForSearchResult('.global-search-row[title$=": Task 0"]');
     await key('Enter');
     await until(`new URLSearchParams(location.search).get('card') === 'card:shell-0'`);
+    await until(`Boolean(document.querySelector('.card-preview'))`);
     expect(await evaluate(`new URLSearchParams(location.search).get('handMember')`)).toBe('maya');
     await evaluate('history.back()');
     await until(`document.querySelector('.hand-view') && new URLSearchParams(location.search).get('view') === 'hand'`);
@@ -489,9 +611,8 @@ describe.skipIf(!browserPath)('application shell (browser)', () => {
 
   it('global search shares the recessed field and dialog frame at desktop and phone widths', async () => {
     for (const width of [375, 1440]) {
-      await render('app', {}, width);
       for (const dark of [false, true]) {
-        await evaluate(`document.documentElement.classList.toggle('dark', ${dark})`);
+        await render('app', { theme: dark ? 'dark' : 'light' }, width);
         await search('card');
         await until(`Boolean(document.querySelector('.global-search-pop'))`);
         const state = await evaluate(`(() => {
@@ -532,7 +653,7 @@ describe.skipIf(!browserPath)('application shell (browser)', () => {
     await render('app', { view, deck: view === 'deck' }, 1280);
     await evaluate(`window.searchNavigationMarker='same-document'`);
     await search('gd:neighbors');
-    await until(`Boolean(document.querySelector('.global-search-nav'))`);
+    await waitForSearchResult('.global-search-nav[title$=": neighbors"]');
     await key('Enter');
     await until(`new URLSearchParams(location.search).get('deck') === 'neighbors' && Boolean(document.querySelector('.is-deck-open'))`);
     expect(await evaluate('window.searchNavigationMarker')).toBe('same-document');
@@ -756,7 +877,7 @@ describe.skipIf(!browserPath)('application shell (browser)', () => {
       await waitForLayout(evaluate, '.catalog-cover-item');
       expect(await evaluate(`(() => {
         const c=document.querySelector('.catalog-cover-item [data-deck-cover]');
-        return !matchMedia('(hover: hover)').matches && new DOMMatrixReadOnly(getComputedStyle(c).transform).m42 === 0 && getComputedStyle(c,'::before').opacity === '0' && getComputedStyle(document.querySelector('.catalog-cover-settings')).opacity === '1';
+        return !matchMedia('(hover: hover)').matches && new DOMMatrixReadOnly(getComputedStyle(c).transform).m42 === 0 && getComputedStyle(c,'::before').content === 'none' && getComputedStyle(document.querySelector('.catalog-cover-settings')).opacity === '1';
       })()`)).toBe(true);
     });
   });
@@ -767,7 +888,7 @@ describe.skipIf(!browserPath)('application shell (browser)', () => {
     await evaluate(`document.querySelector('.catalog-cover-item [data-deck-cover]').focus()`);
     for (const type of ['keyDown', 'keyUp']) await send('Input.dispatchKeyEvent', { type, key: ' ', code: 'Space', windowsVirtualKeyCode: 32 });
     await until(`Boolean(document.querySelector('.catalog-spaces.is-dragging'))`);
-    expect(await evaluate(`[...document.querySelectorAll('.catalog-spaces .catalog-cover-item > .catalog-deck-cover')].every(c => getComputedStyle(c).transform === 'none' && getComputedStyle(c,'::before').opacity === '0' && getComputedStyle(c,'::after').opacity === '0')`)).toBe(true);
+    expect(await evaluate(`[...document.querySelectorAll('.catalog-spaces .catalog-cover-item > .catalog-deck-cover')].every(c => getComputedStyle(c).transform === 'none' && getComputedStyle(c,'::before').content === 'none' && getComputedStyle(c,'::after').opacity === '0')`)).toBe(true);
     // 2026-11-10: dnd-kit's keyboard listener is deferred past the first drag commit; do not send Escape before the sensor is ready.
     await evaluate(`new Promise(resolve => setTimeout(resolve, 0))`);
     await waitForLayout(evaluate, '.catalog-spaces.is-dragging .catalog-cover-item');
@@ -812,35 +933,48 @@ describe.skipIf(!browserPath)('application shell (browser)', () => {
     }
   });
 
-  it.each([375, 1280])('D11/D12: menu and recent paths fit %s px in both themes and languages', async width => {
-    for (const theme of ['light', 'dark']) for (const lang of ['ru', 'en']) {
-      await render('app', { theme, lang }, width);
-      await click('.mission-control-trigger');
-      await until(`document.querySelectorAll('.mission-control-recent-path').length === 2`);
-      await waitForLayout(evaluate, '.mission-control, .mission-control-recent-path');
-      expect(await evaluate(`document.querySelector('.mission-control').getBoundingClientRect().width`)).toBe(width === 375 ? 375 : 336);
-      expect(await evaluate(`[...document.querySelectorAll('.mission-control-recent-path')].every(e => {
-        const r=e.getBoundingClientRect(); const time=e.previousElementSibling.querySelector('time').getBoundingClientRect();
-        const name=e.previousElementSibling.querySelector('strong').getBoundingClientRect();
-        return time.bottom <= r.top + 4 && Math.abs(time.top-name.top) < 5 && time.right <= e.parentElement.getBoundingClientRect().right + .5;
-      })`)).toBe(true);
-      expect(await evaluate(`document.querySelector('.mission-control-recent-path').textContent.endsWith('первого-релиза')`)).toBe(true);
+  it.each([375, 1440])('workspace: visual reference at %s px', async width => {
+    for (const theme of ['light', 'dark']) for (const lang of ['en', 'ru']) {
+      await workspace({ theme, lang }, width);
+      await waitForLayout(evaluate, '.mission-control, .mission-control-workspace-row');
+      const layout = await evaluate(`(() => {
+        const panel = document.querySelector('.mission-control');
+        const nodes = [...panel.querySelectorAll('.mission-control-head, .mission-control-project, .mission-control-workspace-row, .mission-control-sections, .mission-control-menu, .mission-control-foot')];
+        return { fits: panel.scrollWidth <= panel.clientWidth, blocks: nodes.map(node => ({
+          name: node.className, rect: node.getBoundingClientRect().toJSON(),
+        })) };
+      })()`);
+      expect(layout.fits).toBe(true);
+      if (process.env.DECKMATE_PROJECT_SHOTS) {
+        const output = process.env.DECKMATE_PROJECT_SHOTS;
+        mkdirSync(output, { recursive: true });
+        const name = `mission-control-${theme}-${lang}-${width}`;
+        const image = await send('Page.captureScreenshot', { format: 'png' });
+        writeFileSync(path.join(output, name + '.png'), Buffer.from(image.data, 'base64'));
+        writeFileSync(path.join(output, name + '.json'), JSON.stringify(layout, null, 2));
+        if (process.env.DECKMATE_PROJECT_BASELINE) {
+          const baseline = process.env.DECKMATE_PROJECT_BASELINE;
+          expect(layout).toEqual(JSON.parse(readFileSync(path.join(baseline, name + '.json'), 'utf8')));
+          const before = readFileSync(path.join(baseline, name + '.png')).toString('base64');
+          const diff = await evaluate(`(async () => {
+            const load = data => new Promise(resolve => { const image = new Image(); image.onload = () => resolve(image); image.src = 'data:image/png;base64,' + data; });
+            const images = await Promise.all([load(${JSON.stringify(before)}), load(${JSON.stringify(image.data)})]);
+            const canvas = document.createElement('canvas');
+            canvas.width = document.querySelector('.mission-control').clientWidth; canvas.height = innerHeight;
+            const context = canvas.getContext('2d', { willReadFrequently: true });
+            const pixels = images.map(image => { context.clearRect(0, 0, canvas.width, canvas.height); context.drawImage(image, 0, 0); return context.getImageData(0, 0, canvas.width, canvas.height).data; });
+            let changed = 0, maxDelta = 0;
+            for (let index = 0; index < pixels[0].length; index += 4) {
+              const delta = Math.max(...[0, 1, 2, 3].map(channel => Math.abs(pixels[0][index + channel] - pixels[1][index + channel])));
+              if (delta) changed++; maxDelta = Math.max(maxDelta, delta);
+            }
+            return { changed, maxDelta };
+          })()`);
+          writeFileSync(path.join(output, name + '-diff.json'), JSON.stringify(diff));
+          expect.soft(diff, name).toEqual({ changed: 0, maxDelta: 0 });
+        }
+      }
     }
-  });
-
-  it('keeps five full-width recent rows without scrolling and preserves width when a sixth is added', async () => {
-    await render('app', { lang: 'ru' });
-    await click('.mission-control-trigger');
-    await until(`document.querySelectorAll('.mission-control-recent-row').length === 2`);
-    expect(await evaluate(`(() => {
-      const list = document.querySelector('.mission-control-recent-list');
-      const current = document.querySelector('.mission-control-project > .mission-control-project-row');
-      while (list.children.length < 5) list.append(list.firstElementChild.cloneNode(true));
-      const width = list.querySelector('button').getBoundingClientRect().width;
-      const fits = list.scrollHeight === list.clientHeight && width === current.getBoundingClientRect().width;
-      list.append(list.firstElementChild.cloneNode(true));
-      return fits && list.scrollHeight > list.clientHeight && list.querySelector('button').getBoundingClientRect().width === width;
-    })()`)).toBe(true);
   });
 
   it.each([375, 1280])('workspace: localized rows, version and actions fit %s px in both themes', async width => {
@@ -971,13 +1105,15 @@ describe.skipIf(!browserPath)('application shell (browser)', () => {
   it('workspace: mutations render the authoritative shell list, including its order and flags', async () => {
     await workspace({ workspace: [] });
     const authoritative = [{ path: 'C:\\Returned', name: 'Returned by shell', current: false, missing: true }];
-    await evaluate(`window.shellTest.setWorkspaceResult({ ok: true, projects: ${JSON.stringify(authoritative)} })`);
+    await evaluate(`window.shellTest.setWorkspaceResult({ ok: true, projects: ${JSON.stringify(authoritative)}, current: null })`);
     await addMenu();
     await menuItem('Add current project');
     await until(`document.querySelector('.mission-control-workspace-open')?.textContent.includes('Returned by shell')`);
     expect(await evaluate(`document.querySelectorAll('.mission-control-workspace-row').length`)).toBe(1);
     expect(await evaluate(`document.querySelector('.mission-control-workspace-missing').textContent`)).toBe('Folder not found');
     expect(await evaluate(`document.querySelector('.mission-control-workspace-open').getAttribute('aria-current')`)).toBeNull();
+    await addMenu();
+    expect(await evaluate(`document.querySelector('.mission-control-workspace-menu').textContent.includes('Add current project')`)).toBe(false);
   });
 
   it('workspace: a pending native dialog disables actions and restores focus after cancellation', async () => {
@@ -1010,13 +1146,16 @@ describe.skipIf(!browserPath)('application shell (browser)', () => {
     } finally { await send('Emulation.setEmulatedMedia', { features: [] }); }
   });
 
-  it('workspace: missing folders cannot switch but can be removed, with focus on the next row', async () => {
+  it('workspace: missing folders ask the shell to revalidate and can be removed with focus on the next row', async () => {
     await workspace();
+    await evaluate(`window.shellTest.setNavigationFailure('missing')`);
     await click('.mission-control-workspace-row.is-missing .mission-control-workspace-open');
-    expect(await evaluate('window.shellTest.workspaceCalls')).toEqual([]);
+    expect(await evaluate('window.shellTest.workspaceCalls')).toEqual([{ method: 'switch', args: ['E:\\Archive\\Lost project'] }]);
     await click('.mission-control-workspace-row.is-missing .mission-control-workspace-remove');
     await until(`document.querySelectorAll('.mission-control-workspace-row').length === 3`);
-    expect(await evaluate('window.shellTest.workspaceCalls')).toEqual([{ method: 'remove', args: ['E:\\Archive\\Lost project'] }]);
+    expect(await evaluate('window.shellTest.workspaceCalls')).toEqual([
+      { method: 'switch', args: ['E:\\Archive\\Lost project'] }, { method: 'remove', args: ['E:\\Archive\\Lost project'] },
+    ]);
     expect(await evaluate(`document.activeElement === document.querySelectorAll('.mission-control-workspace-open')[2]`)).toBe(true);
   });
 
@@ -1035,6 +1174,24 @@ describe.skipIf(!browserPath)('application shell (browser)', () => {
     expect(await evaluate(`[...document.querySelectorAll('.mission-control-workspace [role="status"]')].some(e => e.textContent.includes('position 1 of 4'))`)).toBe(true);
   });
 
+  it('workspace: focus refresh restores a missing folder in place without discarding the list scroll anchor', async () => {
+    await workspace();
+    await evaluate(`(() => {
+      const list = document.querySelector('.mission-control-workspace-list'); list.scrollTop = 100;
+      window.projectScroll = list.scrollTop; window.missingProjectRow = list.querySelector('.is-missing');
+      const original = window.deckmateBoard.workspaceProjects;
+      window.deckmateBoard.workspaceProjects = async () => {
+        const result = await original();
+        return { ...result, projects: result.projects.map(project => ({ ...project, missing: false })) };
+      };
+      window.dispatchEvent(new Event('focus'));
+    })()`);
+    await until(`!window.missingProjectRow.classList.contains('is-missing')`);
+    expect(await evaluate(`window.missingProjectRow.isConnected && document.querySelector('.mission-control-workspace-list').scrollTop === window.projectScroll`)).toBe(true);
+    await click('.mission-control-workspace-row:last-child .mission-control-workspace-open');
+    expect(await evaluate('window.shellTest.workspaceCalls')).toEqual([{ method: 'switch', args: ['E:\\Archive\\Lost project'] }]);
+  });
+
   it('workspace: pointer dragging reorders without opening a project', async () => {
     await workspace();
     const points = await evaluate(`[...document.querySelectorAll('.mission-control-workspace-open')].slice(0, 2).map(e => { const r = e.getBoundingClientRect(); return { x: r.left + 20, y: r.top + r.height / 2 }; })`);
@@ -1046,7 +1203,34 @@ describe.skipIf(!browserPath)('application shell (browser)', () => {
     await waitForLayout(evaluate, '.mission-control-workspace-row');
     await send('Input.dispatchMouseEvent', { type: 'mouseReleased', ...points[1], button: 'left', buttons: 0, clickCount: 1 });
     await until(`window.shellTest.workspaceCalls.length === 1`);
+    // 2026-11-13: complete the accepted move and drop animation before remounting; its sensor still suppresses the drop's click.
+    await until(`document.querySelector('.mission-control-workspace-list').getAttribute('aria-busy') === 'false'`);
+    await waitForLayout(evaluate, '.mission-control-workspace-row');
+    expect(await evaluate(`document.querySelectorAll('.mission-control-workspace-open')[1].getAttribute('aria-current')`)).toBe('true');
     expect(await evaluate('window.shellTest.workspaceCalls')).toEqual([{ method: 'move', args: ['C:\\Work\\Shell test', 1] }]);
+  });
+
+  it('workspace: selecting a path preserves its text without reordering or switching projects', async () => {
+    await workspace();
+    const target = '.mission-control-workspace-row:nth-child(2) .mission-control-workspace-path';
+    await evaluate(`document.querySelector('${target}').scrollIntoView({block:'center'})`);
+    await waitForLayout(evaluate, target);
+    const expected = await evaluate(`document.querySelector('${target}').textContent`);
+    expect(await evaluate(`getComputedStyle(document.querySelector('${target}')).userSelect`)).toBe('text');
+    const points = await evaluate(`(() => {
+      const range = document.createRange(); range.selectNodeContents(document.querySelector('${target} bdi'));
+      const rects = [...range.getClientRects()];
+      return [rects[0], rects.at(-1)].map((rect, index) => ({ x: index ? rect.right - 1 : rect.left + 1, y: rect.top + rect.height / 2 }));
+    })()`);
+    const [start, end] = points;
+    await send('Input.dispatchMouseEvent', { type: 'mouseMoved', ...start });
+    await send('Input.dispatchMouseEvent', { type: 'mousePressed', ...start, button: 'left', buttons: 1, clickCount: 1 });
+    await send('Input.dispatchMouseEvent', { type: 'mouseMoved', ...end, button: 'left', buttons: 1 });
+    await send('Input.dispatchMouseEvent', { type: 'mouseReleased', ...end, button: 'left', buttons: 0, clickCount: 1 });
+    expect(await evaluate(`getSelection().toString()`)).toBe(expected);
+    expect(await evaluate(`document.querySelector('.mission-control-workspace-list').hasAttribute('data-dragging')`)).toBe(false);
+    expect(await evaluate('window.shellTest.workspaceCalls')).toEqual([]);
+    await evaluate(`getSelection().removeAllRanges()`);
   });
 
   it('workspace: cancel is silent, rejected edits keep the list, and retry recovers', async () => {
@@ -1098,6 +1282,9 @@ describe.skipIf(!browserPath)('application shell (browser)', () => {
     await until(`Boolean(document.querySelector('.mission-control-workspace [role="alert"]'))`);
     expect(await evaluate(`document.querySelector('.mission-control-workspace [role="alert"]').textContent`)).toContain('not found');
     await click('.mission-control-recent-open');
+    expect(await evaluate(`document.querySelector('.mission-control-workspace [role="alert"]').textContent`)).toContain('not found');
+    await evaluate(`window.shellTest.setNavigationFailure('unknown')`);
+    await click('.mission-control-recent-open');
     expect(await evaluate(`document.querySelector('.mission-control-workspace [role="alert"]').textContent`)).toContain('Could not open the start screen');
     await evaluate(`window.shellTest.setNavigationFailure(null)`);
     await click('.mission-control-workspace-row:nth-child(2) .mission-control-workspace-open');
@@ -1105,13 +1292,22 @@ describe.skipIf(!browserPath)('application shell (browser)', () => {
     expect(await evaluate(`document.querySelector('.mission-control-workspace-add').disabled && document.querySelector('.mission-control-recent-open').disabled`)).toBe(true);
   });
 
-  it('workspace: a partial bridge falls back to recent projects', async () => {
-    await render('app', { partialBridge: true }, 1280);
+  it('workspace: structured list failures remain retryable and never become empty successful lists', async () => {
+    await render('app', { workspace: true }, 1280);
+    await evaluate(`window.shellTest.setWorkspaceLoadFails('forbidden')`);
     await click('.mission-control-trigger');
-    await until(`document.querySelectorAll('.mission-control-recent-row').length === 3`);
-    expect(await evaluate(`document.querySelector('.mission-control-workspace') === null`)).toBe(true);
-    await click('.mission-control-recent-open');
-    expect(await evaluate('window.shellTest.workspaceCalls')).toEqual([{ method: 'start', args: [] }]);
+    await until(`Boolean(document.querySelector('.mission-control-workspace [role="alert"]'))`);
+    expect(await evaluate(`document.querySelector('.mission-control-workspace-empty') === null`)).toBe(true);
+    await evaluate(`window.shellTest.setWorkspaceLoadFails(false)`);
+    await click('.mission-control-retry');
+    await until(`document.querySelectorAll('.mission-control-workspace-row').length === 4`);
+    await evaluate(`window.shellTest.setRecentFails('forbidden')`);
+    await addMenu();
+    await until(`Boolean(document.querySelector('.mission-control-workspace-menu [role="alert"]'))`);
+    expect(await evaluate(`document.querySelectorAll('.mission-control-workspace-recent').length`)).toBe(0);
+    await evaluate(`window.shellTest.setRecentFails(false)`);
+    await menuItem('Try again');
+    await until(`document.querySelectorAll('.mission-control-workspace-recent').length === 1`);
   });
 
   it.each(['en', 'ru'])('D14: %s intentional Stop hides late reconnect failures', async lang => {

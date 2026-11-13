@@ -6,7 +6,7 @@ use std::{
 };
 use tauri::{
     webview::{NewWindowResponse, PageLoadEvent},
-    AppHandle, Manager, Url, WebviewUrl, WebviewWindow, WebviewWindowBuilder,
+    AppHandle, Manager, Url, WebviewUrl, WebviewWindow, WebviewWindowBuilder, WindowEvent,
 };
 use tauri_plugin_dialog::{MessageDialogButtons, MessageDialogKind};
 
@@ -68,6 +68,13 @@ pub fn whats_new_get(app: AppHandle, window: WebviewWindow) -> Value {
     })
 }
 
+pub fn refresh_language(app: &AppHandle) {
+    if let Some(window) = app.get_webview_window(LABEL) {
+        let _ = window.set_title(texts::text(&app::state(app).language(), "whatsNewTitle"));
+        let _ = window.reload();
+    }
+}
+
 async fn open_failed(app: &AppHandle, error: impl std::fmt::Display) {
     let shell = app::state(app);
     shell
@@ -94,7 +101,6 @@ pub async fn open(app: &AppHandle, from: Option<String>) {
             .set_title(title)
             .and_then(|()| window.reload())
             .and_then(|()| window.unminimize())
-            .and_then(|()| window.show())
             .and_then(|()| window.set_focus())
         {
             open_failed(app, error).await;
@@ -103,11 +109,29 @@ pub async fn open(app: &AppHandle, from: Option<String>) {
     }
     let navigation_app = app.clone();
     let popup_app = app.clone();
+    let resource_shell = shell.clone();
+    let menu = match menu::build(app, LABEL) {
+        Ok(menu) => menu,
+        Err(error) => {
+            open_failed(app, error).await;
+            return;
+        }
+    };
+    let (menu_ready, menu_state) = tokio::sync::watch::channel(false);
     let builder = WebviewWindowBuilder::new(app, LABEL, WebviewUrl::App(PAGE.into()))
+        .menu(menu)
         .title(title)
         .inner_size(760.0, 680.0)
         .resizable(true)
         .visible(false)
+        .zoom_hotkeys_enabled(false)
+        .background_color(window::background_color(
+            shell.settings.lock().unwrap().theme,
+            window::system_dark(),
+        ))
+        .on_web_resource_request(move |request, response| {
+            window::shell_resource(&resource_shell, request, response);
+        })
         .on_navigation(move |url| {
             let allowed = window::is_app_page_url(url, PAGE);
             if !allowed {
@@ -123,9 +147,15 @@ pub async fn open(app: &AppHandle, from: Option<String>) {
             let lang = app::state(window.app_handle()).language();
             let _ = window.set_title(texts::text(&lang, "whatsNewTitle"));
         })
-        .on_page_load(|window, payload| {
+        .on_page_load(move |window, payload| {
             if payload.event() == PageLoadEvent::Finished {
-                let _ = window.show();
+                window::apply_zoom(&window);
+                let mut ready = menu_state.clone();
+                tauri::async_runtime::spawn(async move {
+                    if ready.wait_for(|ready| *ready).await.is_ok() {
+                        window::local_page_loaded(window);
+                    }
+                });
             }
         });
     let builder = match crate::paths::debug_webview_dir() {
@@ -140,6 +170,33 @@ pub async fn open(app: &AppHandle, from: Option<String>) {
     .build();
     match result {
         Ok(window) => {
+            // 2026-11-13: registration can follow a language sync that never saw this window; refresh before revealing it.
+            if let Err(error) = menu::sync_before_show(&window).await {
+                let _ = window.destroy();
+                open_failed(app, error).await;
+                return;
+            }
+            menu_ready.send_replace(true);
+            let controls_window = window.clone();
+            if let Err(error) = window.with_webview(move |webview| {
+                if let Err(error) = unsafe {
+                    crate::webview::install_controls(&controls_window, &webview.controller())
+                } {
+                    app::state(controls_window.app_handle())
+                        .log
+                        .write(format!("what's new controls failed: {error}"));
+                }
+            }) {
+                shell
+                    .log
+                    .write(format!("what's new controls failed: {error}"));
+            }
+            let events_window = window.clone();
+            window.on_window_event(move |event| {
+                if matches!(event, WindowEvent::Destroyed) {
+                    window::forget_zoom(&events_window);
+                }
+            });
             // 2026-11-09: Restart Manager can target this HWND without notifying the main window.
             let guarded = window.clone();
             let log = shell.log.clone();

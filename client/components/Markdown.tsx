@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type MouseEvent, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, type MouseEvent, type ReactNode } from 'react';
 import { ImageOff } from 'lucide-react';
 import type { Root, RootContent, PhrasingContent } from 'mdast';
 import type { DataSource } from '../../src/workspace-contracts.ts';
@@ -12,6 +12,7 @@ import { CardOwnerAvatar } from './CardQuickSettings.tsx';
 import { TagBadge } from './CardTags.tsx';
 import { defineText, useText } from '../i18n.ts';
 import { stateLabel } from '../locales/common.ts';
+import { DecodedImage } from './DecodedImage.tsx';
 
 const text = defineText({
   missingCard: 'Card not found',
@@ -72,13 +73,10 @@ function CardReferenceChip({ reference, card, href, onOpenCard }: {
   </a>;
 }
 
-/** An image whose file is gone (a deleted attachment, a moved file) shows a quiet chip instead of the broken-image icon. */
 function MarkdownImage({ src, alt }: { src: string; alt: string }) {
   const t = useText(text);
-  const [failedSrc, setFailedSrc] = useState<string>();
-  if (failedSrc === src) return <span className="card-reference-chip is-missing is-image" title={t.missingImage}><ImageOff size={12} aria-hidden="true" /><span>{t.missingImageInline(alt)}</span></span>;
-  // No lazy loading: a lazy image that never intersects (0×0 while unloaded) never fires `error`, and the chip would not appear.
-  return <img src={src} alt={alt} onError={() => setFailedSrc(src)} />;
+  return <span className="markdown-image"><DecodedImage src={src} alt={alt}
+    fallback={<><ImageOff size={20} aria-hidden="true" /><span title={t.missingImage}>{t.missingImageInline(alt)}</span></>} /></span>;
 }
 
 function referenceLink(url: URL, source: DataSource): string | undefined {

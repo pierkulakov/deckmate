@@ -85,6 +85,7 @@ describe.skipIf(!browserPath)('open-deck chrome', () => {
           expect(await page.evaluate(`document.querySelector('.decision-pool-hint').textContent`)).toContain('Агент автоматически не запускается');
           expect(await page.evaluate(`document.querySelector('.decision-pool').textContent`)).toContain('Ответ: Майя');
           await shot(`pool-${theme}`);
+          for (const type of ['keyDown', 'keyUp']) await page.send('Input.dispatchKeyEvent', { type, key: 'Tab', code: 'Tab', windowsVirtualKeyCode: 9 });
           await page.evaluate(`document.querySelector('.decision-pool li button').focus()`);
           for (const type of ['keyDown', 'keyUp']) await page.send('Input.dispatchKeyEvent', { type, key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13, text: type === 'keyDown' ? '\r' : undefined });
           await until(`Boolean(document.querySelector('.card-preview-title') && document.querySelector('.card-questions-panel-heading'))`);

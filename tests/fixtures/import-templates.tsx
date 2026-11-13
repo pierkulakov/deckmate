@@ -17,6 +17,7 @@ import '../../client/components/states.css';
 const root = createRoot(document.getElementById('root')!);
 let instance = 0;
 const noop = () => {};
+let releasePlan = noop;
 
 const catalog: CatalogView = { rootIdentity: 'import-templates', documents: [], cards: [], warnings: [],
   spaces: [{ id: 'space:one', title: 'Work' }],
@@ -72,11 +73,12 @@ function TemplateProbe({ focusTest, keepOpener, readOnly }: { focusTest: boolean
 }
 
 const realFetch = window.fetch.bind(window);
-function stubFetch(failures: { list?: boolean; plan?: boolean } = {}, existingPlan = false) {
+function stubFetch(failures: { list?: boolean; plan?: boolean } = {}, existingPlan = false, planWait?: Promise<void>) {
   window.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
     if (url.startsWith('/api/catalog?')) return Response.json(structuredClone(catalog));
     if (url.startsWith('/api/project-templates/') && url.includes('/plan')) {
+      await planWait;
       if (failures.plan) return Response.json({ message: 'plan unavailable' }, { status: 500 });
       const id = decodeURIComponent(new URL(url, location.origin).pathname.split('/')[3] ?? '');
       const plan = plans[id] ?? plans['demo-rpg'];
@@ -104,7 +106,8 @@ function chooseCsv(name: string, content: string) {
 
 function render(scene: 'csv' | 'templates', options: Record<string, unknown> = {}) {
   setLang(options.lang === 'ru' ? 'ru' : 'en');
-  stubFetch(options.failures as { list?: boolean; plan?: boolean } | undefined, options.existingPlan === true);
+  const planWait = options.holdPlan ? new Promise<void>(resolve => { releasePlan = resolve; }) : undefined;
+  stubFetch(options.failures as { list?: boolean; plan?: boolean } | undefined, options.existingPlan === true, planWait);
   const key = ++instance;
   if (scene === 'csv') {
     root.render(<CsvImport key={key} snapshot={snapshot} refreshKey={0} open initialDeckId={null}
@@ -114,5 +117,5 @@ function render(scene: 'csv' | 'templates', options: Record<string, unknown> = {
   root.render(<TemplateProbe key={key} focusTest={options.focusTest === true} keepOpener={options.keepOpener === true} readOnly={options.readOnly === true} />);
 }
 
-Object.assign(window, { importTemplatesTest: { render, chooseCsv, actions: [] } });
+Object.assign(window, { importTemplatesTest: { render, chooseCsv, releasePlan: () => releasePlan(), actions: [] } });
 render('templates');

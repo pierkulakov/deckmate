@@ -13,6 +13,8 @@
     "allow-board-move-in-workspace",
     "allow-board-switch-project",
     "allow-board-show-start-screen",
-    "allow-board-set-dirty"
+    "allow-board-set-dirty",
+    "allow-board-set-theme",
+    "allow-board-set-language"
   ]
 }

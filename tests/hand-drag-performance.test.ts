@@ -287,6 +287,88 @@ describe.skipIf(!browserPath)('Hand navigation history (browser)', () => {
     expect(state.preserved).toBe('yes');
     await page!.evaluate(`localStorage.removeItem('deckmate-hand-all')`);
   });
+
+  it.each([375, 768, 1440].flatMap(width => ['en', 'ru'].flatMap(lang => ['dark', 'light'].map(theme => ({ width, lang, theme })))))
+  ('centers All Hands names and mirrors switch insets at $width px, $lang, $theme', async ({ width, lang, theme }) => {
+    const preload = await page!.send('Page.addScriptToEvaluateOnNewDocument', { source: `
+      localStorage.setItem('deckmate-language', ${JSON.stringify(lang)});
+      localStorage.setItem('deckmate-theme', ${JSON.stringify(theme)});
+      localStorage.removeItem('deckmate-hand-all');
+    ` });
+    try {
+      await open(width);
+      await page!.send('Emulation.setDeviceMetricsOverride', { width, height: 900, deviceScaleFactor: 1.5, mobile: false });
+      await waitForLayout(page!.evaluate, '.hand-all-track');
+      expect(await page!.evaluate('document.documentElement.lang')).toBe(lang);
+      expect(await page!.evaluate(`document.documentElement.classList.contains('dark')`)).toBe(theme === 'dark');
+      const switchGeometry = () => page!.evaluate(`(() => {
+        const track = document.querySelector('.hand-all-track').getBoundingClientRect();
+        const thumb = document.querySelector('.hand-all-thumb').getBoundingClientRect();
+        return { checked: document.querySelector('.hand-all-toggle input').checked,
+          left: thumb.left - track.left, right: track.right - thumb.right,
+          centerDelta: thumb.y + thumb.height / 2 - track.y - track.height / 2 };
+      })()`);
+      const off = await switchGeometry();
+      expect(off.checked).toBe(false);
+      await page!.evaluate(`document.querySelector('.hand-all-toggle input').click()`);
+      await until(`Boolean(document.querySelector('.hand-all-member-heading'))`);
+      await waitForLayout(page!.evaluate, '.hand-all-thumb, .hand-all-member-heading');
+      const on = await switchGeometry();
+      expect(on.checked).toBe(true);
+      expect(off.left).toBeGreaterThan(0);
+      expect(Math.abs(off.left - on.right)).toBeLessThanOrEqual(.1);
+      for (const geometry of [off, on]) expect(Math.abs(geometry.centerDelta)).toBeLessThanOrEqual(.5);
+
+      const headings = await page!.evaluate(`Array.from(document.querySelectorAll('.hand-all-member-heading'), heading => {
+        const avatar = heading.querySelector('.card-owner-avatar').getBoundingClientRect();
+        const name = heading.querySelector('h2');
+        const range = document.createRange(); range.selectNodeContents(name);
+        const text = range.getBoundingClientRect();
+        return { name: name.textContent, avatarWidth: avatar.width, avatarHeight: avatar.height,
+          nameHeight: name.getBoundingClientRect().height, lineHeight: parseFloat(getComputedStyle(name).lineHeight),
+          centerDelta: text.y + text.height / 2 - avatar.y - avatar.height / 2 };
+      })`);
+      expect(headings.map((heading: { name: string }) => heading.name)).toEqual(expect.arrayContaining(['Maya Chen', 'Leo Park', 'Build Agent']));
+      for (const heading of headings) {
+        expect(heading.avatarWidth).toBe(28);
+        expect(heading.avatarHeight).toBe(28);
+        expect(heading.nameHeight).toBe(heading.lineHeight);
+        expect(Math.abs(heading.centerDelta), JSON.stringify(heading)).toBeLessThanOrEqual(.5);
+      }
+
+      const longName = lang === 'ru' ? 'Отдел международного сотрудничества и развития цифровых технологий ' : 'International collaboration and digital technology development team ';
+      const wrapped = await page!.callFunction(`function(label) {
+        const heading = document.querySelector('.hand-all-member-heading');
+        const name = heading.querySelector('h2'); name.textContent = label.repeat(8);
+        const avatar = heading.querySelector('.card-owner-avatar').getBoundingClientRect();
+        const text = name.getBoundingClientRect();
+        const row = heading.getBoundingClientRect();
+        return { lines: text.height / parseFloat(getComputedStyle(name).lineHeight), avatarWidth: avatar.width, avatarHeight: avatar.height,
+          centerDelta: text.y + text.height / 2 - avatar.y - avatar.height / 2,
+          fits: text.left >= avatar.right && text.right <= row.right && text.top >= row.top && text.bottom <= row.bottom,
+          nextTop: heading.nextElementSibling.getBoundingClientRect().top, bottom: row.bottom,
+          overflow: document.documentElement.scrollWidth > innerWidth || heading.scrollWidth > heading.clientWidth };
+      }`, longName);
+      expect(wrapped.lines).toBeGreaterThan(1);
+      expect(wrapped.avatarWidth).toBe(28);
+      expect(wrapped.avatarHeight).toBe(28);
+      expect(Math.abs(wrapped.centerDelta)).toBeLessThanOrEqual(.5);
+      expect(wrapped.fits).toBe(true);
+      expect(wrapped.nextTop).toBeGreaterThanOrEqual(wrapped.bottom);
+      expect(wrapped.overflow).toBe(false);
+
+      await page!.evaluate(`document.querySelector('.hand-all-track').style.width = '40px'; document.querySelector('.hand-all-thumb').style.width = '12px'`);
+      await waitForLayout(page!.evaluate, '.hand-all-thumb');
+      const resizedOn = await switchGeometry();
+      await page!.evaluate(`document.querySelector('.hand-all-toggle input').click()`);
+      await waitForLayout(page!.evaluate, '.hand-all-thumb');
+      const resizedOff = await switchGeometry();
+      expect(Math.abs(resizedOff.left - resizedOn.right)).toBeLessThanOrEqual(.1);
+      expect(page!.consoleErrors).toEqual([]);
+    } finally {
+      await page!.send('Page.removeScriptToEvaluateOnNewDocument', { identifier: preload.result.identifier });
+    }
+  });
 });
 
 interface SourceDropFrame {

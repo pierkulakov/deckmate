@@ -9,7 +9,7 @@ import { beginSave } from '../../client/save-activity.ts';
 import { invalidateCatalogs } from '../../client/catalog-store.ts';
 import type { CatalogCard, CatalogView } from '../../src/catalog-contracts.ts';
 import type { NotificationStack, NotificationsView } from '../../src/notification-contracts.ts';
-import type { DesktopRecentProject, DesktopWorkspaceProject, DesktopWorkspaceResult } from '../../client/desktop-bridge.ts';
+import type { DesktopRecentProject, DesktopWorkspaceProject, DesktopProjectsResult } from '../../client/desktop-bridge.ts';
 import '../../client/styles.css';
 import '../../client/surface.css';
 import '../../client/motion.css';
@@ -30,8 +30,8 @@ const catalog: CatalogView = { rootIdentity: 'shell-ui', formatLanguage: 'en', m
 // 2026-11-10: simulate a manifest written before deck piles were removed; the public CatalogDeck type no longer carries the key.
 Object.assign(catalog.decks[1], { piled: true });
 const recent: DesktopRecentProject[] = [
-  { path: 'D:\\Work\\Shared\\Игровая-команда\\Подготовка-первого-релиза', name: 'Подготовка-первого-релиза', lastOpened: new Date(Date.now() - 7200000).toISOString(), current: false },
-  { path: 'D:\\WWWWWWWWWWWWWWWWWWWW\\WWWWWWWWWWWWWWWWWWWWWWWWWWWWWW', name: 'Wide glyphs', lastOpened: new Date(Date.now() - 86400000).toISOString(), current: false },
+  { path: 'D:\\Work\\Shared\\Игровая-команда\\Подготовка-первого-релиза', name: 'Подготовка-первого-релиза', lastOpened: new Date(Date.now() - 7200000).toISOString(), current: false, missing: false },
+  { path: 'D:\\WWWWWWWWWWWWWWWWWWWW\\WWWWWWWWWWWWWWWWWWWWWWWWWWWWWW', name: 'Wide glyphs', lastOpened: new Date(Date.now() - 86400000).toISOString(), current: false, missing: false },
 ];
 const current: DesktopWorkspaceProject = { path: 'C:\\Work\\Shell test', name: 'Shell test', current: true, missing: false };
 const initialWorkspace: DesktopWorkspaceProject[] = [current,
@@ -41,52 +41,54 @@ const initialWorkspace: DesktopWorkspaceProject[] = [current,
 ];
 let workspaceProjects: DesktopWorkspaceProject[] = [];
 let workspaceCalls: { method: string; args: unknown[] }[] = [];
-let workspaceResult: DesktopWorkspaceResult | 'throw' | null = null;
+let workspaceResult: DesktopProjectsResult | 'throw' | null = null;
 let navigationFailure: string | null = null;
-let workspaceLoadFails = false;
-let recentFails = false;
-function workspaceReply(next: DesktopWorkspaceProject[]): DesktopWorkspaceResult {
+let workspaceLoadFails: boolean | string = false;
+let recentFails: boolean | string = false;
+function workspaceReply(next: DesktopWorkspaceProject[]): DesktopProjectsResult {
   if (workspaceResult === 'throw') throw new Error('Bridge unavailable');
-  const reply = workspaceResult ?? { ok: true, projects: next };
+  const reply = workspaceResult ?? { ok: true, projects: next, current: current.path };
   if (reply.ok) workspaceProjects = reply.projects;
   return reply;
 }
-function configureBridge(workspace?: boolean | DesktopWorkspaceProject[], partial = false) {
+function configureBridge(workspace?: boolean | DesktopWorkspaceProject[]) {
   workspaceProjects = Array.isArray(workspace) ? workspace : initialWorkspace.map(project => ({ ...project }));
   workspaceCalls = []; workspaceResult = null; navigationFailure = null; workspaceLoadFails = false; recentFails = false;
   window.deckmateBoard = {
     recentProjects: async () => {
+      if (typeof recentFails === 'string') return { ok: false, code: recentFails };
       if (recentFails) throw new Error('Recent unavailable');
-      return [ ...recent, { path: 'C:\\Work\\Field Notes', name: 'Field Notes', current: false, lastOpened: '' } ];
+      return { ok: true, projects: [...recent, { path: 'C:\\Work\\Field Notes', name: 'Field Notes', current: false, missing: false, lastOpened: '' }], current: current.path };
     },
     switchProject: async path => { workspaceCalls.push({ method: 'switch', args: [path] }); return navigationFailure ? { ok: false, code: navigationFailure } : { ok: true }; },
     showStartScreen: async () => { workspaceCalls.push({ method: 'start', args: [] }); return navigationFailure ? { ok: false, code: navigationFailure } : { ok: true }; },
-  };
-  // Preserve the legacy fixture's two recent rows for the existing shell-layout checks.
-  if (!workspace && !partial) window.deckmateBoard.recentProjects = async () => recent;
-  if (!workspace && !partial) return;
-  window.deckmateBoard.workspaceProjects = async () => {
-    if (workspaceLoadFails) throw new Error('Workspace unavailable');
-    return workspaceProjects;
-  };
-  if (partial) return;
-  window.deckmateBoard.addToWorkspace = async source => {
-    workspaceCalls.push({ method: 'add', args: [source] });
-    let project = current;
-    if (source.kind === 'dialog') project = { path: 'C:\\Chosen', name: 'Chosen project', current: false, missing: false };
-    if (source.kind === 'recent') project = { ...(await window.deckmateBoard!.recentProjects()).find(entry => entry.path === source.path)!, missing: false };
-    return workspaceReply([...workspaceProjects, project]);
-  };
-  window.deckmateBoard.removeFromWorkspace = async path => {
-    workspaceCalls.push({ method: 'remove', args: [path] });
-    return workspaceReply(workspaceProjects.filter(project => project.path !== path));
-  };
-  window.deckmateBoard.moveInWorkspace = async (path, index) => {
-    workspaceCalls.push({ method: 'move', args: [path, index] });
-    const next = [...workspaceProjects];
-    const [project] = next.splice(next.findIndex(entry => entry.path === path), 1);
-    next.splice(index, 0, project);
-    return workspaceReply(next);
+    workspaceProjects: async () => {
+      if (typeof workspaceLoadFails === 'string') return { ok: false, code: workspaceLoadFails };
+      if (workspaceLoadFails) throw new Error('Workspace unavailable');
+      return { ok: true, projects: workspaceProjects, current: current.path };
+    },
+    addToWorkspace: async source => {
+      workspaceCalls.push({ method: 'add', args: [source] });
+      let project = current;
+      if (source.kind === 'dialog') project = { path: 'C:\\Chosen', name: 'Chosen project', current: false, missing: false };
+      if (source.kind === 'recent') {
+        const result = await window.deckmateBoard!.recentProjects();
+        if (!result.ok) return result;
+        project = result.projects.find(entry => entry.path === source.path)!;
+      }
+      return workspaceReply([...workspaceProjects, project]);
+    },
+    removeFromWorkspace: async path => {
+      workspaceCalls.push({ method: 'remove', args: [path] });
+      return workspaceReply(workspaceProjects.filter(project => project.path !== path));
+    },
+    moveInWorkspace: async (path, index) => {
+      workspaceCalls.push({ method: 'move', args: [path, index] });
+      const next = [...workspaceProjects];
+      const [project] = next.splice(next.findIndex(entry => entry.path === path), 1);
+      next.splice(index, 0, project);
+      return workspaceReply(next);
+    },
   };
 }
 
@@ -164,7 +166,7 @@ window.fetch = async (input, init) => {
   return Response.json({ entries: [], warnings: [] });
 };
 
-function render(scene: 'app' | 'bulk' = 'app', options: { lang?: Lang; theme?: string; view?: string; deck?: boolean; layout?: string; editMode?: string; failSnapshot?: boolean; failShutdown?: boolean; notifications?: boolean; searchMetadata?: boolean; workspace?: boolean | DesktopWorkspaceProject[]; partialBridge?: boolean; selectionCount?: number; bulkResult?: boolean; bulkStateRefusal?: boolean } = {}) {
+function render(scene: 'app' | 'bulk' = 'app', options: { lang?: Lang; theme?: string; view?: string; deck?: boolean; layout?: string; editMode?: string; failSnapshot?: boolean; failShutdown?: boolean; notifications?: boolean; searchMetadata?: boolean; workspace?: boolean | DesktopWorkspaceProject[]; selectionCount?: number; bulkResult?: boolean; bulkStateRefusal?: boolean } = {}) {
   flushSync(() => root.render(null));
   holdReconnect = false;
   snapshotFails = options.failSnapshot ?? false;
@@ -179,7 +181,7 @@ function render(scene: 'app' | 'bulk' = 'app', options: { lang?: Lang; theme?: s
   bulkStateRefusal = options.bulkStateRefusal ?? false;
   fixtureLang = options.lang ?? 'en';
   bulkChanges.length = 0;
-  configureBridge(options.workspace, options.partialBridge);
+  configureBridge(options.workspace);
   setLang(options.lang ?? 'en');
   localStorage.setItem('deckmate-theme', options.theme ?? 'dark');
   document.documentElement.classList.toggle('dark', options.theme !== 'light');
@@ -205,10 +207,10 @@ Object.assign(window, { shellTest: {
   get shutdownCalls() { return shutdownCalls; },
   get notificationCalls() { return notificationCalls; },
   get workspaceCalls() { return workspaceCalls; },
-  setWorkspaceResult: (result: DesktopWorkspaceResult | 'throw' | null) => { workspaceResult = result; },
+  setWorkspaceResult: (result: DesktopProjectsResult | 'throw' | null) => { workspaceResult = result; },
   setNavigationFailure: (code: string | null) => { navigationFailure = code; },
-  setWorkspaceLoadFails: (value: boolean) => { workspaceLoadFails = value; },
-  setRecentFails: (value: boolean) => { recentFails = value; },
+  setWorkspaceLoadFails: (value: boolean | string) => { workspaceLoadFails = value; },
+  setRecentFails: (value: boolean | string) => { recentFails = value; },
   setSnapshotFails: (value: boolean) => { snapshotFails = value; },
 } });
 render();

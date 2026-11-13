@@ -6,6 +6,7 @@ import { attachmentFileUrl } from '../attachments.ts';
 import { cardIcons, cardKinds } from './CatalogCardTile.tsx';
 import type { QuickSettingsChoice } from './QuickSettingsList.tsx';
 import { defineText, textNow } from '../i18n.ts';
+import { DecodedImage } from './DecodedImage.tsx';
 
 const text = defineText({
   space: 'Space',
@@ -20,7 +21,7 @@ const cardKindOrder: readonly CardKind[] = ['hero', 'task', 'doc'];
 export function DeckThumb({ deck, source }: { deck: CatalogDeck | undefined; source: DataSource | undefined }) {
   const art = source && deck?.style === 'artwork' && deck.cover ? attachmentFileUrl(source, deck.cover) : null;
   return <span className={'deck-thumb' + (deck ? '' : ' is-empty')} style={deck ? { '--deck-color': deck.color } as CSSProperties : undefined} aria-hidden="true">
-    {art ? <img src={art} alt="" style={{ objectPosition: `center ${deck?.coverPosition ?? 50}%` }} /> : !deck && <Layers size={12} />}
+    {art ? <DecodedImage src={art} alt="" style={{ objectPosition: `center ${deck?.coverPosition ?? 50}%` }} /> : !deck && <Layers size={12} />}
   </span>;
 }
 

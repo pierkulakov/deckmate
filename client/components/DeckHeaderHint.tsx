@@ -6,7 +6,10 @@ import '../deck-header-hint.css';
 
 export function DeckHeaderHint({ label, combo, note, side = 'bottom', children }: { label: string; combo?: KeyCombo; note?: string; side?: 'bottom' | 'right'; children: ReactElement }) {
   return <Tooltip.Root>
-    <Tooltip.Trigger asChild>{children}</Tooltip.Trigger>
+    <Tooltip.Trigger asChild onFocus={event => {
+      // 2026-11-13: Escape restoration must not open a new tooltip above the layer that just regained focus.
+      if (!document.documentElement.hasAttribute('data-tab-focus')) event.preventDefault();
+    }}>{children}</Tooltip.Trigger>
     <Tooltip.Portal>
       <Tooltip.Content className={'deck-header-hint' + (combo ? ' has-keys' : '')} side={side} sideOffset={6}>
         {label}

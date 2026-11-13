@@ -24,13 +24,11 @@
 .card-preview :is(.card-preview-action-rail, .card-preview-state-actions) .ui-button > svg { flex-shrink: 0; width: var(--preview-icon-size); height: var(--preview-icon-size); }
 /* 2026-11-11: the rail is the last 36px of a clipped sheet, so a ring drawn outside the button lost its right side
    when focus came back from a closed panel. The ring sits inside the button instead. */
-.card-preview-action-rail .ui-button:focus-visible { outline-offset: -2px; }
 .card-preview-action-rail .ui-button:disabled { opacity: .7; }
 .card-preview-action-rail .ui-button.has-draft::after { content: ''; position: absolute; top: 3px; right: 3px; width: 5px; height: 5px; border-radius: 50%; background: var(--champagne); }
 .card-preview-open-questions-count { position: absolute; right: 0; bottom: 0; }
 .card-preview-parent { display: flex; align-items: center; gap: 8px; width: 100%; min-height: 30px; margin-bottom: 12px; padding: 6px 12px; border: 1px solid color-mix(in srgb, var(--hero-metal) 70%, var(--hero-sheen)); border-radius: 5px; color: var(--hero-ink); text-align: left; font-size: 12px; font-weight: 500; line-height: 16px; letter-spacing: 0; }
 /* 2026-11-06: flush with the scrolling panel edge, so the ring is drawn inside, in --hero-ink as on other gold Hero controls. */
-.card-preview-parent:focus-visible { outline: 2px solid var(--hero-ink); outline-offset: -2px; }
 .card-preview-parent > span { flex: 1; min-width: 0; overflow-wrap: anywhere; }
 .card-preview-parent > svg { flex-shrink: 0; width: 14px; height: 14px; }
 .card-preview-parent > progress { width: 42%; min-width: 35px; height: 4px; border: 0; border-radius: 3px; overflow: hidden; appearance: none; }
@@ -46,8 +44,10 @@
 .card-preview .ui-button.card-preview-subcards-toggle { gap: var(--space-1); height: 32px; min-height: 32px; padding: var(--space-1) var(--space-2); font-size: 14px; line-height: 20px; white-space: nowrap; }
 .card-preview-subcards-actions { display: flex; align-items: center; gap: 8px; }
 .card-preview-subcards-bar > .card-preview-subcards-actions { margin-left: auto; }
-/* 2026-11-11: a Doc has no Sub Card button or state row, so its top bar held three tools and 48px of air above
-   the title. The bar is as low as its tools and the text starts right under it. */
+/* 2026-11-13: the Doc label shares the existing tools row, so identifying the kind never shifts the reading title. */
+.card-preview-kind { display: inline-flex; align-items: center; gap: var(--space-2); min-width: 0; color: var(--muted); font: 600 14px/20px var(--font-sans); }
+.card-preview-kind > svg { flex: none; }
+.card-preview-kind > span { min-width: 0; overflow-wrap: anywhere; }
 .card-preview-doc .card-preview-subcards-bar { min-height: 0; padding-block: var(--space-1) 0; }
 .card-preview-doc .card-preview-reading { padding-top: var(--space-1); }
 .card-preview-reading { position: relative; padding: 16px; }
@@ -141,7 +141,6 @@
 .journey-track-title-button > .journey-track-title-chevron { color: var(--muted); transition: transform var(--motion-feedback) var(--ease-out); }
 .journey-track-title-button[data-state="open"] > .journey-track-title-chevron { transform: rotate(180deg); }
 .journey-track-title-button:hover:not(:disabled), .journey-track-title-button[data-state="open"] { background: var(--hover); }
-.journey-track-title-button:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
 .journey-track-title-button:disabled { cursor: default; opacity: 1; }
 .journey-track-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; margin: 0; color: var(--ink); font: 600 12px/16px var(--font-sans); }
 .journey-track-version { flex: none; color: var(--muted); font: 400 10px/16px 'Geist Mono', monospace; }
@@ -153,7 +152,7 @@
 .journey-track-next:hover:not(:disabled) { text-decoration-color: currentColor; }
 /* NW-05 (2026-11-08): a 24px target; the negative margins keep the 16px summary line and its layout as they were. */
 .journey-track-next { min-height: 24px; margin: -4px -3px; padding: 4px 3px; }
-.journey-track-next:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; border-radius: 2px; }
+.journey-track-next { border-radius: 2px; }
 .journey-track-header > .journey-track-count { margin-left: auto; padding-left: 8px; }
 /* 2026-11-10: the step cards start on the Journey icon's line, the same left edge as the title row; indented under the
    title text they read as shifted. On a narrow sheet Next wraps under the cards, inside the plate. */
@@ -202,13 +201,11 @@
 .journey-track-open:hover:not(:disabled) .journey-track-face { transform: translateY(-1px); box-shadow: 0 0 0 1px color-mix(in srgb, var(--tile-highlight) 70%, transparent); }
 .journey-track-open[data-next]:hover:not(:disabled) .journey-track-face { transform: translateY(-3px); box-shadow: var(--card-shadow), var(--journey-track-bevel), 0 0 0 1px color-mix(in srgb, var(--tile-highlight) 70%, transparent); }
 .journey-track-open:focus-visible { outline: none; }
-.journey-track-open:focus-visible .journey-track-face { outline: 2px solid var(--focus); outline-offset: 2px; }
 .journey-track-open:disabled, .journey-track-next:disabled { cursor: default; opacity: 1; }
 /* 2026-11-08: the Sub Card's step note sits at the article's end with no line of its own — a second rule of a
    different length read as a seam; the row's tokens carry the mini-card material at a smaller scale. */
 .journey-step-note-button { display: flex; align-items: center; gap: 8px; max-width: 100%; margin-left: -6px; padding: 4px 6px; border: 0; border-radius: 5px; background: transparent; color: var(--muted); font: 400 12px/16px var(--font-sans); text-align: left; cursor: pointer; }
 .journey-step-note-button:hover:not(:disabled), .journey-step-note-button[data-state="open"] { background: var(--hover); }
-.journey-step-note-button:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
 .journey-step-note-button:disabled { cursor: default; opacity: 1; }
 /* 2026-11-10: the step mark is centred in the free space above the 5px band; the face reserves that band height at the
    bottom. The next step's 2px lift is turned off inside the note (see the rule below), so the face stays on the note's line. */
@@ -318,7 +315,6 @@
 .card-preview .card-preview-material-band .ui-button.card-preview-property-shortcut:hover:not(:disabled) { color: inherit; background: #ffffff24; border-color: transparent; box-shadow: inset 0 0 0 1px #ffffff2e; }
 .card-preview .card-preview-material-band .ui-button.card-preview-property-shortcut:active:not(:disabled) { color: inherit; background: #ffffff33; border-color: transparent; box-shadow: inset 0 0 0 1px #ffffff40; }
 .card-preview .card-preview-material-band .ui-button.card-preview-property-shortcut:disabled { color: inherit; background: transparent; border-color: transparent; box-shadow: none; opacity: 1; }
-.card-preview .card-preview-material-band .ui-button.card-preview-property-shortcut:focus-visible { outline: 2px solid var(--card-metal-ink); outline-offset: 1px; }
 .card-preview .card-preview-material-band .ui-button.card-preview-owner-shortcut { position: absolute; top: calc(var(--preview-owner-size) / -2); left: calc(50% - var(--preview-owner-size) / 2); width: var(--preview-owner-size); height: var(--preview-owner-size); padding: 0; border: 2px solid var(--card-metal); border-radius: 50%; background: var(--card-metal); color: var(--card-metal-ink); box-shadow: none; }
 /* 2026-11-11: the material ring frames the avatar; sheet ink keeps initials legible on every metal. */
 .card-preview-material-band .card-preview-owner-shortcut:not(:has(.card-preview-owner-initials)) > .card-owner-avatar { border: 0; background: var(--canvas); color: var(--ink); }
@@ -383,7 +379,6 @@
 .card-edit-link { display: inline-flex; align-items: center; gap: var(--kbd-gap); height: 26px; padding: 0 8px; border: 0; border-radius: 4px; background: transparent; color: var(--edit-link); font-size: 12px; font-weight: 700; line-height: 14px; letter-spacing: .12px; white-space: nowrap; cursor: pointer; }
 .card-edit-link.is-cancel { color: var(--edit-cancel); }
 .card-edit-link:hover:not(:disabled) { background: var(--hover); }
-.card-edit-link:focus-visible, .card-edit-save:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 /* 2026-11-08: the group never shrinks — a narrow footer moves it whole to the next row, so the Save button is not clipped (CP-02). */
 .card-edit-save-group { display: flex; flex-shrink: 0; align-items: center; gap: 8px; margin-left: auto; }
 .card-edit-save-hint { display: inline-flex; align-items: center; gap: var(--kbd-gap); color: var(--edit-hint); font-size: 12px; line-height: 14px; white-space: nowrap; }
@@ -403,11 +398,6 @@
    ground as a veil and are inert, and a press on them closes it (CardPreview, Deck). The column is the family panel's
    379px wide, on the card's canvas, with a hairline edge and a soft shadow cast over the dimmed cards; it scrolls on its
    own and appears at once, without motion (2026-11-10). */
-/* The column rises over the gap above the card column to meet the header without a gap: 8px under the
-   open deck's toolbar, 20px under the card scopes' title row (its page-head margin). */
-/* 2026-11-10: set on the content layout only, so the card's sections inherit the card scopes' 20px too (they kept 8px). */
-.catalog-content-layout { --card-panel-lift: 8px; }
-.card-scope-view .catalog-content-layout { --card-panel-lift: 20px; }
 .card-preview-layout { position: relative; min-width: 0; }
 :is(.card-preview-layout > .card-properties-slot, .catalog-family-layer > .card-family-panel) {
   position: absolute; z-index: 6; top: calc(-1 * var(--card-panel-lift, 8px)); width: 379px; min-width: 0; max-width: calc(100vw - var(--left-panel-width, 503px) - 120px);
@@ -424,24 +414,16 @@
    at its edge); Sub Cards from the top of the deck's column, back across the 8px gaps and the 8px divider between
    them (24px), held by a zero-height sticky holder that keeps it level with the card while the deck scrolls. */
 .card-preview-layout > .card-properties-slot { left: calc(100% + var(--space-3)); }
-/* 2026-11-10: with a section open, the width divider rises with the column to the header, so the two edges meet it
-   together; otherwise the divider stopped 8px short of the column's top.
-   2026-11-11: a sticky inset pins scrolling but cannot lift the initial flow position; the margin carries the same lift.
-   2026-11-11: beside the deck summary, with no card open, the divider also rises to the header: there is no card
-   edge to line up with, and a line that stopped short left a gap above it. */
-.catalog-content-layout:is(:not(.has-preview), :has(.card-preview-layout[data-card-panel-open], .catalog-family-layer > .card-family-panel)) > .catalog-resize-handle > .catalog-resize-line { --catalog-resize-lift: var(--card-panel-lift); }
 .catalog-family-layer { position: sticky; top: var(--catalog-content-offset, 0px); z-index: 40; height: 0; }
 .catalog-family-layer > .card-family-panel { left: calc(-24px + var(--space-3)); flex: none; min-height: 0; }
 /* Sub Cards' own sections fade in on other screens; in the column they appear with it, at once. */
 .catalog-family-layer :is(.card-family-parent-slot, .card-family-subcards-slot, .card-family-cards-slot) { animation: none; }
 .card-properties-slot[hidden] { display: none; }
 .card-properties-slot:focus:not(:focus-visible) { outline: none; }
-.card-properties-slot:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
 /* 2026-11-10: the column carries the one inset of every section; the panels inside
    drop their own insets and frames and lie on its surface at its width. */
 .card-properties-slot > :is(.card-properties-panel, .attachments-panel) { width: 100%; padding: 0; background: transparent; }
 /* The veil over the deck's cards, under the layer; the card column rises above it while a card panel is open. */
-.catalog-results-body { display: contents; }
 .catalog-content-layout:has(.card-preview-layout[data-card-panel-open]) > .catalog-results,
 .catalog-results:has(> .catalog-family-layer) { position: relative; }
 .catalog-content-layout:has(.card-preview-layout[data-card-panel-open]) > .catalog-results::after,
@@ -462,7 +444,6 @@
   transition: filter var(--motion-feedback) var(--ease-out);
 }
 @media (hover: hover) { .card-id-chip:hover { filter: brightness(1.07); } }
-.card-id-chip:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 .card-id-chip:focus:not(:focus-visible) { outline: none; }
 .card-id-chip[data-copied] { background: color-mix(in srgb, var(--action-mint-ink) 18%, transparent); color: var(--action-mint-ink); }
 /* Copy feedback stays anchored above the ID, outside the action row's layout. */
@@ -485,11 +466,12 @@
 .card-preview-tags { display: flex; flex-direction: column; align-items: flex-start; gap: var(--space-1); min-width: 0; }
 .card-preview-sheet:has(.card-content-reading.is-editing) .card-preview-tags { display: none; }
 /* Reading and editing use the same pinned action slot. */
-.card-preview-dock-actions { display: flex; flex: 1 0 auto; justify-content: flex-end; min-width: 0; margin-inline-start: auto; }
+.card-preview-dock-actions { display: flex; flex: 1 1 0; justify-content: flex-end; min-width: 0; margin-inline-start: auto; }
 .card-preview-dock-actions:empty { display: none; }
 .card-preview-dock-actions > .card-edit-footer { flex: 1; padding: 0; }
-.card-preview-dock-actions > .card-content-reading-footer { flex-wrap: nowrap; justify-content: flex-end; gap: 8px; margin: 0; padding: 0; }
-.card-preview-dock-actions > .card-content-reading-footer > .card-content-save-status { flex-basis: auto; background: none; font-size: 12px; line-height: 16px; }
+/* 2026-11-13: save feedback uses the existing spare width instead of resizing the dock between an icon and words. */
+.card-preview-dock-actions > .card-content-reading-footer { flex: 1; min-width: 0; flex-wrap: nowrap; justify-content: flex-end; gap: 8px; margin: 0; padding: 0; }
+.card-preview-dock-actions > .card-content-reading-footer > .card-content-save-status { flex: 1; min-width: 0; height: 16px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; background: none; font-size: 12px; line-height: 16px; }
 .card-content-save-status.is-calm { display: inline-flex; align-items: center; color: var(--muted); }
 .card-preview-dock-actions .card-content-reading-actions { display: flex; align-items: center; gap: 8px; }
 /* 2026-11-10: the Focus Mode key is framed as part of its icon, in the icon's own colour. */
@@ -517,7 +499,7 @@
 .card-more-menu [role="menuitem"] { display: flex; align-items: center; gap: 8px; min-height: 32px; padding: 6px 8px; border-radius: 4px; font-size: 12px; line-height: 18px; cursor: pointer; outline: none; }
 .card-more-menu [role="menuitem"] > svg { flex-shrink: 0; }
 .card-more-menu [role="menuitem"] > span { flex: 1; }
-.card-more-menu [role="menuitem"][data-highlighted] { background: var(--hover); outline: 1px solid var(--focus); outline-offset: -1px; }
+.card-more-menu [role="menuitem"][data-highlighted] { background: var(--hover); }
 .card-more-menu [role="menuitem"][data-disabled] { opacity: .5; cursor: default; }
 .card-more-menu .card-more-delete { color: var(--danger); }
 .card-more-menu kbd { padding: 1px 4px; border: 1px solid var(--line); border-radius: 3px; background: var(--ground); color: var(--muted); font: 11px 'Geist Mono', monospace; }
@@ -533,7 +515,6 @@
 .card-preview-backlinks ul { display: grid; gap: 4px; list-style: none; padding: 0; margin: 0; }
 .card-preview-backlinks button { width: 100%; padding: 5px 0; border: 0; background: transparent; color: var(--edit-link); text-align: left; font-size: 12px; overflow-wrap: anywhere; cursor: pointer; }
 .card-preview-backlinks button:hover:not(:disabled) { text-decoration: underline; text-underline-offset: 3px; }
-.card-preview-backlinks button:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 
 /* 2026-11-10: overview titles stay within four lines; expansion remains in the reading scrollport. */
 .card-preview:not([data-title-expanded]) .card-content-heading > .card-preview-title { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 4; max-height: 4lh; overflow: hidden; }
@@ -570,7 +551,6 @@
   .card-preview-questions-shortcut { display: inline-flex; align-items: center; gap: var(--space-2); min-height: var(--control-target-touch); padding: 0; border: 0; background: transparent; color: var(--ink); font: 600 13px/18px var(--font-sans); text-align: left; cursor: pointer; }
   .card-preview-questions-shortcut:disabled { opacity: .5; cursor: default; }
 }
-.card-preview-blocker-note:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 .card-panel-error { position: absolute; right: 0; top: 0; color: var(--warning-ink); font-size: 12px; }
 .card-panel-close { margin-bottom: var(--space-3); }
 @media (pointer: coarse) {

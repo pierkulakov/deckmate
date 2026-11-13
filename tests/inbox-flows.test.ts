@@ -157,18 +157,27 @@ describe.skipIf(!browserPath)('Inbox flows (browser)', () => {
     await until(`window.inboxTest.actions.length === 1`);
     expect(await evaluate('window.inboxTest.actions[0]')).toMatchObject({ action: 'create-space', title: 'Launch pad', kind: 'custom' });
     await until(`!document.querySelector('.space-form-popover')`);
-    await until(`Array.from(document.querySelectorAll('.catalog-space-heading h2 span'), node => node.textContent).includes('Launch pad')`);
+    await until(`Array.from(document.querySelectorAll('.catalog-space-heading h2 > button > span'), node => node.textContent).includes('Launch pad')`);
     await click('.deck-gallery-add');
     await until(`Boolean(document.querySelector('.space-form-popover'))`);
     await key('Escape', 27);
     await until(`!document.querySelector('.space-form-popover') && document.activeElement === document.querySelector('.deck-gallery-add')`);
   });
 
-  it('shows the first-project action before a compact empty pulse in the mobile viewport (D03)', async () => {
+  it('shows the first-project action without a zero pulse in the mobile viewport (D03)', async () => {
     await send('Emulation.setDeviceMetricsOverride', { width: 375, height: 812, deviceScaleFactor: 1, mobile: false });
-    await evaluate(`window.inboxTest.render('gallery', { empty: true })`);
-    await until(`Boolean(document.querySelector('.project-template-start')) && !document.querySelector('.project-pulse-loading')`);
-    expect(await evaluate(`(() => { const start = document.querySelector('.project-template-start').getBoundingClientRect(); const pulse = document.querySelector('.project-pulse-quiet').getBoundingClientRect(); return start.top >= 0 && start.bottom <= innerHeight && start.bottom <= pulse.top && pulse.height <= 48 && Boolean(document.querySelector('.project-template-start button')); })()`)).toBe(true);
+    await evaluate(`window.inboxTest.render('gallery', { empty: true, spaces: [] })`);
+    await until(`document.querySelector('.deck-gallery')?.dataset.state === 'empty'`);
+    expect(await evaluate(`(() => {
+      const start = document.querySelector('.gallery-resolution:not([hidden])');
+      const button = start.querySelector('button'), box = button.getBoundingClientRect();
+      return { title: start.querySelector('h2').textContent, action: button.textContent,
+        available: !button.disabled && box.top >= 0 && box.bottom <= innerHeight
+          && button.contains(document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2)),
+        pulse: Boolean(document.querySelector('.project-pulse')) };
+    })()`)).toEqual({ title: 'Give your project a starting structure', action: 'Start from template', available: true, pulse: false });
+    await click('.gallery-resolution:not([hidden]) button');
+    expect(await evaluate('window.inboxTest.opened')).toEqual(['template']);
   });
 
   it('shows a clipped cover name on keyboard focus and hover, but not a short name (D09)', async () => {
@@ -199,7 +208,7 @@ describe.skipIf(!browserPath)('Inbox flows (browser)', () => {
     { id: 'qa', title: 'QA', kind: 'custom', icon: 'layers' },
     { id: 'empty', title: 'Empty', kind: 'custom', icon: 'layers' },
   ];
-  const spaceOrder = `Array.from(document.querySelectorAll('.catalog-space-heading h2 span'), node => node.textContent)`;
+  const spaceOrder = `Array.from(document.querySelectorAll('.catalog-space-heading h2 > button > span'), node => node.textContent)`;
   async function renderSpaces(options: Record<string, unknown> = {}) {
     await callFunction(`options => window.inboxTest.render('gallery', options)`, { spaces,
       decks: [
@@ -208,7 +217,8 @@ describe.skipIf(!browserPath)('Inbox flows (browser)', () => {
         { id: 'deck:e1', title: 'E1', kind: 'task', spaceId: 'empty' },
       ], ...options });
     const count = Array.isArray(options.spaces) ? options.spaces.length : spaces.length;
-    await until(`document.querySelectorAll('.catalog-space').length === ${count} && !document.querySelector('.project-pulse-loading')`);
+    // 2026-11-13: recovery surfaces share the space styling; only the list contains actual project spaces.
+    await until(`document.querySelectorAll('.catalog-spaces .catalog-space').length === ${count} && !document.querySelector('.project-pulse-loading')`);
   }
   async function openSpaceMenu(id: string) {
     if (await evaluate(`Boolean(document.querySelector('.deck-space-menu'))`)) await key('Escape', 27);
@@ -240,15 +250,15 @@ describe.skipIf(!browserPath)('Inbox flows (browser)', () => {
     await callFunction(`() => document.getElementById('space-qa').closest('.catalog-space').querySelector('h2 button').click()`);
     await until(`document.getElementById('space-qa').hidden`);
     await moveSpace('qa', 'up');
-    await until(`window.inboxTest.actions.length === 1 && document.querySelector('.catalog-space-heading h2 span')?.textContent === 'QA'`);
+    await until(`window.inboxTest.actions.length === 1 && document.querySelector('.catalog-space-heading h2 > button > span')?.textContent === 'QA'`);
     expect(await evaluate('window.inboxTest.actions[0]')).toMatchObject({ action: 'move-space', spaceId: 'qa', beforeSpaceId: 'space:one', manifestHash: 'manifest-hash' });
     expect(await evaluate(spaceOrder)).toEqual(['QA', 'Work', 'Empty']);
     expect(await evaluate(`document.getElementById('space-qa').hidden`)).toBe(true);
     await moveSpace('qa', 'down');
-    await until(`window.inboxTest.actions.length === 2 && document.querySelector('.catalog-space-heading h2 span')?.textContent === 'Work'`);
+    await until(`window.inboxTest.actions.length === 2 && document.querySelector('.catalog-space-heading h2 > button > span')?.textContent === 'Work'`);
     expect(await evaluate('window.inboxTest.actions[1]')).toMatchObject({ action: 'move-space', spaceId: 'qa', beforeSpaceId: 'empty' });
     await moveSpace('qa', 'down');
-    await until(`window.inboxTest.actions.length === 3 && document.querySelectorAll('.catalog-space-heading h2 span')[2]?.textContent === 'QA'`);
+    await until(`window.inboxTest.actions.length === 3 && document.querySelectorAll('.catalog-space-heading h2 > button > span')[2]?.textContent === 'QA'`);
     expect(await evaluate('window.inboxTest.actions[2]')).toMatchObject({ action: 'move-space', spaceId: 'qa', beforeSpaceId: null });
     await openSpaceMenu('qa');
     expect(await evaluate(`document.querySelector('[aria-label="Move space down"]').hasAttribute('data-disabled')`)).toBe(true);
@@ -325,7 +335,7 @@ describe.skipIf(!browserPath)('Inbox flows (browser)', () => {
     await renderSpaces({ decks: [{ id: 'deck:work', title: 'Work deck', kind: 'task' }] });
     await openSpaceDelete('qa');
     await click('.confirm-strip-confirm');
-    await until(`document.querySelectorAll('.catalog-space').length === 2 && document.activeElement.id === 'space-heading-empty'`);
+    await until(`document.querySelectorAll('.catalog-spaces .catalog-space').length === 2 && document.activeElement.id === 'space-heading-empty'`);
     expect(await evaluate('window.inboxTest.actions[0]')).toMatchObject({ action: 'delete-space', spaceId: 'qa', manifestHash: 'manifest-hash', optionsHash: '' });
     expect(await evaluate(spaceOrder)).toEqual(['Work', 'Empty']);
     expect(await evaluate(`document.querySelectorAll('.catalog-cover-item').length`)).toBe(1);
@@ -338,10 +348,10 @@ describe.skipIf(!browserPath)('Inbox flows (browser)', () => {
     expect(await evaluate(`document.querySelector('.confirm-strip-keep').textContent`)).toBe('Отмена');
     expect(await evaluate(`document.querySelector('.confirm-strip-confirm').textContent`)).toBe('Удалить');
     await click('.confirm-strip-confirm');
-    await until(`!document.querySelector('.catalog-space') && document.activeElement.matches('.deck-gallery-add')`);
-    // 2026-11-11: the first-run catalog is the shared scene empty state with the one available action.
-    expect(await evaluate(`(() => { const empty = document.querySelector('.catalog-spaces .ui-empty'); return { title: empty.querySelector('h2').textContent, message: empty.querySelector('p').textContent, action: empty.querySelector('.ui-button')?.textContent ?? null, scene: empty.classList.contains('ui-empty-scene') }; })()`))
-      .toEqual({ title: 'Пространств пока нет.', message: 'Создайте первое пространство и добавьте в него колоды.', action: 'Создать пространство', scene: true });
+    await until(`document.querySelector('.deck-gallery')?.dataset.state === 'empty' && !document.querySelector('.catalog-spaces .catalog-space') && document.activeElement.matches('.deck-gallery-add')`);
+    // 2026-11-13: the empty project offers a template in the scene and manual space creation in the header.
+    expect(await evaluate(`(() => { const empty = document.querySelector('.gallery-resolution:not([hidden]) .ui-empty'); return { title: empty.querySelector('h2').textContent, message: empty.querySelector('p').textContent, action: empty.querySelector('.ui-button')?.textContent ?? null, scene: empty.classList.contains('ui-empty-scene') }; })()`))
+      .toEqual({ title: 'Задайте проекту начальную структуру', message: 'Шаблон добавит пространства, колоды и Journey. Чтобы начать вручную, создайте пространство вверху.', action: 'Начать с шаблона', scene: true });
     await click('.deck-gallery-add');
     await until(`Boolean(document.querySelector('.space-preset-form'))`);
   });
@@ -354,7 +364,7 @@ describe.skipIf(!browserPath)('Inbox flows (browser)', () => {
     expect(await evaluate(spaceOrder)).toEqual(['Work', 'QA', 'Empty']);
     await evaluate(`window.inboxTest.gallery.response = 'success'`);
     await click('.confirm-strip-confirm');
-    await until(`document.querySelectorAll('.catalog-space').length === 2 && document.activeElement.id === 'space-heading-qa'`);
+    await until(`document.querySelectorAll('.catalog-spaces .catalog-space').length === 2 && document.activeElement.id === 'space-heading-qa'`);
     expect(await evaluate(`window.inboxTest.actions.length`)).toBe(2);
   });
 
@@ -369,7 +379,7 @@ describe.skipIf(!browserPath)('Inbox flows (browser)', () => {
     await click('.confirm-strip-keep');
     await openSpaceDelete('qa');
     await click('.confirm-strip-confirm');
-    await until(`document.querySelectorAll('.catalog-space').length === 2`);
+    await until(`document.querySelectorAll('.catalog-spaces .catalog-space').length === 2`);
     expect(await evaluate('window.inboxTest.actions[1].manifestHash')).toBe('external-hash');
   });
 

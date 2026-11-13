@@ -43,7 +43,6 @@
 .journey-mini > strong { display: -webkit-box; flex: 1 1 auto; min-height: 0; -webkit-line-clamp: 5; -webkit-box-orient: vertical; overflow: hidden; padding: 12px 8px 0; font-size: 14px; font-weight: 400; line-height: 17px; overflow-wrap: anywhere; }
 button.journey-mini { cursor: pointer; }
 button.journey-mini:hover:not(:disabled), .journey-mini[aria-pressed="true"] { box-shadow: 0 0 0 1px color-mix(in srgb, var(--tile-highlight) 70%, transparent), var(--card-hover-shadow); }
-button.journey-mini:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 .journey-mini-state { display: flex; flex-shrink: 0; padding: 0 8px 7px; color: var(--card-muted); }
 .journey-mini-band { display: flex; flex: 0 0 26px; align-items: center; justify-content: space-between; gap: 6px; padding: 0 8px; background: var(--journey-band, color-mix(in srgb, var(--accent) 38%, var(--card-face))); color: var(--card-ink); }
 .journey-mini-effort { display: inline-flex; align-items: center; gap: 5px; color: var(--card-muted); }
@@ -68,7 +67,7 @@ button.journey-mini:focus-visible { outline: 2px solid var(--focus); outline-off
 .journey-editor-menu { z-index: 130; min-width: 220px; max-width: min(400px, 90vw); max-height: var(--radix-dropdown-menu-content-available-height); overflow: auto; padding: 5px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--glass-radius); box-shadow: var(--shadow); font-size: 14px; animation: overlay-pop var(--motion-spring-quick) var(--ease-spring-quick); }
 .journey-editor-menu-label { padding: 6px 9px 4px; color: var(--muted); font-size: 12px; font-weight: 500; }
 .journey-editor-menu [role="menuitem"] { display: flex; gap: 8px; align-items: center; padding: 8px 9px; border-radius: var(--control-radius); cursor: pointer; outline: none; font-weight: 500; }
-.journey-editor-menu [data-highlighted] { background: var(--hover); box-shadow: inset 0 0 0 1px var(--focus); }
+.journey-editor-menu [data-highlighted] { background: var(--hover); }
 /* 2026-11-06: the shell prefix outweighs .button-size-icon, which had made this close 30 px and 2 px below the 48 px row's centre;
    now it is the editor's 26 px close in the same spot. */
 .journey-editor-shell > .journey-catalog-close { position: absolute; right: 22px; top: 11px; z-index: 2; width: 26px; height: 26px; min-height: 26px; color: var(--ink); }

@@ -16,7 +16,6 @@
   .card-selection-bar .ui-button:hover:not(:disabled) { border-color: transparent; background: color-mix(in srgb, var(--selection-ink) 14%, transparent); color: var(--selection-ink); }
   .card-selection-bar .ui-button:is([data-state="open"], [data-active], [aria-pressed="true"]):hover:not(:disabled) { border-color: color-mix(in srgb, var(--selection-ink) 60%, transparent); background: color-mix(in srgb, var(--selection-ink) 24%, transparent); color: var(--selection-ink); }
 }
-.card-selection-bar .ui-button:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 .card-selection-bar .ui-button:disabled { color: var(--selection-muted); opacity: .5; }
 .card-selection-divider { align-self: center; flex-shrink: 0; width: 1px; height: 22px; margin-inline: 7px; background: color-mix(in srgb, var(--selection-muted) 21%, transparent); }
 .card-selection-status { display: block; flex: 1 1 220px; min-width: 0; color: var(--selection-ink); font-size: 12px; line-height: 16px; overflow-wrap: anywhere; }
@@ -33,7 +32,7 @@
 .card-selection-menu-item { display: flex; align-items: center; gap: 9px; min-height: 32px; padding: 6px 8px; border-radius: var(--control-radius); outline: none; color: var(--ink); font-size: 12px; font-weight: 500; letter-spacing: .01em; line-height: 1.5; cursor: pointer; user-select: none; }
 .card-selection-menu-item > svg { flex-shrink: 0; color: var(--muted); }
 .card-selection-menu-item > span { flex: 1; min-width: 0; overflow-wrap: anywhere; }
-.card-selection-menu-item[data-highlighted] { background: var(--hover); color: var(--ink); box-shadow: inset 0 0 0 1px var(--focus); }
+.card-selection-menu-item[data-highlighted] { background: var(--hover); color: var(--ink); }
 .card-selection-menu-item[data-disabled] { opacity: .45; cursor: default; }
 .card-selection-menu-error { margin: var(--space-2) 0 0; padding: var(--space-2); border-top: 1px solid var(--line); color: var(--warning-ink); font-size: 12px; line-height: 16px; overflow-wrap: anywhere; }
 @media (max-width: 600px) { .card-selection-toolbar.card-selection-bar { gap: 6px; padding-inline: 7px; } }

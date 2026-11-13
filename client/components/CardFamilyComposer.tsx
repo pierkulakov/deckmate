@@ -155,7 +155,7 @@ export function CardFamilyComposer({ parent, catalog, initialDeckId, active = tr
     finally { inFlight.current = false; setSaving(false); }
   }
 
-  return <form className="card-family-composer" aria-label={t.formLabel} aria-busy={busy}
+  return <form className="card-family-composer" aria-label={t.formLabel} aria-busy={busy} data-local-escape
     onSubmit={event => { event.preventDefault(); void create(); }}
     onKeyDown={event => {
       if (event.defaultPrevented) return;

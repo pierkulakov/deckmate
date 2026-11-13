@@ -180,13 +180,15 @@ export async function collectVendoredPackages(moduleIds: Iterable<string>): Prom
   return found;
 }
 
-export function completeThirdPartyNotices(markdown: string, manifest: ThirdPartyNotices, found: Map<string, Set<string>>): string {
+export function completeThirdPartyNotices(markdown: string, manifest: ThirdPartyNotices, found: Map<string, Set<string>>, subset = false): string {
   const filled = fillThirdPartyNotices(nestLicenseHeadings(markdown), manifest.notices);
   const errors: string[] = [];
   if (filled.missing.length > 0) errors.push(`bundled packages without license text or a supplement entry: ${filled.missing.join(', ')}`);
   const declared = new Map<string, Set<string>>();
   const notFound: string[] = [];
-  for (const entry of manifest.vendored) {
+  // 2026-11-13: smaller entry points omit whole hosts; embedded code within a present host still needs exact coverage.
+  const vendored = subset ? manifest.vendored.filter(entry => found.has(entry.host)) : manifest.vendored;
+  for (const entry of vendored) {
     const packages = declared.get(entry.host) ?? new Set<string>();
     for (const name of entry.packages) {
       packages.add(name);
@@ -201,9 +203,9 @@ export function completeThirdPartyNotices(markdown: string, manifest: ThirdParty
   }
   if (notFound.length > 0) errors.push(`vendored entries not found in the bundle: ${notFound.join(', ')}`);
   const unused = [...manifest.notices.keys()].filter(name => !filled.used.has(name));
-  if (unused.length > 0) errors.push(`unused notices entries: ${unused.join(', ')}`);
+  if (!subset && unused.length > 0) errors.push(`unused notices entries: ${unused.join(', ')}`);
   if (errors.length > 0) throw new Error(errors.join('\n'));
-  return (filled.markdown.trimEnd() + renderVendoredNotices(manifest.vendored) + '\n').replaceAll('\r\n', '\n');
+  return (filled.markdown.trimEnd() + renderVendoredNotices(vendored) + '\n').replaceAll('\r\n', '\n');
 }
 
 function nestLicenseHeadings(markdown: string): string {
@@ -236,7 +238,7 @@ function renderVendoredNotices(entries: VendoredEntry[]): string {
 // 2026-11-07: vite:license emits its markdown in generateBundle. Rewriting the written file in
 // writeBundle does not depend on how the hooks of vite's internal plugins are ordered against ours,
 // and the same hook receives every chunk's module ids for the embedded-code check.
-export function thirdPartyNoticesPlugin(): Plugin {
+export function thirdPartyNoticesPlugin({ subset = false }: { subset?: boolean } = {}): Plugin {
   let noticesFile: string | undefined;
   return {
     name: 'deckmate:license-supplement',
@@ -252,7 +254,7 @@ export function thirdPartyNoticesPlugin(): Plugin {
         const moduleIds = Object.values(bundle).flatMap(output => output.type === 'chunk' ? output.moduleIds : []);
         const found = await collectVendoredPackages(moduleIds);
         const emitted = await readFile(noticesFile, 'utf8');
-        const markdown = completeThirdPartyNotices(emitted, loadThirdPartyNotices(), found);
+        const markdown = completeThirdPartyNotices(emitted, loadThirdPartyNotices(), found, subset);
         if (markdown !== emitted) await writeFile(noticesFile, markdown);
       } catch (error) {
         this.error(error instanceof Error ? error.message : String(error));

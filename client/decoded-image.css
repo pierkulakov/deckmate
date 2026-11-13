@@ -1,0 +1,12 @@
+/* 2026-11-13: only decoded pixels fade; fixed image slots keep loading and failure out of layout. */
+.decoded-image { opacity: 0; transition: opacity var(--image-reveal-duration, var(--motion-feedback)) var(--ease-out); }
+.decoded-image[data-image-state="ready"] { opacity: 1; }
+.decoded-image[data-image-cached] { --image-reveal-duration: 0ms; }
+.image-fallback { display: inline-flex; align-items: center; justify-content: center; gap: var(--space-2); overflow: hidden; color: var(--muted); background: var(--ground); }
+.image-fallback > svg { flex: none; max-width: 100%; max-height: 100%; }
+.image-fallback > span { min-width: 0; overflow-wrap: anywhere; }
+/* 2026-11-13: Markdown has no intrinsic dimensions, so contain the whole image in a stable reading slot. */
+.markdown-image { position: relative; display: block; width: 100%; aspect-ratio: 4 / 3; max-height: 360px; border-radius: var(--glass-radius); overflow: hidden; background: var(--ground); }
+.markdown .markdown-image > :is(img, .image-fallback) { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
+.markdown-image > .image-fallback { padding: var(--space-3); }
+@media (prefers-reduced-motion: reduce) { .decoded-image { --image-reveal-duration: 0ms; transition: none; } }

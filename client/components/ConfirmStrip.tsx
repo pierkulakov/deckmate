@@ -44,7 +44,7 @@ export function ConfirmStrip({ question, keepLabel, confirmLabel, danger = false
     document.addEventListener('pointerdown', away);
     return () => document.removeEventListener('pointerdown', away);
   }, [onEscape]);
-  return <section ref={root} className="confirm-strip" aria-label={question}
+  return <section ref={root} className="confirm-strip" aria-label={question} data-local-escape={Boolean(onEscape) || undefined}
     onKeyDown={event => {
       if (event.key !== 'Escape' || !onEscape) return;
       // The strip answers Escape itself so host dialogs and editors do not also react to it.

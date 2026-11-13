@@ -155,6 +155,8 @@ jobs:
           VERSION: ${{ needs.preflight.outputs.version }}
         run: Add-Content -Path $env:GITHUB_OUTPUT -Value "version=$env:VERSION"
       - run: npm ci --prefer-offline
+      # 2026-11-13: generate_context! needs the frontend before compiling release inputs.
+      - run: npm run build:desktop
       - name: Show the pinned Rust toolchain
         working-directory: desktop/src-tauri
         run: |

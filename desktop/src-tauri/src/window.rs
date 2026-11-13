@@ -1,13 +1,18 @@
 use crate::{
     app::{self, Shell},
     paths,
-    settings::{clamp_zoom, Bounds},
+    settings::{clamp_zoom, Bounds, Theme},
     webview,
 };
 #[cfg(debug_assertions)]
 use std::env;
 use std::{
-    sync::atomic::{AtomicBool, Ordering},
+    borrow::Cow,
+    collections::HashMap,
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        LazyLock, Mutex,
+    },
     time::Duration,
 };
 use tauri::{
@@ -94,7 +99,7 @@ pub fn allow_navigation(app: &AppHandle, url: &Url) -> bool {
             .lock()
             .unwrap()
             .as_ref()
-            .is_some_and(|current| current.url.is_some());
+            .is_some_and(|current| is_launcher_url(url) || current.url.is_some());
     if returning_to_launcher {
         let app = app.clone();
         tauri::async_runtime::spawn(async move {
@@ -215,6 +220,99 @@ pub fn debug_browser_args() -> Option<String> {
     None
 }
 
+pub fn system_dark() -> bool {
+    // 2026-11-13: the application preference is readable before an HWND exists; the Windows default is light.
+    !unsafe {
+        windows::Win32::UI::Shell::SHRegGetBoolUSValueW(
+            windows::core::w!("Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize"),
+            windows::core::w!("AppsUseLightTheme"),
+            false,
+            true,
+        )
+    }
+    .as_bool()
+}
+
+// 2026-11-13: the native surface must use the page's canvas token before the first web frame exists.
+static CANVAS_COLORS: LazyLock<[tauri::window::Color; 2]> = LazyLock::new(|| {
+    // 2026-11-13: the shared client tokens are the single palette source; a comment may precede a selector.
+    let css = include_str!("../../../client/tokens.css");
+    [":root", ":root.dark"].map(|selector| {
+        css.split('}')
+            .filter_map(|block| block.rsplit_once('{'))
+            .find(|(head, _)| head.rsplit("*/").next().unwrap_or(head).trim() == selector)
+            .and_then(|(_, body)| body.split_once("--canvas:"))
+            .and_then(|(_, value)| value.split_once(';'))
+            .expect("each canvas theme must define --canvas")
+            .0
+            .trim()
+            .parse()
+            .expect("--canvas must be a hex color")
+    })
+});
+
+pub fn background_color(theme: Theme, system_dark: bool) -> tauri::window::Color {
+    match theme {
+        Theme::Light => CANVAS_COLORS[0],
+        Theme::System if !system_dark => CANVAS_COLORS[0],
+        _ => CANVAS_COLORS[1],
+    }
+}
+
+fn shell_attributes(html: &str, theme: Theme, language: &str, project: Option<&str>) -> String {
+    // 2026-11-13: inert attributes reach every local page before its scripts without granting splash IPC.
+    let mut attributes = vec![("theme", theme.as_str()), ("lang", language)];
+    if let Some(project) = project {
+        attributes.extend([
+            ("project", project),
+            ("opening", crate::texts::text(language, "startupOpening")),
+            ("return", crate::texts::text(language, "startupReturn")),
+        ]);
+    }
+    let mut tag = String::from("<html");
+    for (name, value) in attributes {
+        let escaped = value
+            .replace('&', "&amp;")
+            .replace('"', "&quot;")
+            .replace('<', "&lt;")
+            .replace('>', "&gt;")
+            .replace('\'', "&#39;");
+        tag.push_str(&format!(" data-shell-{name}=\"{escaped}\""));
+    }
+    html.replacen("<html", &tag, 1)
+}
+
+pub fn shell_resource(
+    shell: &Shell,
+    request: tauri::http::Request<Vec<u8>>,
+    response: &mut tauri::http::Response<Cow<'static, [u8]>>,
+) {
+    if !matches!(request.uri().host(), Some("tauri.localhost" | "localhost"))
+        || !matches!(
+            request.uri().path(),
+            "/" | "/index.html" | "/startup.html" | "/whats-new.html"
+        )
+    {
+        return;
+    }
+    let settings = shell.settings.lock().unwrap();
+    let project = shell
+        .startup_project
+        .as_deref()
+        .filter(|_| request.uri().path() == "/startup.html")
+        .map(paths::project_name);
+    let html = shell_attributes(
+        &String::from_utf8_lossy(response.body()),
+        settings.theme,
+        &settings.language,
+        project.as_deref(),
+    );
+    *response.body_mut() = html.into_bytes().into();
+    response
+        .headers_mut()
+        .remove(tauri::http::header::CONTENT_LENGTH);
+}
+
 pub fn create(app: &AppHandle) -> tauri::Result<()> {
     let shell = app::state(app);
     let page = if shell.startup_project.is_some() {
@@ -222,12 +320,18 @@ pub fn create(app: &AppHandle) -> tauri::Result<()> {
     } else {
         "index.html"
     };
+    let theme = shell.settings.lock().unwrap().theme;
+    let resource_shell = shell.clone();
     let builder = WebviewWindowBuilder::new(app, "main", WebviewUrl::App(page.into()))
+        .menu(crate::menu::build(app, "main")?)
         .title("Deckmate")
         .inner_size(1280.0, 820.0)
         .min_inner_size(960.0, 600.0)
         .visible(false)
-        .background_color(tauri::window::Color(23, 24, 27, 255))
+        .background_color(background_color(theme, system_dark()))
+        .on_web_resource_request(move |request, response| {
+            shell_resource(&resource_shell, request, response);
+        })
         // 2026-11-11: the native drop handler replaces WebView2's HTML file drops on Windows.
         .disable_drag_drop_handler()
         .zoom_hotkeys_enabled(false)
@@ -242,9 +346,15 @@ pub fn create(app: &AppHandle) -> tauri::Result<()> {
             apply_zoom(&window);
             let _ = window.set_title(&title(app));
             let shell = app::state(app);
-            shell.first_show.loaded.store(true, Ordering::SeqCst);
             if !is_server_url(&shell, payload.url()) {
-                shell.first_show.show(&window, false);
+                #[cfg(debug_assertions)]
+                if !shell.first_show.shown.load(Ordering::SeqCst) {
+                    shell.log.write(format!(
+                        "main local loaded: native-visible={}",
+                        window.is_visible().unwrap_or(true)
+                    ));
+                }
+                local_page_loaded(window);
             }
         });
     let builder = match paths::debug_webview_dir() {
@@ -272,8 +382,7 @@ pub fn create(app: &AppHandle) -> tauri::Result<()> {
             .log
             .write(format!("Windows session guard failed: {error}"));
     }
-    // 2026-11-09: hiding the HWND alone does not update WebView2's document.visibilityState.
-    window.as_ref().hide()?;
+    // 2026-11-13: keep the WebView rendering beneath the hidden HWND so its first frame does not wait for native show.
     restore_bounds(&window)?;
     shell.first_show.bounds_ready.store(true, Ordering::SeqCst);
     shell.first_show.show(&window, false);
@@ -314,6 +423,38 @@ pub fn create(app: &AppHandle) -> tauri::Result<()> {
         }
     });
     Ok(())
+}
+
+pub fn local_page_loaded(window: WebviewWindow) {
+    // 2026-11-13: a loaded document may still have pending IPC, fonts and image decoding; render it beneath the hidden native window.
+    let _ = window.as_ref().show();
+    tauri::async_runtime::spawn(async move {
+        let shell = app::state(window.app_handle());
+        let page = window.url().ok();
+        let prepared = webview::wait_for_local_page(&window).await;
+        if window.url().ok() != page {
+            return;
+        }
+        if let Err(error) = prepared {
+            shell
+                .log
+                .write(format!("local page preparation failed: {error}"));
+            if window.label() == "main" && !shell.first_show.shown.load(Ordering::SeqCst) {
+                let _ =
+                    window.eval("document.documentElement.removeAttribute('data-paint-pending')");
+                launcher_error(
+                    &window,
+                    crate::texts::text(&shell.language(), "launcherTimeout"),
+                );
+            }
+        }
+        if window.label() == "main" {
+            shell.first_show.loaded.store(true, Ordering::SeqCst);
+            shell.first_show.show(&window, false);
+        } else {
+            let _ = window.show();
+        }
+    });
 }
 
 pub fn visible_on(bounds: Bounds, area: Bounds) -> bool {
@@ -409,35 +550,59 @@ fn schedule_bounds_save(window: &WebviewWindow) {
     });
 }
 
-pub fn apply_zoom(window: &WebviewWindow) {
-    let factor = app::state(window.app_handle())
-        .settings
+#[derive(Default)]
+pub struct Zoom(Mutex<HashMap<String, f64>>);
+
+pub fn zoom_factor(window: &WebviewWindow) -> f64 {
+    let app = window.app_handle();
+    let saved = app::state(app).settings.lock().unwrap().zoom_factor;
+    // 2026-11-13: zoomFactor seeds new windows; changing one open window must not change another on reload.
+    *app.state::<Zoom>()
+        .0
         .lock()
         .unwrap()
-        .zoom_factor;
+        .entry(window.label().into())
+        .or_insert(saved)
+}
+
+pub fn forget_zoom(window: &WebviewWindow) {
+    window
+        .app_handle()
+        .state::<Zoom>()
+        .0
+        .lock()
+        .unwrap()
+        .remove(window.label());
+}
+
+pub fn apply_zoom(window: &WebviewWindow) {
+    let factor = zoom_factor(window);
     let _ = window.set_zoom(factor);
 }
 
-pub fn set_zoom(app: &AppHandle, factor: f64) {
+pub fn set_zoom(window: &WebviewWindow, factor: f64) {
+    let app = window.app_handle();
     let shell = app::state(app);
     let factor = clamp_zoom(factor);
+    app.state::<Zoom>()
+        .0
+        .lock()
+        .unwrap()
+        .insert(window.label().into(), factor);
     let changed = {
         let mut settings = shell.settings.lock().unwrap();
         let changed = settings.zoom_factor != factor;
         settings.zoom_factor = factor;
         changed
     };
-    if let Some(window) = app.get_webview_window("main") {
-        apply_zoom(&window);
-    }
+    apply_zoom(window);
     if changed {
         let _ = shell.save();
     }
 }
 
-pub fn change_zoom(app: &AppHandle, delta: f64) {
-    let factor = app::state(app).settings.lock().unwrap().zoom_factor;
-    set_zoom(app, factor + delta);
+pub fn change_zoom(window: &WebviewWindow, delta: f64) {
+    set_zoom(window, zoom_factor(window) + delta);
 }
 
 pub fn finish_load(window: &WebviewWindow, navigation: u64, result: Result<(), String>) {
@@ -490,6 +655,40 @@ pub async fn navigate_board(window: &WebviewWindow, url: &str) -> Result<(), Str
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn native_background_uses_saved_theme_before_the_window_exists() {
+        let light = tauri::window::Color(240, 236, 244, 255);
+        let dark = tauri::window::Color(50, 47, 64, 255);
+        for system_dark in [false, true] {
+            assert_eq!(background_color(Theme::Light, system_dark), light);
+            assert_eq!(background_color(Theme::Dark, system_dark), dark);
+        }
+        assert_eq!(background_color(Theme::System, false), light);
+        assert_eq!(background_color(Theme::System, true), dark);
+    }
+
+    #[test]
+    fn local_pages_receive_inert_shell_preferences_before_their_blocking_script() {
+        for original in [
+            include_str!("../../dist/startup.html"),
+            include_str!("../../dist/index.html"),
+            include_str!("../../dist/whats-new.html"),
+        ] {
+            for theme in [Theme::Light, Theme::Dark, Theme::System] {
+                for language in ["en", "ru"] {
+                    let html = shell_attributes(original, theme, language, None);
+                    let attributes = format!(
+                        " data-shell-theme=\"{}\" data-shell-lang=\"{language}\"",
+                        theme.as_str()
+                    );
+                    assert!(html.find(&attributes).unwrap() < html.find("<script").unwrap());
+                    assert_eq!(html.replacen(&attributes, "", 1), original);
+                }
+            }
+        }
+    }
+
     #[test]
     fn bundled_pages_keep_the_configured_ipc_connect_policy() {
         fn connect_policy(policy: &str) -> Option<&str> {
@@ -506,9 +705,9 @@ mod tests {
             Some("connect-src 'self' ipc: http://ipc.localhost")
         );
         for html in [
-            include_str!("../../launcher/index.html"),
-            include_str!("../../launcher/startup.html"),
-            include_str!("../../launcher/whats-new.html"),
+            include_str!("../../dist/index.html"),
+            include_str!("../../dist/startup.html"),
+            include_str!("../../dist/whats-new.html"),
         ] {
             let policy = html
                 .split("http-equiv=\"Content-Security-Policy\" content=\"")
@@ -592,11 +791,46 @@ mod tests {
         show.bounds_ready.store(true, Ordering::SeqCst);
         show.loaded.store(true, Ordering::SeqCst);
         assert!(show.claim(false));
-        let html = include_str!("../../launcher/startup.html");
-        for resource in ["<script", "<link", "<img", "url("] {
-            assert!(
-                !html.contains(resource),
-                "startup must not wait for {resource}"
+        let html = include_str!("../../dist/startup.html");
+        assert!(html.find("src=\"theme.js\"").unwrap() < html.find("rel=\"stylesheet\"").unwrap());
+        let scripts: Vec<_> = html
+            .split("<script")
+            .skip(1)
+            .map(|part| part.split_once("</script>").unwrap().0.trim())
+            .collect();
+        assert_eq!(scripts.len(), 3);
+        assert_eq!(scripts[0], "src=\"theme.js\">");
+        assert_eq!(scripts[1], "src=\"page-ready.js\">");
+        assert!(scripts[2].contains("type=\"module\""));
+        assert!(scripts[2].contains("src=\"./assets/startup"));
+        assert!(!html.contains("unsafe-inline"));
+        assert!(!html.contains("<style"));
+        for subset in ["latin", "cyrillic"] {
+            assert!(html.contains(&format!(
+                "rel=\"preload\" href=\"./assets/SourceSans3-{subset}-wght-"
+            )));
+        }
+    }
+    #[test]
+    fn startup_names_and_localized_copy_use_escaped_shell_attributes() {
+        for language in ["en", "ru"] {
+            let original = include_str!("../../../client/desktop/startup.html");
+            let html = shell_attributes(original, Theme::Dark, language, Some("Проект \"<>&'"));
+            assert!(html.contains(" data-shell-project=\"Проект &quot;&lt;&gt;&amp;&#39;\""));
+            assert!(html.contains(&format!(" data-shell-lang=\"{language}\"")));
+            assert!(html.contains(&format!(
+                " data-shell-opening=\"{}\"",
+                crate::texts::text(language, "startupOpening")
+            )));
+            assert!(html.contains(&format!(
+                " data-shell-return=\"{}\"",
+                crate::texts::text(language, "startupReturn")
+            )));
+            let insertion = original.find("<html").unwrap() + "<html".len();
+            assert_eq!(&html[..insertion], &original[..insertion]);
+            assert_eq!(
+                &html[insertion + html.len() - original.len()..],
+                &original[insertion..]
             );
         }
     }

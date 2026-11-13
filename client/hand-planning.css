@@ -3,7 +3,6 @@
 .hand-planning-row > .hand-section-row { flex: 1; min-width: 0; }
 .hand-membership-action { flex: 0 0 auto; color: var(--muted); }
 .hand-membership-action:hover:not(:disabled) { color: var(--ink); background: var(--hover); }
-.hand-membership-action:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 .hand-membership-action:disabled { opacity: .5; cursor: not-allowed; }
 @media (max-width: 600px) {
   .hand-planning-row { flex-wrap: wrap; gap: 2px; }

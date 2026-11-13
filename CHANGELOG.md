@@ -4,6 +4,38 @@ Notable changes are grouped by version using [Keep a Changelog](https://keepacha
 
 ## [Unreleased]
 
+## [0.8.1] - 2026-11-13
+
+### Desktop shell
+
+- **Start screen.** Project lists, theme and language controls, fonts, colors and keyboard navigation now share the board's look and behavior.
+- **Shared preferences.** The selected theme and language carry between the start screen and the board and survive a restart; native menus use the same language.
+- **Clearer project opening.** One “Opening project…” screen names the project throughout startup. The window appears once the page, fonts and artwork are ready; an opening failure returns to the start screen with an explanation.
+- **Steadier window.** Changing language, updating project lists or returning to the start screen with Ctrl+Shift+P no longer makes the window's content jump as the native menu changes.
+- **Responsive with network folders.** Folder availability checks for the menu run off the window's interface thread, so an unreachable network share cannot freeze the window. What's new opens with the current menu language.
+- **Start screen recovery.** Adding a project to a full workspace (30 projects) explains how to free a place; Ctrl+1…9 or Ctrl+O while another project is opening keeps showing the new launch. Project paths can be selected and copied, and history entries without a name show the folder name.
+
+### Performance
+
+- **Smoother first load.** The board prepares fonts and its first screen before showing them; images are decoded before they appear, and entrance animations start without a first-frame jump. Starting on Hand, Timeline, Decisions or Vision keeps the opening screen until the section is on screen, and the project summary shows fresh figures after a reload.
+- **Quieter refreshes.** Data updates preserve unchanged cards and sections, reducing redraws and keeping the board steady.
+- **Loading screens.** Screens and dialogs show consistent loading feedback while content arrives; Decks has a dedicated loading table instead of briefly showing an empty project.
+- **Browser checks.** Browser tests clean up their temporary profiles and build folders, including leftovers from interrupted runs, while preserving folders still used by another run.
+
+### Interface
+
+- **Keyboard focus.** Clicking or tapping no longer leaves a focus halo; Tab navigation keeps a visible ring. Escape closes only the top layer and returns focus to the control that opened it; in search it closes search first, even with Level open.
+- **Global search.** Escape always closes search, including when filters are present; Backspace at the end of the input removes the last filter. Enter pressed before the current query's results are ready opens the first match once they arrive.
+- **Layout details.** The layout divider reaches the top of its column, recent-project dates align with row buttons, and document previews show a Doc Card label. Switching language no longer shifts any board view, Vision included.
+- **Empty projects.** An empty board offers **Start from template**, making it easier to set up the first decks.
+- **Vision menus.** Drawing-tool popovers close again with Escape or a click outside, one layer at a time.
+
+### Data reliability and security
+
+- **Project templates.** Requests for the template list are rate-limited to protect the local server from bursts.
+- **Write-lock recovery.** Saving on Windows retries when a previous writer's lock file disappears during a path check, avoiding spurious failed saves.
+- **File watching.** If automatic file watching stops, the board shows a warning with **Refresh data** and restart guidance, including after reconnecting.
+
 ## [0.8.0] - 2026-11-13
 
 ### Agents
@@ -295,7 +327,8 @@ First public release.
 - Third-party notices: `dist/client/third-party-licenses.md` now carries full license texts for bundled packages that ship no license file and for code embedded in prebuilt packages (Chevrotain, Langium, the vscode-languageserver libraries and lodash-es inside `@mermaid-js/parser`, js-yaml inside `mermaid`); the build fails on an empty section or on undeclared embedded code.
 - Source-checkout instructions also open the demo, and the `/deckmate` analyze and audit workflows move new cards to `discussing` after creating them.
 
-[Unreleased]: https://github.com/pierkulakov/deckmate/compare/v0.8.0...HEAD
+[Unreleased]: https://github.com/pierkulakov/deckmate/compare/v0.8.1...HEAD
+[0.8.1]: https://github.com/pierkulakov/deckmate/compare/v0.8.0...v0.8.1
 [0.8.0]: https://github.com/pierkulakov/deckmate/compare/v0.7.1...v0.8.0
 [0.7.1]: https://github.com/pierkulakov/deckmate/compare/v0.7.0...v0.7.1
 [0.7.0]: https://github.com/pierkulakov/deckmate/compare/v0.6.0...v0.7.0

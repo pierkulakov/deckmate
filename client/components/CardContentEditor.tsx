@@ -172,9 +172,11 @@ export function CardContentEditor({ card, catalog, snapshot, writable, pending, 
   const [currentContent, setCurrentContent] = useState<CardContent | null>(null);
   const [editing, setEditing] = useState(false);
   const editButtonRef = useRef<HTMLButtonElement>(null);
+  const returnFocusToEdit = useRef(false);
   // The whole card is one plain Markdown text; its first line is the title.
   const [draft, setDraft] = useState('');
   const [saving, setSaving] = useState(false);
+  const [submittedContent, setSubmittedContent] = useState<{ cardKey: string; content: CardContent } | null>(null);
   const [conflict, setConflict] = useState(false);
   const [notice, setNotice] = useState('');
   // A draft kept by Cancel; the card shows the unsaved-changes banner until it is continued or discarded.
@@ -184,7 +186,8 @@ export function CardContentEditor({ card, catalog, snapshot, writable, pending, 
 
   const fallbackContent = useMemo<CardContent>(() => ({ cardId: card.id, title: card.title, markdown: card.markdown, sourceHash: card.sourceHash }), [card.id, card.title, card.markdown, card.sourceHash]);
   // 2026-11-05: use this card's catalog copy until the file loads, preventing stale text and a one-frame layout collapse.
-  const shownContent = content?.cardId === card.id ? content : fallbackContent;
+  // 2026-11-13: a save's catalog and content responses settle separately; keep the submitted reading text through that handoff.
+  const shownContent = submittedContent?.cardKey === cardKey ? submittedContent.content : content ?? fallbackContent;
   // 2026-11-08: reading hides the server's trailing Journey step link (a prefix, so checklist offsets stay valid);
   // the editor and the file keep the full text.
   const readingMarkdown = useMemo(() => hideJourneyStepLink ? splitJourneyStepLink(shownContent.markdown, card.journey).body : shownContent.markdown,
@@ -221,7 +224,10 @@ export function CardContentEditor({ card, catalog, snapshot, writable, pending, 
       if (active) setResource(previous => ({ ...previous, slow: true }));
     }, delayMs);
     fetchCardContent(card.id, snapshot.source, controller.signal).then(result => {
-      if (active) setResource({ key: resourceKey, content: result, loading: false, slow: false, failure: null });
+      if (active) {
+        setResource({ key: resourceKey, content: result, loading: false, slow: false, failure: null });
+        setSubmittedContent(null);
+      }
     }).catch((failure: unknown) => {
       if (active && !controller.signal.aborted) setResource({ key: resourceKey, content: null, loading: false, slow: false,
         failure: failure instanceof Error ? failure : new Error(String(failure)) });
@@ -311,6 +317,7 @@ export function CardContentEditor({ card, catalog, snapshot, writable, pending, 
     }
     // Discard optimistic checkbox content even if reloading the source later fails.
     if (base) setContent({ cardId: base.cardId, title: base.title, markdown: base.markdown, sourceHash: base.sourceHash });
+    setSubmittedContent(null);
     finishEditing();
     setNotice('');
     // 2026-11-10: wait for the textarea to unmount; cancelling must not strand keyboard focus on body.
@@ -387,17 +394,18 @@ export function CardContentEditor({ card, catalog, snapshot, writable, pending, 
 
   async function persistContent(base: ContentBaseline, draftTitle: string, draftMarkdown: string) {
     const returnToEdit = editing;
+    setSubmittedContent({ cardKey, content: { cardId: card.id, title: draftTitle, markdown: draftMarkdown, sourceHash: base.sourceHash } });
     setSaving(true);
     setNotice('');
     try {
       const saved = await onEdit({ action: 'update-card-content', cardId: card.id, title: draftTitle,
         markdown: draftMarkdown, sourceHash: base.sourceHash, manifestHash: base.manifestHash });
       if (saved) {
-        setContent({ cardId: card.id, title: draftTitle, markdown: draftMarkdown, sourceHash: base.sourceHash });
         finishEditing();
         // Only closing the full editor returns to Edit; saving a reading-mode checklist keeps its own focus.
-        if (returnToEdit && !focusMode) requestAnimationFrame(() => moveFocus(editButtonRef.current, { preventScroll: true }));
+        if (returnToEdit && !focusMode) returnFocusToEdit.current = true;
       } else {
+        setSubmittedContent(null);
         // 2026-11-03: a failed quick checkbox edit becomes an explicit draft instead of disappearing.
         setEditing(true);
         const latest = latestRevision.current;
@@ -405,6 +413,7 @@ export function CardContentEditor({ card, catalog, snapshot, writable, pending, 
         else setNotice(t.notConfirmed);
       }
     } catch {
+      setSubmittedContent(null);
       setEditing(true);
       setNotice(t.saveUnconfirmed);
     } finally {
@@ -413,15 +422,26 @@ export function CardContentEditor({ card, catalog, snapshot, writable, pending, 
     }
   }
 
+  // 2026-11-13: a frame callback could run before the commit that clears `saving`, and a disabled button refuses
+  // focus; Edit takes focus back only once it is enabled again.
+  const editDisabled = Boolean(loadFailure) || pending || saving || blocked;
+  useLayoutEffect(() => {
+    if (!returnFocusToEdit.current || editing || editDisabled) return;
+    returnFocusToEdit.current = false;
+    // Focus the person has already moved elsewhere stays where it is.
+    if (document.activeElement && document.activeElement !== document.body) return;
+    moveFocus(editButtonRef.current, { preventScroll: true });
+  }, [editing, editDisabled]);
+
   // 2026-11-10: at rest the file is simply saved, so that state is a quiet icon with its words for tooltips and screen
   // readers; loading, saving, an unsaved text or a browser draft say so in words.
   const calmStatus = saveStatus === t.savedToFile;
   const readingFooter = <footer className="card-content-reading-footer">
     <CatalogReferenceLink kind="c" id={card.id} source={snapshot.source} />
-    {saveStatus && <span className={'card-content-save-status' + (calmStatus ? ' is-calm' : '')} role="status" title={calmStatus ? saveStatus : undefined}>
+    {saveStatus && <span className={'card-content-save-status' + (calmStatus ? ' is-calm' : '')} role="status" title={saveStatus}>
       {calmStatus ? <><FileCheck2 size={14} aria-hidden="true" /><span className="visually-hidden">{saveStatus}</span></> : saveStatus}</span>}
     <div className="card-content-reading-actions">{footerActions}
-      {writable && <Button ref={editButtonRef} type="button" size="sm" className="card-content-edit-action" aria-label={t.editCard} disabled={Boolean(loadFailure) || pending || saving || blocked} onClick={startEditing}><Pencil size={14} />{t.edit}</Button>}
+      {writable && <Button ref={editButtonRef} type="button" size="sm" className="card-content-edit-action" aria-label={t.editCard} disabled={editDisabled} onClick={startEditing}><Pencil size={14} />{t.edit}</Button>}
     </div>
   </footer>;
   const comparison = currentContent ?? fallbackContent;

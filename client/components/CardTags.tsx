@@ -5,6 +5,7 @@ import { ArrowUpRight } from 'lucide-react';
 import { tagDecoration, tagIconDataUrl, type ProjectTag } from '../../src/project-tags.ts';
 import { contrastRatio, rgbOf } from '../color-contrast.ts';
 import { defineText, useText } from '../i18n.ts';
+import { DecodedImage } from './DecodedImage.tsx';
 import '../card-tags.css';
 
 const text = defineText({
@@ -24,7 +25,7 @@ const text = defineText({
 function TagGlyph({ tag }: { tag: ProjectTag }) {
   if (tag.emoji) return <span className="card-tag-emoji" aria-hidden="true">{tag.emoji}</span>;
   const icon = tagIconDataUrl(tag);
-  return icon ? <img className="card-tag-icon" src={icon} alt="" aria-hidden="true" /> : null;
+  return icon ? <DecodedImage className="card-tag-icon" src={icon} alt="" aria-hidden="true" /> : null;
 }
 
 /** Only registry membership makes a project tag; synthetic picker entries remain outside the registry. */

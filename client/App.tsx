@@ -1,11 +1,16 @@
-import { Component, lazy, startTransition, Suspense, useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
+import { lazy, startTransition, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
-import { Check, ChevronDown, FileUp, GitBranch, Languages, Layers, LoaderCircle, Moon, Power, RefreshCw, Sun, UserRound, X } from 'lucide-react';
+import { Check, ChevronDown, FileUp, GitBranch, Layers, Power, RefreshCw, UserRound, X } from 'lucide-react';
 import * as Dialog from '@radix-ui/react-dialog';
-import { defineText, setLang, useLang, useText } from './i18n.ts';
+import { defineText, useText } from './i18n.ts';
+import { LanguageToggle } from './LanguageToggle.tsx';
+import { ThemeToggle } from './ThemeToggle.tsx';
+import { useTheme } from './theme-preference.ts';
 import { useWorkspace } from './useWorkspace.ts';
+import { catalogStore } from './catalog-store.ts';
 import type { DataSource } from '../src/workspace-contracts.ts';
 import { ServerStatus } from './components/ServerStatus.tsx';
+import { WatcherWarning } from './components/WatcherWarning.tsx';
 import { LevelBadge } from './components/LevelBadge.tsx';
 import { emitSignal } from './onboarding/signals.ts';
 import { Button } from './components/ui/button.tsx';
@@ -13,16 +18,17 @@ import { GlobalSearch } from './components/GlobalSearch.tsx';
 import { QuickCapture } from './components/QuickCapture.tsx';
 import { Notifications } from './components/Notifications.tsx';
 import { DocumentPreviewProvider } from './components/DocumentPreview.tsx';
-import { ProjectTile } from './RecentProjects.tsx';
 import { WorkspaceProjects } from './WorkspaceProjects.tsx';
-import { desktopBoard, hasWorkspace, useDesktopDirty } from './desktop-bridge.ts';
+import { desktopBoard, useDesktopDirty } from './desktop-bridge.ts';
 import './workspace.css';
 import { DeckmateMark } from './components/DeckmateMark.tsx';
 import { matchShortcut, shortcutTargetBlocked } from './keyboard-shortcuts.ts';
 import { cardNavigation, viewNavigation, type View } from './app-navigation.ts';
 import { afterFirstScreen, browserWarmupEnvironment, WarmupQueue } from './first-screen-warmup.ts';
 import { preparedNavigation, preparedResource, preload, type PreparedResource } from './prepared-resource.ts';
-import { warmInterfaceFonts, warmVisibleImages } from './warmup-assets.ts';
+import { warmVisibleImages } from './warmup-assets.ts';
+import { FirstScreen, useInitialScreenReady } from './FirstScreen.tsx';
+import { OpeningScreen } from './OpeningScreen.tsx';
 import { prepareEntrance } from './prepared-motion.ts';
 import { currentSourceLabels, readOnlyAccess } from './source-access.ts';
 import { ErrorState } from './components/ErrorState.tsx';
@@ -30,8 +36,9 @@ import { moveFocus } from './focus.ts';
 import { useSelectEscapeGuard } from './select-escape.ts';
 import { DecisionCount, DecisionPoolMenu } from './components/DecisionPoolMenu.tsx';
 import { HandIcon } from './components/HandIcon.tsx';
+import { LazySection } from './components/LazySection.tsx';
 
-const deckResource = preparedResource(() => import('./components/Deck.tsx').then(module => ({ default: module.Deck })));
+const deckResource = preparedResource(() => import('./components/Deck.tsx').then(module => ({ default: module.Deck, prepare: module.prepareInitialDeck })));
 const handResource = preparedResource(() => import('./components/Hand.tsx').then(module => ({ default: module.Hand })));
 const decisionsResource = preparedResource(() => import('./components/DecisionPool.tsx').then(module => ({ default: module.DecisionPoolView })));
 const timelineResource = preparedResource(() => import('./components/TimelineView.tsx').then(module => ({ default: module.TimelineView })));
@@ -54,14 +61,12 @@ function locationView(): View {
   if (selected === 'sprint') return 'timeline';
   return selected === 'decisions' || tabs.includes(selected as View) ? selected as View : 'deck';
 }
+// 2026-11-13: the selected chunk and its CSS can load alongside the snapshot, before the shell's first commit.
+preload(viewResources[locationView()]);
 const text = defineText({
   hand: 'Hand', deck: 'Decks', decisions: 'To apply', timeline: 'Timeline', vision: 'Vision',
-  sectionFailedTitle: 'This section could not be opened',
-  sectionFailedDescription: 'The interface may have been updated on the server. Reload the app.',
-  reloadInterface: 'Reload interface',
   stoppedTitle: 'Deckmate is stopped',
   stoppedDescription: 'To return, start it again from its shortcut or with npx deckmate.',
-  loading: 'Opening page…',
   project: 'Project',
   liveChanges: 'Changes appear immediately',
   disconnected: 'No connection to the server',
@@ -69,8 +74,6 @@ const text = defineText({
   closeMenu: 'Close menu',
   modeDirect: 'Edits the project files directly',
   modeReadOnly: 'Read only',
-  lightTheme: 'Light theme',
-  darkTheme: 'Dark theme',
   appMenu: 'App menu',
   members: 'Members…',
   membersCaption: 'Registry of people and agents',
@@ -81,16 +84,10 @@ const text = defineText({
   stop: 'Stop Deckmate',
   projectSections: 'Project sections',
   refresh: 'Refresh',
-  otherLanguage: 'Русский',
-  interfaceLanguage: 'Interface language',
 }, {
   hand: 'Hand', deck: 'Decks', decisions: 'К внесению', timeline: 'Timeline', vision: 'Vision',
-  sectionFailedTitle: 'Не удалось открыть раздел',
-  sectionFailedDescription: 'Интерфейс мог обновиться на сервере. Перезагрузите приложение.',
-  reloadInterface: 'Обновить интерфейс',
   stoppedTitle: 'Deckmate остановлен',
   stoppedDescription: 'Чтобы вернуться, запустите его снова ярлыком или командой npx deckmate.',
-  loading: 'Открываем страницу…',
   project: 'Проект',
   liveChanges: 'Изменения видны сразу',
   disconnected: 'Нет связи с сервером',
@@ -98,8 +95,6 @@ const text = defineText({
   closeMenu: 'Закрыть меню',
   modeDirect: 'Правит файлы проекта напрямую',
   modeReadOnly: 'Только чтение',
-  lightTheme: 'Светлая тема',
-  darkTheme: 'Тёмная тема',
   appMenu: 'Меню приложения',
   members: 'Участники…',
   membersCaption: 'Реестр людей и агентов',
@@ -110,41 +105,51 @@ const text = defineText({
   stop: 'Остановить Deckmate',
   projectSections: 'Разделы проекта',
   refresh: 'Обновить',
-  otherLanguage: 'English',
-  interfaceLanguage: 'Язык интерфейса',
 });
 
-class WorkspaceBoundary extends Component<{ children: ReactNode }, { failed: boolean }> {
-  state = { failed: false };
-  static getDerivedStateFromError() { return { failed: true }; }
-  render() {
-    if (this.state.failed) return <WorkspaceFailure />;
-    return this.props.children;
-  }
-}
-
-function WorkspaceFailure() {
-  const t = useText(text);
-  return <div className="empty-state"><h2>{t.sectionFailedTitle}</h2><p>{t.sectionFailedDescription}</p><Button onClick={() => location.reload()}>{t.reloadInterface}</Button></div>;
-}
-
 export default function App() {
-  useSelectEscapeGuard();
   const workspace = useWorkspace();
+  const [started, setStarted] = useState(false);
+  useEffect(() => {
+    if (started) return;
+    if (!workspace.snapshot) {
+      if (workspace.failure) setStarted(true);
+      return;
+    }
+    let active = true;
+    const view = locationView();
+    // 2026-11-13: prepare the first gallery through its shared store before mounting temporary chrome and loading layouts.
+    if (view === 'deck') void catalogStore(workspace.snapshot.source).load();
+    const source = workspace.snapshot.source;
+    const section = view === 'deck'
+      ? deckResource.load().then(module => {
+        const catalog = catalogStore(source).getSnapshot().catalog;
+        if (active && catalog) module.prepare(source, `${workspace.updatedAt}:${catalog.indexedAt}`);
+      })
+      : viewResources[view].load();
+    // 2026-11-13: the gallery's own loading table is useful content; only the shell, code and fonts belong to the first-screen gate.
+    void Promise.allSettled([section]).then(() => { if (active) setStarted(true); });
+    return () => { active = false; };
+  }, [started, workspace.snapshot, workspace.failure, workspace.updatedAt]);
+  return <FirstScreen projectName={workspace.snapshot?.projectName ?? desktopBoard()?.projectName}>{started && <Workspace workspace={workspace} />}</FirstScreen>;
+}
+
+function Workspace({ workspace }: { workspace: ReturnType<typeof useWorkspace> }) {
+  useSelectEscapeGuard();
+  const initialScreenReady = useInitialScreenReady();
   const [navigation] = useState(preparedNavigation);
   const warmup = useRef<WarmupQueue | null>(null);
   useEffect(() => () => navigation.cancel(), [navigation]);
   const [legacySprint, setLegacySprint] = useState(() => new URLSearchParams(location.search).get('view') === 'sprint');
   const [view, setView] = useState(locationView);
-  // 2026-11-10: the selected screen stays critical; speculative work waits for its first useful paint.
-  useEffect(() => { preload(viewResources[view]); }, [view]);
+  // 2026-11-13: every starting section must commit its workspace before the opening screen can leave.
+  useLayoutEffect(() => { if (view !== 'deck' || workspace.failure) initialScreenReady?.(); }, [view, workspace.failure, initialScreenReady]);
   useEffect(() => {
     const source = workspace.snapshot?.source;
     if (!source) return;
     const cancel = afterFirstScreen(() => {
       const queue = new WarmupQueue(browserWarmupEnvironment());
       warmup.current = queue;
-      warmInterfaceFonts(queue);
       queue.add({ key: 'visible-images', priority: 1, run: () => warmVisibleImages(queue) });
     });
     return () => { cancel(); warmup.current?.dispose(); warmup.current = null; };
@@ -216,11 +221,9 @@ export default function App() {
     setMountedPanels(previous => ({ members: previous.members || membersOpen, csv: previous.csv || importOpen }));
   }, [membersOpen, importOpen]);
   const [importDeckId, setImportDeckId] = useState<string | null>(null);
-  // English is the default; the app menu also offers Russian (2026-11-05).
-  const lang = useLang();
   const t = useText(text);
   const sourceLabels = currentSourceLabels();
-  const [dark, setDark] = useState(() => document.documentElement.classList.contains('dark'));
+  const { dark } = useTheme();
   const onEditing = useCallback((value: boolean) => {
     if (value) navigation.cancel();
     setEditing(value);
@@ -228,7 +231,6 @@ export default function App() {
   const snapshot = workspace.snapshot;
   // 2026-11-11: workspace rows already include the current project, so its summary needs no repeated tile.
   const board = desktopBoard();
-  const workspaceAvailable = Boolean(board && hasWorkspace(board));
   // The browser tab names the project first, so several open projects tell apart (2026-11-05).
   const projectName = snapshot?.projectName.trim();
   useEffect(() => { document.title = projectName ? `${projectName} — Deckmate` : 'Deckmate'; }, [projectName]);
@@ -311,25 +313,15 @@ export default function App() {
     navigation.cancel();
     workspace.setSource(source);
   }
-  function changeTheme() {
-    document.documentElement.classList.toggle('dark', !dark);
-    document.documentElement.style.colorScheme = dark ? 'light' : 'dark';
-    try { localStorage.setItem('deckmate-theme', dark ? 'light' : 'dark'); } catch {}
-    setDark(!dark);
-    emitSignal({ type: 'preference', name: 'theme' });
-  }
-
   function renderContent() {
     if (stopped) return <div className="empty-state"><Power size={28} /><h1>{t.stoppedTitle}</h1><p>{t.stoppedDescription}</p></div>;
     if (!snapshot && workspace.failure) return <ErrorState message={workspace.failure.message} onRetry={async () => { workspace.clearFailure(); await workspace.refresh(); }} />;
-    if (!snapshot) return <div className="loading-state" aria-live="polite"><LoaderCircle className="spin" size={22} /><p>{t.loading}</p></div>;
-    if (view === 'deck') return <Deck snapshot={snapshot} refreshKey={workspace.updatedAt} onEditing={onEditing} onStartFromTemplate={() => openPanel(templatesResource, () => setTemplatesOpen(true))} onImportCsv={deckId => openPanel(csvResource, () => { setImportDeckId(deckId); setImportOpen(true); })} />;
+    if (!snapshot) return <OpeningScreen projectName={board?.projectName} />;
+    if (view === 'deck') return <Deck snapshot={snapshot} refreshKey={workspace.updatedAt} onEditing={onEditing} onInitialReady={initialScreenReady} onStartFromTemplate={() => openPanel(templatesResource, () => setTemplatesOpen(true))} onImportCsv={deckId => openPanel(csvResource, () => { setImportDeckId(deckId); setImportOpen(true); })} />;
     if (view === 'hand') return <Hand key={snapshot.source} snapshot={snapshot} refreshKey={workspace.updatedAt} onOpenCard={openCard} onOpenMembers={() => openPanel(membersResource, () => setMembersOpen(true))} />;
     if (view === 'decisions') return <DecisionPoolView key={snapshot.source} snapshot={snapshot} refreshKey={workspace.updatedAt} onOpen={id => openCard(id, 'questions')} />;
     if (view === 'timeline') return <TimelineView key={snapshot.source} snapshot={snapshot} refreshKey={workspace.updatedAt} selectCurrentRun={legacySprint} onOpenCard={openCard} onEditing={onEditing} />;
-    // 2026-11-06: no fallback text: Vision shows its own «Opening board…» plate in the canvas; a second one here sat above the toolbar
-    // line without the spinner, so the same words jumped down when the chunk arrived.
-    return <Suspense fallback={null}><Vision snapshot={snapshot} refreshKey={workspace.updatedAt} dark={dark} onEditing={onEditing} onOpenCard={openCard} /></Suspense>;
+    return <Vision snapshot={snapshot} refreshKey={workspace.updatedAt} dark={dark} onEditing={onEditing} onOpenCard={openCard} />;
   }
 
   const readOnly = snapshot && !snapshot.writable ? readOnlyAccess(snapshot) : null;
@@ -344,8 +336,7 @@ export default function App() {
           <header className="mission-control-head dialog-head"><DeckmateMark /><Dialog.Title className="dialog-title">Deckmate</Dialog.Title><span className="mission-control-version page-number">v{__DECKMATE_VERSION__}</span>
             <Dialog.Close asChild><Button variant="ghost" size="icon" aria-label={t.closeMenu}><X size={17} /></Button></Dialog.Close></header>
           <section className="mission-control-project" aria-label={t.project}><h2>{t.project}</h2>
-            <div className={`mission-control-project-row${workspaceAvailable ? ' is-workspace-summary' : ''}`}>
-              {!workspaceAvailable && board && <ProjectTile name={snapshot?.projectName ?? 'Deckmate'} />}
+            <div className={`mission-control-project-row${board ? ' is-workspace-summary' : ''}`}>
               {!board && <span className="mission-control-avatar" aria-hidden="true">{snapshot?.projectName.slice(0, 1) ?? 'D'}</span>}
               <div><strong title={snapshot?.projectName ?? t.project}>{snapshot?.projectName ?? t.project}</strong><span>{!snapshot ? '' : snapshot.editMode === 'direct' ? t.modeDirect
                 : snapshot.editMode === 'sandbox' ? (workspace.source === 'sandbox' ? sourceLabels.testCopy : sourceLabels.original) + ' · ' + (snapshot.writable ? sourceLabels.editable : sourceLabels.readOnly)
@@ -360,10 +351,10 @@ export default function App() {
             <button type="button" disabled={editing || !snapshot} onPointerEnter={() => preload(templatesResource)} onFocus={() => preload(templatesResource)} onClick={event => openPanel(templatesResource, () => { setSidebarOpen(false); setTemplatesOpen(true); }, event.currentTarget)}><Layers size={18} aria-hidden="true" /><span>{t.projectTemplates}</span></button>
             <button type="button" disabled={editing || !snapshot} onPointerEnter={() => preload(membersResource)} onFocus={() => preload(membersResource)} onClick={event => openPanel(membersResource, () => { setSidebarOpen(false); setMembersOpen(true); }, event.currentTarget)}><UserRound size={18} aria-hidden="true" /><span>{t.members}<small>{t.membersCaption}</small></span></button>
             <button type="button" disabled={editing || !snapshot} onPointerEnter={() => preload(csvResource)} onFocus={() => preload(csvResource)} onClick={event => openPanel(csvResource, () => { setSidebarOpen(false); setImportDeckId(null); setImportOpen(true); }, event.currentTarget)}><FileUp size={18} aria-hidden="true" /><span>{t.importCsv}<small>{t.importCaption}</small></span></button>
-            <button type="button" onClick={() => { setLang(lang === 'en' ? 'ru' : 'en'); emitSignal({ type: 'preference', name: 'language' }); }}><Languages size={18} aria-hidden="true" /><span>{t.otherLanguage}<small>{t.interfaceLanguage}</small></span></button>
+            <LanguageToggle onChange={() => emitSignal({ type: 'preference', name: 'language' })} />
             <button type="button" onClick={() => { setSidebarOpen(false); void workspace.refresh(); }}><RefreshCw size={18} aria-hidden="true" /><span>{t.refreshPage}</span></button>
             <button type="button" className="is-destructive" disabled={editing} onClick={() => { setSidebarOpen(false); void workspace.shutdown().then(closed => { if (closed) setStopped(true); }); }}><Power size={18} aria-hidden="true" /><span>{t.stop}</span></button>
-            {phoneHeader && <button type="button" onClick={changeTheme}>{dark ? <Sun size={18} /> : <Moon size={18} />}<span>{dark ? t.lightTheme : t.darkTheme}</span></button>}
+            {phoneHeader && <ThemeToggle variant="menu" onChange={() => emitSignal({ type: 'preference', name: 'theme' })} />}
           </nav>
           <footer className={`mission-control-foot is-${workspace.connection}`}>{phoneHeader ? <ServerStatus connection={workspace.connection} snapshot={snapshot} updatedAt={workspace.updatedAt} /> : <><span className="server-status-dot" aria-hidden="true" />{workspace.connected ? t.liveChanges : t.disconnected}</>}</footer>
         </Dialog.Content></Dialog.Portal>
@@ -387,7 +378,7 @@ export default function App() {
           </DropdownMenu.RadioGroup>
         </DropdownMenu.Content></DropdownMenu.Portal></DropdownMenu.Root>}
       <div id="topbar-shortcuts" className="topbar-shortcuts button-size-icon" />
-      {!phoneHeader && <Button variant="ghost" size="icon" aria-label={dark ? t.lightTheme : t.darkTheme} onClick={changeTheme}>{dark ? <Sun size={17} /> : <Moon size={17} />}</Button>}
+      {!phoneHeader && <ThemeToggle onChange={() => emitSignal({ type: 'preference', name: 'theme' })} />}
       {snapshot ? <LevelBadge snapshot={snapshot} refreshKey={workspace.updatedAt} onNavigate={navigate}
         open={globalPanel === 'level'} onOpenChange={open => changeGlobalPanel('level', open)} />
         : <span className="level-badge" inert aria-hidden="true" style={{ visibility: 'hidden' }}><span className="level-badge-card" /><span className="level-badge-bar" /></span>}
@@ -396,14 +387,13 @@ export default function App() {
       {readOnly && <div className="readonly-banner">{readOnly.description}{readOnly.action && <button onClick={() => selectSource('sandbox')}>{readOnly.action}</button>}</div>}
       {snapshot && workspace.failure && !editing && !stopped && <div className="error-banner" role="alert">{workspace.failure.message}<Button variant="ghost" size="sm" onClick={() => { workspace.clearFailure(); void workspace.refresh(); }}>{t.refresh}</Button></div>}
       <main ref={main} tabIndex={-1} className="workspace-main board-main">
-        <WorkspaceBoundary key={`${view}-${workspace.source}-${navigationKey}`}><Suspense fallback={<div className="loading-state" role="status" style={{ width: '100%', height: '100%' }}><LoaderCircle className="spin" size={22} /><p>{t.loading}</p></div>}>{renderContent()}</Suspense></WorkspaceBoundary>
+        <LazySection key={`${view}-${workspace.source}-${navigationKey}`} onFailure={initialScreenReady}>{renderContent()}</LazySection>
       </main>
+      {workspace.watcherStopped && !stopped && <WatcherWarning onRefresh={workspace.refresh} />}
     </div>
-    <WorkspaceBoundary><Suspense fallback={null}>
-    {snapshot && (membersOpen || mountedPanels.members) && <MembersEditor snapshot={snapshot} refreshKey={workspace.updatedAt} open={membersOpen} onOpenChange={setMembersOpen} onCloseAutoFocus={restorePanelFocus} />}
-    {snapshot && (importOpen || mountedPanels.csv) && <CsvImport snapshot={snapshot} refreshKey={workspace.updatedAt} open={importOpen} initialDeckId={importDeckId} onOpenChange={setImportOpen} onCloseAutoFocus={restorePanelFocus} />}
-    {snapshot && templatesOpen && <ProjectTemplates key={snapshot.source} snapshot={snapshot} refreshKey={workspace.updatedAt} onClose={() => setTemplatesOpen(false)} onApplied={() => { setTemplatesOpen(false); navigate('deck'); }} onCloseAutoFocus={restorePanelFocus}
-      testCopy={{ notice: readOnly?.description || sourceLabels.originalReadOnly, action: readOnly?.action || sourceLabels.openTestCopy, open: () => selectSource('sandbox') }} />}
-    </Suspense></WorkspaceBoundary>
+    {snapshot && (membersOpen || mountedPanels.members) && <LazySection mode="dialog" active={membersOpen} onClose={() => setMembersOpen(false)}><MembersEditor snapshot={snapshot} refreshKey={workspace.updatedAt} open={membersOpen} onOpenChange={setMembersOpen} onCloseAutoFocus={restorePanelFocus} /></LazySection>}
+    {snapshot && (importOpen || mountedPanels.csv) && <LazySection mode="dialog" active={importOpen} onClose={() => setImportOpen(false)}><CsvImport snapshot={snapshot} refreshKey={workspace.updatedAt} open={importOpen} initialDeckId={importDeckId} onOpenChange={setImportOpen} onCloseAutoFocus={restorePanelFocus} /></LazySection>}
+    {snapshot && templatesOpen && <LazySection mode="dialog" onClose={() => setTemplatesOpen(false)}><ProjectTemplates key={snapshot.source} snapshot={snapshot} refreshKey={workspace.updatedAt} onClose={() => setTemplatesOpen(false)} onApplied={() => { setTemplatesOpen(false); navigate('deck'); }} onCloseAutoFocus={restorePanelFocus}
+      testCopy={{ notice: readOnly?.description || sourceLabels.originalReadOnly, action: readOnly?.action || sourceLabels.openTestCopy, open: () => selectSource('sandbox') }} /></LazySection>}
   </div></DocumentPreviewProvider>;
 }

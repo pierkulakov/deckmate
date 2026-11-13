@@ -143,12 +143,68 @@ pub struct Settings {
     pub recent: Vec<Recent>,
     pub workspace: Vec<WorkspaceProject>,
     pub language: String,
+    pub theme: Theme,
     pub zoom_factor: f64,
     pub window_bounds: Option<Bounds>,
     pub window_maximized: bool,
     pub updates: Updates,
     #[serde(flatten)]
     pub extra: Map<String, Value>,
+}
+
+#[derive(Clone, Copy, Debug, Default, Deserialize, Serialize, PartialEq)]
+#[serde(rename_all = "lowercase")]
+pub enum Theme {
+    #[default]
+    System,
+    Light,
+    Dark,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq)]
+pub enum Language {
+    #[serde(rename = "en")]
+    English,
+    #[serde(rename = "ru")]
+    Russian,
+}
+
+impl Language {
+    // 2026-11-13: IPC accepts only the plain codes; serde would also take the unit-variant map {"ru": null}.
+    pub fn from_ipc(value: Option<&Value>) -> Option<Self> {
+        match value?.as_str()? {
+            "en" => Some(Self::English),
+            "ru" => Some(Self::Russian),
+            _ => None,
+        }
+    }
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::English => "en",
+            Self::Russian => "ru",
+        }
+    }
+}
+
+impl Theme {
+    // 2026-11-13: IPC accepts only the plain names; serde would also take the unit-variant map {"dark": null}.
+    pub fn from_ipc(value: Option<&Value>) -> Option<Self> {
+        match value?.as_str()? {
+            "system" => Some(Self::System),
+            "light" => Some(Self::Light),
+            "dark" => Some(Self::Dark),
+            _ => None,
+        }
+    }
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::System => "system",
+            Self::Light => "light",
+            Self::Dark => "dark",
+        }
+    }
 }
 
 pub fn clamp_zoom(factor: f64) -> f64 {
@@ -228,6 +284,7 @@ impl Settings {
             "recent",
             "workspace",
             "language",
+            "theme",
             "zoomFactor",
             "windowBounds",
             "windowMaximized",
@@ -246,11 +303,17 @@ impl Settings {
                 .map(str::to_owned),
             recent: normalize_recent(&value["recent"]),
             workspace: normalize_workspace(&value["workspace"]),
-            language: match value["language"].as_str() {
-                Some(language @ ("en" | "ru")) => language.into(),
-                _ if locale.to_lowercase().starts_with("ru") => "ru".into(),
-                _ => "en".into(),
-            },
+            language: serde_json::from_value::<Language>(value["language"].clone())
+                .unwrap_or_else(|_| {
+                    if locale.to_lowercase().starts_with("ru") {
+                        Language::Russian
+                    } else {
+                        Language::English
+                    }
+                })
+                .as_str()
+                .into(),
+            theme: serde_json::from_value(value["theme"].clone()).unwrap_or_default(),
             zoom_factor: clamp_zoom(value["zoomFactor"].as_f64().unwrap_or(1.0)),
             window_bounds: valid_bounds(&value["windowBounds"]),
             window_maximized: value["windowMaximized"] == true,
@@ -441,6 +504,84 @@ mod tests {
     use serde_json::json;
 
     #[test]
+    fn theme_from_ipc_accepts_only_plain_names() {
+        assert_eq!(Theme::from_ipc(Some(&json!("dark"))), Some(Theme::Dark));
+        assert_eq!(Theme::from_ipc(Some(&json!("system"))), Some(Theme::System));
+        for value in [json!({"dark": null}), json!("Dark"), json!(7), Value::Null] {
+            assert_eq!(Theme::from_ipc(Some(&value)), None);
+        }
+        assert_eq!(Theme::from_ipc(None), None);
+        assert_eq!(
+            Language::from_ipc(Some(&json!("ru"))),
+            Some(Language::Russian)
+        );
+        for value in [
+            json!({"ru": null}),
+            json!("RU"),
+            json!("de"),
+            json!(1),
+            Value::Null,
+        ] {
+            assert_eq!(Language::from_ipc(Some(&value)), None);
+        }
+    }
+
+    #[test]
+    fn language_accepts_only_known_values_and_defaults_to_the_shell_locale() {
+        for value in [
+            Value::Null,
+            json!(false),
+            json!(1),
+            json!({}),
+            json!(["ru"]),
+            json!("RU"),
+            json!("de"),
+        ] {
+            assert!(serde_json::from_value::<Language>(value.clone()).is_err());
+            for (locale, expected) in [
+                ("ru-RU", "ru"),
+                ("RU", "ru"),
+                ("en-US", "en"),
+                ("de-DE", "en"),
+            ] {
+                assert_eq!(
+                    Settings::normalize(json!({"language": value}), locale).language,
+                    expected
+                );
+            }
+        }
+        for language in [Language::English, Language::Russian] {
+            let value = json!({"language": language});
+            for locale in ["ru-RU", "en-US"] {
+                let settings = Settings::normalize(value.clone(), locale);
+                assert_eq!(settings.language, language.as_str());
+                assert_eq!(
+                    serde_json::to_value(settings).unwrap()["language"],
+                    value["language"]
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn theme_normalizes_and_round_trips_without_freezing_the_system_preference() {
+        for value in [Value::Null, json!(false), json!("invalid"), json!({})] {
+            assert_eq!(
+                Settings::normalize(json!({"theme": value}), "en").theme,
+                Theme::System
+            );
+        }
+        for theme in [Theme::Light, Theme::Dark, Theme::System] {
+            let settings = Settings::normalize(json!({"theme": theme.as_str()}), "en");
+            assert_eq!(settings.theme, theme);
+            assert_eq!(
+                serde_json::to_value(&settings).unwrap()["theme"],
+                theme.as_str()
+            );
+        }
+    }
+
+    #[test]
     fn server_port_accepts_only_nonzero_tcp_ports() {
         for port in [
             Value::Null,
@@ -621,11 +762,13 @@ mod tests {
         let mut settings = Settings::load(&directory, "en", &log);
         settings.save(&directory).unwrap();
         settings.language = "ru".into();
+        settings.theme = Theme::Light;
         settings.add_to_workspace("C:/Workspace").unwrap();
         settings.save(&directory).unwrap();
         let reloaded = Settings::load(&directory, "en", &log);
         assert_eq!(reloaded.extra["future"], 42);
         assert_eq!(reloaded.language, "ru");
+        assert_eq!(reloaded.theme, Theme::Light);
         assert_eq!(reloaded.workspace, settings.workspace);
         assert_eq!(fs::read_dir(&directory).unwrap().count(), 2);
         drop(log);

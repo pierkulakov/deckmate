@@ -155,9 +155,9 @@ export function MembersEditor({ snapshot, refreshKey, open, onOpenChange, onClos
   const idPrefix = useId();
   const catalog = useCatalog(snapshot, refreshKey);
   const store = catalogStore(snapshot.source);
-  const [baseline, setBaseline] = useState<CatalogView | null>(null);
+  const [baseline, setBaseline] = useState<CatalogView | null>(catalog.catalog);
   const [draftSource, setDraftSource] = useState(snapshot.source);
-  const [draft, setDraft] = useState<MemberDraft[]>([]);
+  const [draft, setDraft] = useState<MemberDraft[]>(() => toDraft(catalog.catalog?.members ?? []));
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
   const [reading, setReading] = useState(false);
@@ -180,8 +180,8 @@ export function MembersEditor({ snapshot, refreshKey, open, onOpenChange, onClos
   if (projectChanged) noticeTitle = t.projectChanged;
   else if (conflict) noticeTitle = t.conflict;
 
-  // 2026-11-10: the roster and its hash share a baseline; a watcher refresh must never rebase a dirty form.
-  useEffect(() => {
+  // 2026-11-13: install the roster and its hash before paint so a completed read never flashes an empty registry.
+  useLayoutEffect(() => {
     if (!dirty && catalog.catalog) {
       setBaseline(catalog.catalog);
       setDraft(toDraft(catalog.catalog.members ?? []));

@@ -1,18 +1,24 @@
 import { EventEmitter } from 'node:events';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { spawn } from 'node:child_process';
-import { mkdtempSync, readFileSync } from 'node:fs';
-import { rm } from 'node:fs/promises';
+import { readFileSync } from 'node:fs';
 import { connectToHeadlessBrowser, openHeadlessBrowser } from '../tools/layout-capture.ts';
 import { createBrowserSession } from './browser-session.ts';
 import { startSharedHeadlessBrowser, useSharedHeadlessBrowsers } from '../tools/headless-browser.ts';
+import { createBrowserTemp, removeBrowserTemp } from '../tools/browser-temp.ts';
+import { watchBrowserProfile } from '../tools/browser-watchdog.ts';
 
-vi.mock('node:child_process', () => ({ spawn: vi.fn() }));
+vi.mock('node:child_process', async importOriginal => ({
+  ...await importOriginal<typeof import('node:child_process')>(), spawn: vi.fn(),
+}));
 vi.mock('node:fs', async importOriginal => ({
   ...await importOriginal<typeof import('node:fs')>(),
-  mkdtempSync: vi.fn(), readFileSync: vi.fn(), existsSync: () => true,
+  readFileSync: vi.fn(), existsSync: () => true,
 }));
-vi.mock('node:fs/promises', () => ({ rm: vi.fn() }));
+vi.mock('../tools/browser-temp.ts', () => ({ createBrowserTemp: vi.fn(), removeBrowserTemp: vi.fn(), setBrowserTempPid: vi.fn() }));
+vi.mock('../tools/browser-watchdog.ts', async importOriginal => ({
+  ...await importOriginal<typeof import('../tools/browser-watchdog.ts')>(), watchBrowserProfile: vi.fn(),
+}));
 vi.mock('./browser-fixture.ts', () => ({ browserFixtureUrl: (fixture: string) => `http://fixture/${fixture}/` }));
 
 class BrowserProcess extends EventEmitter {
@@ -61,7 +67,6 @@ beforeEach(() => {
   browser = new BrowserProcess();
   PageSocket.all = [];
   vi.mocked(spawn).mockImplementation((command: any) => {
-    if (command === 'powershell') return new BrowserProcess() as any;
     if (command === 'taskkill') {
       const killer = new BrowserProcess();
       queueMicrotask(() => { browser.end(); killer.end(); });
@@ -70,9 +75,10 @@ beforeEach(() => {
     return browser as any;
   });
   let profiles = 0;
-  vi.mocked(mkdtempSync).mockImplementation(() => `profile-${++profiles}`);
+  vi.mocked(createBrowserTemp).mockImplementation(async () => `profile-${++profiles}`);
   vi.mocked(readFileSync).mockReturnValue('9222\n/devtools/browser/test\n');
-  vi.mocked(rm).mockResolvedValue(undefined);
+  vi.mocked(removeBrowserTemp).mockResolvedValue(undefined);
+  vi.mocked(watchBrowserProfile).mockResolvedValue(async () => {});
   vi.stubEnv('DECKMATE_BROWSER', 'default-browser');
   vi.stubGlobal('WebSocket', PageSocket);
   vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ json: async () => [{ type: 'page', webSocketDebuggerUrl: 'ws://page' }] }));
@@ -90,6 +96,9 @@ describe('shared browser session', () => {
   it('keeps existing viewport/timeout callers and CDP envelopes unchanged', async () => {
     const page = await openHeadlessBrowser({ width: 900, height: 700, scale: 1.5 }, 1234);
     expect(spawn).toHaveBeenCalledWith('default-browser', expect.arrayContaining(['--window-size=900,700']), expect.anything());
+    expect(spawn).toHaveBeenCalledWith('default-browser', expect.anything(), expect.objectContaining({
+      env: expect.objectContaining({ TEMP: 'profile-1', TMP: 'profile-1', TMPDIR: 'profile-1' }),
+    }));
     expect(PageSocket.latest.commands).toContainEqual(expect.objectContaining({ method: 'Emulation.setDeviceMetricsOverride',
       params: { width: 900, height: 700, deviceScaleFactor: 1.5, mobile: false } }));
     expect(await page.send('Page.captureScreenshot')).toMatchObject({ result: { data: 'image' } });
@@ -117,7 +126,7 @@ describe('shared browser session', () => {
     expect(await page.send('Page.captureScreenshot')).toMatchObject({ result: { data: 'image' } });
     await page.close();
     expect(spawn).not.toHaveBeenCalled();
-    expect(rm).not.toHaveBeenCalled();
+    expect(removeBrowserTemp).not.toHaveBeenCalled();
     expect(PageSocket.latest.readyState).toBe(3);
   });
 
@@ -134,7 +143,7 @@ describe('shared browser session', () => {
     const navigation = expect(session.navigate('attachments-panel', 'window.ready')).rejects.toThrow('Timed out: window.ready');
     await vi.advanceTimersByTimeAsync(50);
     await navigation;
-    expect(rm).toHaveBeenCalled();
+    expect(removeBrowserTemp).toHaveBeenCalled();
   });
 
   it('gives a fixture load its own time budget beyond the in-page attempts', async () => {
@@ -156,7 +165,7 @@ describe('shared browser session', () => {
     browser.end(7);
     await expect(openHeadlessBrowser(undefined, undefined, { browserPath: 'browser' })).rejects.toThrow('exited early with code 7');
     expect(fetch).not.toHaveBeenCalled();
-    expect(rm).toHaveBeenCalledWith('profile-1', expect.objectContaining({ recursive: true }));
+    expect(removeBrowserTemp).toHaveBeenCalledWith('profile-1');
   });
 
   it('detects exit while polling instead of spending the remaining startup budget', async () => {
@@ -169,13 +178,13 @@ describe('shared browser session', () => {
     await vi.advanceTimersByTimeAsync(200);
     await failure;
     expect(fetch).toHaveBeenCalledTimes(1);
-    expect(rm).toHaveBeenCalled();
+    expect(removeBrowserTemp).toHaveBeenCalled();
   });
 
   it('retains both startup and cleanup errors', async () => {
     browser.end(7);
     const cleanupError = new Error('profile locked');
-    vi.mocked(rm).mockRejectedValueOnce(cleanupError);
+    vi.mocked(removeBrowserTemp).mockRejectedValueOnce(cleanupError);
     const error = await openHeadlessBrowser().catch(error => error);
     expect(error).toBeInstanceOf(AggregateError);
     expect(error.errors[0].message).toContain('exited early with code 7');
@@ -186,7 +195,20 @@ describe('shared browser session', () => {
     vi.mocked(spawn).mockImplementationOnce(() => { queueMicrotask(() => browser.emit('error', new Error('spawn failed'))); return browser as any; });
     vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('not listening')));
     await expect(openHeadlessBrowser(undefined, undefined, { browserPath: 'browser' })).rejects.toThrow('spawn failed');
-    expect(rm).toHaveBeenCalled();
+    expect(removeBrowserTemp).toHaveBeenCalled();
+  });
+
+  it('removes the profile if spawn throws before creating a process', async () => {
+    vi.mocked(spawn).mockImplementationOnce(() => { throw new Error('invalid spawn'); });
+    await expect(openHeadlessBrowser()).rejects.toThrow('invalid spawn');
+    expect(removeBrowserTemp).toHaveBeenCalledWith('profile-1');
+  });
+
+  it('ends the browser and removes its profile if the watchdog fails to start', async () => {
+    vi.mocked(watchBrowserProfile).mockRejectedValueOnce(new Error('watchdog failed'));
+    await expect(openHeadlessBrowser()).rejects.toThrow('watchdog failed');
+    expect(browser.exitCode).toBe(0);
+    expect(removeBrowserTemp).toHaveBeenCalledWith('profile-1');
   });
 
   it('rejects CDP error replies', async () => {
@@ -195,7 +217,7 @@ describe('shared browser session', () => {
     PageSocket.latest.errorReply = true;
     await expect(session.send('Page.badCommand')).rejects.toThrow('Page.badCommand: CDP rejected command');
     await expect(session.navigate('attachments-panel', 'true')).rejects.toThrow('CDP rejected command');
-    expect(rm).toHaveBeenCalled();
+    expect(removeBrowserTemp).toHaveBeenCalled();
   });
 
   it.each(['close', 'error'])('rejects pending commands on socket %s', async event => {
@@ -220,7 +242,7 @@ describe('shared browser session', () => {
     expect(again).toBe(closing);
     await vi.advanceTimersByTimeAsync(500);
     await closing;
-    expect(rm).toHaveBeenCalledTimes(1);
+    expect(removeBrowserTemp).toHaveBeenCalledTimes(1);
     expect(vi.getTimerCount()).toBe(0);
     if (process.platform === 'win32') expect(spawn).toHaveBeenCalledWith('taskkill', ['/T', '/F', '/PID', '12345'], expect.anything());
     else expect(process.kill).toHaveBeenCalledWith(-12345, 'SIGKILL');
@@ -234,7 +256,7 @@ describe('shared browser session', () => {
     const launches = vi.mocked(spawn).mock.calls.filter(([command]) => command === 'default-browser');
     expect(launches.map(([, args]) => (args as string[]).find(arg => arg.startsWith('--user-data-dir='))))
       .toEqual(['--user-data-dir=profile-1', '--user-data-dir=profile-2']);
-    vi.mocked(rm).mockRejectedValueOnce(new Error('profile locked'));
+    vi.mocked(removeBrowserTemp).mockRejectedValueOnce(new Error('profile locked'));
     await expect(second.close()).rejects.toThrow('profile locked');
 
     browser = new BrowserProcess();

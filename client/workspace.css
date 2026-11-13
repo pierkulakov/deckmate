@@ -20,7 +20,6 @@
 .global-tabs button::after { background: var(--tab-hover); opacity: 0; transition: opacity var(--control-hover-duration) ease-out; }
 .global-tabs button:hover:not(:disabled)::after { opacity: 1; }
 .global-tabs button:hover:not(:disabled) { color: var(--tab-hover-ink); }
-.global-tabs button:focus-visible { outline-offset: -4px; }
 .global-tabs button.selected, .global-tabs button.selected:hover:not(:disabled) { color: var(--tab-ink); z-index: 1; }
 .global-tabs button.selected::after { background: var(--canvas); opacity: 1; }
 .global-tabs button:active:not(:disabled) { transform: translateY(1px); }

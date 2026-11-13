@@ -10,3 +10,8 @@ declare module 'vitest' {
 export function browserFixtureUrl(fixture: BrowserFixture): string {
   return new URL(`/${fixture}/`, inject('browserFixtureOrigin')).href;
 }
+
+export function desktopFixtureUrl(page: 'index.html' | 'startup.html' | 'whats-new.html' = 'index.html'): string {
+  if (page === 'index.html') return browserFixtureUrl('launcher');
+  return new URL(`/desktop/${page}`, inject('browserFixtureOrigin')).href;
+}

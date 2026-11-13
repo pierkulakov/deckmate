@@ -40,8 +40,7 @@
 @media (hover: hover) {
   .card-family-row:hover:not(:has(.card-family-row-open:disabled)) { background: var(--hover); transition-duration: var(--motion-control); }
 }
-.card-family-row.is-current:not(:has(:focus-visible)) { box-shadow: 0 0 0 2px color-mix(in srgb, var(--tile-highlight) 85%, transparent), 0 0 18px color-mix(in srgb, var(--tile-highlight) 38%, transparent); }
-.card-family-row:has(.card-family-row-open:focus-visible) { outline: 2px solid var(--focus); outline-offset: 2px; }
+.card-family-row.is-current:not(:has(:focus-visible, .card-family-row-open:focus)) { box-shadow: 0 0 0 2px color-mix(in srgb, var(--tile-highlight) 85%, transparent), 0 0 18px color-mix(in srgb, var(--tile-highlight) 38%, transparent); }
 .card-family-row-main { position: relative; display: flex; flex-direction: column; gap: var(--space-1); min-width: 0; min-height: calc(var(--space-10) + var(--space-4)); padding: var(--space-2); }
 .card-family-row-title { display: flex; align-items: center; gap: var(--space-1); min-height: var(--text-ui-leading); }
 .card-family-row-title > .card-value-hint { flex: 1; min-width: 0; }
@@ -89,7 +88,6 @@
 .card-metrics.is-compact .card-owner-avatar, .card-family-row-owner .card-owner-avatar { width: var(--space-4); height: var(--space-4); font-size: 7px; }
 .card-family-row-owner { z-index: 1; display: inline-flex; flex: 0 0 auto; align-items: center; justify-content: center; padding: 0; border: 0; border-radius: var(--control-radius); background: transparent; color: inherit; cursor: pointer; }
 @media (hover: hover) { .card-family-row-owner:hover:not(:disabled) { color: var(--ink); } }
-.card-family-row-owner:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
 .card-family-row-owner:disabled { cursor: default; }
 .card-family-row-actions { z-index: 1; display: flex; flex-shrink: 0; align-items: center; gap: var(--space-1); margin-block: calc((var(--text-ui-leading) - var(--family-row-tool-size)) / 2); }
 .card-family-row-actions:empty { display: none; }
@@ -107,7 +105,6 @@
 @media (hover: hover) and (pointer: fine) {
   .card-family-row:not(:hover):not(:focus-within) :is(.card-family-drag-handle, .card-family-assign-owner) { opacity: 0; }
 }
-.card-family-drag-handle:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
 .card-family-drag-handle[aria-disabled="true"] { cursor: default; }
 .card-family-list.is-dragging .card-family-drag-handle, .card-family-list.is-dragging .card-family-row, .card-family-list.is-dragging .card-family-row-open { cursor: grabbing; }
 .card-family-list.is-dragging .card-family-row:hover { background: var(--canvas); }
@@ -124,7 +121,7 @@
 .card-metrics > span > span[aria-hidden="true"] > span { display: inline-flex; color: inherit; }
 .card-family-trigger { display: flex; align-items: center; gap: 5px; min-width: 0; max-width: 100%; color: var(--ink); background: color-mix(in srgb, var(--hero-chip) 20%,var(--surface)); border: 1px solid color-mix(in srgb,var(--hero-chip) 30%,var(--line)); border-radius: var(--control-radius); padding: 4px 7px; font-size: 12px; text-align: left; cursor: pointer; }.card-family-trigger > span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .card-family-popover { z-index: 120; width: min(310px,calc(100vw - 28px)); max-height: min(var(--radix-dropdown-menu-content-available-height, 100dvh), calc(100dvh - 24px)); overflow-y: auto; overscroll-behavior: contain; padding: var(--space-4); border: 1px solid var(--line); border-radius: var(--glass-radius); background: var(--surface); color: var(--ink); box-shadow: var(--shadow); transform-origin: var(--radix-dropdown-menu-content-transform-origin); animation: overlay-pop var(--motion-spring-quick) var(--ease-spring-quick); }
-.card-family-popover [data-highlighted] { outline: 2px solid var(--focus); outline-offset: -2px; }
+.card-family-popover [data-highlighted] { background: var(--hover); }
 .card-family-popover-arrow { fill: var(--surface); }
 /* 2026-11-07: hero, label, list and row had two conflicting definitions; this one group keeps the effective result —
    the second copy plus the hero's font-size/cursor and the label's typography from the first. */
@@ -168,7 +165,6 @@ button.card-parent-picker-option { width: 100%; background: transparent; color: 
 .card-parent-picker-option:not(.card-parent-option-card):is([data-selected], [aria-current="true"]) { border-color: var(--mark); background: var(--mark-tint); color: var(--mark); }
 .card-parent-picker-option:hover { background: var(--hover); }
 .card-parent-picker-option:not(.card-parent-option-card):is([data-selected], [aria-current="true"]):hover { border-color: var(--mark); background: var(--mark-tint-strong); color: var(--mark); }
-.card-parent-picker-option:focus-within { outline: 2px solid var(--focus); outline-offset: -2px; }
 .card-parent-picker-list:disabled .card-parent-picker-option { cursor: default; opacity: .55; }
 .card-parent-picker-notice { flex-shrink: 0; padding: 10px 16px; margin: 0; color: var(--warning-ink); background: var(--warning-bg); font-size: 12px; line-height: 1.6; }
 .card-parent-picker-footer { flex-shrink: 0; display: flex; justify-content: flex-end; gap: 8px; padding: 12px 16px; border-top: 1px solid var(--line); }
@@ -193,14 +189,12 @@ button.card-parent-picker-option { width: 100%; background: transparent; color: 
 .card-parent-picker .card-parent-option-card:hover:not(:disabled):not([data-selected], [aria-current="true"]) { background: var(--hover); }
 .card-parent-picker .card-parent-option-card:is([data-selected], [aria-current="true"]) { background: var(--mark-tint); color: var(--mark); outline: 1px solid var(--mark); outline-offset: -1px; }
 .card-parent-picker .card-parent-option-card:is([data-selected], [aria-current="true"]):hover:not(:disabled) { background: var(--mark-tint-strong); }
-.card-parent-picker .card-parent-option-card:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
 .card-parent-picker .card-parent-option-card:disabled { cursor: default; }
 .card-parent-promotion { min-width: 0; padding: 12px 16px; animation: family-reveal var(--motion-feedback) var(--ease-out); }
 .card-parent-picker.is-embedded .card-parent-promotion { padding-inline: 0; }
 .card-parent-promotion > p { margin: 10px 0; color: var(--muted); font-size: 12px; line-height: 1.6; overflow-wrap: anywhere; }
 .card-parent-promotion-deck { display: flex; flex-direction: column; gap: 6px; margin: 14px 0; color: var(--muted); font-size: 12px; }
 .card-parent-promotion-deck select { width: 100%; min-width: 0; padding: 8px; border: var(--control-hairline) solid var(--control-field-line); border-radius: var(--control-radius); background: var(--control-field); color: var(--ink); font: inherit; font-size: 12px; }
-.card-parent-promotion-deck select:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
 .card-parent-promotion-actions { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 6px; margin-top: 14px; }
 @media (prefers-reduced-motion: reduce) { .card-parent-picker .card-parent-option-card { transition: none; }.card-parent-promotion { animation: none; } }
 @media (prefers-reduced-motion: reduce) { .card-family-parent-slot, .card-family-subcards-slot { animation: none; } }
@@ -214,7 +208,6 @@ button.card-parent-picker-option { width: 100%; background: transparent; color: 
 .card-family-composer-deck > .card-family-composer-field { display: flex; align-items: center; gap: 8px; min-width: 0; padding: 0 9px; border: var(--control-hairline) solid var(--control-field-line); border-radius: var(--control-radius); background: var(--control-field); }
 .card-family-composer-deck svg { flex-shrink: 0; color: var(--muted); }
 .card-family-composer-deck select { flex: 1; min-width: 0; width: 100%; height: 34px; padding: 0; border: 0; background: transparent; color: var(--ink); font: inherit; font-size: 12px; }
-.card-family-composer-deck:focus-within > .card-family-composer-field { outline: 2px solid var(--focus); outline-offset: 1px; }
 /* The framed row above already shows focus; the select's own ring would draw a second frame inside it. */
 .card-family-composer-deck select:focus-visible { outline: none; }
 .card-family-composer-recents { display: flex; flex-wrap: wrap; gap: 6px; margin-top: -5px; }
@@ -222,7 +215,6 @@ button.card-parent-picker-option { width: 100%; background: transparent; color: 
 .card-family-composer-recents .ui-button[aria-pressed="true"] { border-color: var(--mark); background: var(--mark-tint); color: var(--mark); }
 .card-family-composer-recents .ui-button[aria-pressed="true"]:hover:not(:disabled) { border-color: var(--mark); background: var(--mark-tint-strong); color: var(--mark); }
 .card-family-composer-content textarea { width: 100%; min-width: 0; min-height: 160px; padding: 12px; border: var(--control-hairline) solid var(--control-field-line); border-radius: var(--control-radius); background: var(--control-field); color: var(--ink); font: 12px/1.65 'Geist Mono', monospace; resize: vertical; }
-.card-family-composer-content textarea:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
 .card-family-composer-content textarea::placeholder { color: var(--muted); }
 .card-family-composer-hint, .card-family-draft-hint { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.5; }
 .card-family-draft-hint { margin-bottom: 12px; }

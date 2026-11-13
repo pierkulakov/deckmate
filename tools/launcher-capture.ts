@@ -1,17 +1,22 @@
-// Launcher start-screen frames: desktop/launcher/index.html in headless Edge/Chrome with the mock bridge
-// (a plain browser load has no window.deckmateDesktop, so launcher.js serves sample data).
+// 2026-11-13: captures use Vite serve because the production entry excludes the browser mock.
 // Run: npm run capture:launcher — saves .deckmate/launcher-shots/<frame>.png plus frames.json (size, bytes, SHA-256 per frame).
 import { createHash } from 'node:crypto';
 import { realpathSync } from 'node:fs';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
-import { fileURLToPath, pathToFileURL } from 'node:url';
+import { fileURLToPath } from 'node:url';
+import { createServer } from 'vite';
 import { openHeadlessBrowser, type HeadlessPage } from './layout-capture.ts';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
-const pageUrl = pathToFileURL(path.join(here, '..', 'desktop', 'launcher', 'index.html')).href;
-const whatsNewUrl = pathToFileURL(path.join(here, '..', 'desktop', 'launcher', 'whats-new.html')).href;
 const output = process.env.DECKMATE_LAUNCHER_CAPTURE_OUTPUT || path.join(here, '..', '.deckmate', 'launcher-shots');
+
+async function startPreview() {
+  const server = await createServer({ configFile: path.join(here, '..', 'desktop.vite.config.ts'),
+    logLevel: 'error', server: { host: '127.0.0.1', port: 0, open: false } });
+  await server.listen();
+  return { server, url: server.resolvedUrls!.local[0] };
+}
 
 interface Frame {
   name: string; theme: 'dark' | 'light'; lang: 'en' | 'ru'; size: [number, number]; page?: 'whats-new';
@@ -48,6 +53,8 @@ const frames: Frame[] = [
 // 2026-11-10: explicit URL fixtures make the same edge cases reproducible in a normal browser, not just in screenshots.
 const errorCodes = ['invalid-path', 'missing', 'not-empty', 'create-failed', 'start-failed', 'timeout', 'load-failed', 'save-failed'];
 for (const theme of ['dark', 'light'] as const) {
+  frames.push({ name: `${theme}-ru-long-375`, theme, lang: 'ru', size: [375, 900], scenario: 'many' });
+  frames.push({ name: `${theme}-ru-long-1280`, theme, lang: 'ru', size: [1280, 820], scenario: 'many', covers: 'visible' });
   for (const lang of ['en', 'ru'] as const) {
     for (const size of [[960, 600], [1280, 820]] as [number, number][]) {
       if ((theme === 'dark' && lang === 'ru') || (theme === 'light' && lang === 'en')) {
@@ -83,20 +90,18 @@ const LANG_SCRIPTS: Record<string, string> = {
 };
 const STATE_SCRIPTS: Record<string, string> = {
   list: `document.getAnimations().forEach(a => a.finish())`,
-  empty: `document.getAnimations().forEach(a => a.finish());
-    state.recent = []; state.workspace = []; renderWorkspace(); renderRecent();
-    document.getElementById('open-folder').focus();`,
-  one: `state.recent = [state.recent[0]]; state.workspace = []; renderWorkspace(); renderRecent();`,
+  empty: `document.getAnimations().forEach(a => a.finish())`,
+  one: `document.getAnimations().forEach(a => a.finish())`,
   error: `document.getAnimations().forEach(a => a.finish()); document.getElementById('open-folder').click();`,
-  'hover-row': `document.getAnimations().forEach(a => a.finish()); document.querySelectorAll('.recent-item')[1].classList.add('is-hover-demo');`,
+  'hover-row': `document.getAnimations().forEach(a => a.finish()); document.querySelectorAll('.mission-control-workspace-row')[1].classList.add('is-hover-demo');`,
   'focus-open': `document.getAnimations().forEach(a => a.finish())`,
   'focus-row': `document.getAnimations().forEach(a => a.finish())`,
   'focus-workspace': `document.getAnimations().forEach(a => a.finish())`,
 };
 const FOCUS_CHECKS: Record<string, string> = {
   'focus-open': `document.getElementById('open-folder').matches(':focus-visible')`,
-  'focus-row': `document.querySelector('#recent-list .recent-open').matches(':focus-visible')`,
-  'focus-workspace': `document.querySelector('#workspace-list .recent-open').matches(':focus-visible')`,
+  'focus-row': `document.querySelector('#recent-list .mission-control-workspace-open').matches(':focus-visible')`,
+  'focus-workspace': `document.querySelector('#workspace-list .mission-control-workspace-open').matches(':focus-visible')`,
 };
 const MAX_TAB_PRESSES = 48;
 
@@ -104,7 +109,7 @@ const MAX_TAB_PRESSES = 48;
 const INJECT_STYLE = 'css => { const style = document.createElement("style"); style.textContent = css; document.head.append(style); return true; }';
 // The settle keyframes only animate from hidden, so with animations off the frames show the settled state directly.
 const NO_MOTION = '*, *::before, *::after { animation: none !important; transition: none !important; }';
-const HOVER_DEMO = '.recent-item.is-hover-demo .recent-open { background: var(--surface); } .recent-item.is-hover-demo .recent-remove { opacity: 1; }';
+const HOVER_DEMO = '.mission-control-workspace-row.is-hover-demo .mission-control-workspace-open { background: var(--hover); }';
 
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
@@ -124,7 +129,7 @@ async function pollPage(page: HeadlessPage, expression: string, timeoutMs: numbe
 }
 
 // The previous document may already report readyState 'complete', so a flag on the old page marks the wait as being for the new one.
-async function navigateAndWait(page: HeadlessPage, what: string, url = pageUrl): Promise<void> {
+async function navigateAndWait(page: HeadlessPage, what: string, url: string): Promise<void> {
   await page.evaluate('window.__deckmateCaptureOldDocument = true');
   await page.send('Page.navigate', { url });
   const loaded = await pollPage(page, `!window.__deckmateCaptureOldDocument && document.readyState === 'complete'`, 10000);
@@ -150,45 +155,8 @@ async function tabUntilFocused(page: HeadlessPage, matches: string, frameName: s
   if (!(await page.evaluate(matches))) throw new Error(`${frameName}: target not focused after ${MAX_TAB_PRESSES} Tab presses`);
 }
 
-async function verifyLauncherInteractions(page: HeadlessPage): Promise<void> {
-  await navigateAndWait(page, 'keyboard checks');
-  await waitForPageReady(page, 'keyboard checks');
-  await page.evaluate(`window.__launcherCalls = []; window.__launcherPending = [];
-    bridge.openProject = folder => { window.__launcherCalls.push(folder); return new Promise(resolve => window.__launcherPending.push(resolve)); };
-    document.querySelector('#last-list .recent-open').focus();`);
-  const key = async (name: string, code: number) => {
-    for (const type of ['keyDown', 'keyUp']) await page.send('Input.dispatchKeyEvent', {
-      type, key: name, code: name, windowsVirtualKeyCode: code,
-      text: type === 'keyDown' && name === 'Enter' ? '\r' : undefined,
-    });
-  };
-  await key('Enter', 13);
-  await key('ArrowDown', 40);
-  await key('Enter', 13);
-  const switched = await page.evaluate(`window.__launcherCalls.length === 2 && window.__launcherCalls[0] !== window.__launcherCalls[1] && !page.openFolder.disabled`);
-  if (!switched) {
-    const details = await page.evaluate(`JSON.stringify({calls:window.__launcherCalls, focus:document.activeElement.outerHTML, status:page.statusText.textContent, busy, opening})`);
-    throw new Error(`Keyboard: Enter/ArrowDown must open another project while the first is starting: ${details}`);
-  }
-  await page.evaluate(`window.__launcherPending[0]({ok:false, code:'missing'})`);
-  await sleep(30);
-  if (!await page.evaluate(`page.status.dataset.phase === 'starting'`)) throw new Error('Keyboard: stale result replaced current progress');
-  await page.evaluate(`window.__launcherPending[1]({ok:false, code:'timeout'})`);
-  if (!await pollPage(page, `page.status.dataset.phase === 'error'`, 2000)) throw new Error('Keyboard: timeout has no recovery');
-  await page.evaluate(`document.querySelector('[data-lang="ru"]').click()`);
-  if (!await pollPage(page, `page.statusText.textContent.includes('20 секунд')`, 2000)) throw new Error('Language switch cleared the error');
-  await page.evaluate(`page.createProject.click()`);
-  if (!await pollPage(page, `!page.createPanel.hidden`, 2000)) throw new Error('Create confirmation did not open');
-  await key('Escape', 27);
-  if (!await page.evaluate(`page.createPanel.hidden && document.activeElement === page.createProject`)) throw new Error('Escape did not restore creation focus');
-  await page.evaluate(`document.querySelector('#recent-list .recent-open').focus()`);
-  await key('Delete', 46);
-  if (!await pollPage(page, `page.statusText.textContent.includes('не удалены')`, 2000)) throw new Error('Delete did not confirm files were retained');
-  console.log('keyboard: Enter, arrows, superseding launch, translated recovery, Escape and Delete passed');
-}
-
-async function verifyControlStates(page: HeadlessPage): Promise<void> {
-  await navigateAndWait(page, 'pointer checks');
+async function verifyControlStates(page: HeadlessPage, pageUrl: string): Promise<void> {
+  await navigateAndWait(page, 'pointer checks', pageUrl);
   await waitForPageReady(page, 'pointer checks');
   const point = async (selector: string) => page.callFunction(`selector => {
     const box = document.querySelector(selector).getBoundingClientRect();
@@ -210,12 +178,12 @@ async function verifyControlStates(page: HeadlessPage): Promise<void> {
   await page.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: 0, y: 0, button: 'left', buttons: 0, clickCount: 1 });
   await sleep(50);
   if (await page.evaluate(appearance) !== idle) throw new Error('Pointer: the button hover did not clear immediately');
-  const row = `getComputedStyle(document.querySelector('#last-list .recent-open')).backgroundColor`;
+  const row = `getComputedStyle(document.querySelector('#last-list .mission-control-workspace-open')).backgroundColor`;
   const rowIdle = await page.evaluate(row);
-  await move(await point('#last-list .recent-open'));
+  await move(await point('#last-list .mission-control-workspace-open'));
   await sleep(150);
   if (await page.evaluate(row) === rowIdle) throw new Error('Pointer: the project row has no hover feedback');
-  await move(await point('#recent-list .recent-open'));
+  await move(await point('#recent-list .mission-control-workspace-open'));
   await sleep(50);
   if (await page.evaluate(row) !== rowIdle) throw new Error('Pointer: the project row hover did not clear immediately');
   await move({ x: 0, y: 0 });
@@ -288,15 +256,16 @@ async function verifyCovers(page: HeadlessPage, frame: Frame): Promise<void> {
   if (problem) throw new Error(`${frame.name}: ${problem}`);
 }
 
-async function captureFrame(page: HeadlessPage, frame: Frame, destination: string): Promise<Shot> {
+async function captureFrame(page: HeadlessPage, frame: Frame, destination: string, pageUrl: string): Promise<Shot> {
   const [width, height] = frame.size;
   const zoom = frame.zoom ?? 1;
   await page.send('Emulation.setDeviceMetricsOverride', { width: width / zoom, height: height / zoom, deviceScaleFactor: zoom, mobile: false });
   await page.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: frame.reducedMotion ? 'reduce' : 'no-preference' }] });
-  // The settings are written on the loaded page; the reload below re-runs theme.js and launcher.js against them.
+  // 2026-11-13: reload picks up browser preferences before the dev bridge supplies its first snapshot.
   await page.evaluate(scriptFor(THEME_SCRIPTS, frame.theme, 'theme'));
   await page.evaluate(scriptFor(LANG_SCRIPTS, frame.lang, 'language'));
-  const url = new URL(frame.page === 'whats-new' ? whatsNewUrl : pageUrl);
+  const url = new URL(frame.page === 'whats-new' ? 'whats-new.html' : 'index.html', pageUrl);
+  if (frame.state === 'one' || frame.state === 'empty') url.searchParams.set('scenario', frame.state);
   if (frame.scenario) url.searchParams.set('scenario', frame.scenario);
   if (frame.error) url.searchParams.set('error', frame.error);
   await navigateAndWait(page, frame.name, url.href);
@@ -354,6 +323,7 @@ export async function captureLauncherReadme(destination: string, theme: 'dark' |
   const [deckmate, desktop] = await Promise.all(['package.json', 'desktop/package.json'].map(async file =>
     JSON.parse(await readFile(path.join(root, file), 'utf8')) as { version: string }));
   const page = await openHeadlessBrowser({ width: 1280, height: 820, scale: 1 });
+  const preview = await startPreview();
   try {
     const source = String.raw`(() => {
       const now = Date.now();
@@ -366,12 +336,13 @@ export async function captureLauncherReadme(destination: string, theme: 'dark' |
         { path: recent[2].path, name: recent[2].name, missing: false },
       ];
       window.deckmateDesktop = {
-        async getState() { return { recent, workspace, lastProject: recent[0].path, version: ${JSON.stringify(desktop.version)}, deckmateVersion: ${JSON.stringify(deckmate.version)}, locale: 'en-US' }; },
+        async getState() { return { ok: true, current: null, recent, projects: workspace, lastProject: recent[0].path, version: ${JSON.stringify(desktop.version)}, deckmateVersion: ${JSON.stringify(deckmate.version)}, locale: 'en-US' }; },
         async chooseFolder() { return 'D:\\Projects\\New Deck'; },
         async openProject() { return { ok: false, code: 'missing' }; },
         async createProject() { return { ok: false, code: 'not-empty' }; },
         async removeRecent() { return { ok: true }; },
         async setLanguage() { return { ok: true }; },
+        async setTheme() { return { ok: true }; },
         onStatus() { return () => {}; },
       };
     })()`;
@@ -381,12 +352,12 @@ export async function captureLauncherReadme(destination: string, theme: 'dark' |
     } catch (error) {
       throw new Error(`Cannot register launcher bridge: ${error instanceof Error ? error.message : String(error)}`);
     }
-    await navigateAndWait(page, 'initial load');
+    await navigateAndWait(page, 'initial load', preview.url);
     // A full-size CSS viewport keeps the decorative covers above the compact-height breakpoint.
-    const shot = await captureFrame(page, launcherReadmeFrame(theme), destination);
+    const shot = await captureFrame(page, launcherReadmeFrame(theme), destination, preview.url);
     const projectsFit = await page.evaluate(`(() => {
       const sections = document.querySelector('.project-sections').getBoundingClientRect();
-      return [...document.querySelectorAll('.recent-open')].every(row => {
+      return [...document.querySelectorAll('.mission-control-workspace-open')].every(row => {
         const bounds = row.getBoundingClientRect();
         return bounds.top >= sections.top && bounds.bottom <= sections.bottom;
       });
@@ -399,6 +370,7 @@ export async function captureLauncherReadme(destination: string, theme: 'dark' |
     return shot;
   } finally {
     await page.close();
+    await preview.server.close();
   }
 }
 
@@ -408,20 +380,22 @@ async function main(): Promise<void> {
     return;
   }
   const page = await openHeadlessBrowser({ width: frames[0].size[0], height: frames[0].size[1], scale: 1 });
+  const preview = await startPreview();
   try {
     await mkdir(output, { recursive: true });
-    await navigateAndWait(page, 'initial load');
-    await verifyLauncherInteractions(page);
-    await verifyControlStates(page);
+    await navigateAndWait(page, 'initial load', preview.url);
+    await verifyControlStates(page, preview.url);
     const shots: Shot[] = [];
-    for (const frame of frames) shots.push(await captureFrame(page, frame, path.join(output, `${frame.name}.png`)));
+    const filter = process.env.DECKMATE_LAUNCHER_CAPTURE_FILTER;
+    for (const frame of frames.filter(frame => !filter || new RegExp(filter).test(frame.name))) shots.push(await captureFrame(page, frame, path.join(output, `${frame.name}.png`), preview.url));
     await sleep(300);
     if (page.consoleErrors.length) throw new Error(`console errors during capture: ${page.consoleErrors.join(' | ')}`);
-    const report = { capturedAt: new Date().toISOString(), page: 'desktop/launcher/index.html', deviceScaleFactor: 1, frames: shots };
+    const report = { capturedAt: new Date().toISOString(), page: 'client/desktop/index.html (Vite serve)', deviceScaleFactor: 1, frames: shots };
     await writeFile(path.join(output, 'frames.json'), JSON.stringify(report, null, 2) + '\n');
     console.log(`frames.json: ${shots.length} frames, ${shots.reduce((total, entry) => total + entry.bytes, 0)} bytes of PNG`);
   } finally {
     await page.close();
+    await preview.server.close();
   }
 }
 

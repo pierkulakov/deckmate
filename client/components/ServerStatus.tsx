@@ -86,7 +86,9 @@ export function ServerStatus({ connection, snapshot, updatedAt }: { connection: 
   return <span className="server-status-slot">
     <span className="visually-hidden" role="status">{title[state]}</span>
     <span className="server-status-sizer" aria-hidden="true"><span className="server-status-dot" /><span className="server-status-stack">
-      {shownStates.map(option => <span key={option}>{chip[option]}</span>)}</span></span>
+      {/* 2026-11-13: the rail needs both locales' widest state before a language switch, not only the active locale. */}
+      {Object.values(text).flatMap(labels => [labels.chipLive, labels.chipSaving, labels.chipSaved, labels.chipReconnecting, labels.chipOffline])
+        .map((label, index) => <span key={index}>{label}</span>)}</span></span>
     <Dialog.Root modal={false}>
       <Dialog.Trigger asChild>
         <button type="button" className={`server-status is-${state}${pinged ? ' is-pinged' : ''}`} aria-label={chip[state] === title[state] ? chip[state] : `${chip[state]} — ${title[state]}`}>

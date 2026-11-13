@@ -1,5 +1,5 @@
 import { createRoot } from 'react-dom/client';
-// Starts tracking keyboard and pointer input before the first render, for the focus ring of script focus (client/focus.ts).
+// 2026-11-13: Tab intent must be tracked before autofocus and the first application event handler.
 import './focus.ts';
 import App from './App.tsx';
 import './styles.css';

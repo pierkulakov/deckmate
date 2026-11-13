@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import { isDeepStrictEqual } from 'node:util';
+import { deterministicCardId } from './card-id.ts';
 import { deckAcceptsCard } from '../src/catalog-contracts.ts';
 import type { CatalogImportEdit, CatalogImportReport, CatalogImportRow } from '../src/catalog-contracts.ts';
 import { resolveMember } from '../src/members.ts';
@@ -61,12 +62,7 @@ const digest = (bytes: Uint8Array) => createHash('sha256').update(bytes).digest(
 
 /** Derive a UUID from row contents, with v5-style version and variant bits, for stable import IDs. */
 export function derivedCardId(row: Omit<CatalogImportRow, 'cardId'>): string {
-  const canonical = JSON.stringify([row.kind, row.title, row.markdown, row.owner, row.effort, row.priority, row.state, row.tags]);
-  const bytes = createHash('sha256').update(canonical).digest();
-  bytes[6] = (bytes[6] & 0x0f) | 0x50;
-  bytes[8] = (bytes[8] & 0x3f) | 0x80;
-  const hex = bytes.toString('hex');
-  return `card:${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20, 32)}`;
+  return deterministicCardId(JSON.stringify([row.kind, row.title, row.markdown, row.owner, row.effort, row.priority, row.state, row.tags]));
 }
 
 interface PlannedRow {

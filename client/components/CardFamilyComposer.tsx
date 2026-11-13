@@ -1,5 +1,5 @@
 import { readStoredValue } from '../storage.ts';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Layers, LoaderCircle, Plus } from 'lucide-react';
 import { deckAcceptsCard, newCardDeckId, type CatalogCard, type CatalogEdit, type CatalogView } from '../../src/catalog-contracts.ts';
 import { Button } from './ui/button.tsx';
@@ -7,9 +7,12 @@ import { defineText, useText } from '../i18n.ts';
 import { moveFocus } from '../focus.ts';
 import { failureMessage } from '../failure-message.ts';
 import { EmptyState } from './EmptyState.tsx';
+import { Keys } from './Keys.tsx';
+import { primaryModifierPressed } from '../shortcut-format.ts';
 import '../card-family.css';
 
 const text = defineText({
+  saveKeys: 'Ctrl + Enter',
   formLabel: 'New Sub Card',
   invalidContent: 'The first line is a title of up to 1000 characters. Description — up to 200000 characters.',
   notConfirmed: 'Creation not confirmed. The text and ID are preserved; check the catalog message and try again.',
@@ -32,6 +35,7 @@ const text = defineText({
   cancel: 'Cancel',
   create: 'Create',
 }, {
+  saveKeys: 'Ctrl + Enter',
   formLabel: 'Новая Sub Card',
   invalidContent: 'Первая строка — название до 1000 знаков. Описание — до 200000 знаков.',
   notConfirmed: 'Создание не подтверждено. Текст и ID сохранены; проверьте сообщение каталога и повторите.',
@@ -77,7 +81,8 @@ export function CardFamilyComposer({ parent, catalog, initialDeckId, active = tr
       return Array.isArray(value) ? [...new Set(value.filter((item): item is string => typeof item === 'string'))].slice(0, 3) : [];
     } catch { return []; }
   });
-  const availableDecks = catalog.decks.filter(deck => deckAcceptsCard(deck.kind, 'task') || deckAcceptsCard(deck.kind, 'doc'));
+  const availableDecks = useMemo(() => catalog.decks.filter(deck => deckAcceptsCard(deck.kind, 'task') || deckAcceptsCard(deck.kind, 'doc')),
+    [catalog.decks]);
   // 2026-11-08: a Sub Card always has somewhere to land — the project Inbox when it takes Tasks, else no deck (deckId: null).
   const inboxDeck = catalog.decks.find(deck => deck.id === catalog.inboxDeckId);
   const autoDeckId = newCardDeckId(null, catalog.inboxDeckId, catalog.decks, 'task');
@@ -109,7 +114,7 @@ export function CardFamilyComposer({ parent, catalog, initialDeckId, active = tr
   const title = (firstBreak < 0 ? content : content.slice(0, firstBreak)).trim();
   const markdown = firstBreak < 0 ? '' : content.slice(firstBreak).replace(/^(?:\r\n|\r|\n)/u, '');
   const validContent = title.length > 0 && title.length <= 1000 && !title.includes('\u0000') && markdown.length <= 200000;
-  const recentDecks = recent.flatMap(id => availableDecks.filter(deck => deck.id === id));
+  const recentDecks = useMemo(() => recent.flatMap(id => availableDecks.filter(deck => deck.id === id)), [recent, availableDecks]);
 
   useEffect(() => { if (active) moveFocus(contentField.current, { preventScroll: true }); }, [active]);
   useEffect(() => { onDirtyChange?.(dirty || saving); }, [dirty, saving, onDirtyChange]);
@@ -154,7 +159,7 @@ export function CardFamilyComposer({ parent, catalog, initialDeckId, active = tr
     onSubmit={event => { event.preventDefault(); void create(); }}
     onKeyDown={event => {
       if (event.defaultPrevented) return;
-      if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') { event.preventDefault(); void create(); }
+      if (primaryModifierPressed(event) && event.key === 'Enter') { event.preventDefault(); void create(); }
       if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); cancel(); }
     }}>
     <label className="card-family-composer-deck"><span>{t.createCardIn}</span><span className="card-family-composer-field"><Layers size={15} />
@@ -178,7 +183,7 @@ export function CardFamilyComposer({ parent, catalog, initialDeckId, active = tr
       <Button type="button" variant="ghost" size="sm" disabled={busy} onClick={() => { setDiscarding(false); moveFocus(contentField.current); }}>{t.keep}</Button>
       <Button type="button" variant="outline" size="sm" disabled={busy} onClick={onCancel}>{t.discard}</Button>
     </div></div>}
-    {!created && <footer><Button type="button" variant="ghost" size="sm" disabled={busy} onClick={cancel}>{t.cancel}</Button><span>Ctrl + Enter</span>
+    {!created && <footer><Button type="button" variant="ghost" size="sm" disabled={busy} onClick={cancel}>{t.cancel}</Button><Keys variant="text" windowsLabel={t.saveKeys} combo={{ key: 'Enter', modifiers: ['primary'] }} />
       <Button type="submit" size="sm" disabled={unavailable || readOnly || !validContent || (deckId !== '' && !selectedDeck) || !parentValid || conflict}>{saving ? <LoaderCircle size={14} className="spin" /> : <Plus size={14} />}{t.create}</Button>
     </footer>}
   </form>;

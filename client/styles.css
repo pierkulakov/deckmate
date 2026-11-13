@@ -207,10 +207,12 @@ button:disabled, .ui-button[aria-disabled="true"] { --control-opacity-duration: 
 }
 /* 2026-11-05: flat key-hint chips invert to dark ink in light mode; a light chip reached only 1.05:1 on light fields.
    Top-bar tabs keep a mid-tone idle fill with light text, accent hover and page-color active fill with ink. */
-:root { --kbd-face: var(--ink); --kbd-ink: var(--surface); --tab-idle: var(--muted); --tab-idle-ink: var(--surface); --tab-ink: var(--ink); --tab-hover: var(--accent); --tab-hover-ink: var(--surface); }
+:root { --kbd-face: var(--ink); --kbd-ink: var(--surface); --kbd-gap: var(--space-1); --tab-idle: var(--muted); --tab-idle-ink: var(--surface); --tab-ink: var(--ink); --tab-hover: var(--accent); --tab-hover-ink: var(--surface); }
 :root.dark { --kbd-face: #eceef3; --kbd-ink: #27242f; --tab-hover: var(--hover); --tab-hover-ink: var(--ink); }
-kbd { display: inline-flex; align-items: center; justify-content: center; min-width: 16px; height: 16px; padding: 0 var(--space-1); border: 0; border-radius: var(--control-radius); background: var(--kbd-face); color: var(--kbd-ink); font: 600 10px/1 var(--font-sans); letter-spacing: .02em; vertical-align: middle; box-shadow: none; white-space: nowrap; }
-.app-shell { display: grid; grid-template-columns: minmax(0, 1fr); height: 100dvh; }
+/* Flex centring is the baseline when text-box or block alignment is unavailable. */
+kbd { display: inline-flex; align-items: center; justify-content: center; text-align: center; min-width: 16px; height: 16px; padding: 0 var(--space-1); border: 0; border-radius: var(--control-radius); background: var(--kbd-face); color: var(--kbd-ink); font: 600 10px/1 var(--font-sans); letter-spacing: .02em; vertical-align: middle; box-shadow: none; white-space: nowrap; }
+@supports (text-box: trim-both cap alphabetic) { kbd { display: inline-block; align-content: center; text-box: trim-both cap alphabetic; } }
+.app-shell { display: grid; grid-template-columns: minmax(0, 1fr); height: 100vh; height: 100dvh; }
 .workspace { min-width: 0; display: flex; flex-direction: column; overflow: hidden; }
 .topbar { height: 58px; flex-shrink: 0; border-bottom: 1px solid var(--line); padding: 0 26px; display: flex; align-items: center; justify-content: space-between; gap: 16px; }
 .breadcrumb { display: flex; align-items: center; gap: 12px; font-size: 12px; min-width: 0; white-space: nowrap; }
@@ -584,8 +586,9 @@ input[type="checkbox"].catalog-card-checkbox::after { content: ''; position: abs
 :root { --toggle-off: var(--muted); --deck-settings-scrim: #24182d66; --deck-settings-shadow: 0 0 1px #3024383d, 0 2.5px 15px #3024383d; }
 :root.dark { --deck-settings-scrim: #0c0a1380; --deck-settings-shadow: 0 0 1px #0000003d, 0 2.5px 15px #0000003d; }
 /* 2026-11-08: the 336 px desktop menu fills phone widths, so no clipped, apparently active chrome peeks out beside it. */
-.mission-control-trigger { width: 34px; height: 34px; padding: 0; }
+.mission-control-trigger { position: relative; width: 34px; height: 34px; padding: 0; }
 .mission-control-trigger .deckmate-mark { width: 24px; height: 24px; }
+.mission-control-trigger-count { position: absolute; top: 0; right: 0; display: grid; place-items: center; min-width: 16px; height: 16px; padding: 0 3px; border: 1px solid var(--chrome); border-radius: var(--control-radius); background: var(--accent-soft); color: var(--ink); font: 600 10px/1 'Geist Mono', monospace; }
 .mission-control-overlay { position: fixed; inset: 0; z-index: 90; background: transparent; }
 .mission-control { position: fixed; inset: 0 auto 0 0; z-index: 91; display: flex; flex-direction: column; width: min(336px, 100vw); overflow-y: auto; overscroll-behavior: contain; color: var(--ink); background: var(--surface); box-shadow: var(--deck-settings-shadow); --sheet-from: -100% 0; animation: sheet-slide var(--motion-spring-firm) var(--ease-spring-firm); }
 .mission-control:focus { outline: none; }
@@ -644,16 +647,17 @@ input[type="checkbox"].catalog-card-checkbox::after { content: ''; position: abs
 .mission-control-recent-open:hover:not(:disabled) { color: var(--ink); }
 .mission-control-recent-open:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 .mission-control-recent-open:disabled { cursor: default; }
-.mission-control-menu { display: flex; flex: 0 0 auto; flex-direction: column; margin-top: auto; padding: 8px 0; border-top: 1px solid var(--line); }
-.mission-control-menu button { display: flex; align-items: center; gap: 12px; min-height: 45px; padding: 6px 24px; border: 0; color: var(--ink); background: transparent; font-size: 14px; line-height: 1.3; text-align: left; cursor: pointer; }
-.mission-control-menu button > svg { flex: 0 0 auto; color: var(--muted); }
-.mission-control-menu button > span { display: flex; flex: 1; flex-direction: column; gap: 2px; min-width: 0; overflow-wrap: anywhere; }
-.mission-control-menu button small { color: var(--muted); font-size: 12px; font-weight: 400; }
-.mission-control-menu button:hover:not(:disabled) { background: var(--hover); }
-.mission-control-menu button:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
+:is(.mission-control-menu, .mission-control-sections) { display: flex; flex: 0 0 auto; flex-direction: column; margin-top: auto; padding: 8px 0; border-top: 1px solid var(--line); }
+.mission-control-sections { margin-top: 0; }
+:is(.mission-control-menu, .mission-control-sections) button { display: flex; align-items: center; gap: 12px; min-height: 45px; padding: 6px 24px; border: 0; color: var(--ink); background: transparent; font-size: 14px; line-height: 1.3; text-align: left; cursor: pointer; }
+:is(.mission-control-menu, .mission-control-sections) button > svg { flex: 0 0 auto; color: var(--muted); }
+:is(.mission-control-menu, .mission-control-sections) button > span { display: flex; flex: 1; flex-direction: column; gap: 2px; min-width: 0; overflow-wrap: anywhere; }
+:is(.mission-control-menu, .mission-control-sections) button small { color: var(--muted); font-size: 12px; font-weight: 400; }
+:is(.mission-control-menu, .mission-control-sections) button:hover:not(:disabled) { background: var(--hover); }
+:is(.mission-control-menu, .mission-control-sections) button:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
 /* The menu row sets cursor: pointer at the same weight as the global button:disabled, so only the cursor needs restoring. */
-.mission-control-menu button:disabled { cursor: default; }
-.mission-control-menu button.is-destructive, .mission-control-menu button.is-destructive > svg { color: light-dark(#9c3358, var(--danger)); }
+:is(.mission-control-menu, .mission-control-sections) button:disabled { cursor: default; }
+.mission-control-menu button.is-destructive, .mission-control-menu button.is-destructive > svg { color: var(--danger); }
 .mission-control-foot { display: flex; flex: 0 0 auto; align-items: center; gap: 7px; padding: 12px 24px 14px; border-top: 1px solid var(--line); color: var(--muted); font-size: 11px; }
 .mission-control-workspace { display: flex; flex-direction: column; gap: 8px; margin-top: 20px; }
 .mission-control-workspace h3 { margin: 0 0 2px; color: var(--muted); font-size: 12px; font-weight: 600; line-height: 1.4; }

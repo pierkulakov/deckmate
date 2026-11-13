@@ -17,6 +17,7 @@ import { cardOrdering, groupAndSortCards, laneOrderOf, serializeOrdering, type C
 import { subCardStateLabel, subCardVisualState, subCardWeight } from '../sub-card-state.ts';
 import type { CatalogAction } from '../useCatalog.ts';
 import { Button } from './ui/button.tsx';
+import { formatShortcut } from '../shortcut-format.ts';
 import { CardOwnerAvatar, CardQuickSettings, cardHeroEffort, type CardQuickSettingsTab } from './CardQuickSettings.tsx';
 import { CardFamilyComposer, type CreateFamilyCardAction } from './CardFamilyComposer.tsx';
 import { DependencyStateBadge } from './DependencyWarning.tsx';
@@ -83,7 +84,7 @@ const text = defineText({
   parentHero: 'A Hero Card cannot be a Sub Card',
   journeyLink: 'Link set by Journey',
   nestedFamilies: 'The card has Sub Cards: nested families are unavailable',
-  createReason: 'Create new Sub Card · Shift+C',
+  createReason: 'Create new Sub Card',
   chooseFirst: 'First choose a Hero or Doc Card using Select',
   refreshFailed: 'Could not refresh the catalog. The order is already saved; try refreshing again.',
   listChanged: 'The list changed during the move. Repeat the reorder using current data.',
@@ -114,7 +115,7 @@ const text = defineText({
   orderSaved: 'Order saved. Refresh the catalog before the next reorder.',
   refreshingCatalog: 'Refreshing catalog…',
   refreshCatalog: 'Refresh catalog',
-  dragInstructions: 'Press Space to lift a Sub Card. Up and down arrows change its position. Space finishes the move, Escape cancels it.',
+  dragInstructions: (space: string, up: string, down: string, escape: string) => `Press ${space} to lift a Sub Card. ${up} and ${down} change its position. ${space} finishes the move, ${escape} cancels it.`,
   dragStart: (name: string) => `Lifted card “${name}”.`,
   dragOver: (name: string, position: number, total: number) => `Card “${name}”, position ${position} of ${total}.`,
   outsideList: 'Outside the list.',
@@ -211,7 +212,7 @@ const text = defineText({
   parentHero: 'Hero Card не может быть Sub Card',
   journeyLink: 'Связь задана Journey',
   nestedFamilies: 'У карточки есть Sub Cards: вложенные семьи недоступны',
-  createReason: 'Новая Sub Card · Shift+C',
+  createReason: 'Новая Sub Card',
   chooseFirst: 'Сначала выберите Hero или Doc Card кнопкой «Выбрать»',
   refreshFailed: 'Не удалось обновить каталог. Порядок уже сохранён; повторите обновление.',
   listChanged: 'Список изменился во время переноса. Повторите перестановку по актуальным данным.',
@@ -242,7 +243,7 @@ const text = defineText({
   orderSaved: 'Порядок сохранён. Обновите каталог перед следующей перестановкой.',
   refreshingCatalog: 'Обновляем каталог…',
   refreshCatalog: 'Обновить каталог',
-  dragInstructions: 'Нажмите пробел, чтобы поднять Sub Card. Стрелки вверх и вниз меняют позицию. Пробел завершает перенос, Escape отменяет.',
+  dragInstructions: (space: string, up: string, down: string, escape: string) => `Нажмите ${space.toLowerCase()}, чтобы поднять Sub Card. ${up} и ${down.toLowerCase()} меняют позицию. ${space} завершает перенос, ${escape} отменяет.`,
   dragStart: (name: string) => `Поднята карточка «${name}».`,
   dragOver: (name: string, position: number, total: number) => `Карточка «${name}», позиция ${position} из ${total}.`,
   outsideList: 'За пределами списка.',
@@ -735,7 +736,7 @@ export function CardFamilyPanel({ hero, card, children, openedId, catalog, disab
   let parentReason = t.parentHero;
   if (card.journey) parentReason = t.journeyLink;
   else if (currentHasChildren) parentReason = t.nestedFamilies;
-  const creationReason = canContainChildren ? t.createReason : t.chooseFirst;
+  const creationReason = canContainChildren ? `${t.createReason} · ${formatShortcut({ key: 'KeyC', modifiers: ['shift'] }).display}` : t.chooseFirst;
   const searchText = search.trim().toLocaleLowerCase(languageTag);
   const lookups = useMemo(() => buildCatalogLookups(catalog.cards, catalog.subCardOrder), [catalog.cards, catalog.subCardOrder]);
   const cardsById = lookups.cardById;
@@ -943,7 +944,7 @@ export function CardFamilyPanel({ hero, card, children, openedId, catalog, disab
         <Button type="button" variant="outline" size="icon" className="card-family-secondary" title={t.openList} aria-label={t.openList} disabled={interacting || !canContainChildren} onClick={openList}><ArrowUpRight size={16} /></Button>
         <DropdownMenu.Root modal={false}>
           <DropdownMenu.Trigger asChild><Button type="button" variant="outline" size="icon" className={'card-family-overflow' + (manualOrder ? '' : ' is-active')} title={t.moreActions} aria-label={t.moreActions} disabled={interacting}><Ellipsis size={16} /></Button></DropdownMenu.Trigger>
-          <DropdownMenu.Portal><DropdownMenu.Content className="dropdown" align="end" sideOffset={6} collisionPadding={12}>
+          <DropdownMenu.Portal><DropdownMenu.Content className="dropdown card-family-menu" align="end" sideOffset={6} collisionPadding={12}>
             {writable && <DropdownMenu.Item className="dropdown-item" disabled={!canContainChildren} onSelect={onAttach}><Link2 size={16} />{t.attachSubCards}</DropdownMenu.Item>}
             <DropdownMenu.Sub><DropdownMenu.SubTrigger className="dropdown-item"><ArrowDownUp size={16} />{t.changeOrder}</DropdownMenu.SubTrigger>
               <DropdownMenu.Portal><DropdownMenu.SubContent className="dropdown card-family-order-menu" collisionPadding={12}>{orderItems}</DropdownMenu.SubContent></DropdownMenu.Portal>
@@ -974,7 +975,7 @@ export function CardFamilyPanel({ hero, card, children, openedId, catalog, disab
       baseline.current = { heroId: familyParent.id, sourceHash: familyParent.sourceHash, manifestHash: catalog.manifestHash, ids };
       setActiveId(String(event.active.id)); setReorderNotice('');
     }} onDragEnd={event => void finishDrag(event)} onDragCancel={cancelDrag} accessibility={{
-      screenReaderInstructions: { draggable: t.dragInstructions },
+      screenReaderInstructions: { draggable: t.dragInstructions(formatShortcut({ key: 'Space' }).name, formatShortcut({ key: 'ArrowUp' }).name, formatShortcut({ key: 'ArrowDown' }).name, formatShortcut({ key: 'Escape' }).name) },
       announcements: {
         onDragStart: ({ active }) => t.dragStart(cardName(active.id)),
         onDragOver: ({ active, over }) => over ? t.dragOver(cardName(active.id), ids.indexOf(String(over.id)) + 1, ids.length) : t.outsideList,

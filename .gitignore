@@ -4,6 +4,9 @@ dist/
 .vite/
 coverage/
 *.log
+.delegate/
+*.rej
+*.orig
 .env
 .env.local
 # Local project board (2026-11-07: moved from /cards and /tasks into board/, see .env.local)
@@ -11,13 +14,13 @@ coverage/
 .deckmate/
 .freetion/
 *.lnk
-# Local Impeccable installation and working data
+# Local design tooling stays outside the published project (2026-11-12)
 /.impeccable/
 /.cursor/skills/impeccable/
 /.cursor/agents/impeccable-*.md
 /.opencode/skills/impeccable/
 /.opencode/commands/impeccable.md
-# Maintainer's local agent tooling (2026-11-07): not part of the public project
+# Local agent tooling is not part of the public project (2026-11-07)
 /.claude/
 /.agents/
 /.mcp.json

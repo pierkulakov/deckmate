@@ -1,5 +1,5 @@
 import { beforeEach, expect, it, vi } from 'vitest';
-import { clearParseCache, parseCached, parseCacheStats } from '../server/parse-cache.ts';
+import { clearParseCache, parseCached, parseCacheStats, parseFileCached } from '../server/parse-cache.ts';
 
 beforeEach(clearParseCache);
 
@@ -38,4 +38,51 @@ it('keeps the existing entry limit and evicts the least recently used parse', ()
   expect(parseCached('limit', '1', 1, reparsed)).toBe(1);
   expect(reparsed).toHaveBeenCalledTimes(1);
   expect(parseCacheStats().entries).toBe(4096);
+});
+
+it('reuses a file revision after LRU eviction but verifies bytes even when size and mtime match', () => {
+  const compute = vi.fn((hash: string) => ({ hash }));
+  const first = parseFileCached('file', 'features/audio.md', Buffer.from('Original'), 123, compute);
+  clearParseCache();
+  expect(parseFileCached('file', 'features/audio.md', Buffer.from('Original'), 123, compute, first)).toBe(first);
+  expect(compute).toHaveBeenCalledTimes(1);
+  const changed = parseFileCached('file', 'features/audio.md', Buffer.from('External'), 123, compute, first);
+  expect(changed).toMatchObject({ mtimeMs: 123, size: first.size });
+  expect(changed.sourceHash).not.toBe(first.sourceHash);
+  expect(changed.value).not.toBe(first.value);
+  expect(compute).toHaveBeenCalledTimes(2);
+});
+
+it('updates a touched file revision without reparsing identical bytes or mutating its old revision', () => {
+  const compute = vi.fn(() => ({ title: 'Unchanged' }));
+  const bytes = Buffer.from('Same bytes');
+  const first = parseFileCached('file', 'docs/guide.md', bytes, null, compute);
+  const touched = parseFileCached('file', 'docs/guide.md', bytes, 456, compute, first);
+  expect(touched).not.toBe(first);
+  expect(touched.value).toBe(first.value);
+  expect(first.mtimeMs).toBeNull();
+  expect(touched.mtimeMs).toBe(456);
+  expect(compute).toHaveBeenCalledTimes(1);
+});
+
+it('invalidates a file parse when its path, namespace, size or hash changes', () => {
+  const compute = vi.fn((hash: string) => ({ hash }));
+  const bytes = Buffer.from('Body');
+  const first = parseFileCached('file', 'docs/first.md', bytes, 123, compute);
+  const renamed = parseFileCached('file', 'docs/second.md', bytes, 123, compute, first);
+  const otherParser = parseFileCached('another', 'docs/first.md', bytes, 123, compute, first);
+  const resized = parseFileCached('file', 'docs/first.md', Buffer.from('Longer body'), 123, compute, first);
+  for (const result of [renamed, otherParser, resized]) expect(result.value).not.toBe(first.value);
+  expect(compute).toHaveBeenCalledTimes(4);
+});
+
+it('caches malformed file bytes without hiding recovery at the same mtime', () => {
+  const failure = new Error('Malformed bytes');
+  const compute = vi.fn(() => { throw failure; });
+  for (let repeat = 0; repeat < 2; repeat++) {
+    expect(() => parseFileCached('file', 'docs/broken.md', Buffer.from('broken'), 123, compute)).toThrow(failure);
+  }
+  expect(compute).toHaveBeenCalledTimes(1);
+  const recovered = parseFileCached('file', 'docs/broken.md', Buffer.from('valid!'), 123, () => 'Recovered');
+  expect(recovered.value).toBe('Recovered');
 });

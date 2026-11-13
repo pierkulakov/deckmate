@@ -5,7 +5,8 @@
    top, as tall as a rail button, so the deck picker and Close line up with the rail's first button; the card's own icon
    rail starts level with the sheet below the bar. */
 /* 2026-11-11: the full-width metal reserves space for three controls and the family's progress. */
-.card-preview { --preview-header-height: 32px; --preview-header-gap: var(--space-3); --preview-icon-size: 16px; --preview-band-height: 64px; --preview-owner-size: 56px; --preview-height: max(0px, calc(var(--catalog-scroll-height, 100dvh) - var(--catalog-content-offset, 0px) - 12px)); min-width: 0; max-height: var(--preview-height); overflow: clip; border-radius: 8px; color: var(--ink); }
+.card-preview { --preview-header-height: 32px; --preview-header-gap: var(--space-3); --preview-icon-size: 16px; --preview-band-height: 64px; --preview-owner-size: 56px; --preview-height: max(0px, calc(var(--catalog-scroll-height, 100vh) - var(--catalog-content-offset, 0px) - 12px)); min-width: 0; max-height: var(--preview-height); overflow: hidden; overflow: clip; border-radius: 8px; color: var(--ink); }
+@supports (height: 100dvh) { .card-preview { --preview-height: max(0px, calc(var(--catalog-scroll-height, 100dvh) - var(--catalog-content-offset, 0px) - 12px)); } }
 /* The sheet fills the left panel at any width to avoid a gap before the divider. 2026-11-08: the row caps at the shell height,
    so a long card hands its extra height to the panels area instead of growing past the column. */
 /* 2026-11-10: the rail is flush with the column's edge and keeps 12px on both sides — to the sheet, and to the divider
@@ -21,8 +22,12 @@
 .card-preview-action-rail { --preview-icon-size: 20px; position: sticky; top: var(--preview-header-top, 0px); display: flex; flex-direction: column; align-items: center; gap: 4px; padding: calc(var(--workbench-row-inset, var(--space-3)) + var(--preview-header-height) + var(--preview-header-gap) + var(--preview-parent-block, 0px)) 0 var(--space-3); }
 .card-preview-action-rail .ui-button { position: relative; width: 32px; height: 32px; padding: 5px; color: var(--muted); }
 .card-preview :is(.card-preview-action-rail, .card-preview-state-actions) .ui-button > svg { flex-shrink: 0; width: var(--preview-icon-size); height: var(--preview-icon-size); }
+/* 2026-11-11: the rail is the last 36px of a clipped sheet, so a ring drawn outside the button lost its right side
+   when focus came back from a closed panel. The ring sits inside the button instead. */
+.card-preview-action-rail .ui-button:focus-visible { outline-offset: -2px; }
 .card-preview-action-rail .ui-button:disabled { opacity: .7; }
 .card-preview-action-rail .ui-button.has-draft::after { content: ''; position: absolute; top: 3px; right: 3px; width: 5px; height: 5px; border-radius: 50%; background: var(--champagne); }
+.card-preview-open-questions-count { position: absolute; right: 0; bottom: 0; }
 .card-preview-parent { display: flex; align-items: center; gap: 8px; width: 100%; min-height: 30px; margin-bottom: 12px; padding: 6px 12px; border: 1px solid color-mix(in srgb, var(--hero-metal) 70%, var(--hero-sheen)); border-radius: 5px; color: var(--hero-ink); text-align: left; font-size: 12px; font-weight: 500; line-height: 16px; letter-spacing: 0; }
 /* 2026-11-06: flush with the scrolling panel edge, so the ring is drawn inside, in --hero-ink as on other gold Hero controls. */
 .card-preview-parent:focus-visible { outline: 2px solid var(--hero-ink); outline-offset: -2px; }
@@ -32,8 +37,8 @@
 .card-preview-parent > progress::-webkit-progress-bar { background: color-mix(in srgb, var(--hero-ink) 25%, transparent); }
 .card-preview-parent > progress::-webkit-progress-value { background: var(--hero-chip); }
 .card-preview-parent > progress::-moz-progress-bar { background: var(--hero-chip); }
-.card-preview-parent > kbd { flex: none; display: inline-grid; place-items: center; min-width: 22px; height: 16px; padding: 0 4px; box-sizing: border-box; border-radius: 3px; border: 1px solid color-mix(in srgb, var(--hero-ink) 40%, transparent); background: color-mix(in srgb, var(--hero-sheen) 45%, transparent); color: var(--hero-ink); font: 600 10px/1 var(--mono, 'Geist Mono', monospace); }
-.card-preview-sheet { display: flex; flex-direction: column; border-radius: 8px; background: var(--canvas); box-shadow: var(--shadow); overflow: clip; container-type: inline-size; }
+.card-preview-parent > kbd { flex: none; min-width: 22px; height: 16px; padding: 0 4px; border-radius: 3px; border: 1px solid color-mix(in srgb, var(--hero-ink) 40%, transparent); background: color-mix(in srgb, var(--hero-sheen) 45%, transparent); color: var(--hero-ink); font: 600 10px/1 var(--mono, 'Geist Mono', monospace); }
+.card-preview-sheet { display: flex; flex-direction: column; border-radius: 8px; background: var(--canvas); box-shadow: var(--shadow); overflow: hidden; overflow: clip; container-type: inline-size; }
 /* 2026-11-08: only the panels area gives way; every fixed row of the sheet keeps its height while the content scrolls. */
 .card-preview-sheet > :is(.card-preview-subcards-bar, .card-preview-state-actions, .card-preview-state-notice, .dependency-warning, .journey-return, .card-preview-dock, .card-preview-material-band) { flex-shrink: 0; }
 .card-preview-subcards-bar { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); min-height: 48px; padding: var(--space-2) var(--space-4); }
@@ -41,6 +46,10 @@
 .card-preview .ui-button.card-preview-subcards-toggle { gap: var(--space-1); height: 32px; min-height: 32px; padding: var(--space-1) var(--space-2); font-size: 14px; line-height: 20px; white-space: nowrap; }
 .card-preview-subcards-actions { display: flex; align-items: center; gap: 8px; }
 .card-preview-subcards-bar > .card-preview-subcards-actions { margin-left: auto; }
+/* 2026-11-11: a Doc has no Sub Card button or state row, so its top bar held three tools and 48px of air above
+   the title. The bar is as low as its tools and the text starts right under it. */
+.card-preview-doc .card-preview-subcards-bar { min-height: 0; padding-block: var(--space-1) 0; }
+.card-preview-doc .card-preview-reading { padding-top: var(--space-1); }
 .card-preview-reading { position: relative; padding: 16px; }
 .card-preview-title { margin: 0 0 20px; font-size: 22px; font-weight: 600; line-height: 26px; overflow-wrap: anywhere; }
 .card-preview .card-content-heading { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: start; gap: 12px; margin-bottom: 12px; }
@@ -299,7 +308,8 @@
 .card-preview-property-shortcut > svg { flex: none; }
 .card-preview .card-preview-material-band .ui-button.card-preview-property-shortcut[data-quick-settings-tab="priority"] { grid-column: 3; justify-self: end; }
 .card-preview-property-shortcut .journey-priority-icon { color: inherit; }
-.card-preview-word-count { grid-column: 3; justify-self: end; font-size: var(--text-help-size); font-variant-numeric: tabular-nums; }
+/* 2026-11-12: only the grid slot belongs here; the shared .doc-word-count carries the band figure style. */
+.card-preview-word-count { grid-column: 3; justify-self: end; }
 @container (max-width: 400px) {
   .card-preview-material-band { padding-inline: var(--space-3); }
   .card-preview-property-label { display: none; }
@@ -357,7 +367,8 @@
 .card-preview-panel .card-edit-text { flex: 1; }
 .card-edit { display: flex; flex-direction: column; gap: 8px; min-height: 0; container-type: inline-size; }
 .card-edit-hint-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 18px; padding: 0 8px; }
-.card-edit-hint { color: var(--edit-hint); font-size: 12px; line-height: 15.43px; }
+/* 2026-11-12: hint lines with keys are flex rows, so the spaces around a key collapse and --kbd-gap alone sets the distance. */
+.card-edit-hint { display: flex; flex-wrap: wrap; align-items: center; column-gap: var(--kbd-gap); color: var(--edit-hint); font-size: 12px; line-height: 15.43px; }
 /* 2026-11-06: one 8 px edge for the hint, the box, the title actions and Save; the text inside then starts on the reading
    column (16 px), so Edit no longer shifts the text 2 px left. */
 .card-edit-box { margin: 0 8px; padding: 8px; border: .67px solid var(--edit-line); border-radius: 4px; background: var(--edit-bg); }
@@ -369,13 +380,13 @@
 /* 2026-11-08: on a narrow card the save group wraps to its own right-aligned row instead of overflowing the sheet;
    at full width the row stays single-line and 32 px tall (CP-02). */
 .card-edit-footer { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; min-height: 32px; padding: 0 8px; }
-.card-edit-link { display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 8px; border: 0; border-radius: 4px; background: transparent; color: var(--edit-link); font-size: 12px; font-weight: 700; line-height: 14px; letter-spacing: .12px; white-space: nowrap; cursor: pointer; }
+.card-edit-link { display: inline-flex; align-items: center; gap: var(--kbd-gap); height: 26px; padding: 0 8px; border: 0; border-radius: 4px; background: transparent; color: var(--edit-link); font-size: 12px; font-weight: 700; line-height: 14px; letter-spacing: .12px; white-space: nowrap; cursor: pointer; }
 .card-edit-link.is-cancel { color: var(--edit-cancel); }
 .card-edit-link:hover:not(:disabled) { background: var(--hover); }
 .card-edit-link:focus-visible, .card-edit-save:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 /* 2026-11-08: the group never shrinks — a narrow footer moves it whole to the next row, so the Save button is not clipped (CP-02). */
 .card-edit-save-group { display: flex; flex-shrink: 0; align-items: center; gap: 8px; margin-left: auto; }
-.card-edit-save-hint { display: inline-flex; align-items: center; gap: 3px; color: var(--edit-hint); font-size: 12px; line-height: 14px; white-space: nowrap; }
+.card-edit-save-hint { display: inline-flex; align-items: center; gap: var(--kbd-gap); color: var(--edit-hint); font-size: 12px; line-height: 14px; white-space: nowrap; }
 /* The keycap sits on the button's center line, not on the text baseline. */
 .card-edit-link kbd { min-width: 22px; }
 .card-edit-save { display: inline-flex; align-items: center; justify-content: center; min-width: 48px; height: 32px; padding: 0 10px; border: 0; border-radius: 4px; background: var(--edit-save); color: #fff; font-size: 14px; font-weight: 700; line-height: 16px; white-space: nowrap; cursor: pointer; }
@@ -424,7 +435,8 @@
 /* Sub Cards' own sections fade in on other screens; in the column they appear with it, at once. */
 .catalog-family-layer :is(.card-family-parent-slot, .card-family-subcards-slot, .card-family-cards-slot) { animation: none; }
 .card-properties-slot[hidden] { display: none; }
-.card-properties-slot:focus { outline: none; }
+.card-properties-slot:focus:not(:focus-visible) { outline: none; }
+.card-properties-slot:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
 /* 2026-11-10: the column carries the one inset of every section; the panels inside
    drop their own insets and frames and lie on its surface at its width. */
 .card-properties-slot > :is(.card-properties-panel, .attachments-panel) { width: 100%; padding: 0; background: transparent; }
@@ -468,6 +480,7 @@
    fit measures the whole sheet instead of keeping the height it had beside them. */
 .card-preview-sheet:has(.card-content-reading.is-editing) .card-preview-dock-journey { display: none; }
 .card-preview-dock-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; min-width: 0; }
+.card-preview-questions-shortcut { display: none; }
 .card-preview-dock-row > :is(.card-preview-blocker-note, .card-preview-due-note) { flex-basis: 100%; }
 .card-preview-tags { display: flex; flex-direction: column; align-items: flex-start; gap: var(--space-1); min-width: 0; }
 .card-preview-sheet:has(.card-content-reading.is-editing) .card-preview-tags { display: none; }
@@ -479,19 +492,19 @@
 .card-preview-dock-actions > .card-content-reading-footer > .card-content-save-status { flex-basis: auto; background: none; font-size: 12px; line-height: 16px; }
 .card-content-save-status.is-calm { display: inline-flex; align-items: center; color: var(--muted); }
 .card-preview-dock-actions .card-content-reading-actions { display: flex; align-items: center; gap: 8px; }
-/* 2026-11-10: the Focus Mode key is a keycap inside the frame of its icon (a bare letter read as a stray F):
-   a framed square with a deeper bottom edge, like the menu's key hints, drawn in the icon's own colour. */
+/* 2026-11-10: the Focus Mode key is framed as part of its icon, in the icon's own colour. */
 .card-preview-focus-glyph { position: relative; display: grid; place-items: center; width: 22px; height: 22px; }
-.card-preview-focus-glyph > kbd { position: absolute; left: 50%; top: 50%; display: grid; place-items: center; width: 11px; height: 11px; min-width: 0; margin: 0; padding: 0;
+.card-preview-focus-glyph > kbd { position: absolute; left: 50%; top: 50%; width: 11px; height: 11px; min-width: 0; margin: 0; padding: 0;
   translate: -50% -50%; box-sizing: border-box; border: 1px solid color-mix(in srgb, currentColor 60%, transparent); border-bottom-width: 2px; border-radius: 2.5px;
   background: color-mix(in srgb, currentColor 14%, transparent); box-shadow: none; color: currentColor; font: 700 7px/1 'Geist Mono', monospace; }
+@supports not (translate: 0 1px) { .card-preview-focus-glyph > kbd { transform: translate(-50%, -50%); } }
 .card-preview .ui-button.card-preview-more { width: 30px; height: 30px; padding: 5px; color: var(--muted); }
 .card-preview .ui-button.card-preview-hand { width: 30px; height: 30px; padding: 5px; color: var(--muted); }
 .card-preview .ui-button.card-preview-hand.is-on { border-color: var(--mark); background: var(--mark-tint); color: var(--mark); }
 .card-hand-tooltip { z-index: 160; width: max-content; max-width: min(360px, calc(100vw - var(--space-4))); padding: var(--space-3); border: var(--control-hairline) solid var(--line); border-radius: var(--glass-radius); background: var(--surface); color: var(--ink); box-shadow: var(--shadow); font-size: var(--text-help-size); line-height: var(--text-help-leading); }
 .card-hand-tooltip > header { display: flex; align-items: center; justify-content: space-between; gap: var(--space-4); }
 .card-hand-tooltip strong { font-weight: 600; }
-.card-hand-tooltip kbd { padding: var(--space-1); border: var(--control-hairline) solid var(--line); border-radius: var(--control-radius); color: var(--muted); font: inherit; }
+.card-hand-tooltip kbd { padding-inline: var(--space-1); border: var(--control-hairline) solid var(--line); border-radius: var(--control-radius); color: var(--muted); font: inherit; }
 .card-hand-tooltip > ul { display: grid; gap: var(--space-2); margin: var(--space-3) 0; padding: 0; list-style: none; }
 .card-hand-tooltip li { display: flex; align-items: center; gap: var(--space-2); }
 .card-hand-tooltip li > .card-owner-avatar { flex: none; width: 24px; height: 24px; }
@@ -550,6 +563,13 @@
 .card-review-return-dialog .journey-return-actions .ui-button { min-width: var(--space-10); min-height: var(--space-10); height: auto; white-space: normal; }
 .card-preview-blocker-note, .card-preview-due-note { padding: 0; border: 0; background: transparent; color: var(--warning-ink); font: 12px/18px var(--font-sans); text-align: left; }
 .card-preview-blocker-note { cursor: pointer; min-height: 28px; }
+.card-preview-question-waiting { display: flex; align-items: center; gap: 6px; }
+.card-preview-question-waiting svg { flex: none; color: var(--muted); }
+.card-preview-question-waiting span { min-width: 0; overflow-wrap: anywhere; }
+@media (pointer: coarse) {
+  .card-preview-questions-shortcut { display: inline-flex; align-items: center; gap: var(--space-2); min-height: var(--control-target-touch); padding: 0; border: 0; background: transparent; color: var(--ink); font: 600 13px/18px var(--font-sans); text-align: left; cursor: pointer; }
+  .card-preview-questions-shortcut:disabled { opacity: .5; cursor: default; }
+}
 .card-preview-blocker-note:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 .card-panel-error { position: absolute; right: 0; top: 0; color: var(--warning-ink); font-size: 12px; }
 .card-panel-close { margin-bottom: var(--space-3); }

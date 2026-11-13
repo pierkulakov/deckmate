@@ -70,11 +70,8 @@ impl Shell {
         let locale = crate::settings::system_locale();
         let log = Log::open(&directory);
         let settings = Settings::load(&directory, &locale, &log);
-        let startup_project = settings
-            .last_project
-            .clone()
-            .filter(|folder| !paths::is_network_path(folder) && Path::new(folder).is_dir());
-        let first_show = window::FirstShow::new(startup_project.is_some());
+        let startup_project = settings.last_project.clone();
+        log.milestone("settings-loaded");
         Ok(Self {
             deckmate_version: programs.deckmate_version(),
             directory,
@@ -98,7 +95,7 @@ impl Shell {
             updates: updater::State::default(),
             whats_new: whats_new::State::default(),
             startup_project,
-            first_show,
+            first_show: window::FirstShow::default(),
         })
     }
 
@@ -172,6 +169,23 @@ impl Shell {
                 return failure;
             }
             let _ = cancellation.changed().await;
+        }
+    }
+
+    async fn while_current<T>(
+        &self,
+        launch: u64,
+        operation: impl std::future::Future<Output = T>,
+    ) -> Result<T, Failure> {
+        let mut cancellation = self.launch.subscribe();
+        if self.replaced(launch) {
+            return Err(self.failure("superseded", "superseded"));
+        }
+        // 2026-11-12: quit must release a startup wait; update recovery intentionally runs while closing.
+        tokio::select! {
+            biased;
+            _ = cancellation.changed() => Err(self.failure("superseded", "superseded")),
+            result = operation => Ok(result),
         }
     }
 
@@ -269,6 +283,7 @@ pub fn result(result: Result<(), Failure>) -> Value {
 }
 
 async fn launcher_locked(app: &AppHandle, shell: &Shell, status: Option<Value>) {
+    let launch = *shell.launch.borrow();
     if let Some(status) = status.as_ref().filter(|status| status["phase"] == "error") {
         shell.log.write(format!(
             "project launch failed: {}: {}",
@@ -279,6 +294,13 @@ async fn launcher_locked(app: &AppHandle, shell: &Shell, status: Option<Value>) 
     shell.stop().await;
     *shell.pending_status.lock().unwrap() = status;
     menu::rebuild(app);
+    if shell
+        .while_current(launch, window::wait_until_shown(app))
+        .await
+        .is_err()
+    {
+        return;
+    }
     if let Some(window) = app.get_webview_window("main") {
         let _ = window.set_title("Deckmate");
         if let Err(error) = window::navigate_launcher(&window).await {
@@ -321,18 +343,27 @@ pub async fn open_project(app: &AppHandle, folder: String) -> Result<(), Failure
     unsaved::confirm(app).await?;
     unsaved::leave(app);
     let launch = shell.next_launch();
+    open_project_launch(app, &shell, folder, launch).await
+}
+
+async fn open_project_launch(
+    app: &AppHandle,
+    shell: &Shell,
+    folder: String,
+    launch: u64,
+) -> Result<(), Failure> {
     let _guard = shell.lifecycle.lock().await;
     shell.require_launch(launch)?;
     shell.stop().await;
     shell.require_launch(launch)?;
     shell.status(app, json!({"phase":"starting", "path":folder}));
-    let started = start_project(app, &shell, &folder, launch).await;
+    let started = start_project(app, shell, &folder, launch).await;
     match started {
         Ok(()) => Ok(()),
         Err(_) if shell.closing.load(Ordering::SeqCst) => Err(shell.failure("closed", "closed")),
         Err(_) if shell.replaced(launch) => Err(shell.failure("superseded", "superseded")),
         Err(error) => {
-            launcher_locked(app, &shell, Some(error_status(&folder, &error))).await;
+            launcher_locked(app, shell, Some(error_status(&folder, &error))).await;
             Err(error)
         }
     }
@@ -344,12 +375,6 @@ async fn start_project(
     folder: &str,
     launch: u64,
 ) -> Result<(), Failure> {
-    let window = app
-        .get_webview_window("main")
-        .ok_or_else(|| shell.failure("closed", "closed"))?;
-    crate::webview::install(&window)
-        .await
-        .map_err(|error| Failure::new("load-failed", error))?;
     let saved_port = shell.settings.lock().unwrap().server_port;
     let mut port = server::choose_port(saved_port)
         .map_err(|error| Failure::new("start-failed", error.to_string()))?;
@@ -411,6 +436,10 @@ async fn start_project(
         process.stop().await;
         return Err(shell.failure("superseded", "superseded"));
     }
+    // 2026-11-12: only navigation needs a loaded local document; Node starts while WebView2 is being created.
+    shell
+        .while_current(launch, window::wait_until_shown(app))
+        .await?;
     let window = app
         .get_webview_window("main")
         .ok_or_else(|| shell.failure("closed", "closed"))?;
@@ -549,29 +578,55 @@ async fn warn_incomplete_project(app: &AppHandle, folder: &str, failure: Failure
     }
 }
 
-pub async fn startup(app: AppHandle) {
+pub async fn startup(app: AppHandle, launch: u64) {
     let shell = state(&app);
-    let last = shell.settings.lock().unwrap().last_project.clone();
-    if let Some(last) = last {
-        if paths::is_network_path(&last) {
-            return;
+    let Some(last) = shell.startup_project.clone() else {
+        return;
+    };
+    if shell.require_launch(launch).is_err() {
+        return;
+    }
+    let folder = last.clone();
+    // 2026-11-12: filesystem/network classification must not delay the native window or be repeated at auto-open.
+    let candidate = tauri::async_runtime::spawn_blocking(move || {
+        if paths::is_network_path(&folder) {
+            None
+        } else {
+            Some(Path::new(&folder).is_dir())
         }
-        if !Path::new(&last).is_dir() {
+    })
+    .await;
+    if shell.require_launch(launch).is_err() {
+        return;
+    }
+    if matches!(candidate, Ok(Some(true))) {
+        let _ = open_project_launch(&app, &shell, last, launch).await;
+        return;
+    }
+    let _guard = shell.lifecycle.lock().await;
+    if shell.require_launch(launch).is_err() {
+        return;
+    }
+    let failure = match candidate {
+        Ok(Some(false)) => {
             let _ = shell.update_settings(|settings| {
                 settings.last_project = None;
                 Ok(())
             });
-            let failure = Failure::new(
+            Some(Failure::new(
                 "missing",
                 texts::format(&shell.language(), "missing", "path", &last),
-            );
-            shell.status(&app, error_status(&last, &failure));
-        } else if shell.startup_project.as_deref() == Some(&last) {
-            shell.status(&app, json!({"phase":"ready", "path":last}));
-            let _ = open_project(&app, last).await;
+            ))
         }
-    }
-    window::finish_startup(&app);
+        Err(error) => Some(Failure::new("invalid-path", error.to_string())),
+        _ => None,
+    };
+    launcher_locked(
+        &app,
+        &shell,
+        failure.map(|error| error_status(&last, &error)),
+    )
+    .await;
 }
 
 pub fn request_quit(app: &AppHandle) {
@@ -619,6 +674,20 @@ pub async fn install_update(
         return Err(texts::text(&shell.language(), "installUnavailable").into());
     }
     if unsaved::confirm(app).await.is_err() {
+        return Ok(());
+    }
+    let installation =
+        tauri::async_runtime::spawn_blocking(crate::mcp_sessions::Installation::begin)
+            .await
+            .map_err(|error| error.to_string())?
+            .map_err(|error| {
+                if error.kind() == std::io::ErrorKind::WouldBlock {
+                    texts::text(&shell.language(), "mcpUpdateInProgress").into()
+                } else {
+                    error.to_string()
+                }
+            })?;
+    if !updater::confirm_mcp_sessions(app, installation.sessions).await {
         return Ok(());
     }
     if shell.closing.swap(true, Ordering::SeqCst) {
@@ -681,6 +750,8 @@ pub async fn install_update(
         Err(error) => Err(error),
     };
     if result.is_ok() && !dry_run {
+        // 2026-11-12: installation remains gated until process exit, including an asynchronous app.exit.
+        std::mem::forget(installation);
         shell.quit_ready.store(true, Ordering::SeqCst);
         app.exit(0);
         return result;
@@ -819,6 +890,39 @@ pub(crate) mod tests {
         let saved = Settings::load(&sandbox.0, "en", &shell.log);
         assert_eq!(saved.language, "ru");
         assert_eq!(saved.extra["future"], json!({"electron":{"preserve":true}}));
+    }
+
+    #[tokio::test]
+    async fn startup_wait_is_cancelled_before_or_during_window_creation() {
+        let sandbox = Sandbox::new();
+        let shell = shell(&sandbox.0, None);
+        let startup = shell.next_launch();
+        let waiting = shell.while_current(startup, std::future::pending::<()>());
+        let selection = async {
+            tokio::task::yield_now().await;
+            shell.next_launch();
+        };
+        let (result, ()) = tokio::join!(waiting, selection);
+        assert_eq!(result.unwrap_err().code, "superseded");
+        assert_eq!(
+            shell
+                .while_current(startup, async { panic!("stale navigation") })
+                .await
+                .unwrap_err()
+                .code,
+            "superseded"
+        );
+    }
+
+    #[tokio::test]
+    async fn window_wait_allows_update_recovery_but_quit_cancels_it() {
+        let sandbox = Sandbox::new();
+        let shell = shell(&sandbox.0, None);
+        shell.closing.store(true, Ordering::SeqCst);
+        let recovery = shell.next_launch();
+        assert!(shell.while_current(recovery, async {}).await.is_ok());
+        shell.next_launch();
+        assert!(shell.while_current(recovery, async {}).await.is_err());
     }
 
     #[test]

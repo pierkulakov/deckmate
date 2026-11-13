@@ -5,7 +5,7 @@ import type { ByteRange } from '../src/contracts.ts';
 import { shortReference } from '../src/references.ts';
 import { parseDocument } from '../src/markdown.ts';
 import { markdownParser } from '../src/markdown-model.ts';
-import { cardReportAuthor, isCardSectionBoundary, parseOpenQuestions } from '../src/open-questions.ts';
+import { cardReportAuthor, isCardSectionBoundary } from '../src/open-questions.ts';
 import { readHeroSections } from './card-content.ts';
 import { readManagedMarkdown, readNativeCard, readProjectMarkdown } from './native-cards.ts';
 import { readAgentHistory, type AgentHistory } from './agent-changes.ts';
@@ -83,7 +83,6 @@ const stopWords = new Set(('этот этого этой этих есть ес�
 for (const word of cardStateMarkWords()) stopWords.add(word);
 
 const openQuestionTitles = markerWords('openQuestions');
-const decisionPrefixes = markerWords('decision').map(marker => marker + ' ');
 const sameTitle = (left: string, right: string) => left.trim().toLocaleLowerCase('ru-RU') === right.toLocaleLowerCase('ru-RU');
 const isOpenQuestionTitle = (title: string) => openQuestionTitles.some(candidate => sameTitle(title, candidate));
 // 2026-11-09: record-decision writes the project's own spelling (`## Decided` in English projects); matching only
@@ -226,15 +225,6 @@ function readNextMarkdown(references: ReadNext[]): string {
     `- ${reference.path}:${reference.from}-${reference.to} ${reference.title} ≈${reference.tokens}`).join('\n');
 }
 
-/** 2026-11-05: ask and brief use the same Doc source, independently of the card's Deck. */
-export function ruleCardFor(catalog: CatalogView, card: CatalogCard): CatalogCard | undefined {
-  if (card.kind === 'doc') return card;
-  if (card.id.startsWith('task:') || card.id.startsWith('hero:')) {
-    return catalog.cards.find(candidate => candidate.kind === 'doc' && candidate.path === card.path);
-  }
-  return catalog.cards.find(candidate => candidate.kind === 'doc' && candidate.id === card.parentId);
-}
-
 interface BriefSupplement { title: string; source: string; lines: string[]; shown: number; clipped: boolean; truncationMarker?: string }
 interface ReportBlock { start: number; end: number; markdown: string }
 
@@ -275,30 +265,19 @@ async function briefSupplements(catalog: CatalogView, root: string, card: Catalo
     const lines = latest.markdown.trimEnd().split(/\r?\n/u);
     supplements.push({ title: 'Report', source, lines: lines.slice(0, 10), shown: 0, clipped: lines.length > 10 || reports.length > 1 });
   }
-  const rule = ruleCardFor(catalog, card) ?? card;
-  const ruleBytes = rule.path === card.path ? bytes : await readProjectMarkdown(root, rule.path);
-  if (createHash('sha256').update(ruleBytes).digest('hex') !== rule.sourceHash) {
-    throw new RangeError('The rule file has changed. Repeat brief.');
-  }
-  const ruleMarkdown = ruleBytes.toString('utf8').replace(/^\uFEFF/u, '');
-  const questions = parseOpenQuestions(ruleMarkdown).questions ?? [];
-  const decisions = catalog.cards.filter(candidate => candidate.parentId === rule.id && candidate.kind === 'task'
-    && decisionPrefixes.some(prefix => candidate.title.startsWith(prefix)) && !candidate.deleted);
-  if (questions.length || decisions.length) {
-    const ruleSections = sectionsOf(sourceLines(ruleBytes));
-    const questionLines = questions.map(question => ruleMarkdown.slice(question.start, question.end));
+  const questions = card.openQuestions ?? [];
+  const pending = (card.decisions ?? []).filter(decision => decision.applied === null);
+  if (questions.length || pending.length) {
+    const ref = shortReference('c', card.id);
+    const lines = [
+      ...questions.map((question, index) => `Ask ${ref}#${index + 1} · @${question.assignee ?? 'unassigned'} · target ${question.target ?? ref} · ${question.text}`),
+      ...pending.map(decision => `Apply #${decision.index} · ${decision.question ? decision.question + ' → ' : ''}${decision.answer} — ${decision.by} · target ${decision.target ?? ref}`),
+    ];
     const sources: string[] = [];
-    for (const section of ruleSections.filter(section => isQuestionSectionTitle(section.title))) {
-      sources.push(sourceReference(readNext, rule.path, ruleBytes, section.from, section.to, section.title));
+    for (const section of sectionsOf(sourceLines(bytes)).filter(section => isQuestionSectionTitle(section.title))) {
+      sources.push(sourceReference(readNext, card.path, bytes, section.from, section.to, section.title));
     }
-    const decided = ruleSections.find(section => isDecidedTitle(section.title));
-    const answers = decided?.lines.slice(1).filter(line => line.text.trim()).map(line => line.text) ?? [];
-    // 2026-11-05: record-decision keeps answers without question IDs; never invent a question/answer pairing.
-    if (decisions.length) questionLines.push(...decisions.filter(decision => !questions.some(question =>
-      question.taskRef === shortReference('c', decision.id))).map(decision => `- ${cardLabel(decision)}`));
-    if (answers.length) questionLines.push('Decided in the rule (answers are not linked to individual questions):', ...answers);
-    supplements.push({ title: 'Agent questions', source: sources.join(' · ') || rule.path,
-      lines: questionLines.flatMap(line => line.split(/\r?\n/u)), shown: 0, clipped: false });
+    supplements.push({ title: 'Agent questions', source: sources.join(' · ') || card.path, lines, shown: 0, clipped: false });
   }
   if (card.journey) {
     const journey = catalog.journeys?.find(candidate => candidate.id === card.journey!.journeyId);

@@ -1,8 +1,7 @@
 import { afterEach, expect, it, vi } from 'vitest';
 import { createHash } from 'node:crypto';
 import { execFile } from 'node:child_process';
-import { appendFile, mkdir, mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { appendFile, mkdir, readFile, realpath, symlink, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { promisify } from 'node:util';
 import type { FastifyInstance } from 'fastify';
@@ -19,15 +18,34 @@ import type { CatalogEdit } from '../src/catalog-contracts.ts';
 import { shortReference } from '../src/references.ts';
 import { run as runReport } from '../tools/commands/report.ts';
 import { run as runState } from '../tools/commands/state.ts';
+import { tempProjects } from './helpers/temp-projects.ts';
+
+const python = vi.hoisted(() => ({ calls: [] as string[][], fail: false }));
+vi.mock('node:child_process', async importOriginal => {
+  const actual = await importOriginal<typeof import('node:child_process')>();
+  const { promisify } = await import('node:util');
+  const execute = promisify(actual.execFile);
+  const execFile = Object.assign(vi.fn(actual.execFile), {
+    [promisify.custom]: async (...args: Parameters<typeof execute>) => {
+      if (args[0] !== 'fixture-python') return execute(...args);
+      python.calls.push([...(args[1] as string[])]);
+      if (python.fail) throw Object.assign(new Error('Rebuild failed'), { stdout: 'private-stdout', stderr: 'private-stderr' });
+      return { stdout: '', stderr: '' };
+    },
+  });
+  return { ...actual, execFile };
+});
 
 const execute = promisify(execFile);
-const roots: string[] = [];
+const temps = tempProjects('deckmate-cli-write-');
 const apps: Array<{ app: FastifyInstance; closed: Promise<void> }> = [];
 const port = 4392;
 const taskId = 'task:features/example.md#1.1';
 const headers = { host: `127.0.0.1:${port}` };
 
 afterEach(async () => {
+  python.calls = [];
+  python.fail = false;
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
   for (const { app, closed } of apps.splice(0)) {
@@ -37,16 +55,13 @@ afterEach(async () => {
     await closed;
     await app.close();
   }
-  for (const root of roots.splice(0)) {
-    const relative = path.relative(tmpdir(), await realpath(root));
-    if (!relative || relative.startsWith('..') || path.isAbsolute(relative)) throw new Error('Unsafe fixture cleanup');
-    await rm(root, { recursive: true, force: true });
-  }
+  vi.unstubAllEnvs();
+  await temps.removeAll();
 });
 
 async function fixture() {
-  const root = await mkdtemp(path.join(tmpdir(), 'deckmate-cli-write-'));
-  roots.push(root);
+  const root = await temps.create();
+  vi.stubEnv('DECKMATE_COORDINATION', path.join(root, '.coordination'));
   await mkdir(path.join(root, 'features'));
   await mkdir(path.join(root, 'tasks'));
   await writeFile(path.join(root, 'features/example.md'), '\uFEFF# Example\r\n## 1 — Work\r\nIntro.\r\n'
@@ -104,6 +119,55 @@ it('reuses the offline service, preserves neighbouring bytes and records one att
   expect(activity.events[0].actorMemberId).toBe('codex');
 });
 
+it.each(['files', 'server'] as const)('runs project Python only through the application HTTP service, not offline (%s)', async via => {
+  const { root, config, edit } = await fixture();
+  await mkdir(path.join(root, 'Tools'));
+  await writeFile(path.join(root, 'Tools/board.py'), '# Project code must not run offline\n');
+  config.python = 'fixture-python';
+  if (via === 'server') await connect(config); else offline();
+  python.calls = [];
+  const result = await writeCatalog(config, 'sandbox', edit, 'codex');
+  if (via === 'files') {
+    expect(python.calls).toEqual([]);
+    expect(result.warnings.join(' ')).toContain('board rebuild skipped; open the project in Deckmate to rebuild');
+  } else {
+    expect(python.calls).toEqual([
+      ['-B', expect.stringContaining('rebuild-board.py'), root],
+      ['-B', path.join(root, 'Tools/board.py'), '--check'],
+    ]);
+    expect(result.warnings).toEqual([]);
+  }
+  expect(await readFile(path.join(root, 'features/example.md'), 'utf8')).toContain('Added report text.');
+});
+
+it('keeps failed rebuild stdout/stderr in the process log, not in the HTTP warning', async () => {
+  const { root, config, edit } = await fixture();
+  await mkdir(path.join(root, 'Tools'));
+  await writeFile(path.join(root, 'Tools/board.py'), '# fixture\n');
+  config.python = 'fixture-python';
+  const log = vi.spyOn(console, 'error').mockImplementation(() => {});
+  await connect(config);
+  python.fail = true;
+  const result = await writeCatalog(config, 'sandbox', edit, 'codex');
+  expect(result.warnings.join(' ')).toContain('board was not rebuilt');
+  expect(JSON.stringify(result)).not.toContain('private-');
+  expect(log).toHaveBeenCalledWith('Deckmate: board rebuild failed', expect.objectContaining({ stdout: 'private-stdout', stderr: 'private-stderr' }));
+});
+
+it.each(['files', 'server'] as const)('does not report an unsaved failure after encountering an external Tools junction via %s', async via => {
+  const { root, config, edit } = await fixture();
+  const outside = await temps.create();
+  await writeFile(path.join(outside, 'board.py'), '# Must not execute\n');
+  if (via === 'server') await connect(config); else offline();
+  await symlink(outside, path.join(root, 'Tools'), process.platform === 'win32' ? 'junction' : 'dir');
+  config.python = 'fixture-python';
+  vi.spyOn(console, 'error').mockImplementation(() => {});
+  const result = await writeCatalog(config, 'sandbox', edit, 'codex');
+  expect(result.warnings.join(' ')).toContain(via === 'files' ? 'board rebuild skipped' : 'board was not rebuilt');
+  expect(python.calls).toEqual([]);
+  expect(await readFile(path.join(root, 'features/example.md'), 'utf8')).toContain('Added report text.');
+});
+
 it('sends the session token and actor through the real API and matches offline bytes and events', async () => {
   const local = await fixture();
   offline();
@@ -157,15 +221,15 @@ it('enforces read-only, live and sandbox branch guards before contacting a serve
   expect((await writeCatalog({ ...config, editMode: 'sandbox' }, 'sandbox', edit, null)).via).toBe('files');
 });
 
-it('rejects a different project on the configured port without a POST or a file fallback', async () => {
+it('writes files when a legacy server on the configured port has a different project, without a POST', async () => {
   const { root, config, edit } = await fixture();
   const before = await readFile(path.join(root, 'features/example.md'));
   const fetch = vi.spyOn(globalThis, 'fetch')
     .mockResolvedValueOnce(Response.json({ token: 'token' }))
     .mockResolvedValueOnce(Response.json({ rootIdentity: 'another-project' }));
-  await expect(writeCatalog(config, 'sandbox', edit, null)).rejects.toMatchObject({ status: 409 });
+  await expect(writeCatalog(config, 'sandbox', edit, null)).resolves.toEqual({ via: 'files', warnings: [] });
   expect(fetch).toHaveBeenCalledTimes(2);
-  expect(await readFile(path.join(root, 'features/example.md'))).toEqual(before);
+  expect(await readFile(path.join(root, 'features/example.md'))).not.toEqual(before);
 });
 
 it.each([403, 409, 422, 503])('keeps HTTP %s errors and never falls back to files', async status => {

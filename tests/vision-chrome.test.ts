@@ -16,8 +16,8 @@ describe.skipIf(!browserPath)('Vision tab chrome (browser)', () => {
     }
     throw new Error('Timed out: ' + expression + '\n' + page.consoleErrors.join('\n'));
   }
-  async function open(theme: 'dark' | 'light', lang = 'en', warm = '') {
-    await page.send('Page.navigate', { url: `${browserFixtureUrl('vision-chrome')}?theme=${theme}&lang=${lang}&warm=${warm}&instance=${Math.random()}` });
+  async function open(theme: 'dark' | 'light', lang = 'en') {
+    await page.send('Page.navigate', { url: `${browserFixtureUrl('vision-chrome')}?theme=${theme}&lang=${lang}&instance=${Math.random()}` });
     await until(`Boolean(document.querySelector('.vision-canvas .excalidraw')) && ['Saved', 'Сохранено'].includes(document.querySelector('.vision-save-state').textContent)`);
   }
   beforeAll(async () => {
@@ -114,16 +114,27 @@ describe.skipIf(!browserPath)('Vision tab chrome (browser)', () => {
     expect(phone.mint).toBe('30x30');
   });
 
-  it.each(['en', 'ru'] as const)('%s stays consistent on cold, warm and repeated entry', async lang => {
-    for (const warm of ['', 'before']) {
-      await open('dark', lang, warm);
+  it.each(['en', 'ru'] as const)('%s stays consistent on repeated entry', async lang => {
+    let previousLabels: string[] | undefined;
+    for (let entry = 0; entry < 2; entry++) {
+      await open('dark', lang);
       await until(`document.documentElement.lang.split('-')[0] === '${lang}'`);
       const labels = await page.evaluate(`Array.from(document.querySelectorAll('.excalidraw [aria-label]'), node => node.getAttribute('aria-label')).filter(Boolean)`);
-      await page.evaluate('window.visionTest.warm()');
       expect(await page.evaluate(`document.documentElement.lang.split('-')[0]`)).toBe(lang);
-      expect(await page.evaluate(`Array.from(document.querySelectorAll('.excalidraw [aria-label]'), node => node.getAttribute('aria-label')).filter(Boolean)`)).toEqual(labels);
+      if (previousLabels) expect(labels).toEqual(previousLabels);
+      previousLabels = labels;
       expect(await page.evaluate(`document.querySelector('.vision-save-state').textContent`)).toBe(lang === 'ru' ? 'Сохранено' : 'Saved');
     }
+  });
+
+  it.each(['en', 'ru'] as const)('keeps the icon-only new-board action named in the %s accessibility tree', async lang => {
+    await page.send('Emulation.setDeviceMetricsOverride', { width: 375, height: 812, deviceScaleFactor: 1, mobile: false });
+    await open('dark', lang);
+    const dom = await page.send('DOM.getDocument');
+    const button = await page.send('DOM.querySelector', { nodeId: dom.result.root.nodeId, selector: '.vision-new-board' });
+    const { result } = await page.send('Accessibility.getPartialAXTree', { nodeId: button.result.nodeId });
+    expect(result.nodes[0].role.value).toBe('button');
+    expect(result.nodes[0].name.value).toBe(lang === 'ru' ? 'Новая доска' : 'New board');
   });
 
   it('keeps the full title on focus, with reachable overview, 100% and selection controls on touch', async () => {
@@ -197,7 +208,7 @@ describe.skipIf(!browserPath)('Vision tab chrome (browser)', () => {
     await page.evaluate('document.fonts.ready');
     const nodes = await page.evaluate(`Array.from(document.querySelectorAll('[data-node-case]'), host => {
       const node=host.firstElementChild, r=node.getBoundingClientRect();
-      const metadata=[...node.querySelectorAll('.vision-lane-main, .deckmate-card-title, .card-face-state, .card-face-due, .deckmate-card-effort, .deckmate-card-properties')].map(item => item.getBoundingClientRect());
+      const metadata=[...node.querySelectorAll('.vision-lane-main, .deckmate-card-title, .card-face-state, .card-face-due, .card-metrics-effort, .deckmate-card-properties')].map(item => item.getBoundingClientRect());
       const tags=node.querySelector('.card-tags'), tag=tags.querySelector('.tag-badge'), tagRect=tags.getBoundingClientRect();
       return { name:host.dataset.nodeCase, width:r.width, height:r.height, overflowX:node.scrollWidth-node.clientWidth, overflowY:node.scrollHeight-node.clientHeight,
         metadataFits:metadata.every(m => m.left >= r.left && m.right <= r.right && m.top >= r.top && m.bottom <= r.bottom), text:node.textContent,
@@ -219,7 +230,7 @@ describe.skipIf(!browserPath)('Vision tab chrome (browser)', () => {
         expect(node.accessible).toContain('Ждёт 1');
         expect(node.accessible).toContain('Вопросов: 1');
       }
-      if (node.name.endsWith('questions-only')) expect(node.text).toContain('Вопросов: 1');
+      if (node.name.endsWith('questions-only')) expect(node.text).not.toContain('Вопросов: 1');
       // A Doc Card carries no metrics; every other node shows its estimate, a zero included.
       const estimate = /(?:Оц\. |Оценка: |Оценка: своя и Sub Cards — )0/u;
       if (node.text.startsWith('Doc')) expect(node.text).not.toMatch(estimate);
@@ -232,7 +243,7 @@ describe.skipIf(!browserPath)('Vision tab chrome (browser)', () => {
     await until(`document.querySelectorAll('[data-node-case]').length === 18`);
     await page.evaluate('document.fonts.ready');
     const nodes = await page.evaluate(`Array.from(document.querySelectorAll('[data-node-case]'), host => {
-      const node = host.firstElementChild, icon = node.querySelector('.vision-card-priority-icon svg');
+      const node = host.firstElementChild, icon = node.querySelector('.vision-card-priority-icon .priority-icon svg');
       const r = node.getBoundingClientRect(), p = icon?.getBoundingClientRect();
       return { name: host.dataset.nodeCase, doc: node.classList.contains('kind-doc'), label: node.querySelector('.deckmate-card-opener').getAttribute('aria-label'), hasIcon: !!icon,
         fits: !icon || (p.width >= 16 && p.left >= r.left && p.right <= r.right && p.top >= r.top && p.bottom <= r.bottom),

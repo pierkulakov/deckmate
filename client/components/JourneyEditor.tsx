@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { prepareEntrance } from '../prepared-motion.ts';
+import { primaryModifierPressed } from '../shortcut-format.ts';
 import * as Dialog from '@radix-ui/react-dialog';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import { ChartNoAxesColumn, ChevronDown, Copy, Info, LayoutGrid, Layers, LoaderCircle, Plus, X } from 'lucide-react';
@@ -460,7 +461,7 @@ export function JourneyEditor({ catalog, deck, source, initialJourneyId, writabl
       onEscapeKeyDown={event => { event.preventDefault(); if (screen === 'catalog') { if (!(event.target instanceof Element && event.target.closest('.confirm-strip'))) catalogBack.current?.(); return; } if (selectedIds.length) setSelectedIds([]); else requestNavigation('close'); }} onPointerDownOutside={event => event.preventDefault()}
       onKeyDown={event => {
         if (screen !== 'editor' || inspectedId || !editable || (event.target instanceof HTMLElement && event.target.closest('input,textarea,select,[contenteditable="true"],[role="menu"]'))) return;
-        if ((event.ctrlKey || event.metaKey) && event.code === 'KeyA') { event.preventDefault(); event.stopPropagation(); setSelectedIds(draft.steps.map(step => step.id)); }
+        if (primaryModifierPressed(event) && event.code === 'KeyA') { event.preventDefault(); event.stopPropagation(); setSelectedIds(draft.steps.map(step => step.id)); }
       }}>
       <Dialog.Title className="visually-hidden">{t.prepareJourney}{deck.title}</Dialog.Title>
       <Dialog.Description className="visually-hidden">{t.editorDescription}</Dialog.Description>

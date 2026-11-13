@@ -11,6 +11,7 @@
    button 22 px into the results; switching views does not move the first heading. */
 .deck-table-scroll:has(> .deck-table > tbody > .catalog-table-group) { padding-top: 10px; }
 .deck-table {
+  --group-control-size: 24px;
   --row-ink: var(--card-ink);
   --row-meta: var(--card-meta-ink, var(--card-muted));
   --row-strip: var(--card-strip, var(--card-metal));
@@ -39,6 +40,8 @@
 .deck-table .catalog-table-group > th { display: block; padding: 0; font: inherit; text-align: left; }
 .deck-table .catalog-card-group-heading { position: relative; display: flex; align-items: center; gap: var(--space-3); height: 24px; min-height: 24px; margin: 0; color: var(--muted); font-size: 12px; font-weight: 400; line-height: 14px; }
 .deck-table .catalog-table-group .catalog-card-group-heading > .catalog-group-label { background: none; }
+/* 2026-11-12: a zone's checkbox belongs to its label, leaving the preceding drag handle a separate target. */
+.deck-table .catalog-card-group-heading .catalog-group-label { position: relative; }
 .deck-table .catalog-card-group-heading > .catalog-zone-handle { margin-right: 0; }
 .deck-table .catalog-card-group-heading .catalog-zone-title-input { font-size: 12px; }
 .deck-table .catalog-card-group-heading .catalog-group-count { font: 500 11px/12px 'Geist Mono', monospace; font-variant-numeric: tabular-nums; }
@@ -157,6 +160,21 @@
 /* 2026-11-08: below 460 px the title owns the first line; the parent and metrics share the second.
    The nested subgrid keeps the parent inside its cell without letting it squeeze the title. */
 @container deck-table (max-width: 460px) {
+  /* 2026-11-12: reserve selection space and move zone tools below the label, as in narrow card lanes. */
+  .deck-table .catalog-table-group { margin-bottom: 0; padding-bottom: var(--space-3); background: var(--ground); }
+  .deck-table .catalog-card-group-heading { display: grid; grid-template-columns: auto minmax(0, 1fr) auto var(--group-control-size); gap: var(--space-1) var(--space-2); height: auto; padding-block: var(--space-2); }
+  .deck-table .catalog-card-group-heading > .catalog-zone-handle { grid-area: 1 / 1; }
+  .deck-table .catalog-table-group .catalog-card-group-heading > .catalog-group-label { grid-area: 1 / 1 / 2 / 4; max-width: 100%; padding-left: 24px; padding-right: 0; }
+  .deck-table .catalog-table-group .catalog-zone-heading > .catalog-group-label { grid-column-start: 2; }
+  .deck-table .catalog-table-group .catalog-card-group-heading .catalog-group-label > :is(.catalog-group-filter, .catalog-zone-title-input, .catalog-group-count) { transform: none; }
+  .deck-table .catalog-card-group-heading .catalog-group-count { flex-shrink: 0; }
+  .deck-table .catalog-card-group-heading .catalog-group-filter { overflow: visible; white-space: normal; overflow-wrap: anywhere; }
+  .deck-table .catalog-card-group-heading > .catalog-group-rule { display: none; }
+  .deck-table .catalog-card-group-heading > .catalog-group-add { grid-area: 1 / 4; }
+  .deck-table .catalog-card-group-heading > .catalog-zone-tools { grid-area: 2 / 1 / 3 / 3; flex-wrap: wrap; margin-left: 0; }
+  .deck-table .catalog-card-group-heading > .catalog-group-effort { grid-area: 2 / 3 / 3 / 5; justify-self: end; margin-left: 0; }
+  .deck-table .catalog-card-group-heading:not(:has(> .catalog-group-effort)) > .catalog-zone-tools { grid-column-end: -1; }
+  .deck-table .catalog-card-group-heading .catalog-zone-title-input { width: 100%; min-width: 0; }
   /* 2026-11-10: the two-line row keeps 24 px at its left for the checkbox inside it (always shown on touch), so the first
      track grows from 36 px to 52 px: the 4 px strip, the 24 px, and the Priority cell. */
   .deck-table { grid-template-columns: 52px max-content minmax(0, 1fr) 0 max-content; }
@@ -187,5 +205,15 @@
   /* The lane checkbox is always shown on touch, so its name and rule keep the 24 px slide. */
   .deck-table .catalog-card-group-heading .catalog-group-label > :is(.catalog-group-filter, .catalog-zone-title-input, .catalog-group-count) { transform: translateX(24px); }
   .deck-table .catalog-card-group-heading > .catalog-group-rule { transform: translateX(24px); clip-path: inset(0 24px 0 0); }
+}
+@media (pointer: coarse) {
+  .deck-table { --group-control-size: var(--control-target-touch); }
+  .deck-table .catalog-table-group { margin-bottom: 0; padding-bottom: var(--space-3); background: var(--ground); }
+  .deck-table .catalog-card-group-heading { height: auto; min-height: var(--control-target-touch); }
+  .deck-table .catalog-table-group .catalog-card-group-heading > .catalog-group-label { padding-left: calc(var(--control-target-touch) + var(--space-2)); }
+  .deck-table .catalog-card-group-heading .catalog-group-select { left: 0; justify-content: center; width: var(--control-target-touch); height: var(--control-target-touch); }
+  .deck-table .catalog-card-group-heading .catalog-group-filter { min-height: var(--control-target-touch); margin-block: 0; }
+  .deck-table .catalog-table-group .catalog-card-group-heading .catalog-group-label > :is(.catalog-group-filter, .catalog-zone-title-input, .catalog-group-count) { transform: none; }
+  .deck-table .catalog-card-group-heading > .catalog-group-rule { transform: none; clip-path: none; }
 }
 @media (prefers-reduced-motion: reduce) { .deck-table-row, .deck-table-select input, .deck-table-row .card-transfer-handle { transition: none; } }

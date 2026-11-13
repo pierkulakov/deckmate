@@ -3,6 +3,9 @@ import { openHeadlessBrowser, type HeadlessPage } from '../tools/layout-capture.
 import { browserFixtureUrl } from './browser-fixture.ts';
 import { requireBrowser } from './browser-environment.ts';
 import { shortReference } from '../src/references.ts';
+import { recordDecision } from '../src/open-questions.ts';
+import { mkdir, writeFile } from 'node:fs/promises';
+import path from 'node:path';
 
 const browserPath = requireBrowser();
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
@@ -29,8 +32,9 @@ describe.skipIf(!browserPath)('open card first UX batch (real browser)', () => {
     await delay(70);
   }
   async function key(key: string, code = key) {
-    const virtualKey = { Escape: 27, Enter: 13, Tab: 9, Space: 32, KeyW: 87 }[code];
-    for (const type of ['keyDown', 'keyUp']) await page.send('Input.dispatchKeyEvent', { type, key, code, windowsVirtualKeyCode: virtualKey });
+    const virtualKey = { Escape: 27, Enter: 13, Tab: 9, Space: 32, ArrowDown: 40, KeyW: 87 }[code];
+    for (const type of ['keyDown', 'keyUp']) await page.send('Input.dispatchKeyEvent', { type, key, code, windowsVirtualKeyCode: virtualKey,
+      ...(type === 'keyDown' && (key === 'Enter' || key === ' ') ? { text: key === 'Enter' ? '\r' : ' ' } : {}) });
     await delay(100);
   }
   async function openReview() {
@@ -51,6 +55,7 @@ describe.skipIf(!browserPath)('open card first UX batch (real browser)', () => {
     await page.send('Emulation.setFocusEmulationEnabled', { enabled: true });
     await page.send('Page.navigate', { url: browserFixtureUrl('card-preview-first-batch') });
     await until('Boolean(window.firstBatch && document.querySelector(".card-preview"))');
+    await page.evaluate(`localStorage.setItem('deckmate-current-member', 'maya')`);
   }, 90000);
   afterAll(async () => { await page?.close(); }, 20000);
 
@@ -581,25 +586,780 @@ describe.skipIf(!browserPath)('open card first UX batch (real browser)', () => {
     await click('.card-edit-save');
     await until(`document.querySelector('.card-content-save-status')?.textContent === 'Сохранено в файле'`);
     expect(await page.evaluate('window.firstBatch.requests[0].action')).toBe('update-card-content');
+    await until(`document.activeElement === document.querySelector('.card-content-edit-action') && document.activeElement.matches(':focus-visible')`);
   });
 
-  it('shows rich questions once, retains nested Markdown and protects an unanswered draft', async () => {
+  it.each(['light', 'dark'])('shows keyboard focus on the scrolling questions panel in %s', async theme => {
+    await page.send('Emulation.setDeviceMetricsOverride', { width: 1000, height: 500, deviceScaleFactor: 1, mobile: false });
+    await page.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: 'reduce' }] });
+    try {
+      const markdown = `## Open questions\n\n${Array.from({ length: 12 }, (_, index) => `- Question ${index + 1}?`).join('\n')}`;
+      await render({ kind: 'doc', lang: 'ru', theme, markdown });
+      await page.evaluate(`document.querySelector('.card-preview-open-questions').focus({ focusVisible: true })`);
+      await key('Enter');
+      await until(`document.activeElement === document.querySelector('.card-related-slot')`);
+      const focus = await page.evaluate(`(() => {
+        const panel = document.querySelector('.card-related-slot'), style = getComputedStyle(panel);
+        const rgb = value => value.match(/[\\d.]+/g).slice(0, 3).map(Number).map(value => {
+          const channel = value / 255; return channel <= .04045 ? channel / 12.92 : ((channel + .055) / 1.055) ** 2.4;
+        });
+        const luminance = value => { const [r, g, b] = rgb(value); return .2126 * r + .7152 * g + .0722 * b; };
+        const colors = [luminance(style.outlineColor), luminance(style.backgroundColor)].sort((a, b) => b - a);
+        return { focused: panel.matches(':focus-visible'), outline: style.outlineStyle, width: style.outlineWidth,
+          offset: style.outlineOffset, shadow: style.boxShadow, contrast: (colors[0] + .05) / (colors[1] + .05),
+          scrollable: panel.scrollHeight > panel.clientHeight && style.overflowY === 'auto' };
+      })()`);
+      expect(focus).toMatchObject({ focused: true, outline: 'solid', width: '2px', offset: '-2px', scrollable: true });
+      expect(focus.shadow).not.toBe('none');
+      expect(focus.contrast).toBeGreaterThanOrEqual(3);
+      await key('ArrowDown');
+      await key('ArrowDown');
+      await until(`document.querySelector('.card-related-slot').scrollTop > 0`);
+      expect(await page.evaluate(`document.activeElement === document.querySelector('.card-related-slot')`)).toBe(true);
+      if (process.env.DECKMATE_A11Y_SHOTS) {
+        await page.evaluate(`document.querySelector('.card-related-slot').scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'instant' })`);
+        await mkdir(process.env.DECKMATE_A11Y_SHOTS, { recursive: true });
+        const image = await page.send('Page.captureScreenshot', { format: 'png' });
+        await writeFile(path.join(process.env.DECKMATE_A11Y_SHOTS, `questions-focus-${theme}-1000.png`), Buffer.from(image.result.data, 'base64'));
+      }
+      await page.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: 'reduce' }, { name: 'forced-colors', value: 'active' }] });
+      expect(await page.evaluate(`(() => { const panel = document.querySelector('.card-related-slot'), style = getComputedStyle(panel);
+        return panel.matches(':focus-visible') && style.outlineStyle === 'solid' && style.outlineWidth === '2px'; })()`)).toBe(true);
+      await page.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: 'reduce' }] });
+      await key('Tab');
+      expect(await page.evaluate(`document.activeElement.closest('.card-related-slot') !== null && document.activeElement.matches(':focus-visible')`)).toBe(true);
+      await key('Escape');
+      const point = await page.evaluate(`(() => { const button = document.querySelector('.card-preview-open-questions');
+        button.scrollIntoView({ block: 'nearest', behavior: 'instant' });
+        const box = button.getBoundingClientRect(); return { x: box.x + box.width / 2, y: box.y + box.height / 2 }; })()`);
+      for (const type of ['mousePressed', 'mouseReleased']) await page.send('Input.dispatchMouseEvent', { type, ...point, button: 'left', clickCount: 1 });
+      await until(`document.activeElement === document.querySelector('.card-related-slot')`);
+      expect(await page.evaluate(`(() => { const panel = document.querySelector('.card-related-slot'); return !panel.matches(':focus-visible') && getComputedStyle(panel).outlineStyle === 'none'; })()`)).toBe(true);
+    } finally {
+      await page.send('Emulation.setEmulatedMedia', { features: [] });
+      await page.send('Emulation.clearDeviceMetricsOverride');
+    }
+  });
+
+  it.each([375, 1280])('opens questions in the card panel at %ipx in both themes', async width => {
+    await page.send('Emulation.setDeviceMetricsOverride', { width, height: 900, deviceScaleFactor: 1, mobile: false });
+    try {
+      for (const theme of ['light', 'dark']) {
+        const original = 'Context\n\n## Решено\n\n- Записано. — Pier, 2026-11-12\n- Длинное решение с подробностями для всей команды и ссылкой на [задачу](https://example.com). — Ася, 2026-11-11\n\n## Открыто\n\n- Какой целевой FPS (30 → 60) — для слабых ноутбуков? — [Решение](/r/c-0123456789)\n- [ ] Длинный вопрос о том, как сохранить контекст решения для всей команды?\n- [ ] Второй вопрос\n- [ ] Третий вопрос';
+        const markdown = recordDecision(original, 0, 'Какой целевой FPS (30 → 60) — для слабых ноутбуков?', '60 FPS — сначала оптимизируем самые тяжёлые сцены.', 'Pier', '2026-11-12', 'ru', 'ru');
+        await render({ kind: 'doc', lang: 'ru', theme, markdown });
+        expect(await page.evaluate(`document.querySelector('.card-preview-document').textContent`)).not.toContain('Длинный вопрос');
+        expect(await page.evaluate(`document.querySelector('.card-preview-document').textContent`)).not.toContain('Записано.');
+        await click('.card-preview-open-questions');
+        expect(await page.evaluate(`document.querySelector('.card-preview-open-questions').getAttribute('aria-pressed')`)).toBe('true');
+        expect(await page.evaluate(`document.querySelectorAll('.open-question-row').length`)).toBe(3);
+        expect(await page.evaluate(`Array.from(document.querySelectorAll('.open-question-discuss-action'), node => node.textContent)`)).toEqual(['Скопировать ID вопроса', 'Скопировать ID вопроса', 'Скопировать ID вопроса']);
+        expect(await page.evaluate(`document.querySelectorAll('.open-questions-list input[type="checkbox"]').length`)).toBe(0);
+        expect(await page.evaluate(`document.querySelector('.open-questions-resolved').textContent`)).toContain('Решения');
+        expect(await page.evaluate(`document.documentElement.scrollWidth <= innerWidth`)).toBe(true);
+        if (process.env.DECKMATE_QUESTION_SHOTS) {
+          await mkdir(process.env.DECKMATE_QUESTION_SHOTS, { recursive: true });
+          const screenshot = await page.send('Page.captureScreenshot', { format: 'png' });
+          await writeFile(path.join(process.env.DECKMATE_QUESTION_SHOTS, `preview-${theme}-${width}.png`), Buffer.from(screenshot.result.data, 'base64'));
+          await click('.open-question-answer-action');
+          const answerScreenshot = await page.send('Page.captureScreenshot', { format: 'png' });
+          await writeFile(path.join(process.env.DECKMATE_QUESTION_SHOTS, `answer-${theme}-${width}.png`), Buffer.from(answerScreenshot.result.data, 'base64'));
+          await key('Escape');
+        }
+        expect(await page.evaluate(`document.querySelector('.open-questions-resolved').textContent`)).toContain('Записано.');
+        expect(await page.evaluate(`document.querySelector('.resolved-attribution').textContent`)).toContain('Pier · 2026-11-12');
+        expect(await page.evaluate(`document.querySelectorAll('.resolved-question').length`)).toBe(1);
+        expect(await page.evaluate(`document.querySelector('.resolved-question').textContent`)).toBe('Какой целевой FPS (30 → 60) — для слабых ноутбуков? →');
+        expect(await page.evaluate(`document.querySelector('.open-questions-resolved').textContent`)).not.toContain('Исходный вопрос не записан');
+        expect(await page.evaluate(`document.querySelector('.open-questions-resolved').textContent`)).not.toContain('deckmate:decision');
+        expect(await page.evaluate(`document.querySelector('.resolved-decision a').getAttribute('href')`)).toBe('https://example.com/');
+        expect(await page.evaluate(`document.querySelector('.card-preview-open-questions').nextElementSibling.getAttribute('aria-label')`)).toBe('История');
+        expect(await page.evaluate(`document.documentElement.scrollWidth <= innerWidth`)).toBe(true);
+        if (process.env.DECKMATE_QUESTION_SHOTS) {
+          await page.evaluate(`document.querySelector('.open-questions-resolved').scrollIntoView({ block: 'start', behavior: 'instant' })`);
+          const screenshot = await page.send('Page.captureScreenshot', { format: 'png' });
+          await writeFile(path.join(process.env.DECKMATE_QUESTION_SHOTS, `resolved-${theme}-${width}.png`), Buffer.from(screenshot.result.data, 'base64'));
+        }
+        await key('Escape');
+        expect(await page.evaluate(`document.activeElement === document.querySelector('.card-preview-open-questions')`)).toBe(true);
+      }
+    } finally { await page.send('Emulation.clearDeviceMetricsOverride'); }
+  });
+
+  it('shows an English legacy decision without offering a separate Task', async () => {
+    const reference = shortReference('c', 'card:dependency');
+    const markdown = recordDecision(`## Open questions\n\n- Which FPS? — [Decision](/r/${reference})\n`, 0, 'Which FPS?', '60 on low-end laptops.', 'Maya Chen', '2026-11-12', 'en', 'en');
+    await render({ kind: 'doc', dependencies: true, markdown });
+    await click('.card-preview-open-questions');
+    expect(await page.evaluate(`document.querySelector('.resolved-question').textContent`)).toBe('Which FPS? →');
+    expect(await page.evaluate(`document.querySelector('.resolved-decision').textContent`)).toBe('60 on low-end laptops.');
+    expect(await page.evaluate(`document.querySelector('.open-questions-resolved').textContent`)).not.toContain('Original question not recorded');
+    expect(await page.evaluate(`document.querySelector('.decision-status').textContent`)).toBe('to apply');
+    expect(await page.evaluate('window.firstBatch.selections')).toEqual([]);
+  });
+
+  it('keeps legacy task links out of the question actions', async () => {
+    const reference = shortReference('c', 'card:dependency');
+    await render({ kind: 'doc', dependencies: true, markdown: `## Open questions\n\n- [ ] Which FPS? — [Decision](/r/${reference})\n- [ ] Which deck?\n` });
+    await click('.card-preview-open-questions');
+    expect(await page.evaluate(`document.querySelector('.open-question-text').textContent`)).toBe('Which FPS?');
+    expect(await page.evaluate(`document.querySelectorAll('.open-question-assign-action, .open-question-task').length`)).toBe(0);
+    expect(await page.evaluate(`document.querySelectorAll('.open-question-discuss-action').length`)).toBe(2);
+  });
+
+  it('retains rich question content and protects an unanswered draft', async () => {
     const markdown = 'Context\n\n## Open questions\n\n- Which **light**?\n  - Warm\n  - Cold\n\n## Notes\n\nKeep this paragraph.\n';
     await render({ kind: 'doc', markdown });
-    expect(await page.evaluate(`document.querySelector('.card-preview-document').textContent`)).not.toContain('Which light?');
-    expect(await page.evaluate(`document.querySelector('.open-question-text').textContent`)).toContain('Which light?');
+    await click('.card-preview-open-questions');
     expect(await page.evaluate(`document.querySelector('.open-question-text').textContent`)).toContain('Cold');
     expect(await page.evaluate(`document.querySelector('.open-question-text strong').textContent`)).toBe('light');
-    await click('.open-question-actions button:last-child');
+    await click('.open-question-answer-action');
     await page.send('Input.insertText', { text: 'Keep my answer' });
     expect(await page.evaluate(`document.querySelector('.card-content-edit-action').disabled`)).toBe(true);
-    expect(await page.evaluate(`document.querySelector('.open-questions-heading').disabled`)).toBe(true);
+    expect(await page.evaluate(`document.querySelector('.card-questions-panel-heading button').disabled`)).toBe(true);
+    await key('Escape');
     await key('Escape');
     await click('.card-content-edit-action');
-    expect(await page.evaluate(`document.querySelector('.open-questions')`)).toBe(null);
     expect(await page.evaluate(`document.querySelector('.card-edit-text').value`)).toContain(markdown);
     await click('.card-edit-link.is-cancel');
-    expect(await page.evaluate(`document.querySelectorAll('.open-questions').length`)).toBe(1);
+  });
+
+  it.each(['answer', 'ask'])('preserves the %s draft after a press on the dimmed card list', async form => {
+    await render({ deckLayout: true, markdown: '## Open questions\n\n- First question' });
+    await click('.card-preview-open-questions');
+    await until(`document.querySelector('.catalog-results').hasAttribute('inert')`);
+    await click(`.open-question-${form}-action`);
+    await page.send('Input.insertText', { text: 'Keep this draft' });
+    await until(`document.querySelector('.card-questions-panel-heading button').disabled`);
+    const point = await page.evaluate(`(() => {
+      const box = document.querySelector('.catalog-results').getBoundingClientRect();
+      return { x: box.right - 10, y: box.top + 40 };
+    })()`);
+    for (const type of ['mousePressed', 'mouseReleased']) await page.send('Input.dispatchMouseEvent', { type, ...point, button: 'left', clickCount: 1 });
+    await page.evaluate(`new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))`);
+    expect(await page.evaluate(`document.querySelector('.open-question-${form} textarea')?.value`)).toBe('Keep this draft');
+    expect(await page.evaluate('window.firstBatch.requests')).toEqual([]);
+    expect(await page.evaluate(`document.querySelector('.catalog-results').hasAttribute('inert')`)).toBe(true);
+    await click(`.open-question-${form} .open-question-answer-buttons button:first-child`);
+    for (const type of ['mousePressed', 'mouseReleased']) await page.send('Input.dispatchMouseEvent', { type, ...point, button: 'left', clickCount: 1 });
+    await until(`!document.querySelector('.open-questions') && !document.querySelector('.catalog-results').hasAttribute('inert')`);
+    expect(await page.evaluate(`document.activeElement === document.querySelector('.card-preview-open-questions')`)).toBe(true);
+  });
+
+  it('defaults the answering member, preserves multiline input and records with Ctrl+Enter', async () => {
+    await render({ kind: 'doc', people: 2, markdown: '## Open questions\n\n- [ ] First question\n- [ ] Second question' });
+    await click('.card-preview-open-questions');
+    await click('.open-question-answer-action');
+    expect(await page.evaluate(`document.querySelector('.open-question-answer select').value`)).toBe('maya');
+    await page.send('Input.insertText', { text: 'First line' });
+    await key('Enter');
+    await page.send('Input.insertText', { text: 'Second line' });
+    expect(await page.evaluate('window.firstBatch.requests.length')).toBe(0);
+    await page.send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13, modifiers: 2 });
+    await page.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13, modifiers: 2 });
+    await until('window.firstBatch.requests.length === 1');
+    expect(await page.evaluate('window.firstBatch.requests[0]')).toMatchObject({ action: 'record-decision', questionIndex: 0, memberId: 'maya', answer: 'First line\nSecond line' });
+  });
+
+  it.each(['en', 'ru'])('shows the sole human as text and records their identity in %s', async lang => {
+    await render({ kind: 'doc', people: 1, lang, markdown: '## Open questions\n\n- First question' });
+    await click('.card-preview-open-questions');
+    await click('.open-question-answer-action');
+    expect(await page.evaluate(`document.querySelector('.open-question-author').textContent`)).toBe(lang === 'ru' ? 'От имени:Maya Chen' : 'ByMaya Chen');
+    expect(await page.evaluate(`document.querySelector('.open-question-author select')`)).toBe(null);
+    expect(await page.evaluate(`document.querySelector('.open-question-answer button[type="submit"]').disabled`)).toBe(true);
+    await delay(500);
+    expect(await page.evaluate(`getComputedStyle(document.querySelector('.open-question-answer button[type="submit"]')).opacity`)).toBe('0.5');
+    await page.send('Input.insertText', { text: 'A decision' });
+    await click('.open-question-answer button[type="submit"]');
+    await until('window.firstBatch.requests.length === 1');
+    expect(await page.evaluate('window.firstBatch.requests[0]')).toMatchObject({ action: 'record-decision', memberId: 'maya', answer: 'A decision' });
+  });
+
+  it('records the chosen author when more than one human is available', async () => {
+    await render({ kind: 'doc', people: 2, markdown: '## Open questions\n\n- First question' });
+    await click('.card-preview-open-questions');
+    await click('.open-question-answer-action');
+    await page.send('Input.insertText', { text: 'A decision' });
+    await page.evaluate(`(() => { const select = document.querySelector('.open-question-author select');
+      select.value = 'lee'; select.dispatchEvent(new Event('change', { bubbles: true })); })()`);
+    await click('.open-question-answer button[type="submit"]');
+    await until('window.firstBatch.requests.length === 1');
+    expect(await page.evaluate('window.firstBatch.requests[0]')).toMatchObject({ action: 'record-decision', memberId: 'lee', answer: 'A decision' });
+  });
+
+  it('requires an author when no acting member is selected and identifies the addressee', async () => {
+    await page.evaluate(`localStorage.removeItem('deckmate-current-member')`);
+    try {
+      await render({ kind: 'task', people: 2, questions: [{ text: 'Who decides?', taskRef: null, assignee: 'lee' }] });
+      await click('.card-preview-open-questions');
+      await click('.open-question-answer-action');
+      expect(await page.evaluate(`document.querySelector('.open-question-answer .open-question-hint').textContent`)).toBe('Question addressed to Lee; check the answer author below.');
+      expect(await page.evaluate(`document.querySelector('.open-question-author select').value`)).toBe('');
+      await page.send('Input.insertText', { text: 'An answer' });
+      expect(await page.evaluate(`document.querySelector('.open-question-answer button[type="submit"]').disabled`)).toBe(true);
+      await page.evaluate(`(() => { const select = document.querySelector('.open-question-author select'); select.value = 'maya'; select.dispatchEvent(new Event('change', { bubbles: true })); })()`);
+      await click('.open-question-answer button[type="submit"]');
+      await until('window.firstBatch.requests.length === 1');
+      expect(await page.evaluate('window.firstBatch.requests[0]')).toMatchObject({ memberId: 'maya', answer: 'An answer' });
+    } finally { await page.evaluate(`localStorage.setItem('deckmate-current-member', 'maya')`); }
+  });
+
+  it('keeps question actions reachable on a coarse phone and labels the question entry point', async () => {
+    await page.send('Emulation.setDeviceMetricsOverride', { width: 375, height: 812, deviceScaleFactor: 1, mobile: false });
+    await page.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 1 });
+    try {
+      await render({ kind: 'task', lang: 'ru', theme: 'dark', people: 2 });
+      expect(await page.evaluate(`(() => { const button = document.querySelector('.card-preview-questions-shortcut'); return button.getBoundingClientRect().height >= 44 && button.textContent.includes('Вопросы и решения'); })()`)).toBe(true);
+      await click('.card-preview-questions-shortcut');
+      await click('.open-question-ask-action');
+      expect(await page.evaluate(`getComputedStyle(document.querySelector('.open-question-ask .open-question-answer-footer')).position`)).toBe('sticky');
+      const layout = await page.evaluate(`(() => {
+        const panel = document.querySelector('.card-related-slot').getBoundingClientRect();
+        const footer = document.querySelector('.open-question-ask .open-question-answer-footer').getBoundingClientRect();
+        const buttons = [...document.querySelectorAll('.open-question-ask .open-question-answer-buttons button')].map(button => button.getBoundingClientRect());
+        return { visible: footer.bottom <= panel.bottom + 1 && footer.top >= panel.top, touch: buttons.every(button => button.height >= 44), overflow: document.documentElement.scrollWidth > innerWidth };
+      })()`);
+      expect(layout).toEqual({ visible: true, touch: true, overflow: false });
+      if (process.env.DECKMATE_QUESTION_SHOTS) {
+        await mkdir(process.env.DECKMATE_QUESTION_SHOTS, { recursive: true });
+        const screenshot = await page.send('Page.captureScreenshot', { format: 'png' });
+        await writeFile(path.join(process.env.DECKMATE_QUESTION_SHOTS, 'ask-coarse-dark-375x812.png'), Buffer.from(screenshot.result.data, 'base64'));
+      }
+    } finally {
+      await page.send('Emulation.setTouchEmulationEnabled', { enabled: false });
+      await page.send('Emulation.clearDeviceMetricsOverride');
+    }
+  });
+
+  it.each([345, 375, 1280])('keeps the answering member and actions inside the question footer at %ipx', async width => {
+    await page.send('Emulation.setDeviceMetricsOverride', { width, height: 900, deviceScaleFactor: 1, mobile: false });
+    try {
+      for (const lang of ['en', 'ru']) for (const theme of ['light', 'dark']) {
+        await render({ kind: 'doc', people: 2, lang, theme, markdown: '## Open questions\n\n- First question' });
+        await click('.card-preview-open-questions');
+        await click('.open-question-answer-action');
+        const layout = await page.evaluate(`(() => {
+          const footer = document.querySelector('.open-question-answer-footer'), author = footer.querySelector('.open-question-author');
+          const actions = footer.querySelector('.open-question-answer-buttons'), buttons = [...actions.querySelectorAll('button')];
+          const f = footer.getBoundingClientRect(), a = author.getBoundingClientRect(), g = actions.getBoundingClientRect();
+          const b = buttons.map(button => button.getBoundingClientRect());
+          return { author: author.textContent, select: author.querySelector('select').value,
+            fits: document.documentElement.scrollWidth <= innerWidth && footer.scrollWidth <= footer.clientWidth + 1 && a.left >= f.left - 1 && a.right <= f.right + 1 && g.left >= f.left - 1 && g.right <= f.right + 1,
+            separate: g.top >= a.bottom - 1 || g.left >= a.right - 1, right: Math.abs(g.right - f.right) < 1,
+            together: Math.abs(b[0].top - b[1].top) < 1, sameRow: Math.abs(a.top - g.top) <= 2 };
+        })()`);
+        expect(layout.author).toContain(lang === 'ru' ? 'От имени:' : 'By');
+        expect(layout.select).toBe('maya');
+        expect(layout.fits && layout.separate && layout.right && layout.together).toBe(true);
+        if (width >= 375) expect(layout.sameRow).toBe(true);
+      }
+    } finally { await page.send('Emulation.clearDeviceMetricsOverride'); }
+  });
+
+  it('keeps both footer actions together and touch-sized on a narrow screen', async () => {
+    await page.send('Emulation.setDeviceMetricsOverride', { width: 375, height: 900, deviceScaleFactor: 1, mobile: false });
+    await page.send('Emulation.setTouchEmulationEnabled', { enabled: true });
+    try {
+      for (const lang of ['en', 'ru']) {
+        await render({ kind: 'doc', people: 2, lang, markdown: '## Open questions\n\n- First question' });
+        await click('.card-preview-open-questions');
+        await click('.open-question-answer-action');
+        const geometry = await page.evaluate(`(() => {
+          const footer = document.querySelector('.open-question-answer-footer').getBoundingClientRect();
+          const buttons = [...document.querySelectorAll('.open-question-answer-buttons button')].map(button => button.getBoundingClientRect());
+          const select = document.querySelector('.open-question-author select').getBoundingClientRect();
+          return { heights: [select.height, ...buttons.map(button => button.height)], gap: buttons[1].left - buttons[0].right,
+            together: Math.abs(buttons[0].top - buttons[1].top) < 1, right: Math.abs(buttons[1].right - footer.right) < 1,
+            overflow: document.documentElement.scrollWidth > innerWidth };
+        })()`);
+        expect(geometry.heights.every((height: number) => height >= 44)).toBe(true);
+        expect(geometry.gap).toBeGreaterThanOrEqual(8);
+        expect(geometry.together && geometry.right && !geometry.overflow).toBe(true);
+      }
+    } finally {
+      await page.send('Emulation.setTouchEmulationEnabled', { enabled: false });
+      await page.send('Emulation.clearDeviceMetricsOverride');
+    }
+  });
+
+  it.each([
+    { form: 'answer', lang: 'en', theme: 'dark', motion: 'no-preference' },
+    { form: 'answer', lang: 'ru', theme: 'light', motion: 'reduce' },
+    { form: 'ask', lang: 'en', theme: 'dark', motion: 'reduce' },
+    { form: 'ask', lang: 'ru', theme: 'light', motion: 'no-preference' },
+  ])('keeps $form saving visually stable and prevents duplicate submissions ($lang, $motion)', async ({ form, lang, theme, motion }) => {
+    await page.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: motion }] });
+    try {
+      await render({ kind: 'doc', people: 2, lang, theme, markdown: '## Open questions\n\n- First question' });
+      await click('.card-preview-open-questions');
+      await click(form === 'answer' ? '.open-question-answer-action' : '.open-question-ask-action');
+      await page.send('Input.insertText', { text: 'A draft' });
+      const selector = `.open-question-${form} button[type="submit"]`;
+      const point = await page.callFunction(`selector => {
+        const button = document.querySelector(selector); button.scrollIntoView({ block: 'nearest', behavior: 'instant' });
+        const rect = button.getBoundingClientRect(); return { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 };
+      }`, selector);
+      await page.send('Input.dispatchMouseEvent', { type: 'mouseMoved', ...point });
+      await delay(500);
+      const before = await page.callFunction(`selector => {
+        const button = document.querySelector(selector), style = getComputedStyle(button);
+        window.questionSaveButton = button;
+        return { background: style.backgroundColor, color: style.color, opacity: style.opacity };
+      }`, selector);
+      await page.evaluate('window.firstBatch.holdEdit()');
+      for (const type of ['mousePressed', 'mouseReleased']) await page.send('Input.dispatchMouseEvent', { type, ...point, button: 'left', clickCount: 1 });
+      await until(`document.querySelector('${selector}')?.getAttribute('aria-busy') === 'true' && window.firstBatch.requests.length === 1`);
+      await page.callFunction(`form => {
+        const element = document.querySelector('.open-question-' + form);
+        element.requestSubmit(); element.requestSubmit();
+        element.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+      }`, form);
+      const samples = await page.callFunction(`selector => new Promise(resolve => {
+        const samples = [], start = performance.now();
+        function sample() {
+          const button = document.querySelector(selector), style = getComputedStyle(button);
+          samples.push({ background: style.backgroundColor, color: style.color, opacity: style.opacity, transition: style.transition,
+            disabled: button.disabled, same: button === window.questionSaveButton, animation: Boolean(button.querySelector('.spin')) });
+          if (performance.now() - start < 700) requestAnimationFrame(sample); else resolve(samples);
+        }
+        requestAnimationFrame(sample);
+      })`, selector);
+      expect(before.opacity).toBe('1');
+      expect(samples.length).toBeGreaterThan(2);
+      expect(samples.every((sample: Record<string, unknown>) => sample.background === before.background && sample.color === before.color
+        && sample.opacity === '1' && sample.transition === 'none' && sample.disabled && sample.same && !sample.animation)).toBe(true);
+      expect(await page.evaluate(`document.querySelector('.open-question-${form} [role="status"]').textContent`)).toBe(lang === 'ru' ? 'Записываю…' : 'Saving…');
+      expect(await page.evaluate('window.firstBatch.requests.length')).toBe(1);
+      await page.evaluate('window.firstBatch.finishEdit()');
+      await until(`!document.querySelector('.open-question-${form}')`);
+    } finally { await page.send('Emulation.setEmulatedMedia', { features: [] }); }
+  }, 15000);
+
+  it('keeps the saving state and draft when a question changes during a failed write', async () => {
+    await render({ kind: 'task', questions: [{ text: 'First question', taskRef: null, assignee: null }] });
+    await click('.card-preview-open-questions');
+    await click('.open-question-answer-action');
+    await page.send('Input.insertText', { text: 'Keep this answer' });
+    await page.evaluate(`window.firstBatch.holdEdit(); window.firstBatch.failEdit('conflict')`);
+    await click('.open-question-answer button[type="submit"]');
+    await until(`document.querySelector('.open-question-answer button[type="submit"]')?.getAttribute('aria-busy') === 'true'`);
+    await page.evaluate('window.firstBatch.removeQuestion()');
+    await until(`Boolean(document.querySelector('.open-question-orphan'))`);
+    expect(await page.evaluate(`document.querySelector('.open-question-orphan button[type="submit"]').textContent`)).toBe('Saving…');
+    expect(await page.evaluate(`document.querySelector('.open-question-orphan [role="alert"]')`)).toBe(null);
+    await page.evaluate('window.firstBatch.finishEdit()');
+    await until(`Boolean(document.querySelector('.open-question-orphan [role="alert"]'))`);
+    expect(await page.evaluate(`document.querySelector('.open-question-orphan textarea').value`)).toBe('Keep this answer');
+    expect(await page.evaluate(`document.querySelector('.open-question-orphan [role="alert"]').textContent`)).toContain('The question changed');
+    expect(await page.evaluate(`document.querySelector('.open-question-orphan .open-question-answer-buttons button:last-child').disabled`)).toBe(true);
+    expect(await page.evaluate('window.firstBatch.requests.length')).toBe(1);
+  });
+
+  it.skipIf(!process.env.DECKMATE_QUESTION_FIX2_SHOTS)('captures question form states and pending frames', async () => {
+    const directory = process.env.DECKMATE_QUESTION_FIX2_SHOTS!;
+    const phase = process.env.DECKMATE_QUESTION_FIX2_PHASE ?? 'after';
+    await mkdir(directory, { recursive: true });
+    const capture = async (name: string) => {
+      const screenshot = await page.send('Page.captureScreenshot', { format: 'png' });
+      await writeFile(path.join(directory, `${phase}-${name}.png`), Buffer.from(screenshot.result.data, 'base64'));
+    };
+    const pointerSubmit = async (selector: string) => {
+      const point = await page.callFunction(`selector => {
+        const button = document.querySelector(selector), rect = button.getBoundingClientRect();
+        return { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 };
+      }`, selector);
+      await page.send('Input.dispatchMouseEvent', { type: 'mouseMoved', ...point });
+      await delay(150);
+      for (const type of ['mousePressed', 'mouseReleased']) await page.send('Input.dispatchMouseEvent', { type, ...point, button: 'left', clickCount: 1 });
+    };
+    const frames = async (name: string, selector: string) => {
+      const samples = [];
+      for (let index = 0; index < 8; index++) {
+        samples.push(await page.callFunction(`selector => {
+          const button = document.querySelector(selector), style = getComputedStyle(button);
+          return { time: performance.now(), text: button.textContent, disabled: button.disabled, opacity: style.opacity,
+            background: style.backgroundColor, color: style.color, transition: style.transition, animation: button.querySelector('svg') && getComputedStyle(button.querySelector('svg')).animationName };
+        }`, selector));
+        await capture(`${name}-frame-${index}`);
+        await delay(100);
+      }
+      await writeFile(path.join(directory, `${phase}-${name}-frames.json`), JSON.stringify(samples, null, 2));
+    };
+    try {
+      for (const width of [345, 375]) for (const theme of ['dark', 'light']) for (const lang of ['en', 'ru']) {
+        await page.send('Emulation.setDeviceMetricsOverride', { width, height: 900, deviceScaleFactor: 1, mobile: false });
+        await render({ kind: 'doc', people: 2, theme, lang, markdown: '## Open questions\n\n- Which FPS?' });
+        await click('.card-preview-open-questions');
+        await click('.open-question-answer-action');
+        await delay(500);
+        const name = `answer-${lang}-${theme}-${width}`;
+        await capture(`${name}-empty`);
+        await page.send('Input.insertText', { text: '60 FPS' });
+        await delay(180);
+        await capture(`${name}-filled`);
+        await page.evaluate('window.firstBatch.holdEdit()');
+        await pointerSubmit('.open-question-answer button[type="submit"]');
+        await until(`document.querySelector('.open-question-answer button[type="submit"]')?.disabled`);
+        await capture(`${name}-saving`);
+        if (width === 375 && theme === 'dark' && lang === 'en') await frames(name, '.open-question-answer button[type="submit"]');
+        await page.evaluate('window.firstBatch.finishEdit()');
+        await until(`!document.querySelector('.open-question-answer')`);
+        if (width === 375 && theme === 'dark' && lang === 'en') {
+          await click('.open-question-ask-action');
+          await page.send('Input.insertText', { text: 'What about tablets?' });
+          await page.evaluate(`document.querySelector('.open-question-ask button[type="submit"]').scrollIntoView({ block: 'nearest', behavior: 'instant' })`);
+          await delay(100);
+          await page.evaluate('window.firstBatch.holdEdit()');
+          await pointerSubmit('.open-question-ask button[type="submit"]');
+          await until(`document.querySelector('.open-question-ask button[type="submit"]')?.disabled`);
+          await frames('ask-en-dark-375', '.open-question-ask button[type="submit"]');
+          await page.evaluate('window.firstBatch.finishEdit()');
+          await until(`!document.querySelector('.open-question-ask')`);
+        }
+        if (phase === 'after' && width === 375) {
+          await render({ kind: 'doc', people: 1, theme, lang, markdown: '## Open questions\n\n- Which FPS?' });
+          await click('.card-preview-open-questions');
+          await click('.open-question-answer-action');
+          await delay(500);
+          await capture(`answer-${lang}-${theme}-${width}-single-author`);
+        }
+      }
+    } finally { await page.send('Emulation.clearDeviceMetricsOverride'); }
+  }, 60000);
+
+  it('explains when no decision author is available and cancels from the form', async () => {
+    await render({ kind: 'doc', people: 0, markdown: '## Open questions\n\n- [ ] First question' });
+    await click('.card-preview-open-questions');
+    await click('.open-question-answer-action');
+    expect(await page.evaluate(`document.querySelector('.open-question-author').textContent`)).toContain('no person');
+    expect(await page.evaluate(`document.querySelector('.open-question-answer-footer button:last-child').disabled`)).toBe(true);
+    await key('Escape');
+    expect(await page.evaluate(`document.activeElement === document.querySelector('.open-question-answer-action')`)).toBe(true);
+  });
+
+  it('allows the questions panel while editing, but prevents question writes', async () => {
+    await render({ kind: 'doc', markdown: '## Open questions\n\n- [ ] First question' });
+    await click('.card-content-edit-action');
+    await click('.card-preview-open-questions');
+    expect(await page.evaluate(`document.querySelector('.open-question-answer-action').disabled`)).toBe(true);
+    await key('Escape');
+    await click('.card-edit-link.is-cancel');
+  });
+
+  it.each([345, 375, 1280])('shows and operates the question system at %ipx in both themes', async width => {
+    await page.send('Emulation.setDeviceMetricsOverride', { width, height: 900, deviceScaleFactor: 1, mobile: false });
+    const target = shortReference('c', 'card:rules');
+    const questionRef = shortReference('c', 'card:preview');
+    const saveShot = async (name: string) => {
+      if (!process.env.DECKMATE_QUESTION_SHOTS) return;
+      await delay(180);
+      await mkdir(process.env.DECKMATE_QUESTION_SHOTS, { recursive: true });
+      const screenshot = await page.send('Page.captureScreenshot', { format: 'png' });
+      await writeFile(path.join(process.env.DECKMATE_QUESTION_SHOTS, `${name}-${width}.png`), Buffer.from(screenshot.result.data, 'base64'));
+    };
+    try {
+      for (const theme of ['light', 'dark']) {
+        await render({ kind: 'task', lang: 'ru', theme, pool: true, agents: true,
+          questions: [{ text: 'Как управлять камерой?', taskRef: null, assignee: 'build-agent', target: target + '#Камера' }],
+          decisions: [{ index: 0, question: 'Какой темп?', answer: 'Спокойный темп.', by: 'Майя', date: '2026-11-12', target: null, applied: null },
+            { index: 1, question: 'Как двигаться?', answer: 'Свободно.', by: 'Ли', date: '2026-11-11', target: target + '#Камера', applied: '2026-11-12' }] });
+        expect(await page.evaluate(`document.querySelectorAll('.decision-pool li').length`)).toBe(1);
+        expect(await page.evaluate(`Boolean(document.querySelector('.deck-card-pending-dot') && document.querySelector('.deck-card-face .card-questions-metric'))`)).toBe(true);
+        expect(await page.evaluate(`document.querySelector('.card-preview-blocker-note').textContent`)).toBe('Ждёт ответа: @Build Agent');
+        expect(await page.evaluate(`document.querySelector('.card-preview-open-questions').getAttribute('aria-label')`)).toBe('Вопросы и решения · открытых: 1 · к внесению: 1');
+        expect(await page.evaluate(`document.querySelector('.card-preview-pending-count').textContent`)).toBe('1');
+        expect(await page.evaluate(`document.querySelector('.decision-pool').textContent`)).toContain('Спокойный темп.');
+        await saveShot('pool-' + theme);
+        await click('.card-preview-open-questions');
+        expect(await page.evaluate(`document.querySelector('.open-question-assignee').textContent`)).toBe('@Build Agent');
+        expect(await page.evaluate(`document.querySelector('.open-question-target').textContent`)).toBe('Внести в: Правила боя § Камера');
+        expect(await page.evaluate(`Boolean(document.querySelector('.open-question-assignee .card-owner-avatar.is-agent'))`)).toBe(true);
+        expect(await page.evaluate(`Boolean(document.querySelector('.card-preview-question-waiting .lucide-hourglass'))`)).toBe(true);
+        expect(await page.evaluate(`Boolean(document.querySelector('.decision-status.is-pending .lucide-circle-dashed') && document.querySelector('.decision-applied .lucide-circle-check'))`)).toBe(true);
+        expect(await page.evaluate(`document.querySelector('.decision-status.is-pending').textContent`)).toBe('к внесению');
+        expect(await page.evaluate(`document.querySelector('.pending-hint').textContent`)).toContain('Агент автоматически не запускается');
+        expect(await page.evaluate(`document.querySelector('.resolved-item:last-child .resolved-attribution').textContent`)).toContain('Внесено: 2026-11-12');
+        expect(await page.evaluate(`document.querySelector('.decision-applied').getAttribute('href')`)).toBe(`/r/${target}?source=sandbox#%D0%9A%D0%B0%D0%BC%D0%B5%D1%80%D0%B0`);
+        expect(await page.evaluate(`document.querySelectorAll('.open-question-actions button').length`)).toBe(2);
+        expect(await page.evaluate(`document.documentElement.scrollWidth <= innerWidth`)).toBe(true);
+        await saveShot('questions-' + theme);
+        await page.evaluate(`Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: async value => { window.questionCopied = value; } } })`);
+        await click('.open-question-discuss-action');
+        expect(await page.evaluate('window.questionCopied')).toBe(questionRef + '#1');
+        expect(await page.evaluate(`document.querySelector('.open-questions [aria-live="polite"]').textContent`)).toBe('ID вопроса скопирован. Вставьте его в чат.');
+        expect(await page.evaluate(`Boolean(document.querySelector('.open-question-feedback'))`)).toBe(true);
+        await click('.open-question-ask-action');
+        await until(`Boolean(document.querySelector('.open-question-ask textarea'))`);
+        expect(await page.evaluate(`document.querySelector('.open-question-ask input[aria-describedby]').parentElement.textContent`)).toContain('working-notes');
+        expect(await page.evaluate(`document.querySelectorAll('.open-question-ask button').length`)).toBe(2);
+        await saveShot('ask-' + theme);
+        await key('Escape');
+        await click('.open-question-answer-action');
+        await saveShot('answer-' + theme);
+        await key('Escape');
+        await click('.decision-applied');
+        expect(await page.evaluate('window.firstBatch.selections')).toEqual(['card:rules']);
+      }
+    } finally { await page.send('Emulation.clearDeviceMetricsOverride'); }
+  });
+
+  it.each([345, 375])('captures long questions and decision states at %ipx', async width => {
+    await page.send('Emulation.setDeviceMetricsOverride', { width, height: 900, deviceScaleFactor: 1, mobile: false });
+    const reference = shortReference('c', 'card:rules');
+    const longText = 'LongUnbrokenQuestion' + 'abcdefghij'.repeat(10);
+    const longLink = 'https://example.com/' + 'abcdefghij'.repeat(10);
+    const saveShot = async (name: string) => {
+      if (!process.env.DECKMATE_QUESTION_SHOTS) return;
+      await delay(120);
+      await mkdir(process.env.DECKMATE_QUESTION_SHOTS, { recursive: true });
+      const screenshot = await page.send('Page.captureScreenshot', { format: 'png' });
+      await writeFile(path.join(process.env.DECKMATE_QUESTION_SHOTS, `${name}-${width}.png`), Buffer.from(screenshot.result.data, 'base64'));
+    };
+    try {
+      for (const lang of ['en', 'ru']) for (const theme of ['light', 'dark']) {
+        await render({ kind: 'task', lang, theme, pool: true, agents: true,
+          markdown: `## Open questions\n\n- ${longText} [${longLink}](${longLink})\n- Camera?\n`,
+          questions: [{ text: longText, taskRef: null, assignee: null }, { text: 'Camera?', taskRef: null, assignee: 'build-agent', target: reference + '#Камера' }],
+          decisions: [{ index: 0, question: 'Pace?', answer: `A decision: [${longLink}](${longLink})`, by: 'Maya', date: '2026-11-12', target: null, applied: null },
+            { index: 1, question: 'Movement?', answer: 'Free movement.', by: 'Lee', date: '2026-11-11', target: reference + '#Камера', applied: '2026-11-12' }] });
+        await click('.card-preview-open-questions');
+        expect(await page.evaluate(`document.querySelector('.open-question:first-child .open-question-meta')`)).toBe(null);
+        expect(await page.evaluate(`document.querySelector('.open-question:nth-child(2) .open-question-target').textContent`)).toBe(lang === 'ru' ? 'Внести в: Правила боя § Камера' : 'Apply to: Правила боя § Камера');
+        expect(await page.evaluate(`document.querySelector('.resolved-item:last-child .open-question-target').textContent`)).toBe(lang === 'ru' ? 'Внести в: Правила боя § Камера' : 'Apply to: Правила боя § Камера');
+        expect(await page.evaluate(`document.querySelector('.resolved-item:first-child .open-question-target')`)).toBe(null);
+        expect(await page.evaluate(`(() => {
+          const elements = document.querySelectorAll('.open-questions-list, .open-question, .open-question-text, .open-question-text .markdown, .resolved-list, .resolved-item, .resolved-decision .markdown');
+          return document.documentElement.scrollWidth <= innerWidth && [...elements].every(element => element.scrollWidth <= element.clientWidth + 1);
+        })()`)).toBe(true);
+        await saveShot(`long-${lang}-${theme}`);
+        await page.evaluate(`Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: async () => {} } })`);
+        await click('.open-question-discuss-action');
+        expect(await page.evaluate(`(() => {
+          const tip = document.querySelector('.open-question-feedback').getBoundingClientRect();
+          const button = document.querySelector('.open-question-discuss-action').getBoundingClientRect();
+          return tip.left >= 0 && tip.right <= innerWidth && (Math.abs(tip.bottom - button.top) <= 8 || Math.abs(tip.top - button.bottom) <= 8);
+        })()`)).toBe(true);
+        await saveShot(`copied-${lang}-${theme}`);
+        await click('.open-question-answer-action');
+        await saveShot(`long-answer-${lang}-${theme}`);
+        await key('Escape');
+        await page.evaluate(`document.querySelector('.open-questions-resolved').scrollIntoView({ block: 'start', behavior: 'instant' })`);
+        await saveShot(`decisions-${lang}-${theme}`);
+        await key('Escape');
+      }
+    } finally { await page.send('Emulation.clearDeviceMetricsOverride'); }
+  });
+
+  it('anchors copy feedback to the right question, restarts its timer and preserves clipboard errors', async () => {
+    await render({ kind: 'doc', markdown: '## Open questions\n\n- First question\n- Second question' });
+    await click('.card-preview-open-questions');
+    await page.evaluate(`(() => {
+      window.copyWrites = [];
+      Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: value => new Promise((resolve, reject) => window.copyWrites.push({ value, resolve, reject })) } });
+    })()`);
+    await page.evaluate(`document.querySelector('.open-question-discuss-action').focus()`);
+    const spacing = () => page.evaluate(`(() => {
+      const first = document.querySelector('.open-question:first-child').getBoundingClientRect();
+      return document.querySelector('.open-question:nth-child(2)').getBoundingClientRect().top - first.top;
+    })()`);
+    const before = await spacing();
+    await click('.open-question:first-child .open-question-discuss-action');
+    await click('.open-question:nth-child(2) .open-question-discuss-action');
+    await page.evaluate('window.copyWrites[1].resolve()');
+    await until(`document.querySelector('.open-questions [aria-live="polite"]').textContent === 'Question ID copied. Paste it into a chat.'`);
+    await page.evaluate('window.copyWrites[0].resolve()');
+    expect(await page.evaluate(`document.querySelector('.open-question:first-child .open-question-discuss-action').hasAttribute('aria-describedby')`)).toBe(false);
+    expect(await page.evaluate(`document.querySelector('.open-question:nth-child(2) .open-question-discuss-action').hasAttribute('aria-describedby')`)).toBe(true);
+    expect(await spacing()).toBe(before);
+    await delay(800);
+    await click('.open-question:nth-child(2) .open-question-discuss-action');
+    await page.evaluate('window.copyWrites[2].resolve()');
+    await delay(800);
+    expect(await page.evaluate(`document.querySelector('.open-questions [aria-live="polite"]').textContent`)).toBe('Question ID copied. Paste it into a chat.');
+    await until(`!document.querySelector('.open-question-feedback')`);
+    await page.evaluate(`document.execCommand = () => false`);
+    await click('.open-question:first-child .open-question-discuss-action');
+    await page.evaluate(`window.copyWrites[3].reject(new Error('denied'))`);
+    await until(`document.querySelector('.open-questions [aria-live="polite"]').textContent.includes('Could not copy')`);
+    expect(await page.evaluate(`Boolean(document.querySelector('.open-question-feedback'))`)).toBe(true);
+    expect(await page.evaluate(`document.querySelector('.open-question-copy-reference input').value`)).toBe(shortReference('c', 'card:preview') + '#1');
+    expect(await spacing()).toBeGreaterThan(before);
+    await page.evaluate(`delete document.execCommand`);
+  });
+
+  it('copies through the selection fallback when Clipboard API is unavailable or denied', async () => {
+    await render({ kind: 'doc', markdown: '## Open questions\n\n- First question' });
+    await click('.card-preview-open-questions');
+    await page.evaluate(`(() => {
+      Object.defineProperty(navigator, 'clipboard', { configurable: true, value: undefined });
+      document.execCommand = command => { window.fallbackCopies ??= []; window.fallbackCopies.push([command, document.activeElement.value]); return true; };
+    })()`);
+    try {
+      await click('.open-question-discuss-action');
+      await until(`document.querySelector('.open-questions [aria-live="polite"]').textContent.includes('Question ID copied')`);
+      expect(await page.evaluate('window.fallbackCopies')).toEqual([['copy', shortReference('c', 'card:preview') + '#1']]);
+      expect(await page.evaluate(`document.activeElement === document.querySelector('.open-question-discuss-action')`)).toBe(true);
+      expect(await page.evaluate(`document.querySelectorAll('textarea[aria-hidden="true"]').length`)).toBe(0);
+      await page.evaluate(`Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: async () => { throw new Error('denied'); } } })`);
+      await click('.open-question-discuss-action');
+      expect(await page.evaluate('window.fallbackCopies.length')).toBe(2);
+      expect(await page.evaluate(`document.querySelector('.open-question-copy-reference')`)).toBeNull();
+    } finally { await page.evaluate(`delete document.execCommand`); }
+  });
+
+  it.each(['missing', 'throws'])('keeps editor formatting working when insertText is %s', async mode => {
+    await render({ kind: 'task', markdown: 'Format this text.' });
+    await click('.card-content-edit-action');
+    await until(`Boolean(document.querySelector('.card-edit-text'))`);
+    await page.evaluate(`(() => {
+      const field = document.querySelector('.card-edit-text');
+      const start = field.value.indexOf('Format'); field.focus(); field.setSelectionRange(start, start + 6);
+      document.execCommand = ${mode === 'missing' ? 'undefined' : `() => { throw new Error('not supported'); }`};
+    })()`);
+    try {
+      for (const type of ['keyDown', 'keyUp']) await page.send('Input.dispatchKeyEvent', { type, key: 'b', code: 'KeyB', windowsVirtualKeyCode: 66, modifiers: 2 });
+      await until(`document.querySelector('.card-edit-text').value.includes('**Format**')`);
+    } finally { await page.evaluate(`delete document.execCommand`); }
+  });
+
+  it('discards late copy feedback when the question disappears', async () => {
+    await render({ kind: 'task', questions: [{ text: 'First question', taskRef: null, assignee: null }] });
+    await click('.card-preview-open-questions');
+    await page.evaluate(`Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: () => new Promise(resolve => { window.finishQuestionCopy = resolve; }) } })`);
+    await click('.open-question-discuss-action');
+    await page.evaluate('window.firstBatch.removeQuestion()');
+    await until(`!document.querySelector('.open-question-discuss-action')`);
+    await page.evaluate('window.finishQuestionCopy()');
+    expect(await page.evaluate(`document.querySelector('.open-questions [aria-live="polite"]').textContent`)).toBe('');
+    expect(await page.evaluate(`Boolean(document.querySelector('.open-question-feedback'))`)).toBe(false);
+  });
+
+  it('wraps long targets and assignees and guards target navigation while answering', async () => {
+    await page.send('Emulation.setDeviceMetricsOverride', { width: 345, height: 900, deviceScaleFactor: 1, mobile: false });
+    try {
+      const reference = shortReference('c', 'card:rules');
+      const section = 'Camera' + 'abcdefghij'.repeat(20);
+      const assignee = 'agent' + 'abcdefghij'.repeat(20);
+      await render({ kind: 'task', pool: true, lang: 'ru',
+        questions: [{ text: 'Camera?', taskRef: null, assignee, target: reference + '#' + section },
+          { text: 'Same card?', taskRef: null, assignee: null, target: shortReference('c', 'card:preview') + '#Section' }],
+        decisions: [{ index: 0, question: null, answer: 'Done', by: null, date: null, target: null, applied: '2026-11-12' }] });
+      await click('.card-preview-open-questions');
+      expect(await page.evaluate(`document.querySelector('.open-question:nth-child(2) .open-question-meta')`)).toBe(null);
+      expect(await page.evaluate(`document.querySelector('.resolved-item .open-question-target')`)).toBe(null);
+      expect(await page.evaluate(`document.querySelector('.resolved-item .decision-status').tagName`)).toBe('SPAN');
+      expect(await page.evaluate(`(() => {
+        const elements = document.querySelectorAll('.open-questions-list, .open-question-meta, .open-question-assignee, .open-question-target');
+        return document.documentElement.scrollWidth <= innerWidth && [...elements].every(element => element.scrollWidth <= element.clientWidth + 1);
+      })()`)).toBe(true);
+      await click('.open-question-answer-action');
+      await click('.open-question-target');
+      expect(await page.evaluate('window.firstBatch.selections')).toEqual([]);
+      expect(await page.evaluate(`document.querySelector('.open-question-target').getAttribute('aria-disabled')`)).toBe('true');
+      expect(await page.evaluate(`document.querySelector('.open-question-target').tabIndex`)).toBe(-1);
+      await page.evaluate(`document.querySelector('.open-question-answer textarea').focus()`);
+      await key('Escape');
+      await click('.open-question-target');
+      expect(await page.evaluate('window.firstBatch.selections')).toEqual(['card:rules']);
+    } finally { await page.send('Emulation.clearDeviceMetricsOverride'); }
+  });
+
+  it('wraps long decisions and target names inside the decision pool', async () => {
+    await page.send('Emulation.setDeviceMetricsOverride', { width: 345, height: 900, deviceScaleFactor: 1, mobile: false });
+    try {
+      const section = 'Camera' + 'abcdefghij'.repeat(30);
+      await render({ kind: 'task', pool: true, decisions: [{ index: 0, question: null, answer: 'https://example.com/' + 'abcdefghij'.repeat(30), by: null, date: null,
+        target: shortReference('c', 'card:rules') + '#' + section, applied: null }] });
+      expect(await page.evaluate(`document.querySelector('.decision-pool-meta').textContent`)).toContain('Apply to: Правила боя § ' + section);
+      expect(await page.evaluate(`(() => {
+        const elements = document.querySelectorAll('.decision-pool, .decision-pool ul, .decision-pool li, .decision-pool li button, .decision-pool li span, .decision-pool li small');
+        return document.documentElement.scrollWidth <= innerWidth && [...elements].every(element => element.scrollWidth <= element.clientWidth + 1);
+      })()`)).toBe(true);
+    } finally { await page.send('Emulation.clearDeviceMetricsOverride'); }
+  });
+
+  it('shows copy feedback without animation for reduced motion', async () => {
+    await page.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: 'reduce' }] });
+    try {
+      await render({ kind: 'doc', markdown: '## Open questions\n\n- First question' });
+      await click('.card-preview-open-questions');
+      await page.evaluate(`Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: async () => {} } })`);
+      await click('.open-question-discuss-action');
+      expect(await page.evaluate(`getComputedStyle(document.querySelector('.open-question-feedback')).animationName`)).toBe('none');
+      expect(await page.evaluate(`document.querySelector('.open-questions [aria-live="polite"]').textContent`)).toBe('Question ID copied. Paste it into a chat.');
+    } finally { await page.send('Emulation.setEmulatedMedia', { features: [] }); }
+  });
+
+  it('asks an agent about a searched target, preserves the draft on conflict and uses the captured source hash', async () => {
+    await render({ kind: 'task', pool: true, agents: true, lang: 'ru', decisions: [], questions: [] });
+    await click('.card-preview-open-questions');
+    await click('.open-question-ask-action');
+    await page.send('Input.insertText', { text: 'Как изменить камеру?' });
+    await page.evaluate(`(() => {
+      const form = document.querySelector('.open-question-ask');
+      const member = form.querySelector('select'); member.value = 'build-agent'; member.dispatchEvent(new Event('change', { bubbles: true }));
+      const search = form.querySelector('input[type="search"]'); Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(search, 'Правила'); search.dispatchEvent(new Event('input', { bubbles: true }));
+    })()`);
+    await page.evaluate(`(() => { const selects = document.querySelectorAll('.open-question-ask select'); selects[1].value = 'card:rules'; selects[1].dispatchEvent(new Event('change', { bubbles: true })); })()`);
+    await page.evaluate(`(() => { const input = document.querySelector('.open-question-ask input:not([type="search"])'); Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(input, 'Камера'); input.dispatchEvent(new Event('input', { bubbles: true })); })()`);
+    await page.evaluate(`window.firstBatch.failEdit('conflict')`);
+    await click('.open-question-ask button[type="submit"]');
+    await until(`Boolean(document.querySelector('.open-question-ask [role="alert"]'))`);
+    expect(await page.evaluate(`document.querySelector('.open-question-ask textarea').value`)).toBe('Как изменить камеру?');
+    expect(await page.evaluate('window.firstBatch.requests[0]')).toMatchObject({ action: 'ask-question', cardId: 'card:preview', sourceHash: 'card-hash', text: 'Как изменить камеру?', assignee: 'build-agent', target: shortReference('c', 'card:rules') + '#%D0%9A%D0%B0%D0%BC%D0%B5%D1%80%D0%B0' });
+    await page.evaluate(`window.firstBatch.failEdit(null)`);
+    await click('.open-question-ask button:last-child');
+    await click('.open-question-ask button[type="submit"]');
+    await until(`!document.querySelector('.open-question-ask')`);
+    expect(await page.evaluate('window.firstBatch.requests[1].sourceHash')).toBe('card-hash-refreshed');
+  });
+
+  it('keeps an answer visible and prevents a stale write when the question disappears', async () => {
+    await render({ kind: 'task', lang: 'ru', questions: [{ text: 'Как быть?', taskRef: null, assignee: 'maya' }] });
+    await click('.card-preview-open-questions');
+    await click('.open-question-answer-action');
+    await page.send('Input.insertText', { text: 'Не потерять этот ответ' });
+    await page.evaluate('window.firstBatch.removeQuestion()');
+    await until(`Boolean(document.querySelector('.open-question-orphan'))`);
+    expect(await page.evaluate(`document.querySelector('.open-question-orphan').textContent`)).toContain('Как быть?');
+    expect(await page.evaluate(`document.querySelector('.open-question-answer textarea').value`)).toBe('Не потерять этот ответ');
+    expect(await page.evaluate(`document.querySelector('.open-question-answer [role="alert"]').textContent`)).toContain('Вопрос изменился');
+    expect(await page.evaluate(`document.querySelector('.open-question-answer-buttons button:last-child').disabled`)).toBe(true);
+    expect(await page.evaluate('window.firstBatch.requests')).toEqual([]);
+    await key('Escape');
+    expect(await page.evaluate(`document.activeElement === document.querySelector('.open-question-ask-action')`)).toBe(true);
+  });
+
+  it.each(['target', 'assignee', 'position'])('does not rebind an answer when the question identity changes: %s', async identity => {
+    const first = { text: 'Как быть?', taskRef: null, assignee: 'maya', target: shortReference('c', 'card:rules') + '#first' };
+    const second = { ...first, ...(identity === 'assignee' ? { assignee: 'lee' } : { target: shortReference('c', 'card:rules') + '#second' }) };
+    await render({ kind: 'task', lang: 'ru', questions: [first, second] });
+    await click('.card-preview-open-questions');
+    await click(`.open-question:nth-child(${identity === 'position' ? 2 : 1}) .open-question-answer-action`);
+    await page.send('Input.insertText', { text: 'Ответ только на исходный вопрос' });
+    await page.callFunction('questions => window.firstBatch.updateQuestions(questions)', [second]);
+    await until(`Boolean(document.querySelector('.open-question-answer [role="alert"]'))`);
+    await click('.open-question-answer-buttons button:last-child');
+    await page.evaluate(`document.querySelector('.open-question-answer').requestSubmit()`);
+    expect(await page.evaluate('window.firstBatch.requests')).toEqual([]);
+    expect(await page.evaluate(`document.querySelector('.open-question-orphan textarea')?.value`)).toBe('Ответ только на исходный вопрос');
+    expect(await page.evaluate(`document.querySelector('.open-question-answer [role="alert"]').textContent`)).toContain('Вопрос изменился');
+    expect(await page.evaluate(`document.querySelector('.open-question-answer-buttons button:last-child').disabled`)).toBe(true);
+  });
+
+  it('refreshes an answer source hash only when the question identity stays the same', async () => {
+    const question = { text: 'Как быть?', taskRef: null, assignee: 'maya', target: shortReference('c', 'card:rules') + '#first' };
+    await render({ kind: 'task', lang: 'ru', questions: [question] });
+    await click('.card-preview-open-questions');
+    await click('.open-question-answer-action');
+    await page.send('Input.insertText', { text: 'Сохранить этот ответ' });
+    await page.callFunction('questions => window.firstBatch.updateQuestions(questions)', [question]);
+    await until(`Boolean(document.querySelector('.open-question-answer [role="alert"]'))`);
+    await click('.open-question-answer-buttons button:last-child');
+    await click('.open-question-answer button[type="submit"]');
+    expect(await page.evaluate('window.firstBatch.requests')).toEqual([{ action: 'record-decision', cardId: 'card:preview', sourceHash: 'card-hash-refreshed',
+      questionIndex: 0, questionText: question.text, answer: 'Сохранить этот ответ', memberId: 'maya' }]);
   });
 
   it('saves title-only textarea edits without normalizing the body bytes', async () => {
@@ -649,7 +1409,7 @@ describe.skipIf(!browserPath)('open card first UX batch (real browser)', () => {
 
   it('opens dependencies and history directly for a read-only card without a family', async () => {
     await render({ writable: false });
-    await click('.card-preview-action-rail button:nth-last-child(2)');
+    await click('.card-preview-action-rail button[aria-controls$="-dependencies"]');
     expect(await page.evaluate(`Boolean(document.querySelector('.card-related-slot .card-dependencies'))`)).toBe(true);
     await click('.card-preview-action-rail button:last-child');
     await until(`Boolean(document.querySelector('.card-related-slot .card-history-event'))`);

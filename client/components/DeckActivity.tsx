@@ -1,8 +1,10 @@
-import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useId, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { Activity, ArrowRightLeft, Check, Image, Link2, LoaderCircle, Pencil, Plus, RefreshCw, Route, Unlock } from 'lucide-react';
 import type { DeckActivityEvent, DeckActivityPage } from '../../src/activity-contracts.ts';
 import { activityEventGroups, activityGroupChips, eventMatchesGroups, type ActivityEventGroup } from '../../src/activity-groups.ts';
+import type { CatalogMember } from '../../src/catalog-contracts.ts';
 import type { DataSource } from '../../src/workspace-contracts.ts';
+import { catalogStore } from '../catalog-store.ts';
 import { Button } from './ui/button.tsx';
 import { EmptyState } from './EmptyState.tsx';
 import '../deck-activity.css';
@@ -10,6 +12,7 @@ import { defineText, formatNumber, locale, textNow, useLang, useText } from '../
 import { stateLabel } from '../locales/common.ts';
 import { emitSignal } from '../onboarding/signals.ts';
 import { ActivityAttribution } from './ActivityAttribution.tsx';
+import { CardOwnerAvatar } from './CardOwnerAvatar.tsx';
 
 const text = defineText({
   loadFailedStatus: (status: number) => `Could not load activity (${status}).`,
@@ -125,6 +128,10 @@ export function DeckActivity({ deckId, source, refreshKey, disabled, onOpen }: D
   const [groupFilter, setGroupFilter] = useState<ReadonlySet<ActivityEventGroup>>(() => new Set());
   const requestNumber = useRef(0);
   const requestController = useRef<AbortController | null>(null);
+  // 2026-11-12: the row avatar tells agents from people, so it reads the roster from the same shared store as the attribution line.
+  const memberStore = catalogStore(source);
+  const { catalog } = useSyncExternalStore(memberStore.subscribe, memberStore.getSnapshot, memberStore.getSnapshot);
+  useEffect(() => { void memberStore.load(); }, [memberStore]);
 
   const load = useCallback(async (cursor: string | null) => {
     requestController.current?.abort();
@@ -202,7 +209,7 @@ export function DeckActivity({ deckId, source, refreshKey, disabled, onOpen }: D
     </div>}
     {[...groups].map(([minute, events]) => <div className="deck-activity-day" key={minute}>
       <h3><time dateTime={events[0].at} title={fullTimeFormat.format(new Date(events[0].at))}>{minute}</time></h3>
-      <ol>{events.map(event => <ActivityEntry key={event.id} event={event} source={source} disabled={disabled} onOpen={onOpen} />)}</ol>
+      <ol>{events.map(event => <ActivityEntry key={event.id} event={event} source={source} disabled={disabled} onOpen={onOpen} members={catalog?.members ?? []} />)}</ol>
     </div>)}
     {current.status === 'ready' && visibleEvents.length === 0 && (groupFilter.size > 0 && current.events.length > 0
       ? <EmptyState className="deck-activity-empty" variant="filtered" message={t.noMatches} onReset={() => setGroupFilter(new Set())} />
@@ -214,7 +221,7 @@ export function DeckActivity({ deckId, source, refreshKey, disabled, onOpen }: D
   </section>;
 }
 
-function ActivityEntry({ event, source, disabled, onOpen }: { event: DeckActivityEvent; source: DataSource; disabled: boolean; onOpen: (cardId: string) => void }) {
+export function ActivityEntry({ event, source, disabled, onOpen, members }: { event: DeckActivityEvent; source: DataSource; disabled: boolean; onOpen: (cardId: string) => void; members: CatalogMember[] }) {
   const t = useText(text);
   const [expanded, setExpanded] = useState(false);
   const [detailLimit, setDetailLimit] = useState(20);
@@ -223,11 +230,10 @@ function ActivityEntry({ event, source, disabled, onOpen }: { event: DeckActivit
   const visibleCards = event.cards.slice(0, 3);
   const hasDetails = event.details.length > 0 || event.cards.length > 1;
   const detailsId = useId();
-  // 2026-11-04: the member ID is recorded authorship; a card owner is not an event author.
-  const actor = event.actorMemberId ?? event.actor;
-  const actorLabel = event.actorMemberId ? `${event.actorMemberId} · ${event.actor}` : event.actor;
+  // 2026-11-12: an entry's medallion is the shared owner avatar (agent symbol, person initials), as on tiles and in the family panel;
+  // the attribution line beside it names the entry's member, so the medallion itself stays decorative.
   return <li className="deck-activity-event">
-    <span className="deck-activity-avatar" role="img" aria-label={actorLabel} title={actorLabel}>{actor.slice(0, 1).toUpperCase()}</span>
+    <CardOwnerAvatar owner={event.actorMemberId ?? null} members={members} />
     <div className="deck-activity-event-body">
       <ActivityAttribution event={event} source={source} />
       <div className="deck-activity-event-line">

@@ -11,6 +11,7 @@ import { TagBadge } from './CardTags.tsx';
 import { EmptyState } from './EmptyState.tsx';
 import { defineText, useLang, useText } from '../i18n.ts';
 import { moveFocus } from '../focus.ts';
+import { formatShortcut, primaryModifierPressed, shortcutDisplay, type KeyCombo } from '../shortcut-format.ts';
 import '../editor-commands.css';
 
 const text = defineText({
@@ -27,12 +28,13 @@ const text = defineText({
   media: 'Images and videos in the text',
   emoji: 'Emoji',
   formatSelection: 'Format selected text',
+  primaryKeys: 'Ctrl/⌘',
   newTag: 'Keep typing and finish with a space. To assign a tag, select it in Properties.',
   noMedia: 'There are no images or videos in the text yet. Paste a file or drag it into the field.',
-  choose: '↑↓ select',
-  insert: 'Enter / Tab insert',
-  close: 'Esc close',
-  moveLines: 'Alt+↑/↓ move lines',
+  choose: (keys: string) => `${keys} select`,
+  insert: (enter: string, tab: string) => `${enter} / ${tab} insert`,
+  close: (escape: string) => `${escape} close`,
+  moveLines: (up: string, down: string) => `${up}/${down} move lines`,
 }, {
   bold: 'Жирный',
   italic: 'Курсив',
@@ -47,23 +49,24 @@ const text = defineText({
   media: 'Картинки и видео в тексте',
   emoji: 'Эмодзи',
   formatSelection: 'Форматирование выделенного текста',
+  primaryKeys: 'Ctrl/⌘',
   newTag: 'Продолжайте ввод и завершите пробелом. Чтобы назначить тег, выберите его в свойствах.',
   noMedia: 'В тексте ещё нет картинок и видео. Вставьте файл из буфера или перетащите его в поле.',
-  choose: '↑↓ выбор',
-  insert: 'Enter / Tab вставить',
-  close: 'Esc закрыть',
-  moveLines: 'Alt+↑/↓ переместить строки',
+  choose: (keys: string) => `${keys} выбор`,
+  insert: (enter: string, tab: string) => `${enter} / ${tab} вставить`,
+  close: (escape: string) => `${escape} закрыть`,
+  moveLines: (up: string, down: string) => `${up} / ${down} — переместить строки`,
 });
 
 const commandIcons: Record<string, LucideIcon> = { 'heading-1': Heading1, 'heading-2': Heading2, 'heading-3': Heading3,
   'bullet-list': List, 'numbered-list': ListOrdered, checkbox: SquareCheck, quote: Quote, code: Code, divider: Minus, table: Table2, link: Link, member: UserRound, tag: Hash, emoji: Smile, media: Image };
 
-const formats: { id: EditorFormat; label: keyof (typeof text)['en']; shortcut: string; Icon: LucideIcon }[] = [
-  { id: 'bold', label: 'bold', shortcut: 'Ctrl/⌘+B', Icon: Bold },
-  { id: 'italic', label: 'italic', shortcut: 'Ctrl/⌘+I', Icon: Italic },
-  { id: 'strike', label: 'strike', shortcut: 'Ctrl/⌘+Shift+X', Icon: Strikethrough },
-  { id: 'code', label: 'code', shortcut: 'Ctrl/⌘+E', Icon: Code },
-  { id: 'link', label: 'link', shortcut: 'Ctrl/⌘+K', Icon: Link },
+const formats: { id: EditorFormat; label: EditorFormat; shortcut: KeyCombo; Icon: LucideIcon }[] = [
+  { id: 'bold', label: 'bold', shortcut: { key: 'KeyB', modifiers: ['primary'] }, Icon: Bold },
+  { id: 'italic', label: 'italic', shortcut: { key: 'KeyI', modifiers: ['primary'] }, Icon: Italic },
+  { id: 'strike', label: 'strike', shortcut: { key: 'KeyX', modifiers: ['primary', 'shift'] }, Icon: Strikethrough },
+  { id: 'code', label: 'code', shortcut: { key: 'KeyE', modifiers: ['primary'] }, Icon: Code },
+  { id: 'link', label: 'link', shortcut: { key: 'KeyK', modifiers: ['primary'] }, Icon: Link },
 ];
 const formatKeys: Partial<Record<string, EditorFormat>> = { KeyB: 'bold', KeyI: 'italic', KeyE: 'code', KeyK: 'link' };
 
@@ -186,7 +189,10 @@ export function EditorCommandMenu({ value, onChange, catalog, disabled, label: t
     let newEnd = replacement.value.length;
     while (oldEnd > start && newEnd > start && value[oldEnd - 1] === replacement.value[newEnd - 1]) { oldEnd--; newEnd--; }
     textarea.setSelectionRange(start, oldEnd);
-    if (!document.execCommand('insertText', false, replacement.value.slice(start, newEnd))) onChange(replacement.value);
+    let inserted = false;
+    try { inserted = typeof document.execCommand === 'function' && document.execCommand('insertText', false, replacement.value.slice(start, newEnd)); }
+    catch { /* The controlled input still handles the replacement when native editing is unavailable. */ }
+    if (!inserted) onChange(replacement.value);
   }
 
   function formatSelection(format: EditorFormat) {
@@ -206,7 +212,7 @@ export function EditorCommandMenu({ value, onChange, catalog, disabled, label: t
   function handleKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
     if (disabled || mediaRequest) return;
     if (event.nativeEvent.isComposing) return;
-    if ((event.ctrlKey || event.metaKey) && !event.altKey) {
+    if (primaryModifierPressed(event) && !event.altKey) {
       let format: EditorFormat | undefined;
       if (!event.shiftKey) format = formatKeys[event.code];
       if (event.shiftKey && event.code === 'KeyX') format = 'strike';
@@ -237,9 +243,14 @@ export function EditorCommandMenu({ value, onChange, catalog, disabled, label: t
   const labels = { card: t.cards, member: t.members, command: t.commands, tag: t.projectTags, emoji: t.emoji, media: t.media };
   const label = trigger ? labels[trigger.kind] : t.commands;
   const emptyMessage = trigger?.kind === 'media' ? t.noMedia : undefined;
+  const { up, down, enter, tab, escape, moveUp, moveDown } = useMemo(() => ({
+    up: formatShortcut({ key: 'ArrowUp' }), down: formatShortcut({ key: 'ArrowDown' }),
+    enter: formatShortcut({ key: 'Enter' }), tab: formatShortcut({ key: 'Tab' }), escape: formatShortcut({ key: 'Escape' }),
+    moveUp: formatShortcut({ key: 'ArrowUp', modifiers: ['alt'] }), moveDown: formatShortcut({ key: 'ArrowDown', modifiers: ['alt'] }),
+  }), [lang]);
   return <>
     <textarea ref={textareaRef} className={'card-edit-text' + (dragging ? ' is-dragging-media' : '')} aria-label={textLabel ?? t.defaultLabel} autoFocus spellCheck={false}
-      value={value} maxLength={maxLength} disabled={disabled} readOnly={Boolean(mediaRequest)} aria-autocomplete="list" aria-haspopup="listbox"
+      value={value} maxLength={maxLength} disabled={disabled} readOnly={Boolean(mediaRequest)} role="combobox" aria-autocomplete="list" aria-haspopup="listbox"
       aria-expanded={visible} aria-controls={visible ? menuId : undefined}
       aria-activedescendant={visible && options.length ? `${menuId}-${selectedIndex}` : undefined}
       onChange={event => { setDismissed(false); readSelection(event.currentTarget); onChange(event.currentTarget.value); }}
@@ -266,7 +277,7 @@ export function EditorCommandMenu({ value, onChange, catalog, disabled, label: t
       }} />}
     {formatting && position && createPortal(<div className="editor-format-toolbar" role="toolbar" aria-label={t.formatSelection}
       style={{ left: position.left, top: position.top, bottom: position.bottom }} onPointerDown={event => event.preventDefault()}>
-      {formats.map(({ id, label: formatLabel, shortcut, Icon }) => <button key={id} type="button" title={`${t[formatLabel]} · ${shortcut}`} aria-label={t[formatLabel]} onClick={() => formatSelection(id)}><Icon size={16} /></button>)}
+      {formats.map(({ id, label: formatLabel, shortcut, Icon }) => <button key={id} type="button" title={`${t[formatLabel]} · ${shortcutDisplay(shortcut, formatShortcut(shortcut, 'windows').display.replace(/^Ctrl/u, t.primaryKeys))}`} aria-label={t[formatLabel]} onClick={() => formatSelection(id)}><Icon size={16} /></button>)}
     </div>, document.body)}
     {visible && createPortal(<div ref={menuRef} className="editor-command-menu" style={position} onPointerDown={event => event.preventDefault()}>
       <div className="editor-command-heading">{label}<span>{options.length}</span></div>
@@ -293,7 +304,12 @@ export function EditorCommandMenu({ value, onChange, catalog, disabled, label: t
           : <EmptyState message={emptyMessage} />)}
         {!options.length && trigger?.kind === 'tag' && <EmptyState message={t.newTag} />}
       </div>
-      <div className="editor-command-footer"><span>{t.choose}</span><span>{t.insert}</span><span>{t.close}</span><span>{t.moveLines}</span></div>
+      <div className="editor-command-footer">
+        <span role="group" aria-label={t.choose(`${up.name}, ${down.name}`)}>{t.choose(`${up.display}${down.display}`)}</span>
+        <span role="group" aria-label={t.insert(enter.name, tab.name)}>{t.insert(enter.display, tab.display)}</span>
+        <span role="group" aria-label={t.close(escape.name)}>{t.close(escape.display)}</span>
+        <span role="group" aria-label={t.moveLines(moveUp.name, moveDown.name)}>{t.moveLines(moveUp.display, moveDown.display)}</span>
+      </div>
     </div>, document.body)}
   </>;
 }

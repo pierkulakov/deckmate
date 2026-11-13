@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { mkdtemp, rm, unlink, writeFile } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, unlink, writeFile } from 'node:fs/promises';
 import { DatabaseSync } from 'node:sqlite';
 import { Worker } from 'node:worker_threads';
 import { tmpdir } from 'node:os';
@@ -357,6 +357,74 @@ describe('ProjectIndex derived SQLite index', () => {
     third.replace(catalog);
     expect(third.search({}).map(card => card.id)).toEqual(EXPECTED_ORDER);
     expect(third.summary()).toMatchObject({ rootIdentity: 'demo-main', documents: 3, cards: 12 });
+  });
+
+  it('reuses an unchanged on-disk snapshot without rewriting cards, relations or FTS', async () => {
+    const directory = await mkdtemp(path.join(tmpdir(), 'deckmate-project-index-'));
+    directories.push(directory);
+    const filename = path.join(directory, 'reuse.sqlite');
+    const catalog = projectCatalog();
+    const first = new ProjectIndex(filename);
+    first.replace(catalog);
+    const summary = first.summary();
+    first.close();
+    const database = new DatabaseSync(filename);
+    try {
+      for (const table of ['cards', 'card_tracks', 'spaces', 'decks', 'tracks', 'documents']) {
+        for (const action of ['INSERT', 'UPDATE', 'DELETE']) {
+          database.exec(`CREATE TRIGGER reject_${table}_${action} BEFORE ${action} ON ${table}
+            BEGIN SELECT RAISE(ABORT, 'Unchanged index was rewritten'); END`);
+        }
+      }
+    } finally { database.close(); }
+    const bytes = await readFile(filename);
+    const reopened = openedIndex(filename);
+    reopened.replace(catalog);
+    expect(reopened.summary()).toEqual(summary);
+    expect(reopened.search({ text: 'резервистан' }).map(card => card.id)).toEqual(['match-1.1']);
+    expect(await readFile(filename)).toEqual(bytes);
+  });
+
+  it.each(['missing-fingerprint', 'missing-fts', 'old-fingerprint'])('rebuilds an obsolete snapshot: %s', async reason => {
+    const directory = await mkdtemp(path.join(tmpdir(), 'deckmate-project-index-'));
+    directories.push(directory);
+    const filename = path.join(directory, 'obsolete.sqlite');
+    const catalog = projectCatalog();
+    const first = new ProjectIndex(filename);
+    first.replace(catalog);
+    first.close();
+    const database = new DatabaseSync(filename);
+    try {
+      if (reason === 'missing-fts') database.exec('DROP TABLE cards_fts');
+      else {
+        database.exec("UPDATE cards SET title = 'Outdated title'");
+        if (reason === 'missing-fingerprint') database.exec("DELETE FROM meta WHERE key = 'catalog_fingerprint'");
+        else database.exec("UPDATE meta SET value = 'older-index-version' WHERE key = 'catalog_fingerprint'");
+      }
+    } finally { database.close(); }
+    const reopened = openedIndex(filename);
+    reopened.replace(catalog);
+    for (const card of catalog.cards) expect(reopened.get(card.id)).toEqual(card);
+    expect(reopened.search({ text: 'резервистан' }).map(card => card.id)).toEqual(['match-1.1']);
+  });
+
+  it('does not apply an in-memory delta over another connection\'s replacement', async () => {
+    const directory = await mkdtemp(path.join(tmpdir(), 'deckmate-project-index-'));
+    directories.push(directory);
+    const filename = path.join(directory, 'shared.sqlite');
+    const first = openedIndex(filename);
+    const second = openedIndex(filename);
+    const catalog = projectCatalog();
+    first.replace(catalog);
+    const foreign = structuredClone(catalog);
+    foreign.cards.shift();
+    foreign.cards[0].markdown = 'foreign snapshot';
+    second.replace(foreign);
+    catalog.cards[0].markdown = 'latest snapshot';
+    first.replace(catalog);
+    for (const card of catalog.cards) expect(first.get(card.id)).toEqual(card);
+    expect(first.search({ text: 'foreign' })).toEqual([]);
+    expect(first.search({ text: 'latest' }).map(card => card.id)).toEqual(['match-1.1']);
   });
 
   it('validates limit: default 100, maximum 1000', () => {

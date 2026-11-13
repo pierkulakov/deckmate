@@ -6,7 +6,9 @@ import type { CardOptions } from '../src/bulk-contracts.ts';
 import type { FormatLanguage } from '../src/format-vocabulary.ts';
 import { projectLanguage } from './project-language.ts';
 import { createManagedMarkdown, readProjectMarkdown, replaceProjectMarkdown } from './native-cards.ts';
-import { parseYamlFrontMatter } from './yaml-front-matter.ts';
+import { isPlainRecord, parseYamlFrontMatter } from './yaml-front-matter.ts';
+import type { CatalogCard, CatalogMember } from '../src/catalog-contracts.ts';
+import { memberIdForOwner } from '../src/members.ts';
 
 const messages = defineText({
   invalidOptionsId: "Invalid card ID in Card Options.",
@@ -71,9 +73,9 @@ export interface CardOptionsPlan {
   publish(beforePublish?: () => Promise<void>): Promise<void>;
 }
 
-const fields = new Set(['handMemberIds', 'bookmarked', 'tags', 'run', 'milestone', 'dueDate', 'archived', 'deleted', 'kindOverride', 'handOrder', 'doneAt']);
+const fields = new Set(['handMemberIds', 'bookmarked', 'tags', 'run', 'milestone', 'dueDate', 'archived', 'deleted', 'kindOverride', 'handOrder', 'doneAt', 'previousOwnerIds']);
 const flags = new Set(['bookmarked', 'archived', 'deleted']);
-const lists = new Set(['handMemberIds', 'tags']);
+const lists = new Set(['handMemberIds', 'tags', 'previousOwnerIds']);
 const digest = (bytes: Buffer) => createHash('sha256').update(bytes).digest('hex');
 // 2026-11-06: a new registry gets its header in the project's format language; field names are identifiers and never
 // translate. Readers take only the YAML, so the header text never affects parsing.
@@ -91,11 +93,6 @@ const registryBriefs = {
     + 'archived и deleted скрывают карточки, не удаляя исходный Markdown. kindOverride действует только на legacy-карточки.\n'
     + 'Агентам: читайте запись нужной карточки и её исходный Markdown; SQLite — только перестраиваемый индекс.\n',
 } as const satisfies Record<FormatLanguage, string>;
-
-function record(value: unknown): value is Record<string, unknown> {
-  return value !== null && typeof value === 'object' && !Array.isArray(value)
-    && [Object.prototype, null].includes(Object.getPrototypeOf(value));
-}
 
 export function boundedText(value: unknown, limit: number): value is string {
   return typeof value === 'string' && value.length > 0 && value.length <= limit
@@ -119,7 +116,7 @@ export function validDate(value: unknown): boolean {
 
 /** 2026-11-03: cleared values stay representable in YAML, but are absent from the projection. */
 function validateOptions(value: unknown, cardId: string): CardOptions {
-  if (!record(value)) throw new Error(serverText(messages).optionsObjectRequired);
+  if (!isPlainRecord(value)) throw new Error(serverText(messages).optionsObjectRequired);
   const result: Record<string, unknown> = {};
   for (const [key, option] of Object.entries(value)) {
     if (!fields.has(key)) throw new Error(serverText(messages).invalidOptionsField + key);
@@ -142,7 +139,7 @@ function validateOptions(value: unknown, cardId: string): CardOptions {
       result[key] = option;
     } else if (key === 'handOrder') {
       // 2026-11-04: map each member to the card's hand slot; omit empty maps.
-      if (!record(option) || Object.keys(option).length > 200 || Object.entries(option).some(([memberId, slot]) =>
+      if (!isPlainRecord(option) || Object.keys(option).length > 200 || Object.entries(option).some(([memberId, slot]) =>
         !boundedText(memberId, 80) || typeof slot !== 'number' || !Number.isInteger(slot) || slot < 0 || slot > 100000)) {
         throw new Error(serverText(messages).invalidHandOrder);
       }
@@ -173,7 +170,7 @@ function parseOptions(bytes: Buffer): ParsedOptions {
     aliases: 'reject', aliasError: serverText(messages).optionsAliasesUnsupported,
   });
   const metadata: unknown = document.toJS({ maxAliasCount: 0 });
-  if (!record(metadata) || metadata.schema !== 1 || !record(metadata.cards) || Object.keys(metadata.cards).length > 100000) {
+  if (!isPlainRecord(metadata) || metadata.schema !== 1 || !isPlainRecord(metadata.cards) || Object.keys(metadata.cards).length > 100000) {
     throw new Error(serverText(messages).invalidOptionsSchema);
   }
   const options: Record<string, CardOptions> = {};
@@ -196,6 +193,13 @@ export async function readCardOptions(root: string): Promise<CardOptionsSource> 
   if (!bytes) return { hash: '', options: {} };
   const { hash, options } = parseOptions(bytes);
   return { hash, options };
+}
+
+export function previousOwnerPatch(card: CatalogCard, members: CatalogMember[], nextOwner: string | null): Pick<CardOptions, 'previousOwnerIds'> | null {
+  if (card.owner === nextOwner) return null;
+  const ownerId = memberIdForOwner(card.owner, members) ?? members.find(member => member.id === card.owner)?.id;
+  if (!ownerId || card.previousOwnerIds?.includes(ownerId)) return null;
+  return { previousOwnerIds: [...card.previousOwnerIds ?? [], ownerId] };
 }
 
 function insertEntry(yaml: string, map: YAMLMap, key: string, value: unknown, newline: string): string {
@@ -264,7 +268,7 @@ function patchField(yaml: string, id: string, key: string, value: unknown, newli
 /** 2026-11-03: prepare has no writes; each publication rechecks the full-file revision. */
 export async function prepareCardOptionsPatch(root: string, expectedHash: string, changes: Record<string, CardOptionsPatch>): Promise<CardOptionsPlan> {
   if (typeof expectedHash !== 'string' || (expectedHash !== '' && !/^[0-9a-f]{64}$/u.test(expectedHash))) throw new Error(serverText(messages).optionsHashRequired);
-  if (!record(changes) || Object.keys(changes).length > maximumCardOptionsChanges) throw new Error(serverText(messages).tooManyOptionsChanges);
+  if (!isPlainRecord(changes) || Object.keys(changes).length > maximumCardOptionsChanges) throw new Error(serverText(messages).tooManyOptionsChanges);
   for (const [id, patch] of Object.entries(changes)) { validateId(id); validateOptions(patch, id); }
   const previousBytes = await readBytes(root);
   const previousHash = previousBytes ? digest(previousBytes) : '';

@@ -11,6 +11,8 @@ import { Markdown } from './Markdown.tsx';
 import { EditorCommandMenu, type EditorCommandHandle } from './EditorCommandMenu.tsx';
 import { defineText, useText } from '../i18n.ts';
 import { moveFocus } from '../focus.ts';
+import { primaryModifierPressed } from '../shortcut-format.ts';
+import { Keys } from './Keys.tsx';
 
 const text = defineText({
   commandHintStart: 'Type ',
@@ -27,7 +29,7 @@ const text = defineText({
   attachmentMissing: 'File missing',
 }, {
   commandHintStart: 'Нажмите ',
-  commandHintEnd: ', чтобы увидеть команды.',
+  commandHintEnd: ' — появятся команды.',
   edit: 'Правка',
   preview: 'Предпросмотр',
   cancel: 'Отмена',
@@ -108,17 +110,17 @@ export function CardEditForm({ draft, onDraftChange, catalog, source, path, card
     // a host dialog prevents Escape only to stay open and leaves the edit to this form.
     if (event.nativeEvent.isComposing) return;
     if (event.key === 'Escape') { event.preventDefault(); onCancel(); }
-    if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') { event.preventDefault(); onSave(); }
+    if (primaryModifierPressed(event) && event.key === 'Enter') { event.preventDefault(); onSave(); }
   }
 
   const footer = confirmStrip ?? <footer className="card-edit-footer">
     <button type="button" className="card-edit-link" disabled={busy || !draft.trim()} aria-pressed={preview} onClick={() => setPreview(value => !value)}>{preview ? t.edit : t.preview}</button>
-    {cancelButton && <button type="button" className="card-edit-link is-cancel" disabled={busy} onClick={onCancel}>{t.cancel} <kbd>Esc</kbd></button>}
-    <span className="card-edit-save-group"><span className="card-edit-save-hint"><kbd>Ctrl</kbd>+<kbd>Enter</kbd></span>
+    {cancelButton && <button type="button" className="card-edit-link is-cancel" disabled={busy} onClick={onCancel}>{t.cancel} <Keys combo={{ key: 'Escape' }} /></button>}
+    <span className="card-edit-save-group"><Keys className="card-edit-save-hint" variant="separate" combo={{ key: 'Enter', modifiers: ['primary'] }} />
       <button type="submit" form={formId} className="card-edit-save" disabled={!writable || busy || blocked || !parts.title}>{saving ? <><LoaderCircle size={14} className="spin" aria-hidden="true" /><span className="visually-hidden">{resolvedSaveLabel}</span></> : resolvedSaveLabel}</button></span>
   </footer>;
   return <form id={formId} ref={formRef} className="card-edit" onKeyDown={handleKeyDown} onSubmit={event => { event.preventDefault(); onSave(); }}>
-    <div className="card-edit-hint-row"><div className="card-edit-hints"><span className="card-edit-hint">{t.commandHintStart}<kbd>/</kbd> <kbd>Enter</kbd>{t.commandHintEnd}</span>
+    <div className="card-edit-hint-row"><div className="card-edit-hints"><span className="card-edit-hint">{t.commandHintStart}<Keys combo={{ key: '/' }} /> <Keys combo={{ key: 'Enter' }} />{t.commandHintEnd}</span>
       {cardId && path && <AttachmentInsertMenu key={`${source}:${cardId}`} source={source} cardId={cardId} disabled={textDisabled || preview}
         onInsert={attachment => editorRef.current?.insert(attachmentMarkdown(path, attachment))} onFocusText={() => editorRef.current?.focus()} />}
     </div>{hintActions}</div>

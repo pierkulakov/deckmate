@@ -25,6 +25,7 @@ import { EmptyState } from './EmptyState.tsx';
 import { LoadingState } from './LoadingState.tsx';
 import { ErrorState } from './ErrorState.tsx';
 import { Button } from './ui/button.tsx';
+import { Keys } from './Keys.tsx';
 import '../global-search.css';
 
 const text = defineText({
@@ -315,7 +316,7 @@ export function GlobalSearch({ snapshot, refreshKey, onOpenCard, onOpenDeck, dis
         onFocus={() => { if (value.trim()) setOpen(true); }}
         onBlur={event => { if (!fieldRef.current?.contains(event.relatedTarget as Node | null)) setOpen(false); }}
         onChange={event => { setValue(event.target.value); setCaret(event.target.selectionStart ?? event.target.value.length); setOpen(Boolean(event.target.value.trim())); }} />
-      <kbd className="global-search-key" aria-hidden="true">/</kbd>
+      <Keys className="global-search-key" combo={{ key: '/' }} ariaHidden />
       <Button variant="ghost" size="icon" className="global-search-close" aria-label={t.close} onClick={closeSearch}><X size={18} /></Button>
     </div>
     {open && <div className="global-search-pop dialog-panel">
@@ -445,7 +446,7 @@ function ResultRow({ card, index, highlighted, decksById, members, tagDefinition
             <span className="global-search-deck-dot" aria-hidden="true" />{deck.title}</span>}
           {owner && <span className="global-search-owner" title={ownerLabel} aria-label={ownerLabel}>{owner}</span>}
         </span>
-        <CardFaceStatus status={status} />
+        <CardFaceStatus status={status} hideQuestions />
       </span>
     </button>
   </li>;

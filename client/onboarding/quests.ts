@@ -2,6 +2,7 @@ import { Bot, Compass, Footprints, SlidersHorizontal, Users } from 'lucide-react
 import type { CardState } from '../../src/format-vocabulary.ts';
 import type { CatalogView } from '../../src/catalog-contracts.ts';
 import { defineText } from '../i18n.ts';
+import { formatShortcut } from '../shortcut-format.ts';
 import { changedCards, hasSearchFilter, ownerOf, stateOf, type CardChange } from './catalog-facts.ts';
 import type { Chapter } from './model.ts';
 import type { OnboardingSignal } from './signals.ts';
@@ -57,7 +58,7 @@ export const questText = defineText({
   filterSearchTitle: 'Search with filters',
   filterSearchBody: 'The `Search cards…` field speaks filters: `#tag`, `@owner`, `state:…`. Type one and watch the list narrow.',
   shortcutsTitle: 'See the shortcuts',
-  shortcutsBody: 'Press `?` for every shortcut of the current screen. The keyboard button in the top bar does the same.',
+  shortcutsBody: `Press ${formatShortcut({ key: '?' }, 'unknown', 'en').name.toLowerCase()} for every shortcut of the current screen. The keyboard button in the top bar does the same.`,
   agentsTitle: 'Agents on the team',
   addAgentTitle: 'Add an agent',
   addAgentBody: 'Agents are team members too. In `Members…` press `Add member` and set the kind to `Agent`.',
@@ -70,7 +71,7 @@ export const questText = defineText({
   agentReviewTitle: 'Review an agent',
   agentReviewBody: 'An agent never accepts its own work. Read the report on the card, then accept it or return it with what to fix.',
   answerQuestionTitle: 'Answer an open question',
-  answerQuestionBody: 'A Doc can ask. Find its open questions, press `Answer` — the answer lands in the resolved list and closes the linked card.',
+  answerQuestionBody: 'A Doc can ask. Find its open questions and press `Answer` to record the answer in the resolved list.',
 }, {
   firstMovesTitle: 'Первые шаги',
   openDeckTitle: 'Откройте колоду',
@@ -118,7 +119,7 @@ export const questText = defineText({
   filterSearchTitle: 'Поищите с фильтрами',
   filterSearchBody: 'Поле `Поиск карточек…` понимает фильтры: `#тег`, `@исполнитель`, `state:…`. Наберите один — и список сузится.',
   shortcutsTitle: 'Откройте сочетания клавиш',
-  shortcutsBody: 'Нажмите `?` — и увидите все сочетания текущего экрана. Кнопка клавиатуры в верхней панели делает то же самое.',
+  shortcutsBody: `Нажмите ${formatShortcut({ key: '?' }, 'unknown', 'ru').name.toLowerCase()} — и увидите все сочетания текущего экрана. Кнопка клавиатуры в верхней панели делает то же самое.`,
   agentsTitle: 'Агенты в команде',
   addAgentTitle: 'Добавьте агента',
   addAgentBody: 'Агенты — тоже участники команды. В `Участники…` нажмите `Добавить участника` и поставьте вид `Агент`.',
@@ -131,7 +132,7 @@ export const questText = defineText({
   agentReviewTitle: 'Разберите работу агента',
   agentReviewBody: 'Агент не принимает свою работу сам. Прочитайте отчёт в карточке и примите её — или верните с указанием, что поправить.',
   answerQuestionTitle: 'Ответьте на открытый вопрос',
-  answerQuestionBody: 'Doc умеет спрашивать. Найдите его открытые вопросы и нажмите `Ответить` — ответ уйдёт в решённые и закроет связанную карточку.',
+  answerQuestionBody: 'Doc умеет спрашивать. Найдите его открытые вопросы и нажмите `Ответить`, чтобы записать ответ в решения.',
 });
 
 export type QuestTextKey = keyof typeof questText.en;

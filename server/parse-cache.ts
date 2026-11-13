@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { serverLang } from './i18n.ts';
 
 // 2026-11-04: cache parsed project files by their content hash.
@@ -70,4 +71,26 @@ export function parseCached<T>(namespace: string, identity: string, weight: numb
   catch (error) { remember(key, error, weight, true); throw error; }
   remember(key, value, weight);
   return value;
+}
+
+export interface FileParse<T> {
+  context: string;
+  mtimeMs: number | null;
+  size: number;
+  sourceHash: string;
+  value: T;
+}
+
+/** 2026-11-12: metadata identifies a revision, but only fresh bytes can confirm an unchanged parse. */
+export function parseFileCached<T>(namespace: string, identity: string, bytes: Buffer, mtimeMs: number | null,
+  compute: (sourceHash: string) => T, previous?: FileParse<T>): FileParse<T> {
+  const context = keyOf(namespace, identity);
+  const sourceHash = createHash('sha256').update(bytes).digest('hex');
+  const size = bytes.length;
+  if (previous?.context === context && previous.sourceHash === sourceHash) {
+    if (previous.mtimeMs === mtimeMs && previous.size === size) return previous;
+    return { ...previous, mtimeMs, size };
+  }
+  const value = parseCached(namespace, JSON.stringify([identity, sourceHash]), size, () => compute(sourceHash));
+  return { context, mtimeMs, size, sourceHash, value };
 }

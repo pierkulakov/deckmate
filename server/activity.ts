@@ -33,6 +33,10 @@ const messages = defineText({
   cardCreated: "Card created",
   contentChanged: "Card content changed",
   reportAdded: "Card report added",
+  questionAsked: "Question asked",
+  questionAssigned: "Question addressee changed",
+  decisionRecorded: "Decision recorded",
+  decisionApplied: "Decision applied",
   heroChanged: "Hero link changed",
   linksChanged: "Card links updated",
   subcardsReordered: "Sub Cards reordered",
@@ -104,6 +108,10 @@ const messages = defineText({
   cardCreated: "Создана карточка",
   contentChanged: "Изменено содержимое карточки",
   reportAdded: "Добавлен отчёт на карточке",
+  questionAsked: "Задан вопрос",
+  questionAssigned: "Изменён адресат вопроса",
+  decisionRecorded: "Записано решение",
+  decisionApplied: "Решение внесено",
   heroChanged: "Изменена связь с Hero",
   linksChanged: "Обновлены связи карточки",
   subcardsReordered: "Изменён порядок Sub Cards",
@@ -167,6 +175,8 @@ function activityLabels(formatLanguage: FormatLanguage): Record<string, string> 
     'set-card-state': text.stateChanged, 'set-card-properties': text.propertiesChanged,
     'create-card': text.cardCreated, 'update-card-content': text.contentChanged,
     'add-card-report': text.reportAdded,
+    'ask-question': text.questionAsked, 'assign-question': text.questionAssigned,
+    'raise-decision': text.questionAssigned, 'record-decision': text.decisionRecorded, 'apply-decision': text.decisionApplied,
     'set-card-parent': text.heroChanged, 'set-card-links': text.linksChanged,
     'reorder-subcards': text.subcardsReordered,
     'assign-deck': text.cardMoved, 'bulk-assign-deck': text.cardsMoved,
@@ -388,7 +398,7 @@ export function describeActivity(before: CatalogView, after: CatalogView, action
     for (const tag of after.projectTags ?? []) if (!before.projectTags?.some(previous => previous.name === tag.name)) details.push(text.newTag(tag.name));
   }
   // 2026-11-10: state feedback belongs to the card even when it has no deck feed.
-  if (!details.length || (!deckIds.size && !transitions.length && !['add-card-report', 'record-decision', 'apply-project-template', 'move-space', 'delete-space'].includes(action))) return null;
+  if (!details.length || (!deckIds.size && !transitions.length && !['add-card-report', 'ask-question', 'assign-question', 'raise-decision', 'record-decision', 'apply-decision', 'apply-project-template', 'move-space', 'delete-space'].includes(action))) return null;
   return { schema: 1, id: randomUUID(), at: new Date().toISOString(), action, actor: 'Deckmate', summary, cards, deckIds: [...deckIds], details,
     ...(transitions.length ? { transitions } : {}) };
 }

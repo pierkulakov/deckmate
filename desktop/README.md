@@ -17,6 +17,8 @@ Tauri 2 shell for [Deckmate](../README.md), a local project board over Markdown.
 | Shell logic | `cargo fmt --check --manifest-path desktop/src-tauri/Cargo.toml`; `cargo clippy --locked --manifest-path desktop/src-tauri/Cargo.toml --all-targets -- -D warnings`; `cargo test --locked --manifest-path desktop/src-tauri/Cargo.toml` | yes |
 | Shell self-test | `desktop/src-tauri/target/debug/Deckmate.exe --self-test <folder>` | yes |
 | Shell smoke | `npm run desktop:smoke` in the repository root | yes |
+| Startup timings / visible splash | `node desktop/scripts/startup-smoke.ts --expect-splash` in the repository root | yes |
+| MCP stdio smoke | `node desktop/scripts/mcp-smoke.mjs` in the repository root | yes |
 | Updater end-to-end | `npm run desktop:updater-e2e` in the repository root | yes |
 | Start-screen screenshots | `npm run capture:launcher` in the repository root | no |
 | Release build | `node desktop/scripts/prepare-sidecar.mjs`, then `npm ci` and `npm run dist` in `desktop/` | yes |
@@ -25,7 +27,21 @@ Rust holds only what needs the OS: window, menu, dialogs, the server process, se
 
 `Deckmate.exe --self-test <folder>` starts the server on the given folder, checks that it answers HTTP and stops through stdin, prints one JSON line (`ok`, `url`, `startMs`, `stopMs`, `error`) and exits 0 or 1, without opening a window. A release build attaches to the parent console so the line is visible there; a debug build uses `node` from `PATH` and the repository's `dist/`, so it needs `npm run build` first.
 
-`npm run desktop:smoke` drives the real debug window over CDP through the page bridges — the same path a person takes, without a person looking at the window: the launcher bridge and `getState()`, the window staying hidden until the first load, opening a project, the board bridge and its refusals, the navigation guard, returning to the start screen, creating a project, the Job Object reaping the server when the shell dies, and the saved `desktop.json`. It builds nothing itself (it wants the cargo debug build and `npm run build`) and keeps all state in a temporary settings folder.
+### MCP through the desktop shell
+
+`Deckmate.exe mcp [--data <folder>] [--member <id>] [--check]` exposes the project board to an agent over Model Context Protocol stdio using the bundled Node.js runtime, so a separate Node.js installation is unnecessary. Standard input and output carry the protocol directly; without `--data`, the project is selected through `DECKMATE_DATA` or by searching upward from the caller's working directory. Add `--check` to print the selected project and tool count and exit.
+
+Connect an agent with the executable as the command (replace `<path>` with its actual location):
+
+```sh
+claude mcp add --scope local deckmate -- "<path>\Deckmate.exe" mcp
+```
+
+For the portable version, the user chooses where to extract the zip and therefore which path to put in this command. Before an in-app installer update, Deckmate counts active desktop MCP sessions and asks whether to continue if any are connected. Close those sessions or explicitly continue: the passive installer forcibly closes Deckmate processes and interrupts their MCP work; it does not wait for sessions to finish. New desktop MCP sessions are refused while the update is being confirmed or installed. A user-scoped named marker gates preparation; detection of the updater's `Deckmate-<version>-installer.exe` process keeps the gate closed after the shell exits, until installation finishes. Portable/manual replacement and MCP started directly through Node are not coordinated by this gate.
+
+`npm run desktop:smoke` drives the real debug window over CDP through the page bridges — the same path a person takes, without a person looking at the window: the launcher bridge and `getState()`, the window staying hidden until the launcher's first load, opening a project, the board bridge and its refusals, the navigation guard, returning to the start screen, creating a project, the Job Object reaping the server when the shell dies, and the saved `desktop.json`. It builds nothing itself (it wants the cargo debug build and `npm run build`) and keeps all state in a temporary settings folder.
+
+When the last project opens automatically (2026-11-12), the smoke requires the startup page to be the first visible frame and the loaded board the next one; the launcher never shows. The startup check above measures the same splash path, the readiness transition and bridge refusals.
 
 The smoke also checks dirty-state refusals through the board bridge and native Quit menu, stable board origin/localStorage after restart, settings-save failures in commands and the launcher, renderer-crash recovery, CDP keyboard input (printing/reloading disabled; editing shortcuts available), notification denial, clipboard paste in the card editor and Vision, and native Ctrl+Shift+P from a CDP-focused board editor.
 
@@ -47,14 +63,16 @@ Debug-only `DECKMATE_DESKTOP_UPDATER_ENDPOINT` enables/redirects checks; `DECKMA
 
 | Module in `src-tauri/src/` | What it does |
 |---|---|
-| `lib.rs` | Entry point: the `--self-test` mode, plugins, command registration, app lifecycle. |
+| `lib.rs` | Entry point: the `mcp` and `--self-test` modes, plugins, command registration, app lifecycle. |
+| `mcp.rs` | The MCP stdio process: argument forwarding, inherited pipes and caller environment. |
+| `mcp_sessions.rs` | User-scoped MCP session markers and the update-installation gate. |
 | `app.rs` | Shell state and project lifecycle: open, create, stop, superseding launches, status events, startup auto-open, quit. |
 | `server.rs` | The server process: environment filtering, the free port, the ready line, stdin shutdown, timeouts, project creation through the CLI. |
 | `paths.rs` | Program resolution (debug/release), the settings folder, Windows path classification (network, device), case-insensitive path comparison. |
 | `bridge.rs` | The launcher and board Tauri commands and their authorization. |
 | `workspace.rs` | Workspace source trust, page snapshots and shared save/menu refresh. |
 | `webview.rs` | WebView2 handlers: navigation, popups, permissions, zoom keys, the console log; the board-bridge script. |
-| `window.rs` | The main window: creation, hidden-until-loaded, bounds save and restore, zoom, navigation. |
+| `window.rs` | The main window: creation, first local frame, bounds save and restore, zoom, navigation. |
 | `settings.rs` | `desktop.json`: normalization, atomic writes, recent and workspace lists, bounds and zoom validation, the system locale. |
 | `menu.rs` | The native menu and its events. |
 | `updater.rs` | Scheduled and manual update checks, signature verification, installation and portable notifications. |
@@ -73,7 +91,7 @@ Debug-only `DECKMATE_DESKTOP_UPDATER_ENDPOINT` enables/redirects checks; `DECKMA
 - **Port.** The shell probes the saved `serverPort` first, keeping the board origin and its localStorage across project switches and restarts. If the port is occupied (or no port is saved), it binds `127.0.0.1:0`, reads the free port, releases it and saves the new port. If another process takes that port before startup, project startup retries up to three times with fresh ports only when stderr contains the exact Node error line `Error: listen EADDRINUSE: address already in use 127.0.0.1:<port>` for the chosen port (surrounding whitespace is allowed), saving each through the same settings path; only the final failure is shown. An unrelated early exit remains `start-failed` without changing the port, even if it is occupied by then; diagnostic mentions and adjacent port numbers do not count. Other probe errors are reported. Self-test always uses a free port. A fallback changes the origin; data stored under the occupied origin remains there.
 - **Ready.** The first stdout match of `Deckmate: http://127.0.0.1:<port>` for exactly the port the shell chose — a further digit invalidates the match, so port 4318 never matches 43180 — within 20 s; the match survives chunk boundaries and a trailing path or query. An exit before that is `start-failed`, no match in time is `timeout`; both carry the last 12 stderr lines.
 - **Shutdown.** The shell writes `{"type":"shutdown"}\n` to the server's stdin and waits up to 3 s, then kills it; a server that never became ready is killed outright. The server, started with `DECKMATE_SHUTDOWN_STDIN=1`, also shuts down at the end of stdin, so it never outlives the shell. The stdin handle is taken out of the tokio `Child` and held by the run loop: `Child::wait()` would close stdin while waiting, and the server would read that as the shell going away.
-- **Job Object.** The server and the project-init CLI run inside a Windows Job Object with kill-on-close, so they die with the shell even on a hard kill.
+- **Job Object.** MCP, the server and the project-init CLI share a launch helper: create suspended, assign to a Windows Job Object with kill-on-close, then resume the initial thread. No child code runs before Job assignment. Closing the Job kills the child tree, including on a hard shell kill after assignment.
 - **Log.** `<settings dir>\server.log`: shell events (`start <folder> on port <p>`, `stop <folder>`, unexpected exit with code), every server output line prefixed `[stdout] ` or `[stderr] `, and renderer warnings and errors as `[renderer …]`. Above 5 MB it rotates to `server.log.1`, keeping one previous file; `token=` secrets are masked. Panics include a backtrace and show a native error before exit; startup errors use the same path, with a Microsoft download link when WebView2 Runtime is missing.
 - **Creating a project.** `node <cli> init <folder>`, run from the CLI's own short directory. Exit code 0 is success; otherwise the result is `create-failed` with the stderr tail. Initialization is limited to 60 s (a timeout is also `create-failed` with a localized explanation). Quit or a superseding launch cancels initialization with `closed` or `superseded`; the CLI is killed and reaped, and its Job is closed, before releasing the lifecycle lock. Failure, timeout and cancellation include a localized warning that the target folder may have been created partially and has not been deleted, with its full path. The warning dialog offers **Open folder in Explorer** (the nearest existing parent if the target does not exist); it is shown only after releasing the lifecycle lock and is suppressed during shutdown, so quit never waits for acknowledgement. Failed initialization does not add the folder to `recent` or `lastProject`, and revokes its folder-dialog trust; partial user contents are never removed. A successful folder then opens as a trusted path.
 
@@ -138,7 +156,7 @@ Rust checks again on every command (`bridge.rs`): launcher commands answer only 
 
 ### Navigation and new windows
 
-The main window may navigate only to the bundled launcher (`http://tauri.localhost/index.html`) and the current server origin; iframes only to the current server origin. Any other `http(s)` target opens in the system browser and is canceled in the app; every other scheme is canceled outright. Page-initiated new-window requests do not create app windows: an `http(s)` target, including the current server's document and reference links, goes to the system browser; bundled app URLs and all other schemes are dropped. The shell itself may open the separate What's new window. Navigating back to the launcher URL while a project is open is intercepted and routed through the shell, which stops the server before the start screen appears.
+The main window may navigate only to the bundled launcher (`http://tauri.localhost/index.html`), its static `startup.html` splash and the current server origin; iframes only to the current server origin. Any other `http(s)` target opens in the system browser and is canceled in the app; every other scheme is canceled outright. Page-initiated new-window requests do not create app windows: an `http(s)` target, including the current server's document and reference links, goes to the system browser; bundled app URLs and all other schemes are dropped. The shell itself may open the separate What's new window. Navigating back to either local page while a project is open is intercepted and routed through the shell, which stops the server before the start screen appears. The splash does not satisfy launcher authorization and receives no board bridge or additional capabilities.
 
 ### WebView2 permissions
 
@@ -170,7 +188,7 @@ UNC and device paths (`\\server\share`, `\\?\C:\`, `\\.\`), mapped network drive
 
 ### Window
 
-The main window is 1280×820 by default and at least 960×600. Saved bounds are restored when at least 120×60 of the window's top edge overlaps some monitor's work area, keeping its title bar reachable; bounds are saved 300 ms after a move or resize and on close; the maximized state is kept. The window is created hidden and shown once the bounds are restored and the first page load has finished; a 5-second fallback shows it with an error, so a broken start screen never leaves an invisible process. A second launch unminimizes, shows and focuses the running window. The title is `Deckmate` on the start screen and `Deckmate — <folder name>` on the board.
+The main window is 1280×820 by default and at least 960×600. Saved bounds are restored when at least 120×60 of the window's top edge overlaps some monitor's work area, keeping its title bar reachable; bounds are saved 300 ms after a move or resize and on close; the maximized state is kept. The window is created hidden and shown once the bounds are restored and the first local page has loaded. With a saved project, that page is `launcher/startup.html`: a small static skeleton with no external assets or scripts, matching the native dark background to prevent a white flash. It has no launcher or board authority. Node starts in parallel with WebView2 creation; project/network validation runs off the UI thread, and the board navigates only after the existing stdout ready signal. There is no HTTP readiness polling or two-second auto-open visibility delay. Missing/network projects and server failures return to the full launcher. A 5-second fallback shows a local-page load error, so a broken start screen never leaves an invisible process. A second launch unminimizes, shows and focuses the running window. The title is `Deckmate` on the start screen and `Deckmate — <folder name>` on the board.
 
 The main window leaves file drops to WebView2's HTML drag-and-drop handlers, so the board's attachment panel receives files as it does in a browser; no native file-drop capability is needed.
 
@@ -188,7 +206,32 @@ The native menu has File (open folder, recent projects, Workspace, add current p
 
 Node 26, the major of `engines` in the root `package.json`. [node-runtime.json](node-runtime.json) pins the exact version and the SHA-256 of the official `win-x64/node.exe` (26.13.0 as of 2026-11-09), plus the SHA-256 of the complete `LICENSE` from that Node tag; `build.rs` embeds the version for the About dialog. `prepare-sidecar.mjs` downloads the binary from nodejs.org with an npmmirror fallback and the license from the pinned GitHub tag, verifies both hashes and caches both files in `desktop/.cache/`. It then runs [desktop-notices.mjs](scripts/desktop-notices.mjs), which adds the licenses of the locked Windows Rust dependency graph and the Microsoft.Web.WebView2 SDK to `src-tauri/THIRD-PARTY-NOTICES.txt`.
 
-The Node compile cache remains disabled. On 2026-11-09, five debug `Deckmate.exe --self-test` trials on the same initialized project measured median `startMs` of 670 without the cache, 716 with an empty cache, and 968 with a warm cache (Node 26.13.0). Only the compile cache was reset between paired trials; the search index stayed warm.
+The Node compile cache remains disabled. On 2026-11-09, five debug `Deckmate.exe --self-test` trials on the same initialized project measured median `startMs` of 670 without the cache, 716 with an empty cache, and 968 with a warm cache (Node 26.13.0). Only the compile cache was reset between paired trials; the search index stayed warm. Parallel window/server startup avoids putting WebView2 creation and guard installation in front of the server's ready event.
+
+### Measuring startup without an installer
+
+`server.log` records `[startup]` milestones in debug and release: `settings-loaded`, `node-spawned` (with PID), `window-created`, `window-visible`, `server-ready`, and `board-data-painted`, each with UTC and monotonic elapsed milliseconds from shell entry. The board milestone uses the shell's origin-scoped initialization script: it waits for a visible data snapshot and loaded catalog, then two animation frames; an empty `.app-shell` or navigation completion does not count. It does not change server or client code.
+
+After building the board and shell, run from the repository root:
+
+```sh
+node desktop/scripts/startup-smoke.ts --label after-debug --runs 3 --expect-splash --check-fallbacks
+node --test desktop/scripts/startup.test.mjs
+```
+
+The script reuses the repository's CDP driver, isolates settings and WebView2 profiles under `desktop/.cache/startup-debug/`, and disables update checks. Each run starts immediately before spawning `Deckmate.exe`; one warm-up is excluded, then three samples produce medians. `windowMs` records the first native show of a loaded document after restoring bounds; `dataMs` records visible board data after two animation frames. These are application milestones, not optical measurements of a physical display. The index and profile stay warm; the server stops through its existing board bridge between samples, then native Close and an explicit wait for that shell's WebView2 browser process to exit release the profile before the next launch. UTC logs and sample JSON stay in the fixture folder. `--expect-splash` separately gates server readiness on a file event, verifies a visible dark splash, denied launcher/board commands and the unchanged CSP, saves its screenshot, then releases readiness and checks the board. `--check-fallbacks` additionally checks a fresh launcher, a missing project, a refused network auto-open and a server that exits early; `--checks-only` runs these assertions without collecting timings. `--fixture`, `--runs` and `--exe` select another isolated fixture, sample count or binary. `--baseline-exe <instrumented-before.exe>` warms both binaries and alternates their order between pairs, writing an additional `<label>-before.json`. Keep the same milestone instrumentation in both binaries.
+
+Measured 2026-11-12 on Windows x64 / Node 26.13.0: debug baseline `559cea89` with the same milestone instrumentation, one warm-up per binary, then three alternating launches each on the same demo, warm index and profile (`paired-clean-debug-before.json` / `paired-clean-debug.json`):
+
+| Milestone, median milliseconds from process launch | Before | After |
+|---|---:|---:|
+| First loaded window shown | 1094 | 446 |
+| Visible board data painted | 1866 | 1881 |
+| Node spawned | 434 | 149 |
+| Server ready | 941 | 747 |
+
+The first window appeared 648 ms earlier (59%). The board-data median differed by 15 ms; these samples show the gain in first-window latency rather than a faster rendered board. Earlier batches that waited only for the shell process showed large WebView2 startup variation; waiting for its browser process to exit made repeated launches comparable. Neither binary enabled the Node compile cache.
+
 
 ## Security notes and known limitations
 

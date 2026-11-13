@@ -6,6 +6,7 @@ import { lessonMaxLength } from '../../src/journey-lessons.ts';
 import { Button } from './ui/button.tsx';
 import { defineText, useText } from '../i18n.ts';
 import { moveFocus } from '../focus.ts';
+import { formatShortcut } from '../shortcut-format.ts';
 import '../journey-return.css';
 
 const text = defineText({
@@ -77,8 +78,8 @@ export function ReviewReturnPrompt({ card, catalog, busy, blocked = false, error
       <span>{t.addLesson}</span>
     </label>}
     <div className="journey-return-actions">
-      <Button type="button" variant="ghost" size="sm" disabled={busy} title="Esc" onClick={onCancel}>{t.cancel}</Button>
-      <Button type="button" variant="outline" size="sm" disabled={busy || blocked || !validReason} title="Enter" onClick={confirm}>{t.return}</Button>
+      <Button type="button" variant="ghost" size="sm" disabled={busy} title={formatShortcut({ key: 'Escape' }).display} onClick={onCancel}>{t.cancel}</Button>
+      <Button type="button" variant="outline" size="sm" disabled={busy || blocked || !validReason} title={formatShortcut({ key: 'Enter' }).display} onClick={confirm}>{t.return}</Button>
     </div>
   </div>;
 }

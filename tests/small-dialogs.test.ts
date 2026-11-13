@@ -2,6 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { openHeadlessBrowser, type HeadlessPage } from '../tools/layout-capture.ts';
 import { browserFixtureUrl } from './browser-fixture.ts';
 import { requireBrowser } from './browser-environment.ts';
+import { waitForLayout } from './browser-layout.ts';
 
 const browserPath = requireBrowser();
 
@@ -22,23 +23,28 @@ describe.skipIf(!browserPath)('small dialogs share the Decks-home dialog grammar
     throw new Error('Timed out: ' + expression + '\n' + page.consoleErrors.join('\n'));
   }
 
+  async function load() {
+    await page.evaluate('window.previousSmallDialogsDocument = true');
+    await page.send('Page.navigate', { url: browserFixtureUrl('small-dialogs') });
+    await until('Boolean(window.smallDialogsTest && !window.previousSmallDialogsDocument)');
+  }
+
   async function open(scene: Scene, options: Record<string, unknown> = {}, width = 1280) {
     await page.send('Emulation.setDeviceMetricsOverride', { width, height: width === 375 ? 812 : 800, deviceScaleFactor: 1, mobile: false });
-    await page.send('Page.navigate', { url: browserFixtureUrl('small-dialogs') + '?instance=' + Math.random() });
-    await until('Boolean(window.smallDialogsTest)');
-    await page.evaluate(`smallDialogsTest.render(${JSON.stringify(scene)}, ${JSON.stringify(options)})`);
+    const selector = { members: '.members-editor', quick: '.quick-capture-trigger', shortcuts: '.shortcuts-help-trigger' }[scene];
+    await page.evaluate(`window.previousSmallDialogsNode = document.querySelector(${JSON.stringify(selector)}); smallDialogsTest.render(${JSON.stringify(scene)}, ${JSON.stringify(options)})`);
+    await until(`Boolean(document.querySelector(${JSON.stringify(selector)}) && document.querySelector(${JSON.stringify(selector)}) !== window.previousSmallDialogsNode)`);
     await page.evaluate('document.fonts.ready');
     if (scene === 'quick') {
       await page.evaluate(`document.querySelector('.quick-capture-trigger').click()`);
-      await until(`Boolean(document.querySelector('.quick-capture-panel'))`);
+      await until(`Boolean(document.querySelector('.quick-capture-input:not(:disabled)'))`);
     } else if (scene === 'shortcuts') {
       await page.evaluate(`document.querySelector('.shortcuts-help-trigger').click()`);
       await until(`Boolean(document.querySelector('.shortcuts-panel'))`);
     } else {
       await until(`Boolean(document.querySelector('.members-editor-list'))`);
     }
-    // Let the entrance spring finish before measuring boxes.
-    await delay(420);
+    await waitForLayout(page.evaluate, panels[scene]);
   }
 
   /** Resolves a CSS custom property to a computed color by probing an element that uses it. */
@@ -79,8 +85,24 @@ describe.skipIf(!browserPath)('small dialogs share the Decks-home dialog grammar
 
   beforeAll(async () => {
     page = await openHeadlessBrowser({ width: 1280, height: 800, scale: 1 });
+    await load();
   }, 60000);
   afterAll(async () => { await page?.close(); }, 20000);
+
+  it('loads shortcut help on first request and keeps the keyboard toggle', async () => {
+    await load();
+    await page.evaluate(`smallDialogsTest.render('shortcuts')`);
+    await until(`Boolean(document.querySelector('.shortcuts-help-trigger')) && !document.querySelector('.members-editor')`);
+    expect(await page.evaluate(`(() => { const hint = document.createElement('div'); hint.className = 'deck-header-hint has-keys'; document.body.append(hint); const style = getComputedStyle(hint); const result = [style.display, style.fontSize]; hint.remove(); return result; })()`)).toEqual(['flex', '12px']);
+    const requested = `performance.getEntriesByType('resource').some(entry => /ShortcutsHelpDialog-[^/]+\\.js/.test(entry.name))`;
+    expect(await page.evaluate(requested)).toBe(false);
+    await page.evaluate(`window.dispatchEvent(new KeyboardEvent('keydown', { key: '?', bubbles: true, cancelable: true }))`);
+    await until(`Boolean(document.querySelector('.shortcuts-panel'))`);
+    expect(await page.evaluate(requested)).toBe(true);
+    await page.evaluate(`window.dispatchEvent(new KeyboardEvent('keydown', { key: '?', bubbles: true, cancelable: true }))`);
+    await until(`!document.querySelector('.shortcuts-panel')`);
+    expect(page.consoleErrors).toEqual([]);
+  });
 
   it.each(['members', 'quick', 'shortcuts'] as const)('%s dialog wears the shared frame in both themes', async scene => {
     for (const theme of ['dark', 'light']) {
@@ -173,16 +195,65 @@ describe.skipIf(!browserPath)('small dialogs share the Decks-home dialog grammar
         const s = getComputedStyle(title); return s.fontSize + '/' + s.fontWeight;
       }),
       labels: el.querySelectorAll('.shortcuts-panel-label').length,
-      keycaps: getComputedStyle(el.querySelector('.shortcuts-panel-key')).textTransform,
+      keycaps: (() => { const cap = el.querySelector('.shortcuts-panel-keys .shortcuts-panel-key'), s = getComputedStyle(cap);
+        return { height: s.height, color: s.color, background: s.backgroundImage, name: cap.getAttribute('aria-label'), label: cap.textContent }; })(),
     }`);
     expect(details.overlay).not.toBe('mismatch');
     expect(details.overlay).not.toBe('rgba(0, 0, 0, 0)');
     // 2026-11-10: the Foil Rule — panel group titles are 15/600 (was 17/600).
     expect(new Set(details.groups)).toEqual(new Set(['15px/600']));
     expect(details.labels).toBeGreaterThan(3);
-    expect(details.keycaps).toBe('uppercase');
+    expect(details.keycaps).toMatchObject({ height: '22px', color: 'rgb(205, 200, 220)', background: 'none', name: 'Slash', label: '/' });
     for (const type of ['keyDown', 'keyUp']) await page.send('Input.dispatchKeyEvent', { type, key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 });
     await until(`!document.querySelector('.shortcuts-panel')`);
+  });
+
+  it('shows Command and accessible words on an emulated Mac in either theme', async () => {
+    const added = await page.send('Page.addScriptToEvaluateOnNewDocument', { source: `
+      Object.defineProperty(Navigator.prototype, 'platform', { configurable: true, get: () => 'MacIntel' });
+      Object.defineProperty(Navigator.prototype, 'userAgentData', { configurable: true, get: () => ({ platform: 'macOS' }) });
+    ` });
+    try {
+      await load();
+      for (const theme of ['light', 'dark']) {
+        await open('shortcuts', { theme, screens: ['app', 'cards'] }, 375);
+        const result = await page.evaluate(`(() => {
+          const cap = document.querySelector('.shortcuts-panel kbd[aria-label="Command, A"]');
+          return { label: cap.textContent, color: getComputedStyle(cap).color, background: getComputedStyle(cap).backgroundImage,
+            width: cap.getBoundingClientRect().width, column: cap.parentElement.getBoundingClientRect().width };
+        })()`);
+        expect(result.label).toBe('⌘A');
+        expect(result.color).toBe(theme === 'light' ? 'rgb(81, 68, 95)' : 'rgb(205, 200, 220)');
+        expect(result.background).toBe('none');
+        expect(result.width).toBeLessThanOrEqual(result.column);
+        const accessibility = await page.send('Accessibility.getFullAXTree');
+        expect(accessibility.result.nodes.some((node: { role?: { value?: string }; name?: { value?: string } }) =>
+          node.role?.value === 'group' && node.name?.value === 'Command, A')).toBe(true);
+        const alignment = await page.evaluate(`(() => {
+          const row = document.createElement('div'); row.style.display = 'inline-flex';
+          for (const glyph of ['⌘', '⇧']) {
+            const cap = document.createElement('kbd'); cap.className = 'shortcuts-panel-key'; cap.style.fontFamily = 'Segoe UI';
+            const symbol = document.createElement('span'); symbol.className = 'key-mac-symbol'; symbol.dataset.glyph = glyph; symbol.textContent = glyph;
+            cap.append(symbol); row.append(cap);
+          }
+          document.body.append(row);
+          const result = [...row.children].map(cap => {
+            const a = cap.getBoundingClientRect(), b = cap.firstElementChild.getBoundingClientRect();
+            return { x: Math.abs((a.left + a.right - b.left - b.right) / 2), y: Math.abs((a.top + a.bottom - b.top - b.bottom) / 2),
+              font: getComputedStyle(cap.firstElementChild).fontFamily };
+          });
+          row.remove(); return result;
+        })()`);
+        for (const glyph of alignment) {
+          expect(glyph.font).toContain('Segoe UI');
+          expect(glyph.x).toBeLessThanOrEqual(1);
+          expect(glyph.y).toBeLessThanOrEqual(2);
+        }
+      }
+    } finally {
+      await page.send('Page.removeScriptToEvaluateOnNewDocument', { identifier: added.result.identifier });
+      await load();
+    }
   });
 
   it('keeps the full shortcuts header and footer inside a short phone while only the body scrolls', async () => {

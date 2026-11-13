@@ -1,7 +1,6 @@
-import type { Nodes } from 'mdast';
 import type { CatalogCard } from '../src/catalog-contracts.ts';
 import { markdownParser } from '../src/markdown-model.ts';
-import { cardBody, rememberByRevision } from './card-word-count.ts';
+import { cardBody, markdownText, rememberByRevision, unreadableBlocks } from './card-word-count.ts';
 
 export type DocExcerptBlock = { heading: boolean; text: string };
 
@@ -9,24 +8,14 @@ export type DocExcerptBlock = { heading: boolean; text: string };
 // only the start of the body is parsed and a few hundred characters are kept.
 const sourceLimit = 1600;
 const textLimit = 320;
-const spacedNodes = new Set<string>(['list', 'listItem', 'table', 'tableRow', 'tableCell', 'blockquote']);
-const skippedBlocks = new Set<string>(['yaml', 'code', 'html', 'thematicBreak', 'definition', 'footnoteDefinition']);
-
-function plainText(node: Nodes): string {
-  if (node.type === 'text' || node.type === 'inlineCode') return node.value;
-  if (node.type === 'image') return node.alt ?? '';
-  if (node.type === 'break') return ' ';
-  if (!('children' in node)) return '';
-  return node.children.map(child => plainText(child)).join(spacedNodes.has(node.type) ? ' ' : '');
-}
 
 export function docExcerpt(markdown: string, legacyDocument = false): DocExcerptBlock[] {
   const tree = markdownParser.parse(cardBody(markdown, legacyDocument).slice(0, sourceLimit));
   const blocks: DocExcerptBlock[] = [];
   let length = 0;
   for (const node of tree.children) {
-    if (skippedBlocks.has(node.type)) continue;
-    const text = plainText(node).replace(/\s+/gu, ' ').trim();
+    if (unreadableBlocks.has(node.type)) continue;
+    const text = markdownText(node).replace(/\s+/gu, ' ').trim();
     if (!text) continue;
     blocks.push({ heading: node.type === 'heading', text: text.slice(0, textLimit - length) });
     length += text.length;

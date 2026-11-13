@@ -1,5 +1,5 @@
 import { createRoot } from 'react-dom/client';
-import Vision, { warmVisionCanvas } from '../../client/components/Vision.tsx';
+import Vision from '../../client/components/Vision.tsx';
 import { convertToExcalidrawElements } from '@excalidraw/excalidraw';
 import { DocumentPreviewProvider } from '../../client/components/DocumentPreview.tsx';
 import VisionCardNode, { visionCardSize } from '../../client/components/VisionCardNode.tsx';
@@ -48,8 +48,7 @@ async function render() {
   const dark = params.get('theme') !== 'light';
   document.documentElement.classList.toggle('dark', dark);
   localStorage.setItem('deckmate-vision-board-sandbox', 'board-1');
-  Object.assign(window, { visionTest: { warm: () => warmVisionCanvas(new AbortController().signal), setLang, nodeOpened } });
-  if (params.get('warm') === 'before') await warmVisionCanvas(new AbortController().signal);
+  Object.assign(window, { visionTest: { setLang, nodeOpened } });
   if (params.get('mode') === 'nodes') {
     const base = { ...catalog.cards[0], title: 'Длинное название карточки о вечернем пароме и его маршруте', owner: 'Очень длинное имя участника проекта',
       effort: 0, priority: 'high' as const, iteration: 14, tags: ['Очень длинное название русского тега для проверки локализации', 'audio', 'lighting'], markdown: 'Описание с подробностями маршрута и результата. '.repeat(12) };
@@ -57,8 +56,8 @@ async function render() {
       { ...base, id: 'blocked', dependsOn: ['c-1'], dueDate: '2020-01-01' },
       { ...base, id: 'started', state: 'started' },
       { ...base, id: 'on-review', state: 'review' },
-      { ...base, id: 'questions', kind: 'doc', state: null, dependsOn: ['c-1'], openQuestions: [{ text: 'Когда?', taskRef: null }] },
-      { ...base, id: 'questions-only', kind: 'doc', state: null, openQuestions: [{ text: 'Когда?', taskRef: null }] },
+      { ...base, id: 'questions', kind: 'doc', state: null, dependsOn: ['c-1'], openQuestions: [{ text: 'Когда?', taskRef: null, assignee: null, target: null }] },
+      { ...base, id: 'questions-only', kind: 'doc', state: null, openQuestions: [{ text: 'Когда?', taskRef: null, assignee: null, target: null }] },
       { ...base, id: 'hero', kind: 'hero', state: null },
     ];
     const lookups = buildCatalogLookups([...catalog.cards, ...cards]);

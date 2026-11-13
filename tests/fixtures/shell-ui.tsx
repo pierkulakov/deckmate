@@ -92,11 +92,12 @@ function configureBridge(workspace?: boolean | DesktopWorkspaceProject[], partia
 
 // 2026-11-08: exercise the real useWorkspace shutdown/reconnect race without stopping a shared server.
 const sockets = new Set<FakeSocket>();
+let holdReconnect = false;
 class FakeSocket {
   onopen: (() => void) | null = null;
   onclose: (() => void) | null = null;
   onerror: (() => void) | null = null;
-  constructor() { sockets.add(this); setTimeout(() => this.onopen?.(), 0); }
+  constructor() { sockets.add(this); setTimeout(() => { if (!holdReconnect) this.onopen?.(); }, 0); }
   close() { sockets.delete(this); }
   disconnect() { this.onclose?.(); }
 }
@@ -165,6 +166,7 @@ window.fetch = async (input, init) => {
 
 function render(scene: 'app' | 'bulk' = 'app', options: { lang?: Lang; theme?: string; view?: string; deck?: boolean; layout?: string; editMode?: string; failSnapshot?: boolean; failShutdown?: boolean; notifications?: boolean; searchMetadata?: boolean; workspace?: boolean | DesktopWorkspaceProject[]; partialBridge?: boolean; selectionCount?: number; bulkResult?: boolean; bulkStateRefusal?: boolean } = {}) {
   flushSync(() => root.render(null));
+  holdReconnect = false;
   snapshotFails = options.failSnapshot ?? false;
   shutdownFails = options.failShutdown ?? false;
   shutdownCalls = 0;
@@ -197,8 +199,9 @@ function render(scene: 'app' | 'bulk' = 'app', options: { lang?: Lang; theme?: s
 Object.assign(window, { shellTest: {
   render,
   bulkChanges,
-  startSave: () => { const finish = beginSave(); setTimeout(() => finish(true), 200); },
-  disconnect: () => { snapshotFails = true; sockets.forEach(socket => socket.disconnect()); },
+  startSave: (duration = 200) => { const finish = beginSave(); setTimeout(() => finish(true), duration); },
+  disconnect: (hold = false) => { holdReconnect = hold; snapshotFails = true; sockets.forEach(socket => socket.disconnect()); },
+  setLang,
   get shutdownCalls() { return shutdownCalls; },
   get notificationCalls() { return notificationCalls; },
   get workspaceCalls() { return workspaceCalls; },

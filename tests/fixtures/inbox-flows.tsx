@@ -110,7 +110,7 @@ function render(scene: 'family' | 'cover' | 'settings' | 'gallery' | 'capture', 
   if (scene === 'cover') {
     const deck: CatalogDeck = { id: 'deck:trips', title: String(options.title ?? 'Trips'), kind: 'task', spaceId: 'space:one', description: '', color: '#9258e5', icon: 'layers' };
     root.render(<div className="catalog-deck-grid" style={{ padding: 24 }}><DeckCoverTile key={++instance} deck={deck}
-      counts={{ open: 0, accepted: 0, tasks: 0 }} source="sandbox" disabled={false} writable={false} inbox={Boolean(options.inbox)}
+      counts={{ open: 0, accepted: 0, tasks: 0, review: 0 }} source="sandbox" disabled={false} writable={false} inbox={Boolean(options.inbox)}
       canOpen={() => true} onOpen={noop} onSettings={noop} /></div>);
     return;
   }

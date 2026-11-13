@@ -71,4 +71,7 @@
 .global-search-tag-suggestion .page-number { flex-shrink: 0; margin-left: auto; }
 .global-search-tag-suggestion .tag-badge { min-width: 0; height: auto; }
 .global-search-tag-suggestion .tag-badge-name { white-space: normal; overflow-wrap: anywhere; }
-@media (pointer: coarse) { .global-search-tag-suggestion { min-height: var(--control-target-touch); } }
+@media (pointer: coarse) {
+  .global-search { height: var(--control-target-touch); }
+  .global-search-row, .global-search-pill { min-height: var(--control-target-touch); }
+}

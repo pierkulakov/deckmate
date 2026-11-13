@@ -3,7 +3,7 @@ import { failureMessage } from '../failure-message.ts';
 import * as Dialog from '@radix-ui/react-dialog';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import type { RootContent } from 'mdast';
-import { Archive, ArchiveRestore, Bookmark, Check, Copy, Crown, Eye, History, Link2, LoaderCircle, MoreHorizontal, Paperclip, Pause, Play, RotateCcw, Route, Scan, SlidersHorizontal, Trash2, Undo2, X } from 'lucide-react';
+import { Archive, ArchiveRestore, Bookmark, Check, Copy, Crown, Eye, History, Hourglass, Link2, LoaderCircle, MessageCircleQuestion, MoreHorizontal, Paperclip, Pause, Play, RotateCcw, Route, Scan, SlidersHorizontal, Trash2, Undo2, X } from 'lucide-react';
 import { deckAcceptsCard, type CardContent, type CatalogCard, type CatalogView } from '../../src/catalog-contracts.ts';
 import type { BulkChange } from '../../src/bulk-contracts.ts';
 import { openDependencies } from '../../src/dependency-contracts.ts';
@@ -34,15 +34,21 @@ import { useCardTilt } from '../useCardTilt.ts';
 import { OPEN_CARD_SHORTCUTS, claimOpenCardShortcuts, markShortcutPropertyHover, matchShortcut, resolveCardShortcutAction, resolveHoveredCardShortcut, shortcutTargetBlocked } from '../keyboard-shortcuts.ts';
 import { currentMember, onMemberChange } from '../current-member.ts';
 import { countCatalogCardWords } from '../card-word-count.ts';
+import { DocWordCount, docWordsLabel } from './CardMetrics.tsx';
 import { Button } from './ui/button.tsx';
 import { defineText, textNow, useLang, useText } from '../i18n.ts';
 import { moveFocus } from '../focus.ts';
+import { copyText } from '../clipboard.ts';
 import { priorityLabel, stateLabel } from '../locales/common.ts';
 import { memberForOwner, ownerInitials, ownerProgressLabel } from './CardOwnerAvatar.tsx';
 import { JourneyStepNote } from './JourneyStepNote.tsx';
 import { PriorityIcon } from './PriorityIcon.tsx';
 import { CardHandHint } from './CardHandHint.tsx';
+import { OpenQuestions } from './OpenQuestions.tsx';
+import { pendingDecisionsOf, waitingOn } from '../question-model.ts';
 import { HandIcon } from './HandIcon.tsx';
+import { Keys } from './Keys.tsx';
+import { formatShortcut, shortcutAria } from '../shortcut-format.ts';
 import { viewNavigation } from '../app-navigation.ts';
 import '../card-preview.css';
 // 2026-11-10: the preview uses the shared surface classes; importing them here keeps fixtures that mount it alone styled too.
@@ -86,7 +92,7 @@ const text = defineText({
   moveDeck: 'Move to another deck',
   closeCard: 'Close card',
   openFamily: 'Open Hero and Sub Cards',
-  returnToHero: (title: string) => `Back to Hero: ${title} · Esc`,
+  returnToHero: (title: string) => `Back to Hero: ${title}`,
   parentProgress: (done: number, total: number) => `Hero: ${done} of ${total} done`,
   cardState: 'Card state',
   stateGroup: (state: string) => `State: ${state}`,
@@ -121,6 +127,8 @@ const text = defineText({
   editPriority: 'Edit Priority',
   panels: 'Card panels',
   contentPanel: 'Content',
+  showOpenQuestions: (open: number, pending: number) => `Questions and decisions · ${open} open · ${pending} to apply`,
+  questionsPanel: 'Questions and decisions',
   propertiesPanel: 'Properties',
   attachmentsPanel: 'Attachments',
   focusMode: 'Focus Mode',
@@ -159,7 +167,6 @@ const text = defineText({
   restore: 'Restore',
   returnReview: 'Request changes',
   returnDescription: 'Describe what needs changing. The reason will be recorded in the card history.',
-  words: (count: number) => `${new Intl.NumberFormat('en-US').format(count)} ${new Intl.PluralRules('en-US').select(count) === 'one' ? 'word' : 'words'}`,
 }, {
   copyLink: 'Скопировать ссылку на карточку',
   attachmentsUnavailable: 'Не удалось проверить вложения. Откройте панель для повтора.',
@@ -201,7 +208,7 @@ const text = defineText({
   moveDeck: 'Переместить в другую колоду',
   closeCard: 'Закрыть карточку',
   openFamily: 'Открыть Hero и Sub Cards',
-  returnToHero: (title: string) => `Вернуться к Hero: ${title} · Esc`,
+  returnToHero: (title: string) => `Вернуться к Hero: ${title}`,
   parentProgress: (done: number, total: number) => `Hero: принято ${done} из ${total}`,
   cardState: 'Состояние карточки',
   stateGroup: (state: string) => `Состояние: ${state}`,
@@ -236,6 +243,8 @@ const text = defineText({
   editPriority: 'Изменить приоритет',
   panels: 'Панели карточки',
   contentPanel: 'Содержимое',
+  showOpenQuestions: (open: number, pending: number) => `Вопросы и решения · открытых: ${open} · к внесению: ${pending}`,
+  questionsPanel: 'Вопросы и решения',
   propertiesPanel: 'Свойства',
   attachmentsPanel: 'Вложения',
   focusMode: 'Фокус-режим',
@@ -274,13 +283,6 @@ const text = defineText({
   restore: 'Восстановить',
   returnReview: 'Вернуть на доработку',
   returnDescription: 'Укажите, что нужно исправить. Причина останется в истории карточки.',
-  words: (count: number) => {
-    const rule = new Intl.PluralRules('ru-RU').select(count);
-    let unit = 'слов';
-    if (rule === 'one') unit = 'слово';
-    if (rule === 'few') unit = 'слова';
-    return `${new Intl.NumberFormat('ru-RU').format(count)} ${unit}`;
-  },
 });
 
 interface CardPreviewProps {
@@ -306,10 +308,10 @@ interface CardPreviewProps {
   reviewRequest?: CardReviewRequest;
   onReviewRequestHandled?: (sequence: number) => void;
 }
-type CardPanel = 'content' | 'properties' | 'attachments' | 'dependencies' | 'history';
+type CardPanel = 'content' | 'properties' | 'questions' | 'attachments' | 'dependencies' | 'history';
 type CardRemoval = 'archive' | 'unarchive' | 'delete';
 const openCardShortcuts = OPEN_CARD_SHORTCUTS;
-function shortcutKeys(id: string): string | undefined { return openCardShortcuts.find(shortcut => shortcut.id === id)?.keys; }
+function shortcutKeys(id: string) { return openCardShortcuts.find(shortcut => shortcut.id === id)!.combo; }
 
 function CardIdChip({ cardId, feedback, onCopy }: { cardId: string; feedback?: 'copied' | 'failed'; onCopy: () => void }) {
   const t = useText(text);
@@ -364,7 +366,10 @@ export function CardPreview({ card, catalog, snapshot, writable, pending, onClos
   const [dockActions, setDockActions] = useState<HTMLDivElement | null>(null);
   const [quickSettings, setQuickSettings] = useState<{ cardId: string; tab: CardQuickSettingsTab; anchor: HTMLElement } | null>(null);
   const [quickSaving, setQuickSaving] = useState(false);
-  const [panelTarget, setPanelTarget] = useState<{ panel: CardPanel; property?: 'tags' }>({ panel: 'content' });
+  const [panelTarget, setPanelTarget] = useState<{ panel: CardPanel; property?: 'tags' }>(() => {
+    const query = new URLSearchParams(location.search);
+    return { panel: query.get('card') === card.id && query.get('cardPanel') === 'questions' ? 'questions' : 'content' };
+  });
   const activePanel = panelTarget.panel;
   const panelOpen = activePanel !== 'content';
   const layout = useRef<HTMLDivElement>(null);
@@ -390,6 +395,7 @@ export function CardPreview({ card, catalog, snapshot, writable, pending, onClos
   const [titleExpanded, setTitleExpanded] = useState(false);
   const [longTitle, setLongTitle] = useState(false);
   const [openQuestionsActive, setOpenQuestionsActive] = useState(false);
+  const [editorOpen, setEditorOpen] = useState(false);
   const stateInFlight = useRef(false);
   const journeyInFlight = useRef(false);
   const journeyOpener = useRef<HTMLElement | null>(null);
@@ -457,8 +463,10 @@ export function CardPreview({ card, catalog, snapshot, writable, pending, onClos
     catalog.cards.filter(item => !item.deleted && !item.archived && item.tags?.includes(tag.name)).length])), [boundTags, catalog.cards]);
   const displayedEffort = card.kind === 'hero' ? cardHeroEffort(card, catalog) : card.effort;
   const disabled = !exists || !writable || pending || saving || quickSaving || journeySaving || contentEditing || openQuestionsActive;
-  const questionsDisabled = !exists || pending || saving || quickSaving || journeySaving || contentEditing || propertiesActive;
+  const questionsDisabled = !exists || pending || saving || quickSaving || journeySaving || contentEditing || propertiesActive || editorOpen;
   const navigationLocked = saving || quickSaving || pending || journeySaving || contentEditing || propertiesActive || openQuestionsActive;
+  const latestNavigationLocked = useRef(navigationLocked);
+  latestNavigationLocked.current = navigationLocked;
   const quickDisabled = !exists || !writable || navigationLocked;
   const panelSwitchDisabled = pending || saving || quickSaving || journeySaving || openQuestionsActive;
   const journeyDisabled = panelSwitchDisabled || !exists || contentEditing;
@@ -480,6 +488,9 @@ export function CardPreview({ card, catalog, snapshot, writable, pending, onClos
   const moreConflict = moreOpen && moreRevision !== revision;
   const removalConflict = Boolean(removal && removal.revision !== revision);
   const docWords = useMemo(() => card.kind === 'doc' ? countCatalogCardWords(card) : 0, [card.id, card.kind, card.sourceHash, card.markdown]);
+  const openQuestionCount = card.openQuestions?.length ?? 0;
+  const pendingDecisionCount = useMemo(() => pendingDecisionsOf(card).length, [card]);
+  const waitingForAnswer = waitingOn(card, catalog.members, lang);
   const legacyDocument = card.kind === 'doc' && !card.id.startsWith('card:');
   const tags = [...new Set(card.tags ?? [])];
   const ownerMember = memberForOwner(card.owner, catalog.members ?? []);
@@ -512,6 +523,12 @@ export function CardPreview({ card, catalog, snapshot, writable, pending, onClos
   const explicitlyWatching = watchState?.watching.includes(card.id) ?? false;
   const token = (snapshot as WorkspaceSnapshot & { token?: string }).token;
 
+  useLayoutEffect(() => {
+    const url = new URL(location.href);
+    if (url.searchParams.get('card') !== card.id || url.searchParams.get('cardPanel') !== 'questions') return;
+    url.searchParams.delete('cardPanel');
+    history.replaceState(history.state, '', url);
+  }, [card.id]);
   useEffect(() => {
     if (focusedCardId.current === card.id) return;
     focusedCardId.current = card.id;
@@ -558,7 +575,7 @@ export function CardPreview({ card, catalog, snapshot, writable, pending, onClos
     let panel: HTMLDivElement | null = null;
     if (activePanel === 'properties') panel = propertiesContainer.current;
     if (activePanel === 'attachments') panel = attachmentsContainer.current;
-    if (activePanel === 'dependencies' || activePanel === 'history') panel = relatedContainer.current;
+    if (activePanel === 'dependencies' || activePanel === 'history' || activePanel === 'questions') panel = relatedContainer.current;
     if (!panel) return;
     const tagTarget = panelTarget.property === 'tags';
     const target = tagTarget ? panel.querySelector<HTMLElement>('section[data-property="tags"]') ?? panel : panel;
@@ -595,7 +612,8 @@ export function CardPreview({ card, catalog, snapshot, writable, pending, onClos
       const target = event.target instanceof Element ? event.target : null;
       if (!target || !host?.contains(target) || layout.current?.contains(target) || target.closest('.catalog-resize-handle')) return;
       event.preventDefault();
-      closePanel();
+      // 2026-11-12: a draft can start after this panel's pointer listener was installed.
+      if (!latestNavigationLocked.current) closePanel();
     }
     document.addEventListener('pointerdown', closeOnDimmedPress, true);
     return () => {
@@ -726,7 +744,7 @@ export function CardPreview({ card, catalog, snapshot, writable, pending, onClos
       if (!response.ok) throw new Error(content.message ?? t.loadMarkdown);
       if (content.sourceHash !== currentCard.sourceHash || latestRevision.current !== expectedRevision) throw new Error(t.changedDuringCopy);
       if (typeof content.title !== 'string' || typeof content.markdown !== 'string') throw new Error(t.invalidMarkdown);
-      await navigator.clipboard.writeText('# ' + content.title + '\n\n' + content.markdown);
+      if (!await copyText('# ' + content.title + '\n\n' + content.markdown)) throw new Error(t.copyMarkdownFailed);
       setStateNotice(legacyDocument ? t.copiedLegacy : t.copiedMarkdown);
     } catch (failure) {
       if (!controller.signal.aborted) setStateNotice(failureMessage(failure, t.copyMarkdownFailed));
@@ -742,12 +760,8 @@ export function CardPreview({ card, catalog, snapshot, writable, pending, onClos
     const reference = shortReference('c', card.id);
     const value = link ? new URL(`/r/${reference}?source=${snapshot.source}`, location.origin).href : reference;
     setReferenceFeedback(null);
-    try {
-      await navigator.clipboard.writeText(value);
-      if (referenceRequest.current === request) setReferenceFeedback({ request, state: 'copied' });
-    } catch {
-      if (referenceRequest.current === request) setReferenceFeedback({ request, state: 'failed' });
-    }
+    const copied = await copyText(value);
+    if (referenceRequest.current === request) setReferenceFeedback({ request, state: copied ? 'copied' : 'failed' });
   }
 
   function requestRemoval(action: CardRemoval, expectedRevision = revision) {
@@ -993,11 +1007,11 @@ export function CardPreview({ card, catalog, snapshot, writable, pending, onClos
   const heroMarkActions = card.kind === 'hero' && <span className="card-preview-hero-mark" aria-label={t.cardState}>
     <Button type="button" variant="ghost" size="icon" disabled={stateDisabled || !heroMarkable} aria-pressed={familyDone} aria-label={familyDone ? t.heroUndone : t.heroDone} title={familyDone ? t.heroUndone : t.heroDone} onClick={() => void changeState(familyDone ? 'not-started' : 'done')}><Check size={18} /></Button>
   </span>;
-  const focusAction = <Button type="button" variant="ghost" size="icon" className="card-preview-focus" disabled={focusDisabled} onClick={() => { closeJourney(); setFocusMode(true); }} aria-label={t.focusMode} aria-keyshortcuts="F" title={`${t.focusMode} (F)`}><span className="card-preview-focus-glyph" aria-hidden="true"><Scan size={22} strokeWidth={1.75} /><kbd>F</kbd></span></Button>;
+  const focusAction = <Button type="button" variant="ghost" size="icon" className="card-preview-focus" disabled={focusDisabled} onClick={() => { closeJourney(); setFocusMode(true); }} aria-label={t.focusMode} aria-keyshortcuts="F" title={`${t.focusMode} (${formatShortcut(shortcutKeys('open-card-focus')).display})`}><span className="card-preview-focus-glyph" aria-hidden="true"><Scan size={22} strokeWidth={1.75} /><Keys combo={shortcutKeys('open-card-focus')} ariaHidden /></span></Button>;
   const handAction = <CardHandHint holders={handHolders} members={catalog.members ?? []} inMyHand={inMyHand} shortcut={shortcutKeys('open-card-hand')}
     unavailable={handUnavailable}>
     <Button type="button" variant="ghost" size="icon" className={'card-preview-hand' + (handHolders.length ? ' is-on' : '')}
-      aria-label={primaryHand ? t.openHand(primaryHand.label) : t.addToHand} aria-keyshortcuts={shortcutKeys('open-card-hand')}
+      aria-label={primaryHand ? t.openHand(primaryHand.label) : t.addToHand} aria-keyshortcuts={shortcutAria(shortcutKeys('open-card-hand'))}
       aria-disabled={navigationLocked || (primaryHand ? !exists : handActionDisabled)} onClick={event => {
         if (event.ctrlKey || event.metaKey || !primaryHand) toggleHand();
         else openHand();
@@ -1020,22 +1034,22 @@ export function CardPreview({ card, catalog, snapshot, writable, pending, onClos
       <DropdownMenu.Item disabled={moreConflict} onSelect={() => void copyContent()}><Copy size={15} /><span>{t.copyCardContent}</span></DropdownMenu.Item>
       <DropdownMenu.Item onSelect={() => void copyReference(false)}><Copy size={15} /><span>{t.copyReference(shortReference('c', card.id))}</span></DropdownMenu.Item>
       <DropdownMenu.Item onSelect={() => void copyReference(true)}><Link2 size={15} /><span>{t.copyLink}</span></DropdownMenu.Item>
-      {card.kind === 'doc' && <p className="card-more-help">{t.words(docWords)}</p>}
+      {card.kind === 'doc' && <p className="card-more-help">{docWordsLabel(docWords, lang)}</p>}
       {supportsChildren && onShowFamily && <DropdownMenu.Item disabled={navigationLocked} onSelect={toggleFamily}><Crown size={15} /><span>{t.family}</span></DropdownMenu.Item>}
       {legacyDocument && <p className="card-more-help">{t.legacyHelp}</p>}
       <DropdownMenu.Separator />
-      <DropdownMenu.Item disabled={actionDisabled || moreConflict} onSelect={() => void changeCard({ kind: 'options', patch: { bookmarked: !card.bookmarked } }, moreRevision)}><Bookmark size={15} fill={card.bookmarked ? 'currentColor' : 'none'} /><span>{card.bookmarked ? t.unbookmarkCard : t.bookmarkCard}</span><kbd>{shortcutKeys('open-card-bookmark')}</kbd></DropdownMenu.Item>
+      <DropdownMenu.Item disabled={actionDisabled || moreConflict} onSelect={() => void changeCard({ kind: 'options', patch: { bookmarked: !card.bookmarked } }, moreRevision)}><Bookmark size={15} fill={card.bookmarked ? 'currentColor' : 'none'} /><span>{card.bookmarked ? t.unbookmarkCard : t.bookmarkCard}</span><Keys combo={shortcutKeys('open-card-bookmark')} /></DropdownMenu.Item>
       <p className="card-more-help">{t.sharedBookmark}</p>
       <DropdownMenu.Item disabled={actionDisabled || moreConflict || !watchState?.watchHash || !token} onSelect={() => void toggleWatch()}><Eye size={15} /><span>{explicitlyWatching ? t.unwatchCard : t.watchCard}</span></DropdownMenu.Item>
       {watchError && <p className="card-more-help" role="alert">{watchError}</p>}
       {/* Unstart returns a card from in progress to planned. */}
       {card.kind === 'task' && !card.archived && card.state === 'started' && <DropdownMenu.Item disabled={actionDisabled || moreConflict} onSelect={() => void changeState('not-started')}><Pause size={15} /><span>{t.unstartCard}</span></DropdownMenu.Item>}
       {card.kind === 'task' && card.state === 'wont-do' && <DropdownMenu.Item disabled={stateDisabled || moreConflict} onSelect={() => void changeState('not-started')}><RotateCcw size={15} /><span>{t.reopenCard}</span></DropdownMenu.Item>}
-      <DropdownMenu.Item disabled={actionDisabled || moreConflict} onSelect={() => requestRemoval(card.archived ? 'unarchive' : 'archive', moreRevision)}>{card.archived ? <ArchiveRestore size={15} /> : <Archive size={15} />}<span>{card.archived ? t.unarchiveCard : t.archiveCard}</span><kbd>{shortcutKeys('open-card-archive')}</kbd></DropdownMenu.Item>
+      <DropdownMenu.Item disabled={actionDisabled || moreConflict} onSelect={() => requestRemoval(card.archived ? 'unarchive' : 'archive', moreRevision)}>{card.archived ? <ArchiveRestore size={15} /> : <Archive size={15} />}<span>{card.archived ? t.unarchiveCard : t.archiveCard}</span><Keys combo={shortcutKeys('open-card-archive')} /></DropdownMenu.Item>
       {/* Restore returns a card from Trash while preserving its archive state. */}
       {card.deleted && <DropdownMenu.Item disabled={quickDisabled || snapshot.source !== 'sandbox' || moreConflict} onSelect={() => void changeCard({ kind: 'options', patch: { deleted: false } }, moreRevision, true)}><RotateCcw size={15} /><span>{t.restoreCard}</span></DropdownMenu.Item>}
       <DropdownMenu.Separator />
-      <DropdownMenu.Item className="card-more-delete" disabled={actionDisabled || moreConflict} onSelect={() => requestRemoval('delete', moreRevision)}><Trash2 size={15} /><span>{t.moveToTrash}</span><kbd>{shortcutKeys('open-card-delete')}</kbd></DropdownMenu.Item>
+      <DropdownMenu.Item className="card-more-delete" disabled={actionDisabled || moreConflict} onSelect={() => requestRemoval('delete', moreRevision)}><Trash2 size={15} /><span>{t.moveToTrash}</span><Keys combo={shortcutKeys('open-card-delete')} /></DropdownMenu.Item>
       {snapshot.source !== 'sandbox' && <p className="card-more-help">{t.sandboxChanges}</p>}
       {moreConflict && <p className="card-more-help" role="alert">{t.menuConflict}</p>}
     </DropdownMenu.Content>
@@ -1080,11 +1094,11 @@ export function CardPreview({ card, catalog, snapshot, writable, pending, onClos
         </div>
       </header>
     {parent && <button ref={parentGlare.element} type="button" className="card-preview-parent" disabled={navigationLocked} onClick={openParentFamily}
-      title={onReturnToHero ? t.returnToHero(parent.title) : t.openFamily} aria-keyshortcuts={onReturnToHero ? 'Escape' : undefined}
+      title={onReturnToHero ? `${t.returnToHero(parent.title)} · ${formatShortcut({ key: 'Escape' }).display}` : t.openFamily} aria-keyshortcuts={onReturnToHero ? 'Escape' : undefined}
       onPointerEnter={parentGlare.tilt} onPointerMove={parentGlare.tilt} onPointerLeave={parentGlare.reset}>
       <span className="card-material-glare" aria-hidden="true" />
       <Crown size={18} /><span>{parent.title}</span><progress value={parentAccepted} max={Math.max(siblingTasks.length, 1)} aria-label={t.parentProgress(parentAccepted, siblingTasks.length)} />
-      {onReturnToHero && <kbd>Esc</kbd>}
+      {onReturnToHero && <Keys combo={{ key: 'Escape' }} />}
     </button>}
     <div ref={finishGlare.element} className={'card-preview-sheet' + (justDone ? ' is-just-done' : '')} inert={mobile && Boolean(panelOpen || familyVisible)} data-state={card.kind === 'task' ? card.state ?? undefined : undefined} data-family-done={familyDone || undefined}
       onPointerEnter={familyDone ? finishGlare.tilt : undefined} onPointerMove={familyDone ? finishGlare.tilt : undefined} onPointerLeave={familyDone ? finishGlare.reset : undefined}>
@@ -1127,7 +1141,7 @@ export function CardPreview({ card, catalog, snapshot, writable, pending, onClos
       <CardContentEditor card={card} catalog={catalog} snapshot={snapshot} writable={writable && exists && !card.deleted} pending={pending}
         blocked={saving || quickSaving || journeySaving || propertiesActive || openQuestionsActive} headingRef={heading} onEdit={onEdit} onEditingChange={setContentEditing} onOpenCard={selectCard}
         focusMode={focusMode} onFocusModeExit={() => setFocusMode(false)} hideJourneyStepLink={stepNoteShown} onCancelEdit={onCancelEdit} footerTarget={dockActions}
-        onQuestionsActiveChange={setOpenQuestionsActive} questionsDisabled={questionsDisabled}
+        onEditorOpenChange={setEditorOpen}
         titleActions={titleToggle ? <div className="card-preview-title-tools">{titleToggle}</div> : undefined}
         footerActions={card.kind === 'hero' && card.deckId ? <Button type="button" variant="outline" size="sm" className="card-preview-journey" disabled={journeyDisabled || propertiesActive} title={t.applyJourney} onClick={openJourney}><Route size={16} aria-hidden="true" />{t.journey}</Button> : undefined}
         bodyAfter={boundTags.length > 0 && <div className="card-tag-links">
@@ -1161,6 +1175,8 @@ export function CardPreview({ card, catalog, snapshot, writable, pending, onClos
         </div>}
         <div className="card-preview-dock-row">
           {blockerCount > 0 && <button type="button" className="card-preview-blocker-note" disabled={panelSwitchDisabled} onClick={() => showPanel('dependencies')}>{t.blockers(blockerCount)}</button>}
+          {waitingForAnswer && <button type="button" className="card-preview-blocker-note card-preview-question-waiting" disabled={panelSwitchDisabled} onClick={() => showPanel('questions')}><Hourglass size={14} aria-hidden="true" /><span>{waitingForAnswer}</span></button>}
+          {!contentEditing && <button type="button" className="card-preview-questions-shortcut" aria-label={t.showOpenQuestions(openQuestionCount, pendingDecisionCount)} disabled={panelSwitchDisabled || !exists} onClick={() => showPanel('questions')}><MessageCircleQuestion size={16} aria-hidden="true" />{t.questionsPanel}</button>}
           {card.kind === 'task' && card.dueDate && card.dueDate < localIsoDate() && card.state !== 'done' && <span className="card-preview-due-note">{t.overdue} · {card.dueDate}</span>}
           {!contentEditing && <CardIdChip cardId={card.id} feedback={referenceFeedback?.state} onCopy={() => void copyReference(false)} />}
           <div ref={setDockActions} className="card-preview-dock-actions" />
@@ -1171,7 +1187,7 @@ export function CardPreview({ card, catalog, snapshot, writable, pending, onClos
         {card.kind !== 'doc' && <Button type="button" variant="ghost" size="sm" className="card-preview-property-shortcut" disabled={quickDisabled} data-quick-settings-tab="effort" aria-haspopup="dialog" aria-expanded={quickSettings?.cardId === card.id && quickSettings.anchor.dataset.quickSettingsTab === 'effort'} data-shortcut-property="effort" data-shortcut-card-id={card.id} onPointerEnter={event => markShortcutPropertyHover(event.currentTarget, true)} onPointerLeave={event => markShortcutPropertyHover(event.currentTarget, false)} aria-label={t.effortLabel(String(displayedEffort ?? t.notSet))} title={t.editEffort} onClick={event => openQuickSettings('effort', event.currentTarget)}><span className="card-preview-property-label">{t.effort}</span><EffortIcon size={22} /><strong>{displayedEffort ?? '—'}</strong></Button>}
         <Button type="button" variant="ghost" size="sm" className="card-preview-owner-shortcut" disabled={quickDisabled} data-quick-settings-tab="owner" aria-haspopup="dialog" aria-expanded={quickSettings?.cardId === card.id && quickSettings.anchor.dataset.quickSettingsTab === 'owner'} aria-label={ownerLabel} title={ownerLabel} onClick={event => openQuickSettings('owner', event.currentTarget)}>{initials && <span className="card-preview-owner-initials" aria-hidden="true">{initials}</span>}{/* 2026-11-11: the corner badge names an agent; a person is already named by the initials. */}{(!initials || ownerMember?.kind === 'agent') && <CardOwnerAvatar owner={card.owner} members={catalog.members ?? []} />}</Button>
         {card.kind !== 'doc' && <Button type="button" variant="ghost" size="sm" className="card-preview-property-shortcut" disabled={quickDisabled} data-quick-settings-tab="priority" aria-haspopup="dialog" aria-expanded={quickSettings?.cardId === card.id && quickSettings.anchor.dataset.quickSettingsTab === 'priority'} data-shortcut-property="priority" data-shortcut-card-id={card.id} onPointerEnter={event => markShortcutPropertyHover(event.currentTarget, true)} onPointerLeave={event => markShortcutPropertyHover(event.currentTarget, false)} aria-label={t.priorityLabel(card.priority ? priorityLabel(card.priority, lang) : t.notSet)} title={t.editPriority} onClick={event => openQuickSettings('priority', event.currentTarget)}><span className="card-preview-property-label">{t.priority}</span><PriorityIcon priority={card.priority} size={22} /></Button>}
-        {card.kind === 'doc' && !contentEditing && <span className="card-preview-word-count">{t.words(docWords)}</span>}
+        {card.kind === 'doc' && !contentEditing && <DocWordCount card={card} className="card-preview-word-count" />}
         {card.kind === 'hero' && <SubCardProgress cards={childTasks} cardsById={cardsById} />}
       </footer>
     </div>
@@ -1181,6 +1197,11 @@ export function CardPreview({ card, catalog, snapshot, writable, pending, onClos
       {onShowFamily && <Button type="button" variant="ghost" size="icon" disabled={navigationLocked} data-card-family aria-label={t.family} title={t.family} aria-pressed={familyVisible} onClick={toggleFamily}><Crown size={18} /></Button>}
       <Button type="button" variant="ghost" size="icon" disabled={panelSwitchDisabled || !exists} aria-label={t.attachmentsPanel} title={attachments.listFailure ? t.attachmentsUnavailable : t.attachmentsPanel} aria-pressed={activePanel === 'attachments'} aria-controls={panelId + '-attachments'} onClick={() => showPanel(activePanel === 'attachments' ? 'content' : 'attachments')}><Paperclip size={18} />{attachments.listFailure && <span className="card-panel-error" aria-label={t.attachmentsUnavailable}>!</span>}</Button>
       <Button type="button" variant="ghost" size="icon" disabled={panelSwitchDisabled || !exists} aria-label={t.showDependencies} title={t.showDependencies} aria-expanded={activePanel === 'dependencies'} aria-controls={panelId + '-dependencies'} onClick={() => showPanel(activePanel === 'dependencies' ? 'content' : 'dependencies')}><Link2 size={18} /></Button>
+      {!focusMode && <Button type="button" variant="ghost" size="icon" className="card-preview-open-questions" disabled={panelSwitchDisabled || !exists}
+        aria-label={t.showOpenQuestions(openQuestionCount, pendingDecisionCount)} title={t.showOpenQuestions(openQuestionCount, pendingDecisionCount)} aria-pressed={activePanel === 'questions'} aria-controls={panelId + '-questions'} onClick={() => showPanel(activePanel === 'questions' ? 'content' : 'questions')}>
+        <MessageCircleQuestion size={18} />{openQuestionCount > 0 && <span className="card-preview-open-questions-count">{openQuestionCount}</span>}
+        {pendingDecisionCount > 0 && <span className="card-preview-pending-count" aria-hidden="true">{pendingDecisionCount}</span>}
+      </Button>}
       <Button type="button" variant="ghost" size="icon" disabled={panelSwitchDisabled || !exists} aria-label={t.historyPanel} title={t.historyPanel} aria-pressed={activePanel === 'history'} aria-controls={panelId + '-history'} onClick={() => showPanel(activePanel === 'history' ? 'content' : 'history')}><History size={18} /></Button>
     </nav>
     {returnState && currentCard && <Dialog.Root open onOpenChange={open => { if (!open && !saving) setReturnState(null); }}><Dialog.Portal>
@@ -1247,7 +1268,9 @@ export function CardPreview({ card, catalog, snapshot, writable, pending, onClos
       {mobile && <Button type="button" variant="ghost" size="sm" className="card-panel-close" onClick={closePanel}>{t.contentPanel}</Button>}
       <AttachmentsPanel key={card.id} resource={attachments} card={currentCard ?? card} catalog={catalog} writable={exists && writable && !navigationLocked} onEdit={onEdit} />
     </div>}
-    {(activePanel === 'dependencies' || activePanel === 'history') && <div ref={relatedContainer} id={panelId + '-' + activePanel} className="card-properties-slot card-related-slot" tabIndex={-1} aria-label={activePanel === 'history' ? t.historyPanel : t.dependenciesPanel}>
+    {(activePanel === 'dependencies' || activePanel === 'history' || activePanel === 'questions') && <div ref={relatedContainer} id={panelId + '-' + activePanel} className="card-properties-slot card-related-slot" tabIndex={-1} aria-label={activePanel === 'history' ? t.historyPanel : activePanel === 'questions' ? t.questionsPanel : t.dependenciesPanel}>
+      {activePanel === 'questions' && <><div className="card-questions-panel-heading"><h2>{t.questionsPanel}</h2><Button type="button" variant="ghost" size="icon" disabled={openQuestionsActive} aria-label={t.contentPanel} onClick={closePanel}><X size={18} /></Button></div>
+        <OpenQuestions key={card.id} card={currentCard ?? card} catalog={catalog} source={snapshot.source} writable={writable && exists && !card.deleted} disabled={questionsDisabled} onEdit={onEdit} onSelect={selectCard} onActiveChange={setOpenQuestionsActive} /></>}
       {activePanel === 'dependencies' && <CardDependenciesSection key={card.id} card={currentCard ?? card} catalog={catalog} cardsById={cardsById} writable={writable} disabled={navigationLocked} onEdit={onEdit} onOpen={selectCard} onClose={closePanel} />}
       {activePanel === 'dependencies' && backlinks.length > 0 && <section className="card-preview-backlinks" aria-label={t.backlinks}><h3>{t.backlinks}</h3><ul>{backlinks.map(candidate => <li key={candidate.id}><button type="button" disabled={navigationLocked} onClick={() => selectCard(candidate)}>{candidate.title}</button></li>)}</ul></section>}
       {activePanel === 'history' && <CardHistorySection key={card.id} card={currentCard ?? card} source={snapshot.source} refreshKey={catalog.indexedAt} disabled={navigationLocked} titlesById={titlesById} onOpenById={id => { const next = cardsById.get(id); if (next) selectCard(next); }} onClose={closePanel} />}
@@ -1257,5 +1280,5 @@ export function CardPreview({ card, catalog, snapshot, writable, pending, onClos
       <div className="card-preview-mobile-family-content" />
     </div>}
   </div>;
-  return mobile ? <CardFocusMode title={card.title} onBack={() => { if (navigationLocked) return; if (panelOpen) closePanel(); else if (familyVisible) toggleFamily(); else closePreview(); }}>{content}</CardFocusMode> : content;
+  return mobile ? <CardFocusMode title={card.title} cardLayout onBack={() => { if (navigationLocked) return; if (panelOpen) closePanel(); else if (familyVisible) toggleFamily(); else closePreview(); }}>{content}</CardFocusMode> : content;
 }

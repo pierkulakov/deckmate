@@ -81,8 +81,9 @@
 
 /* The badge is a small violet card in the Deckmate material (as the deck mark), the number in Geist Mono;
    the light theme pairs it with the darker --mark-front face so the number keeps AA contrast.
-   2026-11-08: card and bar are 24 px wide so the whole badge makes a 24 px target (audit P-1). */
-.level-badge { position: relative; display: flex; flex-direction: column; align-items: center; gap: 2px; border: 0; border-radius: 4px; background: transparent; padding: 0; }
+    2026-11-12: the card keeps its 24px face inside the larger touch target. */
+.level-badge { position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; border: 0; border-radius: 4px; background: transparent; padding: 0; }
+@media (pointer: coarse) { .level-badge { min-width: var(--control-target-touch); min-height: var(--control-target-touch); } }
 .level-badge-card { display: grid; place-items: center; width: 24px; height: 28px; border: 1px solid var(--mark-back); border-radius: 3px; background: var(--mark-front); color: var(--count-face); font: 500 11px 'Geist Mono', monospace; line-height: 1; transition: filter var(--control-hover-duration) ease-out; }
 :root.dark .level-badge-card { border-color: var(--mark-front); background: var(--mark-back); }
 /* 2026-11-06: hover and the open panel lighten the card as the planning markers do; a focus-colored edge was lost in the dark

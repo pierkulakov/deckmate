@@ -1,6 +1,6 @@
 # Cards and native files
 
-Use one card as the source of truth for its result, properties, questions and reports. Create or change cards only after approval of the specific list, through the running server ([HTTP and startup rule](api.md)), never by hand or through SQLite. Reading and the guarded CLI `next`, `brief`, `report`, `state` and `ask` still work without a server.
+Use one card as the source of truth for its result, properties, questions, decisions and reports. Create or change cards only after approval of the specific list: create with `deckmate project create` or MCP `create_cards`, change state or properties with `deckmate project update` or MCP `update_card`; card text and other operations without a command or tool follow [HTTP](api.md). Never write card files by hand or through SQLite. Reading and the guarded CLI `next`, `brief`, `question`, `report`, `state`, `ask`, `answer` and `apply` still work without a server.
 
 ## Task
 
@@ -24,11 +24,11 @@ A Hero is an integrated game object or system that needs several child cards.
 A Doc holds a small rule or reference without a delivery workflow state.
 - Name the rule or topic directly; state the decision, scope, exceptions and verification references close to the work they govern. Keep Docs small enough to read before implementation.
 - Docs have `state: null` and normally `effort: null` and `priority: null`; owner may name the person who maintains the rule.
-- Keep a rule Doc top-level when its open questions need Decision Tasks. Put a Task structurally under that Doc when `ask` must route there; a prose link does not create this relationship.
+- Keep a rule Doc top-level when other cards use its rules. Questions and decisions stay on the card they concern; structural parenting does not move them to the Doc.
 
 ## Card file format
 
-This format is a reference for reading existing cards, not instructions to create or edit card files by hand. Use the running server for creation and content/property changes.
+This format is a reference for reading existing cards, not instructions to create or edit card files by hand. Create cards and change their properties with the MCP tools (`create_cards`, `update_card`) or `deckmate project create` / `update`, with no running server; card text, dependencies, Hand, tags, Runs and milestones stay with the running server (UI / [HTTP](api.md)).
 
 A native card is one UTF-8 file at `cards/<uuid>.md`; the filename UUID must exactly match frontmatter `id`. Its canonical ID is `card:<uuid>`; UUIDv4 and deterministic UUIDv8 are supported. Commands accept that full ID or the c-ref they print, but file links use full canonical IDs.
 
@@ -76,7 +76,7 @@ Choose `deckId`, Track IDs and parent IDs from `map`/`show`; do not add native c
 
 Only existing active prerequisites outside `done` block; missing, archived and deleted ones do not. Nevertheless, fix broken links: `map` warns about an unknown/incompatible deck, missing parent, or missing dependency. Malformed YAML or an ID/filename mismatch produces a warning and the file is not loaded as a card. Invalid states, duplicate dependency entries, negative/non-numeric effort, and unknown priority values are rejected in file warnings; reread after correcting them.
 
-Check `map` warnings after server writes, then take each new c-ref from `find "<title>" --fields brief`; refs do not exist before the first read.
+Check `map` warnings after writes, then take each new c-ref from the `created` list `create` prints or from `find "<title>" --fields brief`; refs do not exist before the first read.
 
 Hand, tags, Run, milestone and due date are card options, not front matter: they live in `tasks/deckmate-card-options.md` under `cards:` keyed by canonical ID (`card:<uuid>:` → `handMemberIds: [builder]`, `handOrder: { builder: 0 }` for the position in each Hand, `run: <run-id>`, `milestone: <id>`, `dueDate: YYYY-MM-DD`, `tags: [...]`). Change them only through the running server's UI or `bulk-edit-cards` ([HTTP](api.md)); do not edit shared card options by hand.
 
@@ -88,10 +88,13 @@ Check `map` warnings again after editing card options. Keep writes to one card s
 
 Keep the report to 60 lines: lead with a five-line Summary naming card, absolute date, assignee, result, changed files, checks and reread baseline. Give every tolerance a row with required/actual units and evidence, include exact launch or reproduction steps, and list skipped checks under Not checked rather than reporting them as zero errors.
 
-## Rule Doc and questions
+## Questions and decisions
 
-Keep one top-level list item per question in `## Open questions` (legacy `## Открыто`); nested options are not separate questions. The section ends at the next H1/H2 or a `#### Report` heading. `ask` appends and links a Decision Task only for a top-level rule Doc; without one, contact the person directly rather than waiting.
+Keep one top-level list item per question in the concerned card's Open questions section (legacy `Открыто`); native cards and ordinary Docs use H2, while imported Hero/Task bodies use H4. Nested options are not separate questions. The section ends at the next heading of the same or shallower depth, a numbered Task H3, or a generated `#### Report` heading.
 
-`ask` stores question punctuation Markdown-escaped (for example, `\?`, `\,`); match the saved text exactly when resolving the question through the server.
-
-With the person's approval, HTTP `record-decision` moves the exact answer into `## Decided` (legacy `## Решено`), removes the open item, and accepts its Decision Task. Read the saved rule Doc to verify the answer; a bounded `brief` can omit it. See [HTTP actions](api.md).
+- `ask` stores the question on that card with an optional human `@member` addressee and an optional target (`c-ref` or `c-ref#section`; the same card by default); it does not create a separate Task.
+- `question <c-ref#N>` returns the chat package and exact target range; discuss it with the addressee, which may be null if no human is registered.
+- `answer <c-ref#N> … --as <human>` records the approved answer in `## Decided` (legacy `## Решено`) and removes the open item.
+- All unapplied decisions form the pool returned by `next` before ordinary Tasks; any Task with an open question waits in `next`, even if no addressee is named.
+- Edit the supplied target, then `apply <c-ref> <index>` / MCP `apply_decision` with its zero-based decision index; the brief shows open questions and decisions still to apply.
+- Match saved question text exactly. Question punctuation is Markdown-escaped in the file (for example, `\?`, `\,`), while commands return plain text.

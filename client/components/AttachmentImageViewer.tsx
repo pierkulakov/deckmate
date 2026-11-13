@@ -7,6 +7,7 @@ import { attachmentFileUrl } from '../attachments.ts';
 import { Button } from './ui/button.tsx';
 import { defineText, useText } from '../i18n.ts';
 import { moveFocus } from '../focus.ts';
+import { formatShortcut } from '../shortcut-format.ts';
 
 const text = defineText({
   view: (name: string) => `View image ${name}`,
@@ -15,8 +16,8 @@ const text = defineText({
   resetZoom: 'Reset zoom',
   download: (name: string) => `Download ${name}`,
   close: 'Close viewer',
-  closeShortcut: 'Close (Esc)',
-  hint: 'Wheel — zoom · drag — pan · Esc — close',
+  closeShortcut: (key: string) => `Close (${key})`,
+  hint: (key: string) => `Wheel — zoom · drag — pan · ${key} — close`,
 }, {
   view: (name: string) => `Просмотр изображения ${name}`,
   zoomOut: 'Уменьшить',
@@ -24,8 +25,8 @@ const text = defineText({
   resetZoom: 'Сбросить масштаб',
   download: (name: string) => `Скачать ${name}`,
   close: 'Закрыть просмотр',
-  closeShortcut: 'Закрыть (Esc)',
-  hint: 'Колесо — масштаб · перетаскивание — сдвиг · Esc — закрыть',
+  closeShortcut: (key: string) => `Закрыть (${key})`,
+  hint: (key: string) => `Колесо — масштаб · перетаскивание — сдвиг · ${key} — закрыть`,
 });
 
 interface AttachmentImageViewerProps {
@@ -107,6 +108,7 @@ export function AttachmentImageViewer({ images, index, source, previousLabel, ne
   }
 
   if (!image) return null;
+  const escapeShortcut = formatShortcut({ key: 'Escape' });
   return <Dialog.Root open onOpenChange={open => { if (!open) onClose(); }}>
     <Dialog.Portal>
       <Dialog.Overlay className="attachment-viewer-overlay" />
@@ -121,7 +123,7 @@ export function AttachmentImageViewer({ images, index, source, previousLabel, ne
             <Button type="button" variant="ghost" size="icon" aria-label={t.zoomIn} title={t.zoomIn} disabled={zoom >= 8} onClick={() => changeZoom(1.25)}><ZoomIn size={17} /></Button>
             <Button type="button" variant="ghost" size="icon" aria-label={t.resetZoom} title={t.resetZoom} disabled={zoom === 1 && offset.x === 0 && offset.y === 0} onClick={reset}><Maximize size={17} /></Button>
             <a className="ui-button button-ghost button-size-icon" href={attachmentFileUrl(source, image.file)} download={image.name} aria-label={t.download(image.name)} title={t.download(image.name)}><Download size={17} /></a>
-            <Dialog.Close asChild><Button type="button" variant="ghost" size="icon" aria-label={t.close} title={t.closeShortcut}><X size={19} /></Button></Dialog.Close>
+            <Dialog.Close asChild><Button type="button" variant="ghost" size="icon" aria-label={t.close} title={t.closeShortcut(escapeShortcut.display)}><X size={19} /></Button></Dialog.Close>
           </div>
         </header>
         <div ref={stage} className="attachment-viewer-stage">
@@ -133,7 +135,7 @@ export function AttachmentImageViewer({ images, index, source, previousLabel, ne
           {!first && <Button type="button" variant="ghost" size="icon" className="attachment-viewer-arrow attachment-viewer-previous" aria-label={previousLabel} title={previousLabel} onClick={() => onIndexChange(index - 1)}><ChevronLeft size={26} /></Button>}
           {!last && <Button type="button" variant="ghost" size="icon" className="attachment-viewer-arrow attachment-viewer-next" aria-label={nextLabel} title={nextLabel} onClick={() => onIndexChange(index + 1)}><ChevronRight size={26} /></Button>}
         </div>
-        <footer className="attachment-viewer-hint">{t.hint}</footer>
+        <footer className="attachment-viewer-hint" role="group" aria-label={t.hint(escapeShortcut.name)}>{t.hint(escapeShortcut.display)}</footer>
       </Dialog.Content>
     </Dialog.Portal>
   </Dialog.Root>;

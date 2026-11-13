@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import { Bell, Link2, Trash2 } from 'lucide-react';
 import type { CatalogCard, CatalogMember, CatalogView } from '../../src/catalog-contracts.ts';
 import { localIsoDate } from '../../src/catalog-hand.ts';
@@ -9,6 +10,7 @@ import { workdaysUntil } from '../planning-metrics.ts';
 import { runLabel } from '../run-label.ts';
 import { memberForOwner } from './CardOwnerAvatar.tsx';
 import { HandIcon } from './HandIcon.tsx';
+import { waitingOn } from '../question-model.ts';
 import '../card-indicators.css';
 
 type DueTone = 'urgent' | 'soon' | 'later';
@@ -75,10 +77,10 @@ export function cardFaceStatus(card: CatalogCard, lookups: CardTileLookups, lang
   if (card.kind === 'task') workflow = stateLabel(state, lang);
   if (card.deleted || card.archived) {
     const label = card.deleted ? t.deleted : t.archived;
-    return { label, workflow, attention: true, questions: '', due: '', dueTitle: '', urgent: false, accessible: [label, workflow].filter(Boolean).join(', ') };
+    return { label, workflow, attention: true, questions: '', questionLabel: '', due: '', dueTitle: '', urgent: false, accessible: [label, workflow].filter(Boolean).join(', ') };
   }
   const blocked = openDependencies([...new Set(card.dependsOn ?? [])], lookups.cardById).length;
-  const questionCount = card.kind === 'doc' ? card.openQuestions?.length ?? 0 : 0;
+  const questionCount = card.openQuestions?.length ?? 0;
   const questions = questionCount ? t.questions(formatNumber(questionCount, 0, lang)) : '';
   let label = state === 'started' || state === 'review' ? workflow : '';
   if (questions) label = questions;
@@ -87,15 +89,15 @@ export function cardFaceStatus(card: CatalogCard, lookups: CardTileLookups, lang
   const due = urgent ? t.dueOverdue : '';
   const dueTitle = urgent && card.dueDate
     ? t.due(new Intl.DateTimeFormat(locale(lang), { year: 'numeric', month: '2-digit', day: '2-digit' }).format(parseDay(card.dueDate)), t.overdue) : '';
-  return { label, workflow, attention: Boolean(blocked || questions), questions: blocked ? questions : '', due, dueTitle, urgent,
-    accessible: [...new Set([workflow, label, questions, blocked ? t.waiting(formatNumber(blocked, 0, lang)) : '', due].filter(Boolean))].join(', ') };
+  return { label, workflow, attention: Boolean(blocked || questions), questions: blocked ? questions : '', questionLabel: questions, due, dueTitle, urgent,
+    accessible: [...new Set([workflow, label, questions, waitingOn(card, [], lang), blocked ? t.waiting(formatNumber(blocked, 0, lang)) : '', due].filter(Boolean))].join(', ') };
 }
 
 // 2026-11-11: the tile can suppress workflow and due text on its face while retaining both in its accessible name.
-export function CardFaceStatus({ status, hideWorkflow = false, hideDue = false }: {
-  status: ReturnType<typeof cardFaceStatus>; hideWorkflow?: boolean; hideDue?: boolean;
+export function CardFaceStatus({ status, hideWorkflow = false, hideDue = false, hideQuestions = false }: {
+  status: ReturnType<typeof cardFaceStatus>; hideWorkflow?: boolean; hideDue?: boolean; hideQuestions?: boolean;
 }) {
-  const label = hideWorkflow && !status.attention ? '' : status.label;
+  const label = (hideWorkflow && !status.attention) || (hideQuestions && status.label === status.questionLabel) ? '' : status.label;
   const due = hideDue ? '' : status.due;
   if (!label && !due) return null;
   return <span className="card-face-status" title={status.accessible}>
@@ -146,8 +148,8 @@ function MilestoneGlyph({ filled }: { filled: boolean }) {
   return <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.8 14.2 8 8 14.2 1.8 8Z" fill={filled ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="1.4" /></svg>;
 }
 
-function dependencyCount(value: number, numberFormat: Intl.NumberFormat): string {
-  return value > 9 ? '9+' : numberFormat.format(value);
+function dependencyCount(value: number, lang: Lang): string {
+  return value > 9 ? '9+' : formatNumber(value, 0, lang);
 }
 
 export function CardIndicators({ card, lookups, members, catalog, currentMemberId, handPositions, variant, onDependencies, dependenciesDisabled }: {
@@ -165,8 +167,7 @@ export function CardIndicators({ card, lookups, members, catalog, currentMemberI
   const t = useText(text);
   const lang = useLang();
   const hand = cardHandStatus(card, members, currentMemberId, handPositions, lang);
-  const numberFormat = new Intl.NumberFormat(locale(lang));
-  const dateFormat = new Intl.DateTimeFormat(locale(lang), { year: 'numeric', month: '2-digit', day: '2-digit' });
+  const dateFormat = useMemo(() => new Intl.DateTimeFormat(locale(lang), { year: 'numeric', month: '2-digit', day: '2-digit' }), [lang]);
   const formatDate = (iso: string) => dateFormat.format(parseDay(iso));
   const today = localIsoDate();
   const incoming = [...new Set(card.dependsOn ?? [])];
@@ -195,9 +196,9 @@ export function CardIndicators({ card, lookups, members, catalog, currentMemberI
   const due = card.dueDate ? dueDetails(card.dueDate, today, t, formatDate) : null;
   const milestoneCounts = milestone ? lookups.milestoneProgress.get(milestone.id) : undefined;
   const milestoneTitle = milestone
-    ? t.milestone(milestone.title, formatDate(milestone.date), milestoneCounts?.total ?? 0, stateLabel('done', lang).toLocaleLowerCase(locale(lang)), numberFormat.format(milestoneCounts?.accepted ?? 0))
+    ? t.milestone(milestone.title, formatDate(milestone.date), milestoneCounts?.total ?? 0, stateLabel('done', lang).toLocaleLowerCase(locale(lang)), formatNumber(milestoneCounts?.accepted ?? 0, 0, lang))
     : t.unknownMilestone(card.milestone ?? '');
-  const gateTitle = t.dependencies(numberFormat.format(incoming.length), numberFormat.format(incomingOpen), numberFormat.format(outgoing.length));
+  const gateTitle = t.dependencies(formatNumber(incoming.length, 0, lang), formatNumber(incomingOpen, 0, lang), formatNumber(outgoing.length, 0, lang));
   const dueLabel = card.dueDate && due ? t.due(formatDate(card.dueDate), due.label) : '';
   const Gate = onDependencies ? 'button' : 'span';
 
@@ -208,7 +209,7 @@ export function CardIndicators({ card, lookups, members, catalog, currentMemberI
     {showMilestone && <span className={`card-indicator card-milestone-indicator${milestone && milestone.date < today ? ' is-past' : ' is-future'}`} role="img" title={milestoneTitle} aria-label={milestoneTitle} style={{ color: milestone?.color }}><MilestoneGlyph filled={Boolean(milestone && milestone.date >= today)} /></span>}
     <CardHandIndicator hand={hand} />
     {hasGate && <Gate type={onDependencies ? 'button' : undefined} disabled={onDependencies ? dependenciesDisabled : undefined} onClick={onDependencies} className={`card-indicator card-gate-indicator${incomingOpen > 0 ? ' is-blocked' : ''}${onDependencies ? ' card-indicator-button' : ''}`} role={onDependencies ? undefined : 'img'} title={gateTitle} aria-label={gateTitle}>
-      <span className="card-gate-numbers"><span>{dependencyCount(incoming.length, numberFormat)}</span><Link2 aria-hidden="true" /><span>{dependencyCount(outgoing.length, numberFormat)}</span></span>
+      <span className="card-gate-numbers"><span>{dependencyCount(incoming.length, lang)}</span><Link2 aria-hidden="true" /><span>{dependencyCount(outgoing.length, lang)}</span></span>
       <span className="card-gate-tracks" aria-hidden="true"><span><i style={{ width: `${incoming.length ? incomingAccepted / incoming.length * 100 : 0}%` }} /></span><span><i style={{ width: `${outgoing.length ? outgoingAccepted / outgoing.length * 100 : 0}%` }} /></span></span>
     </Gate>}
   </span>;

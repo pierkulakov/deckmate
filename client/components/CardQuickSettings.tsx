@@ -43,7 +43,7 @@ const text = defineText({
   deck: 'Колода', owner: 'Исполнитель', run: 'Run', milestone: 'Milestone', priority: 'Приоритет', effort: 'Оценка',
 });
 
-export { CardOwnerAvatar, OwnerAvatar } from './CardOwnerAvatar.tsx';
+export { CardOwnerAvatar } from './CardOwnerAvatar.tsx';
 export type { CardQuickSettingsTab } from '../keyboard-shortcuts.ts';
 const tabs = [
   { id: 'deck', icon: LayoutGrid }, { id: 'owner', icon: UserRound },

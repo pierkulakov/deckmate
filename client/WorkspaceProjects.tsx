@@ -7,6 +7,8 @@ import { Check, ChevronDown, FolderOpen, LoaderCircle, Plus, X } from 'lucide-re
 import { desktopBoard, hasWorkspace, type DesktopRecentProject, type DesktopWorkspaceBridge, type DesktopWorkspaceProject, type DesktopWorkspaceResult, type DesktopWorkspaceSource } from './desktop-bridge.ts';
 import { defineText, useText } from './i18n.ts';
 import { compactPath, OpenStartScreen, ProjectTile, RecentProjects, useProjectNavigation } from './RecentProjects.tsx';
+import { Keys } from './components/Keys.tsx';
+import { formatShortcut } from './shortcut-format.ts';
 
 const text = defineText({
   workspace: 'Workspace', add: 'Add project', remove: 'Remove from workspace',
@@ -21,7 +23,7 @@ const text = defineText({
   notInWorkspace: 'This project is no longer in the workspace. Reload the list.',
   invalidPath: 'Choose the project folder again.', forbidden: 'The desktop connection is unavailable. Reopen the panel and try again.',
   limit: 'The workspace holds up to 30 projects. Remove one to add another.',
-  reorderHint: 'Drag to reorder, or focus a project and press Alt+Arrow Up or Alt+Arrow Down.',
+  reorderHint: (up: string, down: string) => `Drag to reorder, or focus a project and press ${up} or ${down}.`,
   moved: (name: string, position: number, count: number) => `${name}: position ${position} of ${count}.`,
   dragging: (name: string) => `Moving ${name}.`, dragCancelled: 'Move cancelled.',
   added: 'Project added to workspace.', removed: 'Project removed from workspace.',
@@ -38,7 +40,7 @@ const text = defineText({
   notInWorkspace: 'Этого проекта больше нет в пространстве. Обновите список.',
   invalidPath: 'Выберите папку проекта ещё раз.', forbidden: 'Нет связи с оболочкой. Откройте панель заново и повторите попытку.',
   limit: 'В пространстве может быть до 30 проектов. Уберите один, чтобы добавить другой.',
-  reorderHint: 'Перетащите проект или выделите его и нажмите Alt+стрелка вверх или Alt+стрелка вниз.',
+  reorderHint: (up: string, down: string) => `Перетащите проект или выделите его и нажмите ${up} или ${down}.`,
   moved: (name: string, position: number, count: number) => `${name}: позиция ${position} из ${count}.`,
   dragging: (name: string) => `Перемещаем ${name}.`, dragCancelled: 'Перемещение отменено.',
   added: 'Проект добавлен в рабочее пространство.', removed: 'Проект убран из пространства.',
@@ -135,15 +137,16 @@ function Workspace({ board, open, disabled }: { board: DesktopWorkspaceBridge; o
   const entries = projects ?? [];
   const full = entries.length >= 30;
   const dragName = (id: string | number) => entries.find(project => project.path === id)?.name ?? '';
+  const reorderHint = t.reorderHint(formatShortcut({ key: 'ArrowUp', modifiers: ['alt'] }).name, formatShortcut({ key: 'ArrowDown', modifiers: ['alt'] }).name);
 
   return <section className="mission-control-workspace" aria-labelledby={headingId}>
     <h3 id={headingId}>{t.workspace}</h3>
-    <p id={hintId} className="sr-only">{t.reorderHint}</p>
+    <p id={hintId} className="sr-only">{reorderHint}</p>
     {projects === null && !loadFailed && <p className="mission-control-workspace-message" role="status"><LoaderCircle size={14} className="spin" aria-hidden="true" />{t.loading}</p>}
     {loadFailed && <p className="mission-control-recent-failure" role="alert">{t.loadFailed} <button type="button" className="mission-control-retry" onClick={() => setRevision(value => value + 1)}>{t.retry}</button></p>}
     {projects?.length === 0 && <p className="mission-control-workspace-empty">{t.empty}</p>}
     {entries.length > 0 && <DndContext sensors={sensors} collisionDetection={closestCenter}
-      accessibility={{ screenReaderInstructions: { draggable: t.reorderHint }, announcements: {
+      accessibility={{ screenReaderInstructions: { draggable: reorderHint }, announcements: {
         onDragStart: ({ active }) => t.dragging(dragName(active.id)),
         onDragOver: ({ active, over }) => over ? t.moved(dragName(active.id), entries.findIndex(project => project.path === over.id) + 1, entries.length) : undefined,
         onDragEnd: () => undefined, onDragCancel: () => t.dragCancelled,
@@ -206,7 +209,7 @@ function WorkspaceRow({ project, disabled, switching, shortcut, hintId, onSwitch
           and board_workspace_projects returns that exact order with the current project in place, so the row's position
           names the key that opens it. The chip reuses the shortcuts window's keycap; aria-keyshortcuts carries it for
           screen readers, so the chip itself stays quiet. */}
-      {shortcut && <kbd className="shortcuts-panel-key" aria-hidden="true">Ctrl+{shortcut}</kbd>}
+      {shortcut && <Keys className="shortcuts-panel-key" combo={{ key: `Digit${shortcut}`, modifiers: ['control'] }} ariaHidden />}
       {project.current && <Check className="mission-control-workspace-current" size={14} aria-label={t.current} />}
     </button>
     <button type="button" className="mission-control-workspace-remove control control-ghost" disabled={disabled} title={t.remove} aria-label={t.removeNamed(project.name)} onClick={onRemove}><X size={14} aria-hidden="true" /></button>

@@ -26,12 +26,10 @@
 .is-lane .deckmate-card-title { white-space: nowrap; }
 .is-mini .deckmate-card-title, .is-full .deckmate-card-title { -webkit-line-clamp: 2; display: -webkit-box; -webkit-box-orient: vertical; }
 .is-full .deckmate-card-title { font-size: 15px; }
-.deckmate-card-owner, .deckmate-card-effort, .deckmate-card-deck, .deckmate-card-properties span {
+.deckmate-card-owner, .deckmate-card-deck, .deckmate-card-properties span {
   flex-shrink: 0; font-size: 12px; line-height: 16px; color: var(--card-muted); }
-.deckmate-card-effort { font-family: 'Geist Mono', monospace; }
 .deckmate-vision-card .vision-card-priority-icon { display: inline-flex; color: var(--card-ink); }
 .vision-card-priority-icon :is(span, svg) { color: inherit; }
-.deckmate-card-properties .deckmate-card-priority { display: inline-flex; align-items: center; gap: var(--space-1); }
 .deckmate-card-owner, .deckmate-card-deck { min-width: 0; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .is-lane { flex-direction: row; align-items: center; gap: 8px; padding: 0 10px; }
 .is-lane .card-face-status { flex: 0 0 auto; max-width: 110px; }
@@ -71,7 +69,7 @@
   background-image: linear-gradient(110deg, color-mix(in srgb, var(--state-band-metal, var(--card-metal)) 94%, #fff), var(--state-band-metal, var(--card-metal)) 55%, color-mix(in srgb, var(--state-band-metal, var(--card-metal)) 94%, #364057));
   color: var(--state-band-ink, var(--card-metal-ink));
 }
-.is-state-band :is(.deckmate-card-state-word, .deckmate-card-owner, .deckmate-card-effort, .deckmate-card-priority, .vision-card-priority-icon, .tag-badge.is-personal) { color: inherit; }
+.is-state-band :is(.deckmate-card-state-word, .deckmate-card-owner, .vision-card-priority-icon, .tag-badge.is-personal) { color: inherit; }
 /* The band runs full-bleed to the node's bottom corners: the negative margins cancel each view's padding. */
 .is-mini .deckmate-card-foot.is-state-band { margin: auto -10px -9px; padding: 0 10px; min-height: 24px; }
 .is-full .deckmate-card-properties.is-state-band { margin: auto -12px -11px; padding: 0 12px; min-height: 23px; align-items: center; }

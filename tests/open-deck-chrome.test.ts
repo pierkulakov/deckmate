@@ -3,6 +3,8 @@ import { openHeadlessBrowser, type HeadlessPage } from '../tools/layout-capture.
 import { browserFixtureUrl } from './browser-fixture.ts';
 import { requireBrowser } from './browser-environment.ts';
 import { waitForLayout } from './browser-layout.ts';
+import { mkdir, writeFile } from 'node:fs/promises';
+import path from 'node:path';
 
 const browserPath = requireBrowser();
 describe.skipIf(!browserPath)('open-deck chrome', () => {
@@ -38,6 +40,77 @@ describe.skipIf(!browserPath)('open-deck chrome', () => {
     await page.send('Page.addScriptToEvaluateOnNewDocument', { source: `localStorage.setItem('deckmate-language', 'ru');` });
   }, 60000);
   afterAll(async () => { await page?.close(); }, 20000);
+
+  it.each([375, 1280])('opens the project decision pool from the sidebar at %ipx', async width => {
+    await page.send('Emulation.setDeviceMetricsOverride', { width, height: 900, deviceScaleFactor: 1, mobile: false });
+    async function shot(name: string) {
+      if (!process.env.DECKMATE_DECISION_POOL_SHOTS) return;
+      await new Promise(resolve => setTimeout(resolve, 350));
+      await mkdir(process.env.DECKMATE_DECISION_POOL_SHOTS, { recursive: true });
+      const image = await page.send('Page.captureScreenshot', { format: 'png' });
+      await writeFile(path.join(process.env.DECKMATE_DECISION_POOL_SHOTS, `${name}-${width}.png`), Buffer.from(image.result.data, 'base64'));
+    }
+    try {
+      for (const theme of ['light', 'dark']) {
+        for (const count of [0, 3]) {
+          await navigateTo(browserFixtureUrl('open-deck-chrome') + `?view=deck&catalogSource=sandbox&questionSystem=${count}&theme=${theme}`, `document.querySelector('.catalog-view')`);
+          expect(await page.evaluate(`Boolean(document.querySelector('.decision-pool-trigger, .catalog-header .decision-pool-menu-item, .deck-open-toolbar .decision-pool-menu-item'))`)).toBe(false);
+          await until(`document.getElementById('mission-control-pending-count')?.textContent.includes(${JSON.stringify('Решений к внесению: ' + count)})`);
+          expect(await page.evaluate(`document.querySelector('.mission-control-trigger').getAttribute('aria-describedby')`)).toBe('mission-control-pending-count');
+          if (count) await until(`document.querySelector('.mission-control-trigger-count')?.textContent.includes('3')`);
+          else expect(await page.evaluate(`document.querySelector('.mission-control-trigger-count')`)).toBeNull();
+          await page.evaluate(`document.querySelector('.mission-control-trigger').click()`);
+          await until(`Boolean(document.querySelector('.decision-pool-menu-item'))`);
+          await until(`document.querySelector('.decision-pool-menu-item').textContent.trim() === ${JSON.stringify(count ? 'К внесению3' : 'К внесению')}`);
+          await page.evaluate(`Promise.all(document.querySelector('.mission-control').getAnimations().map(animation => animation.finished))`);
+          expect(await page.evaluate(`document.querySelector('.mission-control-sections button:first-child').textContent.trim()`)).toBe('Hand');
+          expect(await page.evaluate(`(() => { const box = document.querySelector('.decision-pool-menu-item').getBoundingClientRect(); return box.width > 0 && box.left >= 0 && box.right <= innerWidth; })()`)).toBe(true);
+          await shot(`menu-${count ? 'three' : 'empty'}-${theme}`);
+          if (count && width === 375) {
+            await page.evaluate(`document.querySelector('.decision-pool-menu-item').focus()`);
+            for (const type of ['keyDown', 'keyUp']) await page.send('Input.dispatchKeyEvent', { type, key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13, text: type === 'keyDown' ? '\r' : undefined });
+          } else await page.evaluate(`document.querySelector('.decision-pool-menu-item').click()`);
+          await until(`Boolean(document.querySelector('.decision-pool-view'))`);
+          await until(`Boolean(document.querySelector(${JSON.stringify(count ? '.decision-pool li button' : '.ui-empty-scene')}))`);
+          expect(await page.evaluate(`document.documentElement.scrollWidth <= innerWidth`)).toBe(true);
+          expect(await page.evaluate(`!document.querySelector('.decision-pool') || [...document.querySelectorAll('.decision-pool, .decision-pool-group, .decision-pool-group .panel-head, .decision-pool-group .panel-count')].every(element => element.scrollWidth <= element.clientWidth + 1)`)).toBe(true);
+          if (!count) {
+            expect(await page.evaluate(`document.querySelector('.decision-pool-view').textContent`)).toContain('ответы, которые ещё нужно внести');
+            continue;
+          }
+          expect(await page.evaluate(`document.querySelectorAll('.decision-pool-group').length`)).toBe(2);
+          expect(await page.evaluate(`document.querySelectorAll('.decision-pool li').length`)).toBe(3);
+          expect(await page.evaluate(`document.querySelector('.decision-pool').textContent`)).toContain('Вопрос: Как двигаться?');
+          expect(await page.evaluate(`document.querySelector('.decision-pool').textContent`)).not.toContain('Внести в: эта карточка');
+          expect(await page.evaluate(`document.querySelector('.decision-pool-hint').textContent`)).toContain('Агент автоматически не запускается');
+          expect(await page.evaluate(`document.querySelector('.decision-pool').textContent`)).toContain('Ответ: Майя');
+          await shot(`pool-${theme}`);
+          await page.evaluate(`document.querySelector('.decision-pool li button').focus()`);
+          for (const type of ['keyDown', 'keyUp']) await page.send('Input.dispatchKeyEvent', { type, key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13, text: type === 'keyDown' ? '\r' : undefined });
+          await until(`Boolean(document.querySelector('.card-preview-title') && document.querySelector('.card-questions-panel-heading'))`);
+          await until(`document.activeElement === document.querySelector('.card-related-slot')`);
+          expect(await page.evaluate(`document.querySelector('.card-preview-title').textContent`)).toBe('Карточка 0');
+          expect(await page.evaluate(`document.querySelector('.card-preview-open-questions').getAttribute('aria-pressed')`)).toBe('true');
+          expect(await page.evaluate(`(() => { const panel = document.querySelector('.card-related-slot');
+            return panel.matches(':focus-visible') && getComputedStyle(panel).outlineStyle === 'solid' && getComputedStyle(panel).outlineWidth === '2px'; })()`)).toBe(true);
+          if (width === 1280 && process.env.DECKMATE_A11Y_SHOTS) {
+            await mkdir(process.env.DECKMATE_A11Y_SHOTS, { recursive: true });
+            const image = await page.send('Page.captureScreenshot', { format: 'png' });
+            await writeFile(path.join(process.env.DECKMATE_A11Y_SHOTS, `pool-focus-${theme}-1280.png`), Buffer.from(image.result.data, 'base64'));
+          }
+          await page.evaluate(`history.back()`);
+          await until(`Boolean(document.querySelector('.decision-pool-view .decision-pool'))`);
+          await page.evaluate(`window.questionSystem.applyAll()`);
+          await until(`Boolean(document.querySelector('.decision-pool-view .ui-empty-scene'))`);
+          await until(`!document.querySelector('.mission-control-trigger-count')`);
+          await page.evaluate(`document.querySelector('.mission-control-trigger').click()`);
+          await until(`Boolean(document.querySelector('.decision-pool-menu-item'))`);
+          expect(await page.evaluate(`document.querySelector('.decision-pool-menu-item .mission-control-count')`)).toBeNull();
+          expect(await page.evaluate(`document.querySelector('.decision-pool-menu-item').getAttribute('aria-current')`)).toBe('page');
+        }
+      }
+    } finally { await page.send('Emulation.clearDeviceMetricsOverride'); }
+  }, 120000);
 
   async function automation() {
     await navigateTo(browserFixtureUrl('open-deck-chrome') + '?automationTest=1', `document.querySelector('.deck-automation-toggle')`);
@@ -136,7 +209,8 @@ describe.skipIf(!browserPath)('open-deck chrome', () => {
     await page.send('Page.navigate', { url: browserFixtureUrl('open-deck-chrome') + '?view=deck&catalogSource=sandbox&deck=work&reviewCount=' + count });
     await until(`Boolean(document.querySelector('.deck-neighbor-rail [aria-current=page]'))`);
     const result = await page.evaluate(`(() => { const cover = document.querySelector('.deck-neighbor-rail [aria-current=page]'); return { label: cover.getAttribute('aria-label'), review: cover.querySelector('.is-review')?.textContent ?? null, open: cover.querySelector('.catalog-cover-count').textContent }; })()`);
-    expect(result.open).toBe('10');
+    // The open plate leaves review Tasks out, so the plates add up to the ten active cards.
+    expect(result.open).toBe(String(10 - count));
     expect(result.review).toBe(count ? String(count) : null);
     if (count) expect(result.label).toContain('Задач на приёмке: ' + count);
   });
@@ -203,12 +277,14 @@ describe.skipIf(!browserPath)('open-deck chrome', () => {
     } finally { await page.send('Emulation.setTouchEmulationEnabled', { enabled: false }); }
   });
 
-  it('keeps manual zone controls separate and reachable with touch-sized targets', async () => {
-    await page.send('Emulation.setDeviceMetricsOverride', { width: 375, height: 600, deviceScaleFactor: 1, mobile: false });
+  it.each([{ layout: 'cards', width: 375 }, { layout: 'table', width: 375 }, { layout: 'table', width: 768 }, { layout: 'table', width: 1700 }])(
+    'keeps $layout manual zone controls separate and reachable with touch-sized targets at $width px', async ({ layout, width }) => {
+    await page.send('Emulation.setDeviceMetricsOverride', { width, height: 600, deviceScaleFactor: 1, mobile: false });
     await page.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 5 });
     try {
-      await navigateTo(browserFixtureUrl('open-deck-chrome') + '?view=deck&catalogSource=sandbox&deck=work&order=manual&zonesTest=1',
+      await navigateTo(browserFixtureUrl('open-deck-chrome') + `?view=deck&catalogSource=sandbox&deck=work&order=manual&zonesTest=1&layout=${layout}`,
         `document.querySelector('.catalog-zone-heading')`);
+      expect(await page.evaluate(`Boolean(document.querySelector('.deck-table'))`)).toBe(layout === 'table');
       await page.evaluate(`document.querySelector('.catalog-zone-heading .is-danger').click()`);
       await until(`Boolean(document.querySelector('.catalog-zone-heading .confirm-strip'))`);
       await waitForLayout(page.evaluate, '.catalog-zone-heading');
@@ -217,6 +293,7 @@ describe.skipIf(!browserPath)('open-deck chrome', () => {
       await page.evaluate(`document.querySelector('.catalog-zone-heading .confirm-strip-keep').click(); document.querySelector('.catalog-zone-tools .ui-button:not(.is-danger)').click()`);
       await until(`Boolean(document.querySelector('.catalog-zone-title-input'))`);
       expect(await page.evaluate(`document.querySelector('.catalog-zone-title-input').getBoundingClientRect().height`)).toBeGreaterThanOrEqual(44);
+      expect(await page.evaluate(`(() => { const input = document.querySelector('.catalog-zone-title-input'); const heading = input.closest('.catalog-zone-heading'); const count = heading.querySelector('.catalog-group-count').getBoundingClientRect(); const add = heading.querySelector('.catalog-group-add').getBoundingClientRect(); return input.getBoundingClientRect().right <= count.left && count.right <= add.left; })()`)).toBe(true);
       await expectNoOverflow();
     } finally { await page.send('Emulation.setTouchEmulationEnabled', { enabled: false }); }
   });
@@ -231,9 +308,11 @@ describe.skipIf(!browserPath)('open-deck chrome', () => {
       await page.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [await point(selector)] });
     };
     try {
+      await navigateTo(browserFixtureUrl('open-deck-chrome') + '?view=deck&catalogSource=sandbox&deck=work&order=priority',
+        `document.querySelector('.card-transfer-handle')`);
       for (const ending of ['touchCancel', 'Escape', 'group', 'deck']) {
-        await navigateTo(browserFixtureUrl('open-deck-chrome') + '?view=deck&catalogSource=sandbox&deck=work&order=priority',
-          `document.querySelector('.card-transfer-handle')`);
+        // 2026-11-13: writes return the unchanged fixture catalog, so each ending needs a fresh request log rather than a full reload.
+        await page.evaluate(`window.deckEdits.length = 0`);
         await page.evaluate(`document.querySelector('.deck-action-rail button[aria-pressed="true"]')?.click(); document.querySelector('.card-transfer-handle').scrollIntoView({block:'center',behavior:'instant'})`);
         await waitForLayout(page.evaluate, '.catalog-workbench');
         const start = await point('.card-transfer-handle');
@@ -268,6 +347,9 @@ describe.skipIf(!browserPath)('open-deck chrome', () => {
           expect(request).toMatchObject(ending === 'group'
             ? { action: 'bulk-edit-cards', change: { kind: 'properties', priority: 'medium' } }
             : { action: 'bulk-assign-deck', deckId: null });
+          // 2026-11-13: recording a POST precedes the saved UI; navigating while it is pending opens a blocking beforeunload dialog.
+          await until(`Boolean(document.querySelector('.card-transfer-handle[aria-disabled="false"]'))`);
+          await waitForLayout(page.evaluate, '.catalog-workbench');
         } else expect(await page.evaluate('window.deckEdits'), ending).toEqual([]);
         expect(await page.evaluate(`document.documentElement.classList.contains('is-transfer-target-over')`)).toBe(false);
       }

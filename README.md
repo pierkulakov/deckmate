@@ -28,7 +28,7 @@
   <a href="https://github.com/pierkulakov/deckmate/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-AGPL--3.0--only-9258e5?style=flat&amp;labelColor=27242f" alt="License: AGPL-3.0-only" /></a>
 </p>
 
-<p align="center"><sub>0.7.1 · Early release · macOS planned · Project file format (schema 1) may change before 1.0.</sub></p>
+<p align="center"><sub>0.8.0 · Early release · macOS planned · Project file format (schema 1) may change before 1.0.</sub></p>
 
 <p align="center">
   <a href="#quick-start">Quick start</a> · <a href="#use-it-with-your-project">Your project</a> · <a href="#how-it-works">Concepts</a> · <a href="#decks-inbox-and-sub-cards">Decks and Inbox</a> · <a href="#working-with-ai-agents">Agents</a> · <a href="#faq">FAQ</a>
@@ -242,7 +242,9 @@ npx deckmate project brief <card-ref>     # the card, its rules and what to read
 npx deckmate project report <card-ref> --file report.md --member <member> --state review
 ```
 
-`next` follows explicit Hand order and skips Hero and Doc cards, Tasks in review, accepted or cancelled Tasks, open dependencies and stale work. With no eligible Task it returns `card: null`. `ask` returns warnings with its result: saving a question does not automatically block the source Task or remove it from `next`.
+`next` follows explicit Hand order and skips Hero and Doc cards, Tasks in review, accepted or cancelled Tasks, open dependencies, stale work and Tasks with any unanswered open question, even if it has no addressee. With no eligible Task it returns `card: null`. A pending decision is returned before ordinary cards — it already holds the person's answer, so edit the returned target and mark it incorporated (`apply`), without calling `question` or `answer` again. `ask` puts a new question on the card with an optional addressee and a target that defaults to that card; `question` then brings that open question into chat and `answer` records the approved answer.
+
+An AI client can also use the board through MCP: `npx deckmate skills install` registers `deckmate mcp` in `.mcp.json` where a portable launch line exists; on Windows and other machine-specific installs it prints the line for manual setup instead. The operations become tools `next`, `brief`, `create_cards`, `update_card`, `report`, `ask`, `question`, `answer`, `apply_decision`, `search` and the read-only `organize` — see [docs/mcp.md](docs/mcp.md).
 
 Assigning an owner never starts a model. The example submits work for review; a reviewer can then accept it. The server rejects self-acceptance by a known agent that owns the card or authored an earlier report; an independent agent can review another member's work. People are not subject to this self-acceptance restriction. If a deck has Guardians, the accepting member must also be a Guardian. See the [acceptance contract](docs/catalog.md#acceptance-and-agent-reports--2026-11-11) for actor identification and report-specific rules.
 

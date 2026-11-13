@@ -60,10 +60,14 @@ it('prints the same project help for deckmate project --help and the npm script 
 
 it('shows arguments, options and one example for every agent-route command', async () => {
   const route: Array<[string, RegExp, RegExp]> = [
-    ['next', /Usage: deckmate project next \[member\] \[--member <id>\] \[--stale-hours <hours>\] \[--brief\]/u, /Example: deckmate project next glm --data <project>/u],
-    ['ask', /Usage: deckmate project ask <c-ref> "<question>" \[--member <id>\] \[--to <id>\]/u, /Example: deckmate project ask c-1a2b3c4d5e/u],
-    ['report', /Usage: deckmate project report <c-ref> \[--file <path>\] \[--member <id>\] \[--state <state>\]/u, /Example: deckmate project report c-1a2b3c4d5e --file report\.md --member glm --state review/u],
+    ['next', /Usage: deckmate project next \[member\] \[--member <id>\] \[--stale-hours <hours>\] \[--brief\]/u, /Example: deckmate project next agent --data <project>/u],
+    ['ask', /Usage: deckmate project ask <c-ref> "<question>" \[--member <id>\] \[--to <id>\] \[--target <c-ref\[#section\]>\]/u, /Example: deckmate project ask c-1a2b3c4d5e/u],
+    ['question', /Usage: deckmate project question <c-ref#N>/u, /Example: deckmate project question c-1a2b3c4d5e#1/u],
+    ['answer', /Usage: deckmate project answer <c-ref#N> "<answer>" \[--as <human-id>\]/u, /Example: deckmate project answer c-1a2b3c4d5e#1/u],
+    ['apply', /Usage: deckmate project apply <c-ref> <index> \[--note <text>\]/u, /Example: deckmate project apply c-1a2b3c4d5e 0/u],
+    ['report', /Usage: deckmate project report <c-ref> \[--file <path>\] \[--member <id>\] \[--state <state>\]/u, /Example: deckmate project report c-1a2b3c4d5e --file report\.md --member agent --state review/u],
     ['state', /Usage: deckmate project state <c-ref> <state> \[--member <id>\] \[--reason <text>\]/u, /Example: deckmate project state c-1a2b3c4d5e done --member reviewer/u],
+    ['organize', /Usage: deckmate project organize \[--about <new thing>\]/u, /Example: deckmate project organize --about "new unit" --data <project>/u],
   ];
   for (const [command, usage, example] of route) {
     const viaDeckmate = await capturedOutput(() => runCli(['project', command, '--help']));

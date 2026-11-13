@@ -146,7 +146,7 @@ describe.skipIf(!browserPath)('project pulse first-return geometry (browser)', (
     await openDirectLink(width);
     expect(await page.evaluate(`document.querySelector('.project-pulse').getAttribute('aria-busy')`)).toBe('true');
     const before = await geometry();
-    await page.evaluate(`new Promise(resolve => setTimeout(() => { window.pulseRequests.release(); resolve(true); }, 250))`);
+    await page.evaluate('window.pulseRequests.release()');
     await until(`document.querySelector('.project-pulse').getAttribute('aria-busy') === 'false'`);
     await waitForLayout(page.evaluate, '.project-pulse, .catalog-spaces');
     expect(await geometry()).toEqual(before);
@@ -168,7 +168,7 @@ describe.skipIf(!browserPath)('project pulse first-return geometry (browser)', (
     expect(await page.evaluate(`document.querySelector('.project-pulse').getAttribute('aria-busy')`)).toBe('true');
     const before = await geometry();
     expect(before.height).toBeGreaterThan(40);
-    await page.evaluate(`new Promise(resolve => setTimeout(() => { window.pulseRequests.release(); resolve(true); }, 250))`);
+    await page.evaluate('window.pulseRequests.release()');
     await until(`document.querySelector('.project-pulse').getAttribute('aria-busy') === 'false'`);
     await waitForLayout(page.evaluate, '.project-pulse, .catalog-spaces');
     expect(await geometry()).toEqual(before);

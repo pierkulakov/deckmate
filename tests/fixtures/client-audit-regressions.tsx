@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { createPortal } from 'react-dom';
 import * as Dialog from '@radix-ui/react-dialog';
-import { CatalogCardTile, CardAttachmentRefreshContext } from '../../client/components/CatalogCardTile.tsx';
+import { CatalogCardTile } from '../../client/components/CatalogCardTile.tsx';
 import { CardFocusMode } from '../../client/components/CardFocusMode.tsx';
 import { Hand } from '../../client/components/Hand.tsx';
 import { buildCatalogLookups } from '../../client/catalog-lookups.ts';
@@ -34,9 +34,9 @@ const root = createRoot(document.getElementById('root')!);
 const lookups = buildCatalogLookups(cards);
 const noop = () => {};
 function Tiles() {
-  return <CardAttachmentRefreshContext.Provider value={state.revision}><div style={{ display: 'flex', gap: 32 }}>{cards.map(card =>
+  return <div style={{ display: 'flex', gap: 32 }}>{cards.map(card =>
     <CatalogCardTile key={card.id} card={card} lookups={lookups} members={[]} catalog={{ ...catalog, indexedAt: state.revision }}
-      selected={false} checked={false} selectionActive={false} disabled={false} onOpen={noop} onToggle={noop} onFamilyOpen={noop} />)}</div></CardAttachmentRefreshContext.Provider>;
+      selected={false} checked={false} selectionActive={false} disabled={false} onOpen={noop} onToggle={noop} onFamilyOpen={noop} />)}</div>;
 }
 function Editor() {
   const [menu, setMenu] = useState(false);

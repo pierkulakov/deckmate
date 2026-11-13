@@ -15,7 +15,7 @@ goal: 'docs/goal.md'
 The profile is a short research brief: genre, game concept, platform, references, player sources, and paths to principles and goals.
 Workflows receive this file's path through `{profile}` and read it for `research` assignments and synthesis; its contents are not copied into every workflow.
 `{genre}` points to the file selected by `genre`: first check `<project>/tasks/deckmate-genres/<key>.md`, then the built-in `skills/deckmate/genres/<key>.md`.
-Built-in keys are `rts`, `tactics`, `shooter`, `4x`, `rpg`, and `platformer`; add custom genres in the project folder.
+Built-in keys are `action`, `adventure`, `platformer`, `puzzle`, `roguelike`, `rpg`, `shooter`, `simulation`, `sports` and `survival`, plus `strategy`, which routes to `rts`, `4x` and `tactics`; add custom genres in the project folder.
 Fill in `genre`, `description`, `platform`, `players`, and at least one `references` entry. Empty examples are not sufficient for research.
 In `references`, `game` names the game and `take` limits the study to one useful practice; a reference is not a checklist for copying a game.
 In `players`, provide specific links and say where to find the target audience's complaints, habits, analyses, and debates.

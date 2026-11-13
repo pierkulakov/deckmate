@@ -12,8 +12,11 @@
   select:not([multiple]):is(:not([size]), [size="0"], [size="1"])::picker(select) {
     appearance: base-select;
     margin-block: var(--space-1);
+    min-width: min(160px, calc(100vw - 16px));
+    max-width: min(360px, calc(100vw - 16px));
     min-width: anchor-size(width);
     max-width: max(anchor-size(width), min(360px, 100vw - 16px));
+    max-height: min(320px, 50vh);
     max-height: min(320px, 50dvh);
     overflow: auto;
     padding: var(--space-1);

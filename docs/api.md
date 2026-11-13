@@ -2,7 +2,7 @@
 
 Legacy `FREETION_*` variables are read only while no `DECKMATE_*` variable is set: the two sets never mix (2026-11-05). Clients send `x-deckmate-token` and `x-deckmate-actor`; reload an older client before writing.
 
-A short reference for agents working with a Deckmate project over HTTP. The Markdown files of the data project stay the single source of truth; this API edits them under hash guards. File formats and boundaries: [catalog.md](catalog.md).
+For agent work prefer the `deckmate` MCP server and the `deckmate project` commands ([mcp.md](mcp.md)): they need no running server and no port. This HTTP API serves the application and tools that need a live server. The Markdown files of the data project stay the single source of truth; this API edits them under hash guards. File formats and boundaries: [catalog.md](catalog.md).
 
 ## Two-language file format — 2026-11-05
 
@@ -20,7 +20,7 @@ API input, `state:` search and CLI `--state` accept both languages. API response
 | `done` | `done` | `принято` |
 | `wont-do` | `wont-do` | `не делаем` |
 | Open questions | `## Open questions` | `## Открыто` |
-| Decision Task | `Decision: …` | `Решение: …` |
+| Decision Task (legacy link, no longer created) | `Decision: …` | `Решение: …` |
 | Workflow assignment | `## Assignment: <role>` | `## Задание: <role>` |
 | Recorded decisions | `## Decided` | `## Решено` |
 | Journey step lessons | `## Lessons` | `## Грабли` |
@@ -134,20 +134,21 @@ npx deckmate project changes <c-ref> --since 2026-11-01T00:00:00Z
 
 To keep pre-existing CLI JSON byte-compatible, `find`, `show` and `summary` expose token counts only with the new `--fields brief` option. `find --fields brief` returns compact `{ cards, tokens }`, retaining old non-Markdown properties and adding `hits`; `show --fields brief` and `summary --fields brief` add `tokens` to their original object. These estimates describe the compact JSON before adding the `tokens` field. `show --lines` returns `{ path, from, to, totalLines, markdown, sourceHash, tokens }` and preserves the exact source line endings inside `markdown`. Old calls without new parameters keep their original shapes and bodies.
 
-### Agent queue and questions — 2026-11-11
+### Agent queue and questions — 2026-11-12
 
 These are CLI commands, not additional HTTP endpoints:
 
 ```sh
 npx deckmate project next <member> --stale-hours 24
-npx deckmate project ask <c-ref> "Which behavior should this Task implement?" --member <agent-id> --to <human-id>
+npx deckmate project ask <c-ref> "Which behavior should this Task implement?" --member <agent-id> --to <human-id> --target <c-ref#section>
+npx deckmate project question <c-ref#N>
+npx deckmate project answer <c-ref#N> "60 FPS" --as <human-id>
+npx deckmate project apply <c-ref> <index> --note "<what changed>"
 ```
 
-`next` follows the member's explicit Hand order, independently of Owner. It selects only active Tasks, excluding `review`, `done`, `wont-do`, Tasks with open dependencies, and stale `started` Tasks. Hero and Doc cards are never returned. Archived, deleted and missing prerequisites do not block; see [dependency blocking](catalog.md#hand--2026-11-03). The stale threshold defaults to 24 hours and must be a positive finite number; it checks source-file age and activity, not the hash alone. The default JSON is `{ source, member, card }`, where `member` is the member ID and `card` is `{ ref, title, state, path, sourceHash, link }` or `null`. `--brief` prints the chosen Task's brief instead; an empty queue still returns JSON with `card: null`.
+`next` follows the member's explicit Hand order, independently of Owner. It selects only active Tasks, excluding `review`, `done`, `wont-do`, Tasks with open dependencies, stale `started` Tasks and Tasks with an open question. Hero and Doc cards are never returned. Archived, deleted and missing prerequisites do not block; see [dependency blocking](catalog.md#hand--2026-11-03). The stale threshold defaults to 24 hours and must be a positive finite number; it checks source-file age and activity, not the hash alone. The default JSON is `{ source, member, card }`, where `member` is the member ID and `card` is `{ ref, title, state, path, sourceHash, link }` or `null`; a pending decision is returned before any card as `{ decision: { card, index, question, answer, by, target, next } }`. `--brief` prints the chosen Task's brief instead; an empty queue still returns JSON with `card: null`.
 
-`ask` returns `{ question, link, existing: false, warnings: string[] }` after saving or finishing an incomplete question. An already saved question with its Decision link returns `{ question, link, existing: true, writes: 0, warnings: string[] }`; the no-rule fallback also uses this retry shape. Inspect `warnings` on every successful response. They always explain that saving a question does not block the source Task or remove it from `next`; coordinate taking the Task out of execution separately.
-
-With a rule Doc, `ask` saves the question there and creates or resumes a Decision Task for a human recipient (`--to`, otherwise the first human). Without a rule Doc, a supported native card stores the question in its own `Open questions` section, creates no Decision Task and ignores `--to`; that limitation is reported on both creation and retry. A non-native card without a rule Doc is rejected. A missing persisted Decision link or missing linked Task is also reported as a warning after a write. Existing byte-preservation and structure guards still apply. The `link` points to the persisted Decision reference when present, otherwise to the question's card.
+`ask` writes the question on the named card — Task, Hero or Doc, native or imported — and returns `{ question, card, assignee, target, existing, warnings? }`: `card` is the question's c-ref, `assignee` the human addressee (the first human without `--to`, null for no one), `target` the answer target as a c-ref with an optional `#section` (the card itself by default), and `existing: true` marks an already saved identical question as a no-op. A Task with an open question is not eligible for `next` until the question is answered. `question <c-ref#N>` returns the chat package — the question, its card, the addressee, a `path:from-to` target range and the three latest decisions; `answer <c-ref#N> "<text>" --as <human-id>` records the decision approved in chat and leaves it pending; `apply <c-ref> <index>` marks it incorporated once the target card has been edited. The file format of questions and decisions is described in [catalog.md](catalog.md#questions-decisions-and-application--2026-11-12).
 
 ## Write endpoints
 
@@ -168,8 +169,11 @@ The browser store's `edit` remains `Promise<boolean>`: HTTP 200 retains the exis
 | `reorder-subcards` | `cardId`, `sourceHash`, `cardIds` |
 | `configure-members` | `members` |
 | `save-project-tag` | `tagsHash`, `tag` |
-| `raise-decision` | `cardId`, `sourceHash`, `questionIndex`, `questionText`, `taskCardId`, `deckId`, `memberId` |
+| `raise-decision` | deprecated alias of `assign-question`: `cardId`, `sourceHash`, `questionIndex`, `questionText`, `memberId` (the human addressee); old `taskCardId` and `deckId` fields are accepted but ignored, and no Task is created |
+| `ask-question` | `cardId`, `sourceHash`, `text`, `assignee` (member ID or null), optional `target` (`c-ref` or `c-ref#section`, or null) |
+| `assign-question` | `cardId`, `sourceHash`, `questionIndex`, `questionText`, `assignee` (null removes the addressee) |
 | `record-decision` | `cardId`, `sourceHash`, `questionIndex`, `questionText`, `answer`, `memberId` |
+| `apply-decision` | `cardId`, `sourceHash`, `decisionIndex`, `answer` (the saved answer, confirming the expected decision) |
 | `set-card-links` | `cardId`, `deckId`, `trackIds`, `sourceHash` |
 | `bulk-assign-deck` | `cards`, `deckId` |
 | `bulk-add-track` | `cards`, `trackId` |

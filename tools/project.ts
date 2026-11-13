@@ -2,10 +2,10 @@ import { loadConfig } from '../server/config.ts';
 import { resolveDataPath } from '../server/data-paths.ts';
 import { CatalogService } from '../server/catalog-service.ts';
 import { readProjectCatalog } from '../server/catalog.ts';
-import type { CatalogJourney, CatalogQuery, CatalogView } from '../src/catalog-contracts.ts';
+import type { CardKind, CatalogJourney, CatalogQuery, CatalogView } from '../src/catalog-contracts.ts';
 import type { DataSource } from '../src/workspace-contracts.ts';
 import { Boards } from '../server/boards.ts';
-import { resolveReference, shortReference } from '../src/references.ts';
+import { cardLink, resolveReference, shortReference } from '../src/references.ts';
 import { summarizeCatalog } from '../server/catalog-summary.ts';
 import { cardPlanningOptions, getCatalogHands, selectCatalogHand } from '../src/catalog-hand.ts';
 import { existsSync, readdirSync } from 'node:fs';
@@ -23,7 +23,8 @@ import { defineText, serverText } from '../server/i18n.ts';
 const switches = new Set(['brief', 'json', 'samples', 'dry', 'read-only']);
 const allowed = ['source', 'text', 'deck', 'track', 'kind', 'state', 'owner', 'limit', 'fields', 'lines', 'budget',
   // Agent commands (brief/changes here, tools/commands/*.ts, 2026-11-05).
-  'member', 'since', 'file', 'brief', 'json', 'stale-hours', 'to', 'samples', 'dry', 'reason',
+  'member', 'since', 'file', 'brief', 'json', 'stale-hours', 'to', 'target', 'as', 'note', 'samples', 'dry', 'reason',
+  'priority', 'effort', 'parent', 'key', 'body-file', 'tracks', 'rev', 'about',
   // Data folder and write access, as for the board (2026-11-05).
   'data', 'read-only'];
 /** 2026-11-09: options every command accepts; a command's own options come from its spec below. */
@@ -37,7 +38,7 @@ const commandSpecs: Record<string, CommandSpec> = {
   map: { args: '', options: [], example: 'deckmate project map --data <project>' },
   summary: { args: '[track]', options: ['track', 'limit', 'stale-hours', 'fields'], example: 'deckmate project summary --track sound --data <project>' },
   show: { args: '<c-ref>', options: ['fields', 'lines'], example: 'deckmate project show c-1a2b3c4d5e --lines 12-40' },
-  find: { args: '[text]', options: ['text', 'deck', 'track', 'kind', 'state', 'owner', 'limit', 'fields'], example: 'deckmate project find "шаги" --kind task --owner glm --fields brief' },
+  find: { args: '[text]', options: ['text', 'deck', 'track', 'kind', 'state', 'owner', 'limit', 'fields'], example: 'deckmate project find "audio" --kind task --owner agent --fields brief' },
   track: { args: '<track>', options: ['text', 'deck', 'kind', 'state', 'owner', 'limit', 'fields'], example: 'deckmate project track sound --kind task' },
   brief: { args: '<c-ref>', options: ['budget', 'json'], example: 'deckmate project brief c-1a2b3c4d5e --budget 1500 --json' },
   changes: { args: '<c-ref>', options: ['since'], example: 'deckmate project changes c-1a2b3c4d5e --since 2026-11-09T00:00:00Z' },
@@ -49,18 +50,27 @@ const commandSpecs: Record<string, CommandSpec> = {
   board: { args: '<v-ref>', options: [], example: 'deckmate project board v-1a2b3c4d5e' },
   rebuild: { args: '', options: [], example: 'deckmate project rebuild --data <project>' },
   init: { args: '[template]', options: ['samples', 'dry', 'member'], example: 'deckmate project init action --dry --samples' },
-  next: { args: '[member]', options: ['member', 'stale-hours', 'brief'], example: 'deckmate project next glm --data <project>' },
-  ask: { args: '<c-ref> "<question>"', options: ['member', 'to'], example: 'deckmate project ask c-1a2b3c4d5e "Какой целевой FPS?" --member glm' },
-  report: { args: '<c-ref>', options: ['file', 'member', 'state'], example: 'deckmate project report c-1a2b3c4d5e --file report.md --member glm --state review' },
+  next: { args: '[member]', options: ['member', 'stale-hours', 'brief'], example: 'deckmate project next agent --data <project>' },
+  ask: { args: '<c-ref> "<question>"', options: ['member', 'to', 'target'], example: 'deckmate project ask c-1a2b3c4d5e "FPS?" --member agent --target c-1a2b3c4d5e#Rules' },
+  question: { args: '<c-ref#N>', options: [], example: 'deckmate project question c-1a2b3c4d5e#1' },
+  answer: { args: '<c-ref#N> "<answer>"', options: ['as', 'member', 'rev'], example: 'deckmate project answer c-1a2b3c4d5e#1 "60 FPS" --as human --member agent --rev 0123456789ab' },
+  apply: { args: '<c-ref> <index>', options: ['note', 'rev'], example: 'deckmate project apply c-1a2b3c4d5e 0 --rev 0123456789ab --note "Rules updated"' },
+  report: { args: '<c-ref>', options: ['file', 'member', 'state'], example: 'deckmate project report c-1a2b3c4d5e --file report.md --member agent --state review' },
   state: { args: '<c-ref> <state>', options: ['member', 'reason'], example: 'deckmate project state c-1a2b3c4d5e done --member reviewer' },
-  inbox: { args: '[member]', options: ['member', 'since', 'limit'], example: 'deckmate project inbox glm --since 2026-11-09T00:00:00Z' },
+  create: { args: '[title]', options: ['file', 'deck', 'kind', 'owner', 'priority', 'effort', 'parent', 'key', 'body-file', 'member'], example: 'deckmate project create "Check audio" --deck inbox --member agent' },
+  update: { args: '<c-ref>', options: ['state', 'reason', 'owner', 'priority', 'effort', 'deck', 'tracks', 'parent', 'rev', 'member'], example: 'deckmate project update c-1a2b3c4d5e --owner agent --state started --rev 0123456789ab' },
+  inbox: { args: '[member]', options: ['member', 'since', 'limit'], example: 'deckmate project inbox agent --since 2026-11-09T00:00:00Z' },
+  organize: { args: '', options: ['about'], example: 'deckmate project organize --about "new unit" --data <project>' },
 };
 
 /** Placeholders shown in help; a missing hint means the option is a valueless switch. */
 const optionHints: Record<string, string> = {
   source: '<sandbox|live>', data: '<project>', text: '<text>', deck: '<id>', track: '<id>', kind: '<task|hero|doc>',
   state: '<state>', owner: '<id>', limit: '<n>', fields: '<brief>', lines: '<a-b>', budget: '<tokens>',
-  member: '<id>', since: '<timestamp|sourceHash>', 'stale-hours': '<hours>', to: '<id>', file: '<path>', reason: '<text>',
+  member: '<id>', since: '<timestamp|sourceHash>', 'stale-hours': '<hours>', to: '<id>', target: '<c-ref[#section]>',
+  as: '<human-id>', note: '<text>', file: '<path>', reason: '<text>',
+  priority: '<high|medium|low>', effort: '<n>', parent: '<c-ref>', key: '<key>', 'body-file': '<path>', tracks: '<a,b>', rev: '<rev>',
+  about: '<new thing>',
 };
 
 const messages = defineText({
@@ -106,6 +116,10 @@ function optionSyntax(name: string): string {
   return hint ? `[--${name} ${hint}]` : `[--${name}]`;
 }
 
+function isCardKind(value: string): value is CardKind {
+  return value === 'task' || value === 'hero' || value === 'doc';
+}
+
 function commandHelp(command: string): string {
   const text = serverText(messages);
   const spec = commandSpecs[command];
@@ -146,7 +160,7 @@ function parseProjectArguments(args: readonly string[]): ProjectArguments {
     // 2026-11-05: boolean command switches must not consume the next positional argument.
     if (switches.has(key)) { options.set(key, 'true'); continue; }
     const value = args[++index];
-    if (!value || value.startsWith('--')) throw new Error(text.missingValue(argument));
+    if (value === undefined || value.startsWith('--')) throw new Error(text.missingValue(argument));
     options.set(key, value);
   }
   const [command = 'map', ...positionals] = words;
@@ -220,8 +234,9 @@ export async function projectCli(args = process.argv.slice(2)): Promise<void> {
     }
   }
   if (options.has('fields') && options.get('fields') !== 'brief') throw new Error(text.fieldsValue);
-  const source = (options.get('source') ?? 'sandbox') as DataSource;
-  if (source !== 'live' && source !== 'sandbox') throw new Error(text.sourceValue);
+  const requestedSource = options.get('source') ?? 'sandbox';
+  if (requestedSource !== 'live' && requestedSource !== 'sandbox') throw new Error(text.sourceValue);
+  const source: DataSource = requestedSource;
   const briefFields = options.get('fields') === 'brief';
   selectDataFolder(options.get('data'));
   const config = await loadConfig({ readOnly: options.has('read-only') });
@@ -237,16 +252,15 @@ export async function projectCli(args = process.argv.slice(2)): Promise<void> {
     return;
   }
   // 2026-11-05: a command with its own module in tools/commands/ runs there, on a fresh read of the project files.
+  const root = source === 'sandbox' && config.writeRoot ? config.writeRoot : config.dataRoot;
   if (commandFile) {
     const commandModule = await import(commandFile.href) as CommandModule;
-    const commandRoot = source === 'sandbox' && config.writeRoot ? config.writeRoot : config.dataRoot;
-    await commandModule.run({ config, source, root: commandRoot, catalog: await readProjectCatalog(commandRoot) }, positionals, options);
+    await commandModule.run({ config, source, root, catalog: await readProjectCatalog(root) }, positionals, options);
     return;
   }
   // 2026-11-03: ordinary reads need fresh files, not a disposable SQLite/FTS rebuild.
   const needsIndex = command === 'find' || command === 'track' || command === 'rebuild';
   const service = needsIndex ? new CatalogService(briefFields ? { ...config, editMode: 'read-only' } : config, ':memory:') : null;
-  const root = source === 'sandbox' && config.writeRoot ? config.writeRoot : config.dataRoot;
   try {
     const catalog = service ? await service.get(source) : await readProjectCatalog(root);
     if (command === 'brief' || command === 'changes') {
@@ -275,7 +289,7 @@ export async function projectCli(args = process.argv.slice(2)): Promise<void> {
       const selectedHands = positionals.length ? [selectCatalogHand(hands, positionals.join(' '))] : hands;
       console.log(JSON.stringify({ source, indexedAt: catalog.indexedAt, limit, hands: selectedHands.map(({ member, cards }) => ({
         member: { id: member.id, label: member.label, kind: member.kind }, total: cards.length, truncated: cards.length > limit,
-        cards: cards.slice(0, limit).map(card => ({ id: card.id, ref: shortReference('c', card.id), link: `/r/${shortReference('c', card.id)}?source=${source}`,
+        cards: cards.slice(0, limit).map(card => ({ id: card.id, ref: shortReference('c', card.id), link: cardLink(shortReference('c', card.id), source),
           title: card.title, kind: card.kind, state: card.state, owner: card.owner, deckId: card.deckId, parentId: card.parentId, ...cardPlanningOptions(card) })),
       })) }, null, 2));
     } else if (command === 'map') {
@@ -308,7 +322,7 @@ export async function projectCli(args = process.argv.slice(2)): Promise<void> {
       }
       const parent = catalog.cards.find(candidate => candidate.id === card.parentId);
       const deck = catalog.decks.find(candidate => candidate.id === card.deckId);
-      printJson({ ref: shortReference('c', card.id), link: `/r/${shortReference('c', card.id)}?source=${source}`, ...card, context: {
+      printJson({ ref: shortReference('c', card.id), link: cardLink(shortReference('c', card.id), source), ...card, context: {
         document: catalog.documents.find(document => document.path === card.path),
         deck: deck ?? null, space: catalog.spaces.find(space => space.id === deck?.spaceId) ?? null,
         tracks: catalog.tracks.filter(track => card.trackIds.includes(track.id)),
@@ -317,7 +331,7 @@ export async function projectCli(args = process.argv.slice(2)): Promise<void> {
       } }, briefFields);
     } else if (command === 'find' || command === 'track') {
       const kind = options.get('kind');
-      if (kind && !['task', 'hero', 'doc'].includes(kind)) throw new Error('--kind must be task, hero or doc.');
+      if (kind !== undefined && !isCardKind(kind)) throw new Error('--kind must be task, hero or doc.');
       const limit = Number(options.get('limit') ?? 100);
       if (!Number.isInteger(limit) || limit < 1 || limit > 1000) throw new Error('--limit must be an integer from 1 to 1000.');
       const trackId = command === 'track' ? positionals[0] : options.get('track');
@@ -325,7 +339,7 @@ export async function projectCli(args = process.argv.slice(2)): Promise<void> {
       const state = options.get('state');
       if (state !== undefined && !readCardState(state)) throw new Error(`--state must be one of: ${cardStates.flatMap(cardStateWords).join(', ')}.`);
       const query: CatalogQuery = { text: options.get('text') ?? (command === 'find' ? positionals.join(' ') : undefined),
-        deckId: options.get('deck'), trackId, kind: kind as CatalogQuery['kind'], state: state === undefined ? undefined : readCardState(state), owner: options.get('owner'), limit };
+        deckId: options.get('deck'), trackId, kind, state: state === undefined ? undefined : readCardState(state), owner: options.get('owner'), limit };
       const cards = await service!.search(source, query, { hits: briefFields });
       const listed = cards.map(({ markdown, ...card }) => ({ ref: shortReference('c', card.id), ...card }));
       if (briefFields) printJson({ cards: listed }, true, true);

@@ -15,6 +15,7 @@ import { readOnlyDescription } from '../source-access.ts';
 import '../surface.css';
 import '../quick-capture.css';
 import { prepareEntrance } from '../prepared-motion.ts';
+import { formatShortcut, primaryModifierPressed } from '../shortcut-format.ts';
 
 const text = defineText({
   quickCapture: 'Quick capture to Inbox',
@@ -48,7 +49,7 @@ const text = defineText({
   setInbox: 'Set as Inbox',
   deck: (title: string) => `Deck “${title}”`,
   space: (title: string) => ` · space “${title}”`,
-  shortcutHint: 'Enter — save · Esc — close',
+  shortcutHint: (enter: string, escape: string) => `${enter} — save · ${escape} — close`,
   save: 'Save',
 }, {
   quickCapture: 'Быстрая запись в Inbox',
@@ -82,7 +83,7 @@ const text = defineText({
   setInbox: 'Назначить Inbox',
   deck: (title: string) => `Колода «${title}»`,
   space: (title: string) => ` · пространство «${title}»`,
-  shortcutHint: 'Enter — сохранить · Esc — закрыть',
+  shortcutHint: (enter: string, escape: string) => `${enter} — сохранить · ${escape} — закрыть`,
   save: 'Сохранить',
 });
 
@@ -251,9 +252,11 @@ function QuickCaptureForm({ snapshot, refreshKey, onOpenCard }: {
   }
 
   function handleKeys(event: KeyboardEvent<HTMLDivElement>) {
-    if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') { event.preventDefault(); void save(); }
+    if (primaryModifierPressed(event) && event.key === 'Enter') { event.preventDefault(); void save(); }
   }
 
+  const enterShortcut = formatShortcut({ key: 'Enter' });
+  const escapeShortcut = formatShortcut({ key: 'Escape' });
   if (savedCardId) return <div className="quick-capture-form" role="status" onKeyDown={handleKeys}>
     <div className="quick-capture-body dialog-body">
     <Dialog.Description className="quick-capture-caption">{t.description}</Dialog.Description>
@@ -307,7 +310,7 @@ function QuickCaptureForm({ snapshot, refreshKey, onOpenCard }: {
     {inboxDeck && !inboxUnconfirmed && <p className="quick-capture-note">{t.deck(inboxDeck.title)}{inboxSpace ? t.space(inboxSpace.title) : ''}</p>}
     </div>
     <footer className="quick-capture-footer dialog-foot">
-      <span className="quick-capture-hint">{t.shortcutHint}</span>
+      <span className="quick-capture-hint" role="group" aria-label={t.shortcutHint(enterShortcut.name, escapeShortcut.name)}>{t.shortcutHint(enterShortcut.display, escapeShortcut.display)}</span>
       <Button size="sm" disabled={locked || !title.trim() || !inboxDeck || inboxUnconfirmed} onClick={() => void save()}>
         {saving ? <LoaderCircle size={13} className="spin" /> : <Check size={13} />}{t.save}
       </Button>

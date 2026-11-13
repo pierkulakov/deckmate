@@ -28,10 +28,11 @@ describe('deck table surface (2026-11-10)', () => {
 
   it('uses the cards view lane heading: a 24 px line of muted 12 px text with its dashed rule', () => {
     const heading = /\.deck-table \.catalog-card-group-heading \{[^}]*\}/.exec(css)?.[0] ?? '';
+    const wideLayout = css.slice(0, css.indexOf('@container deck-table'));
     expect(heading).toContain('height: 24px;');
     expect(heading).toContain('font-size: 12px;');
     expect(heading).toContain('color: var(--muted);');
-    expect(css).not.toContain('.catalog-group-rule { display: none; }');
+    expect(wideLayout).not.toContain('.catalog-group-rule { display: none; }');
     expect(css).not.toContain('font-size: 17px');
   });
 

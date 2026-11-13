@@ -4,6 +4,7 @@ import type { TestModule } from 'vitest/node';
 import config from '../vitest.config.ts';
 import { browserFiles, browserFixtures } from './browser-files.ts';
 import BrowserSkipReporter from './browser-skip-reporter.ts';
+import { balanceBrowserFiles } from './helpers/browser-shards.ts';
 
 afterEach(() => { vi.unstubAllEnvs(); vi.restoreAllMocks(); });
 
@@ -24,6 +25,16 @@ it('keeps browser selection disjoint and resource limits independent of root con
     expect(existsSync(file), file).toBe(true);
     expect(existsSync(`tests/fixtures/${fixture}.tsx`), fixture).toBe(true);
   }
+  for (const count of [1, 2, 3, browserFiles.length + 1]) {
+    const shards = balanceBrowserFiles(browserFiles, count);
+    expect(shards.flatMap(shard => shard.files).sort()).toEqual([...browserFiles].sort());
+    expect(balanceBrowserFiles([...browserFiles].reverse(), count)).toEqual(shards);
+  }
+  const durations = { large: 100, medium: 60, small: 40, invalid: Infinity };
+  const files = ['large', 'medium', 'small', 'unknown'];
+  expect(balanceBrowserFiles(files, 2, durations).map(shard => shard.durationMs)).toEqual([140, 120]);
+  expect(balanceBrowserFiles(['unknown'], 3, durations).flatMap(shard => shard.files)).toEqual(['unknown']);
+  expect(() => balanceBrowserFiles(files, 0)).toThrow('positive integer');
 });
 
 it('registers every browser suite so new files cannot bypass resource limits or missing-browser reporting', () => {

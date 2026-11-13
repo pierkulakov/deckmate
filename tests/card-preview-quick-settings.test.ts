@@ -198,7 +198,7 @@ describe.skipIf(!browserPath)('CardPreview Quick Settings (browser)', () => {
   it.each(['task', 'doc'])('keeps %s free of Hero progress and the Sub Cards chip', async kind => {
     await render(kind);
     expect(await evaluate(`Boolean(document.querySelector('.card-preview-subcards-toggle, .card-preview-material-band .sub-card-progress'))`)).toBe(false);
-    if (kind === 'doc') expect(await evaluate(`document.querySelector('.card-preview-word-count')?.textContent`)).toMatch(/\d+ words/);
+    if (kind === 'doc') expect(await evaluate(`document.querySelector('.card-preview-word-count')?.textContent`)).toMatch(/\d+w/);
     await render('task', { child: true });
     expect(await evaluate(`Boolean(document.querySelector('.card-preview-subcards-toggle'))`)).toBe(false);
   });
@@ -212,6 +212,7 @@ describe.skipIf(!browserPath)('CardPreview Quick Settings (browser)', () => {
     const holders = () => evaluate(`[...document.querySelectorAll('.card-hand-tooltip > ul > li')].map(row => [...row.children].filter(node => !node.classList.contains('card-owner-avatar')).map(node => node.textContent).join(''))`);
     expect(await holders()).toEqual(['Sam#3', 'Alex#1']);
     expect(await evaluate(`document.querySelectorAll('.card-hand-tooltip > ul .card-owner-avatar').length`)).toBe(2);
+    expect(await evaluate(`document.querySelector('.card-hand-hint-actions [role="group"]').getAttribute('aria-label')`)).toMatch(/Control|Command/);
     expect(await evaluate(`document.querySelector('.card-hand-tooltip').textContent`)).toContain('Ctrl+click — remove from my Hand');
     expect(await evaluate(`document.querySelector('.card-hand-tooltip > header kbd').textContent`)).toBe('H');
     expect(await evaluate(`document.querySelector('.card-hand-tooltip > header .hand-icon > path:last-child').getAttribute('fill')`)).toBe('currentColor');
@@ -399,18 +400,29 @@ describe.skipIf(!browserPath)('CardPreview Quick Settings (browser)', () => {
     expect(await evaluate(`getComputedStyle(document.querySelector('.card-id-chip')).outlineStyle`)).toBe('solid');
   });
 
-  it('shows clipboard rejection beside the ID and ignores a late response after changing cards', async () => {
+  it('shows failure beside the ID when both copy paths fail and ignores a late response after changing cards', async () => {
     await render();
-    await evaluate(`Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: async () => { throw new Error('Denied'); } } })`);
-    await click('.card-id-chip');
-    expect(await evaluate(`document.querySelector('.card-id-feedback')?.textContent`)).toBe('Could not copy');
-    expect(await evaluate(`Boolean(document.querySelector('.card-preview-state-notice'))`)).toBe(false);
-    await evaluate(`navigator.clipboard.writeText = () => new Promise(resolve => { window.finishCopy = resolve; })`);
-    await click('.card-id-chip');
-    await render('doc', { card: { id: 'card:other' } });
-    await evaluate('window.finishCopy()');
-    expect(await evaluate(`document.querySelector('.card-id-feedback')?.textContent`)).toBe('');
-    expect(await evaluate(`document.querySelector('.card-id-chip').textContent`)).toBe(shortReference('c', 'card:other'));
+    await evaluate(`(() => {
+      Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: async () => { throw new Error('Denied'); } } });
+      window.copyExecDescriptor = Object.getOwnPropertyDescriptor(document, 'execCommand');
+      const original = document.execCommand.bind(document);
+      window.rejectedCopies = 0;
+      document.execCommand = (command, ...args) => { if (command === 'copy') { window.rejectedCopies++; return false; } return original(command, ...args); };
+    })()`);
+    try {
+      await click('.card-id-chip');
+      await until(`document.querySelector('.card-id-feedback')?.textContent === 'Could not copy'`);
+      expect(await evaluate('window.rejectedCopies')).toBe(1);
+      expect(await evaluate(`Boolean(document.querySelector('.card-preview-state-notice'))`)).toBe(false);
+      await evaluate(`navigator.clipboard.writeText = () => new Promise(resolve => { window.finishCopy = resolve; })`);
+      await click('.card-id-chip');
+      await render('doc', { card: { id: 'card:other' } });
+      await evaluate('window.finishCopy()');
+      expect(await evaluate(`document.querySelector('.card-id-feedback')?.textContent`)).toBe('');
+      expect(await evaluate(`document.querySelector('.card-id-chip').textContent`)).toBe(shortReference('c', 'card:other'));
+    } finally {
+      await evaluate(`(() => { if (window.copyExecDescriptor) Object.defineProperty(document, 'execCommand', window.copyExecDescriptor); else delete document.execCommand; delete window.copyExecDescriptor; delete window.rejectedCopies; })()`);
+    }
   });
 
   it.each([12, 248])('keeps the family popover inside a touch viewport at x=%s and restores keyboard focus', async left => {

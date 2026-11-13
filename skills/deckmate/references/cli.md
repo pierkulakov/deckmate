@@ -1,6 +1,6 @@
 # Project CLI
 
-`deckmate project` reads project Markdown directly; reading, `next`, `brief`, `report`, `state` and `ask` work without a server. Guarded CLI writes first probe the configured port (see [Common options](#common-options)). For card creation and content/property changes use only the running server, following the [HTTP startup rule](api.md); do not write card files by hand. Use an explicit `--data <project>` and references printed by prior commands. JSON is pretty-printed except compact `--fields brief` responses.
+`deckmate project` reads project Markdown directly; reading, `organize`, `next`, `brief`, `question`, `report`, `state`, `ask`, `answer` and `apply` work without a server. Guarded writes find the running server of this project and otherwise write the files (see [Common options](#common-options)). Create cards with [create](#create) and change state or properties with [update](#update); card text and dependencies have no command and follow the [HTTP startup rule](api.md); never write card files by hand. Use an explicit `--data <project>` and references printed by prior commands. JSON is pretty-printed except compact `--fields brief` responses.
 
 ## summary
 
@@ -71,10 +71,11 @@ Inspect one registered member's explicit queue, or every Hand.
 
 ## next
 
-Pick the first eligible Task in a member's Hand without starting it.
+Return the first pending decision, otherwise the first eligible Task in a member's Hand without starting it.
 `deckmate project next <member> [--stale-hours <hours>] [--brief] --data <project>`
-- JSON contains `source`, `member` and `card`; `card: null` means no ready card. A selected card has `ref`, `title`, `state`, `path`, `sourceHash` and `link`.
-- Only Tasks are selected: Heroes, Docs, `review`, `done`, `wont-do`, Tasks with an unfinished active prerequisite and stale started Tasks are excluded; stale defaults to 24 hours. `--brief` returns the selected card's brief Markdown instead of JSON.
+- A pending decision is `{decision:{card,index,question,answer,by,target,next}}`; `target` is its exact `path:from-to`. Edit the target, then run `apply <card> <index>` (MCP `apply_decision`).
+- Otherwise JSON contains `source`, `member` and `card`; `card: null` means no ready card. A selected card has `ref`, `title`, `state`, `path`, `sourceHash` and `link`.
+- Only Tasks are selected: Heroes, Docs, `review`, `done`, `wont-do`, Tasks with any open question or unfinished active prerequisite, and stale started Tasks are excluded; stale defaults to 24 hours. `--brief` returns the selected card's brief Markdown instead of JSON.
 - An unknown member fails with the available registry IDs.
 
 ## step
@@ -135,11 +136,28 @@ List or add starter decks and Journeys to an existing project.
 
 ## ask
 
-Append a blocking question and, when a rule Doc exists, raise its Decision Task.
-`deckmate project ask <c-ref> "<question>" --member <id> [--to <human-id>] --data <project>`
-- JSON contains `question`, `link`, `existing` and `warnings`; an identical linked open question is a no-op, while an incomplete linked question can be resumed.
-- Text must be 1–900 characters. Without `--to`, the first registered human is selected; asking does not change the original Task's state or dependencies.
-- A native Task without a rule Doc keeps a local question and warns that no Decision Task was created; a legacy card without one is rejected. Contact the person directly in either case.
+Append a blocking question to the card it concerns, with an optional addressee and an answer target.
+`deckmate project ask <c-ref> "<question>" --member <id> [--to <human-id>] [--target <c-ref[#section]>] --data <project>`
+- JSON contains `question`, `card`, `assignee`, `target`, `existing` and optional `warnings`. Text must be 1–900 characters. Without `--to`, the first registered human is selected, or the question is unaddressed if none is registered; without `--target`, the answer belongs on the same card.
+- The CLI/MCP wrapper deduplicates on normalized text, addressee and target together: repeating that triple returns the saved question as `existing` without writing, while a different addressee or target asks a new question. No separate Task is created; any unanswered open question excludes its Task from `next`, even without an addressee.
+
+## question
+
+Read a compact package for discussing one open question in chat.
+`deckmate project question <c-ref#N> --data <project>`
+- `N` is the 1-based open-question index. Output contains the question, card `{ref,title}`, optional addressee, exact `path:from-to` target and up to three latest decisions, within 200 estimated tokens. Decision indexes in outputs are zero-based.
+
+## answer
+
+Record the answer a person approved in chat as a pending decision.
+`deckmate project answer <c-ref#N> "<answer>" --as <human-id> --member <id> --rev <rev> --data <project>`
+- `--rev` is required: the card's rev returned by `question`. `--member` (or `DECKMATE_MEMBER`) names the recording agent; `--as` must name a registered human and is the recorded answer author. Output is `{card,index,target}`; keep the index for `apply`.
+
+## apply
+
+Mark a decision applied only after editing its target.
+`deckmate project apply <c-ref> <index> --rev <rev> [--note "<text>"] --data <project>`
+- `--rev` is required: the decision's rev returned by `next`, unchanged by target edits but not by a different answer at the same index. Output is `{card,index,applied}`; `index` is zero-based and `applied` is the application date (or empty for an already-applied legacy decision with no known date). An optional note of at most 2000 characters is saved beside the applied mark as an application note. An already applied index returns its existing mark without another write.
 
 ## inbox
 
@@ -165,10 +183,34 @@ Move a Task or set/clear a native Hero's manual done mark.
 - Leaving `review` for anything other than `review` or `done` requires a nonblank, one-line reason of at most 500 characters, including bulk HTTP changes. Prefer `not-started` for a return; `started` also puts the card first in the acting member's Hand.
 - A supplied reason is valid only for that departure; on any other transition `--reason` is rejected ("A reason can only be recorded when returning a card from review"). Docs have no state; Heroes accept only `done` or `not-started`; `accepted` and `blocked` are not state IDs. Deck guardians restrict who may accept; an agent that owns the card or wrote its report cannot set `done` (422, [acceptance policy](../workflows/review.md#acceptance-policy)).
 
+## create
+
+Create cards in one retry-safe batch; a repeat never duplicates.
+`deckmate project create "<title>" [--deck <id|title>] [--kind <task|hero|doc>] [--owner <label>] [--priority <high|medium|low>] [--effort <n>] [--parent <c-ref>] [--key <key>] [--body-file <path>] [--member <id>] --data <project>`
+- JSON contains `created`, `existing` (the same key was already there; nothing was written for it) and `failed` entries with `index`, `error`, `next` and optional `saved`; inspect `warnings` too. Each created card's `ref` comes back in the response.
+- `--file <cards.json>` replaces the title form with an array of card objects — `title` required; optional `body`, `kind`, `deck`, `owner`, `priority`, `effort`, `parent`, `tracks`, `key` — up to 50 per call, and accepts only `--member` and the shared project options.
+- The card ID is derived from `key`, or from kind, deck, title and body without one, so repeating the same call is safe. Without `--deck` the card goes to the project's Inbox when the Inbox accepts its kind, otherwise Unassigned.
+
+## update
+
+Change one card's state or properties in a single call.
+`deckmate project update <c-ref> [--state <state>] [--reason "<one-line reason>"] [--owner <id>] [--priority <high|medium|low>] [--effort <n>] [--deck <id|title>] [--tracks <a,b>] [--parent <c-ref>] [--rev <rev>] [--member <id>] --data <project>`
+- JSON contains the updated `card` with its new `rev` and `changed`, the applied fields in order (properties, deck, tracks, parent, then state); inspect `warnings` before retrying.
+- `--rev` takes the card's current rev and rejects the write when the card changed since; run `brief` again and retry with the fresh rev.
+- State and reason follow [state](#state), including the review-return reason rule. An empty `--owner` value clears the owner; card text and dependencies are not part of `update` ([HTTP](api.md)).
+
+## organize
+
+Audit board layout or recommend where one new thing belongs; always read-only.
+`deckmate project organize [--about "<new thing>"] --data <project>`
+- Without `--about`, `table` contains compact `card`, `deck`, `hero`, `reason` rows with inclusive `at: path:from-to` pointers. Long audits disclose omitted findings in `warnings`.
+- With `--about`, the response includes `about`, `card`, `deck`, `deckId`, parent `hero`/`heroRef`, `ruleDoc`, `reason`, `readNext` pointers and optional `warnings`. A null `deckId` names a proposed deck; check for a duplicate name before any approved creation.
+- These are catalog heuristics, not writes or automatic fixes. See [layout rules](../layout-rules.md) and the [organize workflow](../workflows/organize.md).
+
 ## Common options
 
 - `--data <project>` selects the project; otherwise `DECKMATE_DATA` is used, then the current folder. The CLI does not search ancestors for a manifest.
-- `state`, `report`, `ask`, and `init` apply probe `http://127.0.0.1:<port>` using `DECKMATE_PORT` (default 4317; project commands have no `--port`). The same open project writes via `server`; a different one fails with 409, “The server on this port has a different project open.” Stop that server or run with `DECKMATE_PORT=<free port>`; a refused connection writes via `files`. Other probe errors do not bypass the server.
+- `state`, `report`, `ask`, `answer`, `apply`, `init`, `create` and `update` are guarded writes. A write finds the running server of this project by its registration under the Deckmate cache folder: found, it goes through that server; not found, the project files are written directly under the project's interprocess lock. A different project on `DECKMATE_PORT` (default 4317) therefore never blocks a write, and no port has to be free; a failed lookup reports the error instead of writing around it.
 - `--source sandbox|live` defaults to `sandbox`: the project itself in direct mode, or the separate writable copy selected by `DECKMATE_WRITE`. That copy must be a worktree on `deckmate/sandbox` (legacy `freetion/sandbox`); `--data` does not disable it. Read `live` only when authorized; live writes fail.
 - `--read-only` (or `DECKMATE_READ_ONLY=1`) overrides `DECKMATE_WRITE` and rejects writes. Do not lift a person's read-only restriction to create cards.
 - `--json` exists only for `brief`; most other read commands already emit JSON, while `inbox`, default `brief`, and `next --brief` emit Markdown.
@@ -193,5 +235,6 @@ Blocked is calculated from existing active unfinished dependencies, not stored a
 
 - `deckmate init <folder>` creates a demo in a new or empty folder and never replaces existing files; it is not `deckmate project init`.
 - `deckmate skills install|status --project <project> [--from <Deckmate-folder>] [--force]` installs into both `.claude/skills/deckmate` and `.agents/skills/deckmate`, or compares them without writing. Install records `deckmateHome` and updates the marked Deckmate rules block in the project's `AGENTS.md`, preserving all text outside it; status also checks that block. Replacing local changes in skill copies needs `--force`, but the rules block is always managed by Deckmate.
+- Install also registers the `deckmate` MCP server in `.mcp.json` (and `.cursor/mcp.json` when that folder exists) with the portable `deckmate mcp` line where PATH resolves it — POSIX systems only, because Windows shell resolution includes the working directory; on Windows and other machine-specific installs the launch line is printed for manual setup instead of being written to shared files.
 - Install needs `tasks/deckmate.md` (or its legacy manifest); otherwise it fails with “cannot read the project manifest”. Create the board first with `deckmate project init <template> --data <project>` or `deckmate init <folder>`, then install.
 - `deckmate agents run <workflow> <area> --project <project> [--dry] [--roles research,code] [--lens <file>] [--out <folder>]` writes assignments and optionally launches configured roles. `--dry` never launches but still writes `tz-*.md`.

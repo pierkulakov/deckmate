@@ -1,0 +1,7 @@
+/* 2026-11-12: hints need their styles even when Deck has not loaded; keycaps stay centered on the label line. */
+.deck-header-hint { z-index: 160; max-width: 340px; padding: 6px 10px; border: .67px solid var(--mint-edge, var(--line)); border-radius: var(--glass-radius); background: var(--mint, var(--accent-soft)); color: var(--mint-ink, var(--ink)); font-size: 12px; line-height: 16px; box-shadow: var(--shadow); }
+.deck-header-hint svg { fill: var(--mint, var(--accent-soft)); }
+.deck-header-hint.has-keys { display: flex; flex-wrap: wrap; align-items: center; column-gap: var(--kbd-gap); }
+.deck-header-hint-keys { display: inline-flex; align-items: center; gap: var(--kbd-gap); }
+.deck-header-hint kbd { background: var(--count-face); color: var(--mint-ink, var(--ink)); }
+.deck-header-hint-note { display: block; flex-basis: 100%; margin-top: 2px; opacity: .8; }

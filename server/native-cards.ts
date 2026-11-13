@@ -1,6 +1,6 @@
 import { defineText, serverText, serverLang } from './i18n.ts';
 import { createHash, randomUUID } from 'node:crypto';
-import { link, lstat, open, readFile, readdir, realpath, rename, unlink } from 'node:fs/promises';
+import { link, lstat, open, readFile, readdir, realpath, unlink } from 'node:fs/promises';
 import type { BigIntStats } from 'node:fs';
 import path from 'node:path';
 import { catalogFileChanged } from './catalog-snapshot.ts';
@@ -13,7 +13,7 @@ import { canonicalDataPath } from '../src/brand-compat.ts';
 import { resolveDataPath } from './data-paths.ts';
 import { cardStates, cardStateWords, readCardState, writeCardState, type CardState, type FormatLanguage } from '../src/format-vocabulary.ts';
 import { checkDirectories as checkGuard, checkGuardedFile, guardedDirectory as walkGuardedDirectory,
-  removeGuardedFile, sameIdentity, writeGuardedNewFile, type DirectoryGuard } from './guarded-files.ts';
+  removeGuardedFile, renameChecked, sameIdentity, writeGuardedNewFile, type DirectoryGuard } from './guarded-files.ts';
 
 const messages = defineText({
   explicitYamlRequired: (field: string) => `The ${field} field must have an explicit YAML value.`,
@@ -576,29 +576,19 @@ export async function replaceProjectMarkdown(root: string, relativePath: string,
   await publishBytes(guard, path.join(guard.root, relativePath), sourceHash, bytes, beforePublish, options);
 }
 
-async function renameChecked(guard: DirectoryGuard, filename: string, sourceHash: string, temporary: TemporaryFile,
-  beforePublish?: () => Promise<void>, options: PublicationOptions = {}): Promise<void> {
-  for (let attempt = 0; ; attempt += 1) {
-    await beforePublish?.();
-    if (digest(await readBytes(guard, filename)) !== sourceHash) throw new Error(options.conflict ?? 'CARD_CONFLICT');
-    await checkFile(guard, temporary.filename, temporary.stat);
-    try { await rename(temporary.filename, filename); return; }
-    catch (error) {
-      const code = (error as NodeJS.ErrnoException).code;
-      if (!options.retryWindowsRename || process.platform !== 'win32'
-        || !['EPERM', 'EBUSY', 'EACCES'].includes(code ?? '') || attempt >= 4) throw error;
-      // 2026-11-09: manifest readers can briefly hold the file; every retry rechecks identities and hashes.
-      await new Promise(resolve => setTimeout(resolve, 25 * (attempt + 1)));
-    }
-  }
-}
-
-async function publishBytes(guard: DirectoryGuard, filename: string, sourceHash: string, bytes: Buffer, beforePublish?: () => Promise<void>, options?: PublicationOptions): Promise<void> {
+async function publishBytes(guard: DirectoryGuard, filename: string, sourceHash: string, bytes: Buffer, beforePublish?: () => Promise<void>, options: PublicationOptions = {}): Promise<void> {
   const temporary = await writeTemporary(guard, bytes);
   let saved = false;
   let failure: unknown;
   try {
-    await renameChecked(guard, filename, sourceHash, temporary, beforePublish, options);
+    await renameChecked(temporary.filename, filename, {
+      retryWindowsRename: options.retryWindowsRename,
+      beforeRename: async () => {
+        await beforePublish?.();
+        if (digest(await readBytes(guard, filename)) !== sourceHash) throw new Error(options.conflict ?? 'CARD_CONFLICT');
+        await checkFile(guard, temporary.filename, temporary.stat);
+      },
+    });
     saved = true;
     catalogFileChanged(guard.root, path.relative(guard.root, filename));
     await checkFile(guard, filename, temporary.stat);

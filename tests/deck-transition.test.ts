@@ -44,7 +44,7 @@ describe.skipIf(!browserPath)('deck transition continuity (browser)', () => {
     await waitForLayout(page.evaluate, '.deck-view');
   }
 
-  async function transition(direction: 'open' | 'close', deck: string, action: 'click' | 'Enter' | 'Escape' | 'back' | 'forward' = 'click'): Promise<Frame[]> {
+  async function transition(direction: 'open' | 'close', deck: string, action: 'click' | 'pointer' | 'Enter' | 'Escape' | 'back' | 'forward' = 'click'): Promise<Frame[]> {
     await page.callFunction(`(direction, deck) => { window.deckTransitionFrames = new Promise((resolve, reject) => {
       const frames = [];
       const start = performance.now();
@@ -105,11 +105,13 @@ describe.skipIf(!browserPath)('deck transition continuity (browser)', () => {
       }
       requestAnimationFrame(tick);
     }); }`, direction, deck);
-    if (action === 'click') {
-      await page.callFunction(`(direction, deck) => {
+    if (action === 'click' || action === 'pointer') {
+      await page.callFunction(`(direction, deck, pointer) => {
         const selector = direction === 'open' ? '.catalog-cover-item [data-deck-cover="' + deck + '"]' : '.deck-open-toolbar button';
-        document.querySelector(selector).click();
-      }`, direction, deck);
+        const button = document.querySelector(selector);
+        if (pointer) button.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
+        button.click();
+      }`, direction, deck, action === 'pointer');
     } else if (action === 'back' || action === 'forward') {
       await page.callFunction(`action => history[action]()`, action);
     } else {
@@ -239,12 +241,16 @@ describe.skipIf(!browserPath)('deck transition continuity (browser)', () => {
       // 2026-11-10: opening focuses the deck title quietly, so no tooltip pops up on Close.
       expect(await page.evaluate(`document.activeElement === document.querySelector('.deck-open-toolbar .page-title') && !document.activeElement.matches(':focus-visible') && !document.querySelector('.deck-header-hint')`)).toBe(true);
       expectContinuous(await transition('close', 'top', action), 'close');
-      // 2026-11-10: focus returns to the cover, quietly — no ring on the deck the person just left, even after Escape.
-      expect(await page.evaluate(`document.activeElement === document.querySelector('.catalog-cover-item [data-deck-cover="top"]') && !document.activeElement.matches(':focus-visible')`)).toBe(true);
+      // Keyboard navigation restores both the cover and its visible focus ring.
+      expect(await page.evaluate(`document.activeElement === document.querySelector('.catalog-cover-item [data-deck-cover="top"]') && document.activeElement.matches(':focus-visible')`)).toBe(true);
     }
     expectContinuous(await transition('open', 'top', 'forward'), 'open');
     expect(await page.evaluate(`document.activeElement === document.querySelector('.deck-open-toolbar .page-title')`)).toBe(true);
     expectContinuous(await transition('close', 'top'), 'close');
+    await page.evaluate(`document.querySelector('.catalog-cover-item [data-deck-cover="top"]').focus({preventScroll:true})`);
+    expectContinuous(await transition('open', 'top', 'Enter'), 'open');
+    expectContinuous(await transition('close', 'top', 'pointer'), 'close');
+    expect(await page.evaluate(`document.activeElement === document.querySelector('.catalog-cover-item [data-deck-cover="top"]') && !document.activeElement.matches(':focus-visible')`)).toBe(true);
   }, 30000);
 
   it.each([1700, 760, 375])('restores a lower gallery instantly without layout settling with reduced motion at %s px', async width => {
@@ -256,8 +262,9 @@ describe.skipIf(!browserPath)('deck transition continuity (browser)', () => {
       await page.evaluate(`document.querySelector('.catalog-cover-item [data-deck-cover="lower"]').scrollIntoView({block:'center',behavior:'instant'})`);
       const scroll = await page.evaluate(`document.querySelector('.workspace-main').scrollTop`);
       expect(scroll).toBeGreaterThan(100);
-      const opening = await transition('open', 'lower');
-      const closing = await transition('close', 'lower');
+      await page.evaluate(`document.querySelector('.catalog-cover-item [data-deck-cover="lower"]').focus({ preventScroll: true })`);
+      const opening = await transition('open', 'lower', 'Enter');
+      const closing = await transition('close', 'lower', 'Escape');
       expect([...opening, ...closing].some(frame => frame.stage)).toBe(false);
       for (const frames of [opening, closing]) {
         const last = frames.at(-1)!;
@@ -269,7 +276,7 @@ describe.skipIf(!browserPath)('deck transition continuity (browser)', () => {
       }
       expect(closing.at(-1)!.scroll).toBeCloseTo(scroll, 0);
       expect(await page.evaluate(`!document.querySelector('.deck-view').inert && getComputedStyle(document.querySelector('.deck-view')).visibility === 'visible'`)).toBe(true);
-      expect(await page.evaluate(`document.activeElement === document.querySelector('.catalog-cover-item [data-deck-cover="lower"]')`)).toBe(true);
+      expect(await page.evaluate(`document.activeElement === document.querySelector('.catalog-cover-item [data-deck-cover="lower"]') && document.activeElement.matches(':focus-visible')`)).toBe(true);
     } finally { await page.send('Emulation.setEmulatedMedia', { features: [] }); }
   });
 });

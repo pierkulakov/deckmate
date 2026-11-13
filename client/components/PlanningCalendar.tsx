@@ -14,6 +14,7 @@ import type { SavePlanning } from './TimelineView.tsx';
 import { TimelineCluster } from './TimelineView.tsx';
 import { moveFocus } from '../focus.ts';
 import { MilestoneForm, PlanningPopover } from './PlanningPopover.tsx';
+import { shortcutDisplay } from '../shortcut-format.ts';
 import '../planning-calendar.css';
 
 const text = defineText({
@@ -26,7 +27,8 @@ const text = defineText({
   week: (week: number) => `Week ${week.toLocaleString(locale())}`,
   addOn: (date: string) => `Create Milestone ${date}`,
   milestoneOn: (titles: string, date: string) => `${titles} · ${date}`,
-  hint: 'Click: edit · Ctrl/Cmd-click: open · Drag: move to another day',
+  hint: (key: string) => `Click: edit · ${key}: open · Drag: move to another day`,
+  openKey: 'Ctrl/Cmd-click',
   readOnlyHint: 'Click to open the Milestone.',
   pastMilestone: 'Passed',
   due: 'Due',
@@ -49,7 +51,8 @@ const text = defineText({
   week: (week: number) => `Неделя ${week.toLocaleString(locale())}`,
   addOn: (date: string) => `Создать Milestone ${date}`,
   milestoneOn: (titles: string, date: string) => `${titles} · ${date}`,
-  hint: 'Щелчок — изменить · Ctrl/Cmd+щелчок — открыть · перетащить — на другой день',
+  hint: (key: string) => `Щелчок — изменить · ${key} — открыть · перетащить — на другой день`,
+  openKey: 'Ctrl/Cmd+щелчок',
   readOnlyHint: 'Щелчок открывает Milestone.',
   pastMilestone: 'Прошёл',
   due: 'Срок',
@@ -303,8 +306,13 @@ function CalendarMonth({ month, focusedDate, today, lang, writable, pending, mil
   for (let monday = addDays(month, -((new Date(`${month}T00:00:00Z`).getUTCDay() + 6) % 7)); monday < next; monday = addDays(monday, 7)) weeks.push(monday);
   const current = monthStart(today);
   const tense = month < current ? ' is-past' : month === current ? ' is-current' : '';
-  const name = new Intl.DateTimeFormat(locale(lang), { month: 'long', timeZone: 'UTC' }).format(new Date(`${month}T00:00:00Z`));
-  const label = new Intl.DateTimeFormat(locale(lang), { month: 'long', year: 'numeric', timeZone: 'UTC' }).format(new Date(`${month}T00:00:00Z`));
+  const { name, label } = useMemo(() => {
+    const date = new Date(`${month}T00:00:00Z`);
+    return {
+      name: new Intl.DateTimeFormat(locale(lang), { month: 'long', timeZone: 'UTC' }).format(date),
+      label: new Intl.DateTimeFormat(locale(lang), { month: 'long', year: 'numeric', timeZone: 'UTC' }).format(date),
+    };
+  }, [lang, month]);
   return <div className={`planning-calendar-month${tense}`} data-month={month}>
     <div className="planning-calendar-month-body">
       <h4>{name}</h4>
@@ -336,18 +344,22 @@ function MilestoneTile({ date, day, tabIndex, milestones, cards, today, lang, wr
   dragSource: boolean; onEdit: (id: string) => void; onOpen: (id: string) => void; onPointerDown: (event: ReactPointerEvent<HTMLButtonElement>) => void;
 }) {
   const t = useText(text);
+  const [tooltipSide, setTooltipSide] = useState<'top' | 'right'>('right');
   const [first] = milestones;
   if (milestones.length > 1) return <TimelineCluster opensForm={writable} trigger={<button type="button" tabIndex={tabIndex} disabled={pending}
     className={`planning-calendar-milestone${tileInkClass(first.color)}`} style={{ backgroundColor: first.color }}
     aria-label={`${formatPlanningDate(date, lang)} · ${t.chooseMilestone(milestones.length)}`}><span>{day}</span><small className="planning-calendar-cluster-count">{milestones.length}</small></button>}
     entries={milestones.map(milestone => ({ key: milestone.id, icon: <span className="planning-diamond" style={{ color: milestone.color }} />, label: milestone.title,
       date: '', onSelect: () => { if (writable) onEdit(milestone.id); else onOpen(milestone.id); } }))} />;
-  return <Tooltip.Root><Tooltip.Trigger asChild>
+  return <Tooltip.Root onOpenChange={open => {
+    // 2026-11-12: a phone has no room beside a date cell for the full Milestone summary.
+    if (open) setTooltipSide(window.matchMedia('(max-width: 760px)').matches ? 'top' : 'right');
+  }}><Tooltip.Trigger asChild>
     <button type="button" tabIndex={tabIndex} disabled={pending} className={`planning-calendar-milestone${tileInkClass(first.color)}${writable && !pending ? ' is-movable' : ''}${dragSource ? ' is-drag-source' : ''}`} style={{ backgroundColor: first.color }}
       aria-label={t.milestoneOn(milestones.map(milestone => milestone.title).join(', '), formatPlanningDate(date, lang))}
       onPointerDown={onPointerDown}
       onClick={event => { if (!writable || event.ctrlKey || event.metaKey) onOpen(first.id); else onEdit(first.id); }}>{day}</button>
-  </Tooltip.Trigger><Tooltip.Portal><Tooltip.Content className="planning-milestone-card" side="right" align="center" sideOffset={12} collisionPadding={12}>
+  </Tooltip.Trigger><Tooltip.Portal><Tooltip.Content className="planning-milestone-card" side={tooltipSide} align="center" sideOffset={12} collisionPadding={12}>
     {milestones.map(milestone => {
       const own = cards.filter(card => card.milestone === milestone.id);
       const summary = metrics(own);
@@ -358,7 +370,7 @@ function MilestoneTile({ date, day, tabIndex, milestones, cards, today, lang, wr
         <p className="planning-milestone-card-count">{t.cards(own.length, summary.done, summary.tasks)}</p>
       </section>;
     })}
-    <footer>{writable ? t.hint : t.readOnlyHint}</footer>
+    <footer>{writable ? t.hint(shortcutDisplay({ key: 'Click', modifiers: ['primary'] }, t.openKey)) : t.readOnlyHint}</footer>
   </Tooltip.Content></Tooltip.Portal></Tooltip.Root>;
 }
 

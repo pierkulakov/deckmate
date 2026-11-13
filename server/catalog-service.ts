@@ -1,11 +1,14 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { execFile } from 'node:child_process';
 import { isDeepStrictEqual, promisify } from 'node:util';
-import { mkdir, unlink } from 'node:fs/promises';
+import { lstat, mkdir, unlink } from 'node:fs/promises';
 import path from 'node:path';
-import { homedir } from 'node:os';
+import { setTimeout as delay } from 'node:timers/promises';
 import { packagePath } from './package-path.ts';
-import { environmentValue } from './environment.ts';
+import { projectCacheDirectory } from './project-cache.ts';
+import { ownsProjectWriteLock, withProjectWriteLock } from './write-lock.ts';
+import { CatalogError } from './catalog-error.ts';
+export { CatalogError } from './catalog-error.ts';
 import { ProjectIndex } from './project-index.ts';
 import { attachSearchHits, SearchSourceChangedError, type SearchCard, type SearchHit } from './search-hits.ts';
 import { editProjectCatalog, readProjectCatalog, readFreshProjectCatalog, refreshProjectCatalog } from './catalog.ts';
@@ -15,7 +18,7 @@ import { saveJourneyTemplate } from './journey-templates.ts';
 import { editCatalogBulk } from './catalog-bulk.ts';
 import { prepareCardOptionsPatch, readCardOptions, type CardOptionsPatch } from './card-options.ts';
 import type { BulkOutcome } from '../src/bulk-contracts.ts';
-import { assertWritable, containedFile, type ServerConfig } from './config.ts';
+import { assertWritable, containedFile, WriteAccessError, type ServerConfig } from './config.ts';
 import { isMechanicPath } from '../src/markdown.ts';
 import type { CatalogCard, CatalogEdit, CatalogQuery, CatalogView } from '../src/catalog-contracts.ts';
 import { resolveReference } from '../src/references.ts';
@@ -24,7 +27,7 @@ import type { DeckActivityEvent } from '../src/activity-contracts.ts';
 import type { DataSource } from '../src/workspace-contracts.ts';
 import { appendActivity, describeActivity, describeUnlockedCards, readActivity, readCardActivity } from './activity.ts';
 import { setCardDependencies } from './card-dependencies.ts';
-import { attachPlanningRegistries, carryOverExpiredRuns } from './runs.ts';
+import { attachPlanningRegistries, carryOverExpiredRuns, readRuns } from './runs.ts';
 import { defineText, serverText, serverLang, type Lang } from './i18n.ts';
 
 /**
@@ -65,7 +68,8 @@ const serviceText = defineText({
   guardians: (names: string[]) => `Deck Guardians: ${names.join(', ')}`,
   autoTag: (deck: { autoTag?: string | null; autoTagKeep?: boolean }) => `Auto-tag “${deck.autoTag}”${deck.autoTagKeep ? ' · kept when moved out of the deck' : ''}`,
   template: (deck: { templateMarkdown?: string | null; templateOwner?: string | null }) => `Card template: ${deck.templateMarkdown?.length ?? 0} characters${deck.templateOwner ? ', Owner ' + deck.templateOwner : ''}`,
-  boardFailed: (failure: { stdout?: string; stderr?: string }) => `The edit was saved in Markdown, but the board was not rebuilt or did not pass validation. ${failure.stdout || failure.stderr || 'Check Python and Tools/board.py.'}`,
+  boardFailed: 'The edit was saved in Markdown, but the board was not rebuilt or did not pass validation. Check Python and Tools/board.py.',
+  boardSkipped: 'board rebuild skipped; open the project in Deckmate to rebuild',
   indexFailed: (savedWarning: string | null, error: unknown) => `${savedWarning ? savedWarning + ' ' : ''}Changes were saved in Markdown, but the search index was not updated: ${clientMessage(error, 'index error')}.`,
   doNotCreateAgain: (message: string) => `${message} Do not create it again; check the catalog file.`,
 }, {
@@ -93,7 +97,8 @@ const serviceText = defineText({
   guardians: (names: string[]) => `Стражи колоды: ${names.join(', ')}`,
   autoTag: (deck: { autoTag?: string | null; autoTagKeep?: boolean }) => `Автотег «${deck.autoTag}»${deck.autoTagKeep ? ' · тег остаётся при выносе из колоды' : ''}`,
   template: (deck: { templateMarkdown?: string | null; templateOwner?: string | null }) => `Шаблон карты: ${deck.templateMarkdown?.length ?? 0} символов${deck.templateOwner ? ', исполнитель ' + deck.templateOwner : ''}`,
-  boardFailed: (failure: { stdout?: string; stderr?: string }) => `Правка сохранена в Markdown, но доска не пересобрана или не прошла проверку. ${failure.stdout || failure.stderr || 'Проверьте Python и Tools/board.py.'}`,
+  boardFailed: 'Правка сохранена в Markdown, но доска не пересобрана или не прошла проверку. Проверьте Python и Tools/board.py.',
+  boardSkipped: 'Пересборка доски пропущена; откройте проект в Deckmate для пересборки',
   indexFailed: (savedWarning: string | null, error: unknown) => `${savedWarning ? savedWarning + ' ' : ''}Изменения сохранены в Markdown, но поисковый индекс не обновлён: ${clientMessage(error, 'ошибка индекса')}.`,
   doNotCreateAgain: (message: string) => `${message} Не повторяйте создание; проверьте файл каталога.`,
 });
@@ -103,6 +108,36 @@ const executeFile = promisify(execFile);
 
 // 2026-11-04: check expired Runs on view rebuilds, at most once every 10 minutes.
 const carryOverIntervalMs = 10 * 60 * 1000;
+const batchConflictTimeoutMs = 10_000;
+const batchLockBudgetMs = 1000;
+const batchChunkSize = 20;
+const batchYieldMs = 50;
+
+export type CatalogBatchEdit = (manifestHash: string) => CatalogEdit;
+export type CatalogBatchOutcome = { ok: true; warnings: string[] } | { ok: false; error: unknown };
+export interface CatalogBatchResult { outcomes: CatalogBatchOutcome[]; catalog: CatalogView }
+
+function affectedCardIds(edit: CatalogEdit, before: CatalogView, after: CatalogView, bulkOutcome?: BulkOutcome): Set<string> {
+  let affected: Set<string>;
+  if (bulkOutcome) affected = new Set([...bulkOutcome.applied, ...bulkOutcome.pending, ...bulkOutcome.created ?? []]);
+  else if ('cards' in edit) affected = new Set(edit.cards.map(card => card.cardId));
+  else if (edit.action === 'record-decision') {
+    const previousStates = new Map(before.cards.map(card => [card.id, card.state]));
+    affected = new Set([edit.cardId, ...after.cards.filter(card => card.parentId === edit.cardId && card.state === 'done'
+      && (previousStates.get(card.id) ?? null) !== 'done').map(card => card.id)]);
+  } else if ('cardId' in edit && edit.action !== 'apply-journey') affected = new Set([edit.cardId]);
+  else if (edit.action === 'apply-journey') {
+    affected = new Set(after.cards.filter(card => card.parentId === edit.cardId && card.journey?.journeyId === edit.journeyId).map(card => card.id));
+  } else if (edit.action === 'update-journey' || (edit.action === 'import-journey-template' && edit.journeyId !== null)) {
+    const journeyId = edit.journeyId;
+    affected = new Set(after.cards.filter(card => card.journey?.journeyId === journeyId).map(card => card.id));
+  } else if (edit.action === 'apply-project-template') {
+    const previousIds = new Set(before.cards.map(card => card.id));
+    affected = new Set(after.cards.filter(card => !previousIds.has(card.id)).map(card => card.id));
+  } else affected = new Set();
+  if (edit.action === 'bulk-edit-cards' && edit.change.kind === 'promote-parent') affected.add(edit.change.cardId);
+  return affected;
+}
 type MembershipBulk = Extract<CatalogEdit, { action: 'bulk-assign-deck' | 'bulk-add-track' }>;
 type DeckSettingsEdit = Extract<CatalogEdit, { action: 'set-deck-watchers' | 'set-deck-guardians' | 'set-deck-automation' }>;
 
@@ -126,6 +161,7 @@ interface CachedCatalog {
   revision: number;
   builtRevision: number;
   loading: Promise<CatalogView> | null;
+  initialRead: { revision: number; view: Promise<CatalogView> } | null;
   watchFailed: boolean;
   pendingPaths: Set<string> | null;
   writeInvalidations: { paths: Set<string>; full: boolean } | null;
@@ -166,14 +202,8 @@ function autoArchiveCandidates(view: CatalogView, archiveAfterDays: number): Cat
   });
 }
 
-function savedFailure(error: unknown): boolean {
+function savedFailure(error: unknown): error is { saved: true } {
   return Boolean(error && typeof error === 'object' && 'saved' in error && error.saved === true);
-}
-
-export class CatalogError extends Error {
-  readonly status: number;
-  readonly saved: boolean;
-  constructor(status: number, message: string, saved = false) { super(message); this.status = status; this.saved = saved; }
 }
 
 export class CatalogService {
@@ -182,9 +212,11 @@ export class CatalogService {
   private config: ServerConfig;
   private cacheDirectory: string;
   private carryOverBusy: Promise<void> | null = null;
-  constructor(config: ServerConfig, cacheDirectory = environmentValue('INDEX') ?? path.join(homedir(), '.cache', 'deckmate')) {
+  private options: { skipBoardRebuild?: boolean };
+  constructor(config: ServerConfig, cacheDirectory = projectCacheDirectory(), options: { skipBoardRebuild?: boolean } = {}) {
     this.config = config;
     this.cacheDirectory = cacheDirectory;
+    this.options = options;
   }
 
   root(source: DataSource): string {
@@ -192,10 +224,10 @@ export class CatalogService {
   }
 
   private entry(source: DataSource, lang: Lang = serverLang()): CachedCatalog {
-    const key = JSON.stringify([this.root(source), lang]);
+    const key = `${this.root(source)}\u0000${lang}`;
     let cached = this.entries.get(key);
     if (!cached) {
-      cached = { index: null, view: null, revision: 0, builtRevision: -1, loading: null, watchFailed: false, pendingPaths: null, writeInvalidations: null,
+      cached = { index: null, view: null, revision: 0, builtRevision: -1, loading: null, initialRead: null, watchFailed: false, pendingPaths: null, writeInvalidations: null,
         housekeepingCheckedAt: 0, housekeepingCheckedRevision: -1, housekeepingWarnings: [] };
       this.entries.set(key, cached);
     }
@@ -226,7 +258,8 @@ export class CatalogService {
     const filename = path.join(this.cacheDirectory, `index-${identity}.sqlite`);
     try { return new ProjectIndex(filename); }
     catch (error) {
-      if (![11, 26].includes((error as { errcode?: number }).errcode ?? -1)) throw error;
+      // 2026-11-12: FTS corruption uses an extended SQLite code with the same primary CORRUPT byte.
+      if (![11, 26].includes(((error as { errcode?: number }).errcode ?? -1) & 0xff)) throw error;
       // 2026-11-03: Only corrupt cache errors justify removal; locks and permissions must remain visible.
       for (const suffix of ['', '-wal', '-shm']) await unlink(filename + suffix).catch((error: NodeJS.ErrnoException) => {
         if (error.code !== 'ENOENT') throw error;
@@ -242,41 +275,67 @@ export class CatalogService {
    * Failures become view warnings and are retried at the next check.
    */
   private async checkHousekeeping(): Promise<void> {
+    // 2026-11-11: a GET may already be waiting for our write lock; an edit must not wait for that GET in turn.
+    if (this.carryOverBusy && await ownsProjectWriteLock(this.root('sandbox'))) return;
     while (this.carryOverBusy) await this.carryOverBusy;
     const cached = this.entry('sandbox');
     const revisionChanged = cached.revision !== cached.housekeepingCheckedRevision;
     if (!revisionChanged && Date.now() - cached.housekeepingCheckedAt < carryOverIntervalMs) return;
-    cached.housekeepingCheckedAt = Date.now();
-    cached.housekeepingCheckedRevision = cached.revision;
-    const root = this.config.writeRoot!;
-    // 2026-11-05: expired Run checks need the same incremental inputs as GET.
-    // Load lazily: projects without overdue work need no catalog read here.
-    this.carryOverBusy = withCatalogSnapshot(root, async () => {
-      await cached.loading?.catch(() => {});
-      return cached.view && cached.pendingPaths !== null
-        ? refreshProjectCatalog(root, cached.view, cached.pendingPaths)
-        : readFreshProjectCatalog(root);
-    }, refreshProjectCatalog, async () => {
-      const warnings: string[] = [];
-      const reason = (error: unknown) => clientMessage(error, serverText(serviceText).editFailed);
-      try {
-        await assertWritable(this.config);
-        const outcome = await carryOverExpiredRuns(root);
-        if (outcome.blocked) warnings.push(outcome.blocked);
-        if (outcome.movedCount > 0) this.invalidate('sandbox', 'tasks/deckmate-card-options.md');
-      } catch (error) {
-        warnings.push(serverText(serviceText).carryOverFailed(reason, error));
-      }
-      try {
-        if (await this.runAutoArchive()) this.invalidate('sandbox', 'tasks/deckmate-card-options.md');
-      } catch (error) {
-        warnings.push(serverText(serviceText).autoArchiveFailed(reason, error));
-      } finally {
-        cached.housekeepingWarnings = warnings;
-      }
-    });
+    this.carryOverBusy = this.performHousekeeping(cached);
     try { await this.carryOverBusy; }
     finally { this.carryOverBusy = null; }
+  }
+
+  private async performHousekeeping(cached: CachedCatalog): Promise<void> {
+    const root = this.config.writeRoot!;
+    const revision = cached.revision;
+    let noLegacyRuns = false;
+    try { noLegacyRuns = !(await readRuns(root)).runs.some(run => !run.configurationId); }
+    catch { /* 2026-11-12: the locked path below preserves the existing housekeeping warnings for read failures. */ }
+    // 2026-11-12: native projects without standalone Runs or archive candidates have no housekeeping write to lock.
+    // Potential mutations still reread their inputs inside the existing process lock and catalog snapshot.
+    if (noLegacyRuns && (!cached.view || !autoArchiveCandidates(cached.view, autoArchiveAfterDays).length)) {
+      cached.housekeepingCheckedAt = Date.now();
+      cached.housekeepingCheckedRevision = revision;
+      cached.housekeepingWarnings = [];
+      return;
+    }
+    // 2026-11-05: expired Run checks need the same incremental inputs as GET.
+    // Load lazily: projects without overdue work need no catalog read here.
+    let acquired = false;
+    await withProjectWriteLock(root, () => {
+      acquired = true;
+      cached.housekeepingCheckedAt = Date.now();
+      cached.housekeepingCheckedRevision = cached.revision;
+      return withCatalogSnapshot(root, async () => {
+        await cached.loading?.catch(() => {});
+        return cached.view && cached.pendingPaths !== null
+          ? refreshProjectCatalog(root, cached.view, cached.pendingPaths)
+          : readFreshProjectCatalog(root);
+      }, refreshProjectCatalog, async () => {
+        const warnings: string[] = [];
+        const reason = (error: unknown) => clientMessage(error, serverText(serviceText).editFailed);
+        try {
+          await assertWritable(this.config);
+          const outcome = await carryOverExpiredRuns(root);
+          if (outcome.blocked) warnings.push(outcome.blocked);
+          if (outcome.movedCount > 0) this.invalidate('sandbox', 'tasks/deckmate-card-options.md');
+        } catch (error) {
+          warnings.push(serverText(serviceText).carryOverFailed(reason, error));
+        }
+        try {
+          if (await this.runAutoArchive()) this.invalidate('sandbox', 'tasks/deckmate-card-options.md');
+        } catch (error) {
+          warnings.push(serverText(serviceText).autoArchiveFailed(reason, error));
+        } finally {
+          cached.housekeepingWarnings = warnings;
+        }
+      });
+    }, { timeoutMs: 0 }).catch(error => {
+      // 2026-11-12: a read must not wait for another writer; leave this revision due for the next GET.
+      if (!acquired && error instanceof CatalogError && error.status === 503 && !error.saved) return;
+      throw error;
+    });
   }
 
   get(source: DataSource): Promise<CatalogView> {
@@ -289,13 +348,25 @@ export class CatalogService {
       if (!prepare) return cached.loading;
       await cached.loading.catch(() => {});
     }
-    if (source === 'sandbox' && this.config.editMode !== 'read-only' && this.config.writeRoot) await this.checkHousekeeping();
+    if (source === 'sandbox' && this.config.editMode !== 'read-only' && this.config.writeRoot) {
+      // 2026-11-12: overlap the first read with lock/housekeeping I/O, without lending a pre-lock snapshot to a writer.
+      if (!prepare && !cached.view && !cached.watchFailed && !cached.initialRead) {
+        const revision = cached.revision;
+        const view = readFreshProjectCatalog(this.root(source));
+        void view.catch(() => {});
+        cached.initialRead = { revision, view };
+      }
+      try { await this.checkHousekeeping(); }
+      catch (error) { cached.initialRead = null; throw error; }
+    }
     if (cached.loading) {
       if (!prepare) return cached.loading;
       await cached.loading.catch(() => {});
     }
     if (!prepare && cached.view && !cached.watchFailed && cached.builtRevision === cached.revision) return cached.view;
     cached.loading = (async () => {
+      let initialRead = cached.initialRead;
+      cached.initialRead = null;
       if (prepare) {
         try {
           cached.view = await prepare();
@@ -308,9 +379,14 @@ export class CatalogService {
         const pending = cached.pendingPaths;
         cached.pendingPaths = new Set();
         try {
-          view = cached.view && pending !== null && !cached.watchFailed
-            ? await refreshProjectCatalog(this.root(source), cached.view, pending)
-            : await readFreshProjectCatalog(this.root(source));
+          if (cached.view && pending !== null && !cached.watchFailed) {
+            view = await refreshProjectCatalog(this.root(source), cached.view, pending);
+          } else if (!prepare && !cached.watchFailed && initialRead?.revision === revision) {
+            view = await initialRead.view;
+          } else {
+            view = await readFreshProjectCatalog(this.root(source));
+          }
+          initialRead = null;
           // Run and Milestone registries share the same view as cards.
           await attachPlanningRegistries(view, this.root(source));
           if (source === 'sandbox') view.warnings.push(...cached.housekeepingWarnings);
@@ -441,8 +517,7 @@ export class CatalogService {
 
   /** 2026-11-04: external writes such as CSV imports share the mutation queue for unambiguous journal snapshots. Include every changed card. */
   recordMutation<Result>(action: string, mutate: () => Promise<Result>, actorMemberId: string | null = null): Promise<Result & { warnings?: string[] }> {
-    const operation = this.writes.then(async () => {
-      await assertWritable(this.config);
+    return this.queueMutation('sandbox', async () => {
       const before = await readProjectCatalog(this.root('sandbox'));
       const result = await mutate();
       this.invalidate('sandbox');
@@ -451,11 +526,89 @@ export class CatalogService {
       catch { warning = serverText(serviceText).journalUpdateFailed; }
       return Object.assign({}, result, warning ? { warnings: [warning] } : {});
     });
+  }
+
+  private async queueMutation<Result>(source: DataSource, mutate: (root: string) => Promise<Result>): Promise<Result> {
+    const run = async () => {
+      const root = await assertWritable(this.config, source);
+      return withProjectWriteLock(root, () => mutate(root));
+    };
+    if (await ownsProjectWriteLock(this.root(source))) return run();
+    const operation = this.writes.then(run);
     this.writes = operation.catch(() => {});
     return operation;
   }
 
-  /** Rebuild the board after a mechanics edit; source data is already saved and cannot be rolled back. */
+  /** 2026-11-12: each bounded batch chunk starts from disk after acquiring the cross-process lock. */
+  withWriteSession<Result>(source: DataSource, operation: (catalog: CatalogView) => Promise<Result>): Promise<Result> {
+    return this.queueMutation(source, async root => {
+      await this.entry(source).loading;
+      return withCatalogSnapshot(root, () => readFreshProjectCatalog(root), refreshProjectCatalog,
+        async () => operation(await readProjectCatalog(root)));
+    });
+  }
+
+  async editBatch(edits: readonly CatalogBatchEdit[], source: DataSource, actorMemberId: string | null = null): Promise<CatalogBatchResult> {
+    const root = this.root(source);
+    const deadline = Date.now() + batchConflictTimeoutMs;
+    const outcomes: CatalogBatchOutcome[] = [];
+    let attempt = 0;
+    let catalog: CatalogView | undefined;
+    try {
+      while (outcomes.length < edits.length) {
+        let backoff = 0;
+        let retryError: unknown;
+        await this.withWriteSession(source, async () => {
+          const chunkStarted = performance.now();
+          let count = 0;
+          while (outcomes.length < edits.length && count < batchChunkSize
+            && (count === 0 || performance.now() - chunkStarted < batchLockBudgetMs)) {
+            const build = edits[outcomes.length];
+            count += 1;
+            try {
+              const edit = build((await readProjectCatalog(root)).manifestHash);
+              const view = await this.edit(edit, source, actorMemberId, { deferIndex: true });
+              outcomes.push({ ok: true, warnings: [...view.warnings, ...(view.savedWarning ? [view.savedWarning] : [])] });
+              attempt = 0;
+            } catch (error) {
+              // 2026-11-12: only an unsaved manifest conflict is safe to rebase; card and partial-save conflicts are not.
+              const manifestMoved = error instanceof CatalogError && !error.saved && error.cause instanceof Error
+                && error.cause.message === 'CATALOG_CONFLICT';
+              const remaining = deadline - Date.now();
+              if (!manifestMoved || remaining <= 0) {
+                outcomes.push({ ok: false, error });
+                if (savedFailure(error) || (error instanceof CatalogError && error.status === 409)) catalogFileChanged(root);
+                attempt = 0;
+              } else {
+                retryError = error;
+                backoff = Math.min(remaining, Math.min(500, 20 * 2 ** Math.min(attempt++, 5)) * (0.5 + Math.random()));
+                // 2026-11-12: conflict backoff must not retain either the local queue or the process lock.
+                break;
+              }
+            }
+          }
+          catalog = await readProjectCatalog(root);
+        });
+        if (outcomes.length < edits.length) await delay(backoff || batchYieldMs);
+        if (backoff && Date.now() >= deadline) outcomes.push({ ok: false, error: retryError });
+      }
+      catalog ??= await readProjectCatalog(root);
+      if (!outcomes.some(outcome => outcome.ok)) return { outcomes, catalog };
+      const completed = catalog;
+      try { return { outcomes, catalog: await this.load(source, async () => completed) }; }
+      catch (error) {
+        const lastSaved = outcomes.findLast(outcome => outcome.ok);
+        if (lastSaved?.ok) lastSaved.warnings.push(serverText(serviceText).indexFailed(null, error));
+        return { outcomes, catalog };
+      }
+    } catch (error) {
+      const saved = savedFailure(error) || outcomes.some(outcome => outcome.ok || savedFailure(outcome.error));
+      if (error instanceof WriteAccessError && !saved) throw error;
+      const status = error instanceof CatalogError || error instanceof WriteAccessError ? error.status : 503;
+      throw new CatalogError(status, clientMessage(error, serverText(serviceText).editFailed), saved);
+    }
+  }
+
   /** 2026-11-09: completes an unfinished Journey save; a recovery stopped by a foreign edit is a conflict that names the file. */
   private async recoverJourney(root: string, journeyId: string): Promise<boolean> {
     try { return await recoverJourneyOperation(root, journeyId); }
@@ -466,35 +619,43 @@ export class CatalogService {
     }
   }
 
-  private async rebuildBoard(root: string): Promise<void> {
-    let script: string;
-    try { script = await containedFile(root, 'Tools/board.py'); }
-    catch (error) {
-      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return; // No board exists to rebuild.
-      throw error;
-    }
+  /** Rebuild the board after a mechanics edit; source data is already saved and cannot be rolled back. */
+  private async rebuildBoard(root: string): Promise<string | undefined> {
     try {
-    const rebuild = packagePath('tools', 'rebuild-board.py');
+      if (this.options.skipBoardRebuild) {
+        try {
+          const tools = await lstat(path.join(root, 'Tools'));
+          if (!tools.isSymbolicLink()) await lstat(path.join(root, 'Tools/board.py'));
+        } catch (error) {
+          if ((error as NodeJS.ErrnoException).code === 'ENOENT') return;
+        }
+        return serverText(serviceText).boardSkipped;
+      }
+      let script: string;
+      try { script = await containedFile(root, 'Tools/board.py'); }
+      catch (error) {
+        if ((error as NodeJS.ErrnoException).code === 'ENOENT') return;
+        throw error;
+      }
+      const rebuild = packagePath('tools', 'rebuild-board.py');
       const result = await executeFile(this.config.python, ['-B', rebuild, root], { cwd: root, windowsHide: true, timeout: 15000, encoding: 'utf8' });
       for (const line of result.stdout.split(/\r?\n/u)) {
         if (line.startsWith('rebuilt: tasks/')) catalogFileChanged(root, line.slice('rebuilt: '.length).trim());
       }
       await executeFile(this.config.python, ['-B', script, '--check'], { cwd: root, windowsHide: true, timeout: 15000, encoding: 'utf8' });
     } catch (error) {
-      const failure = error as { stdout?: string; stderr?: string };
-      const message = serverText(serviceText).boardFailed(failure);
+      console.error('Deckmate: board rebuild failed', error);
+      const message = serverText(serviceText).boardFailed;
       throw Object.assign(new Error(message), { saved: true });
     }
   }
 
-  edit(edit: CatalogEdit, source: DataSource, actorMemberId: string | null = null): Promise<CatalogView> {
-    // 2026-11-10: a decision explicitly confirms a human; its journal author must match the Markdown signature,
-    // including when the ambient UI/CLI actor is an agent. readRuleCard validates the chosen human before saving.
-    if (edit.action === 'record-decision') actorMemberId = edit.memberId;
-    const operation = this.writes.then(async () => {
+  edit(edit: CatalogEdit, source: DataSource, actorMemberId: string | null = null, options: { deferIndex?: boolean } = {}): Promise<CatalogView> {
+    // 2026-11-12: the human supplies the answer, but the recording actor still owns authorization and attribution.
+    if (edit.action === 'record-decision' && actorMemberId === null) actorMemberId = edit.memberId;
+    return this.queueMutation(source, async root => {
       const cached = this.entry(source);
       await cached.loading;
-      const root = await assertWritable(this.config, source);
       const invalidations = { paths: new Set<string>(), full: false };
       cached.writeInvalidations = invalidations;
       try {
@@ -537,11 +698,15 @@ export class CatalogService {
               if (edit.action === 'bulk-assign-deck' || edit.action === 'bulk-add-track') bulkOutcome = membershipOutcome(before, edit, null, []);
             }
             for (const relative of changedPaths) catalogFileChanged(root, relative);
-            if (changedPaths.some(relative => isMechanicPath(relative))) await this.rebuildBoard(root);
+            if (changedPaths.some(relative => isMechanicPath(relative))) {
+              const warning = await this.rebuildBoard(root);
+              if (warning) savedWarning = [savedWarning, warning].filter(Boolean).join(' ');
+            }
           }
           catch (error) {
             // 2026-11-09: a later-stage conflict must not make an already saved mutation look safe to repeat.
-            if (error && typeof error === 'object' && 'saved' in error && error.saved === true) {
+            if (savedFailure(error)) {
+              catalogFileChanged(root);
               // 2026-11-09: a conflict code is an internal marker, not text for the person; show the partial-save notice instead.
               const readable = error instanceof Error && !sourceConflictCodes.includes(error.message) && error.message !== 'CARD_ID_CONFLICT';
               savedWarning = readable ? clientMessage(error, serverText(serviceText).partialSave) : serverText(serviceText).partialSave;
@@ -551,7 +716,9 @@ export class CatalogService {
               }
             }
             else if (error instanceof Error && error.message === 'CARD_ID_CONFLICT') throw new CatalogError(409, serverText(serviceText).cardIdConflict);
-            else if (error instanceof Error && sourceConflictCodes.includes(error.message)) throw new CatalogError(409, serverText(serviceText).sourceChanged);
+            else if (error instanceof Error && sourceConflictCodes.includes(error.message)) {
+              throw Object.assign(new CatalogError(409, serverText(serviceText).sourceChanged), { cause: error });
+            }
             else throw new CatalogError(422, clientMessage(error, serverText(serviceText).editFailed));
           }
           // 2026-11-03: Journal is secondary; a logging failure must never turn a successful write into a retryable failure.
@@ -560,25 +727,7 @@ export class CatalogService {
             if (edit.action === 'set-deck-kind' && before.inboxDeckId === edit.deckId && after.inboxDeckId == null) {
               savedWarning = [savedWarning, serverText(serviceText).inboxCleared].filter(Boolean).join(' ');
             }
-            let affected: Set<string> | undefined;
-            if (bulkOutcome) affected = new Set([...bulkOutcome.applied, ...bulkOutcome.pending, ...bulkOutcome.created ?? []]);
-            else if ('cards' in edit) affected = new Set(edit.cards.map(card => card.cardId));
-            // 2026-11-04: open questions affect the Doc and the decision Task being created or accepted.
-            else if (edit.action === 'raise-decision') affected = new Set([edit.cardId, edit.taskCardId]);
-            else if (edit.action === 'record-decision') affected = new Set([edit.cardId, ...after.cards
-              .filter(card => card.parentId === edit.cardId && card.state === 'done'
-                && (before.cards.find(previous => previous.id === card.id)?.state ?? null) !== 'done')
-              .map(card => card.id)]);
-            else if ('cardId' in edit && edit.action !== 'apply-journey') affected = new Set([edit.cardId]);
-            else if (edit.action === 'apply-journey') affected = new Set(after.cards.filter(card => card.parentId === edit.cardId && card.journey?.journeyId === edit.journeyId).map(card => card.id));
-            // 2026-11-04: Journey edits affect only cards it already created; a new Journey has no cards.
-            else if (edit.action === 'update-journey' || (edit.action === 'import-journey-template' && edit.journeyId !== null)) {
-              const journeyId = edit.journeyId;
-              affected = new Set(after.cards.filter(card => card.journey?.journeyId === journeyId).map(card => card.id));
-            }
-            else if (edit.action === 'apply-project-template') affected = new Set(after.cards.filter(card => !before.cards.some(previous => previous.id === card.id)).map(card => card.id));
-            else affected = new Set();
-            if (edit.action === 'bulk-edit-cards' && edit.change.kind === 'promote-parent') affected.add(edit.change.cardId);
+            const affected = affectedCardIds(edit, before, after, bulkOutcome);
             // Record the review return reason in this card's journal transition (2026-11-04).
             let returnReasons: Map<string, string> | undefined;
             if (edit.action === 'set-card-state' && edit.returnReason?.trim()) returnReasons = new Map([[edit.cardId, edit.returnReason.trim()]]);
@@ -595,7 +744,7 @@ export class CatalogService {
             }
           } catch { savedWarning = [savedWarning, serverText(serviceText).journalUpdateFailed].filter(Boolean).join(' '); }
           try {
-            const view = await this.load('sandbox', async () => {
+            const prepare = async () => {
               // 2026-11-05: retain events consumed by concurrent GETs, and hold the
               // shared loading promise while installing the POST's updated snapshot.
               const pending = cached.pendingPaths;
@@ -604,7 +753,8 @@ export class CatalogService {
               if (invalidations.full) catalogFileChanged(root);
               cached.revision += 1;
               return readProjectCatalog(root);
-            });
+            };
+            const view = options.deferIndex ? await prepare() : await this.load(source, prepare);
             if (savedWarning) return { ...view, ...(bulkOutcome ? { bulkOutcome } : {}), savedWarning };
             return { ...view, ...(bulkOutcome ? { bulkOutcome } : {}) };
           }
@@ -624,13 +774,12 @@ export class CatalogService {
         other.pendingPaths = null;
       }
     });
-    this.writes = operation.catch(() => {});
-    return operation;
   }
 
   async close(): Promise<void> {
     await this.writes;
     for (const cached of this.entries.values()) {
+      await cached.initialRead?.view.catch(() => {});
       await cached.loading?.catch(() => {});
       cached.index?.close();
     }

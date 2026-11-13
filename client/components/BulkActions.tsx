@@ -1,4 +1,4 @@
-import { defineText, locale, textNow, useLang, useText } from '../i18n.ts';
+import { defineText, formatNumber, locale, textNow, useLang, useText } from '../i18n.ts';
 import { kindLabel, priorityLabel, stateLabel } from '../locales/common.ts';
 import { collectProjectTags, validTagName } from '../../src/project-tags.ts';
 import { TagSelectionList } from './TagPicker.tsx';
@@ -11,7 +11,7 @@ import type { BulkChange, CopyProperty } from '../../src/bulk-contracts.ts';
 import { deckAcceptsCard, type CardContent, type CardPriority, type CatalogCard, type CatalogView } from '../../src/catalog-contracts.ts';
 import { cardExportColumns, defaultCardExportColumns, exportCardsCsv, type CardExportColumnId } from '../../src/card-export.ts';
 import type { DataSource } from '../../src/workspace-contracts.ts';
-import { shortReference } from '../../src/references.ts';
+import { cardReferenceQuery, shortReference } from '../../src/references.ts';
 import { CardOwnerAvatar } from './CardQuickSettings.tsx';
 import { PriorityIcon } from './PriorityIcon.tsx';
 import { EffortIcon } from './EffortIcon.tsx';
@@ -24,6 +24,7 @@ import { failureMessage } from '../failure-message.ts';
 import { catalogStore } from '../catalog-store.ts';
 import { moveFocus } from '../focus.ts';
 import { AgentQueueHint } from './AgentQueueHint.tsx';
+import { formatShortcut, shortcutAria } from '../shortcut-format.ts';
 import '../bulk-actions.css';
 
 const text = defineText({
@@ -339,7 +340,7 @@ interface BulkActionsProps {
 export function BulkActions({ cards, catalog, pending, onAction, onOpenDeck, overflowOrganization, overflowExport, source, writable = source === 'sandbox' }: BulkActionsProps) {
   const t = useText(text);
   const lang = useLang();
-  const amount = (value: number) => new Intl.NumberFormat(locale(lang), { maximumFractionDigits: 2 }).format(value);
+  const amount = (value: number) => formatNumber(value, 2, lang);
   const selected = useMemo(() => [...new Map(cards.map(card => [card.id, card])).values()], [cards]);
   const commonPriority = selected.every(card => card.priority === selected[0]?.priority) ? selected[0]?.priority ?? null : null;
   const [menu, setMenu] = useState<ActionId | 'more' | null>(null);
@@ -381,12 +382,12 @@ export function BulkActions({ cards, catalog, pending, onAction, onOpenDeck, ove
   const effortSum = effortCards.reduce((sum, card) => sum + card.effort!, 0);
   const effortLabel = effortCards.length ? amount(effortSum) : '—';
   const query = draft.query.trim().toLocaleLowerCase('ru');
-  const knownTags = collectProjectTags(catalog.cards, catalog.projectTags);
+  const knownTags = useMemo(() => collectProjectTags(catalog.cards, catalog.projectTags), [catalog.cards, catalog.projectTags]);
   const compatibleDecks = catalog.decks.filter(deck => menu === 'convert' ? deckAcceptsCard(deck.kind, draft.cardKind) : selected.every(card => deckAcceptsCard(deck.kind, card.kind)));
-  const parentsWithChildren = new Set(catalog.cards.map(card => card.parentId).filter(Boolean));
-  const selectedIds = new Set(selected.map(card => card.id));
-  const parentCandidates = catalog.cards.filter(card => (card.kind === 'hero' || card.kind === 'doc')
-    && !card.parentId && !card.journey && !card.archived && !card.deleted && !selectedIds.has(card.id));
+  const parentsWithChildren = useMemo(() => new Set(catalog.cards.map(card => card.parentId).filter(Boolean)), [catalog.cards]);
+  const selectedIds = useMemo(() => new Set(selected.map(card => card.id)), [selected]);
+  const parentCandidates = useMemo(() => catalog.cards.filter(card => (card.kind === 'hero' || card.kind === 'doc')
+    && !card.parentId && !card.journey && !card.archived && !card.deleted && !selectedIds.has(card.id)), [catalog.cards, selectedIds]);
   const cardsById = useMemo(() => new Map(catalog.cards.map(card => [card.id, card])), [catalog.cards]);
   // Unfinished prerequisites of the cards selected for bulk completion.
   const doneConflicts: DependencyConflict[] = useMemo(() => menu === 'done' && draft.mode === 'add'
@@ -634,7 +635,7 @@ export function BulkActions({ cards, catalog, pending, onAction, onOpenDeck, ove
         return <>{currentValues(card => labels.get(card[menu] ?? '') ?? card[menu] ?? t.uiNone)}<label className="bulk-field">{actionLabel}<select data-autofocus value={draft.name} onChange={event => update('name', event.target.value)}><option value="">{t.uiNone}</option>{unknownSelection && <option value={draft.name}>{draft.name}</option>}{choices.map(choice => <option key={choice.id} value={choice.id}>{choice.label}</option>)}</select></label><Button type="button" variant="ghost" size="sm" onClick={() => update('name', '')}>{t.uiClear} {actionLabel}</Button></>;
       }
       case 'dueDate': return <>{currentValues(card => card.dueDate ? new Intl.DateTimeFormat(locale(lang), { timeZone: 'UTC' }).format(new Date(`${card.dueDate}T00:00:00Z`)) : t.uiNone)}<label className="bulk-field">{t.uiDueDate}<input data-autofocus type="date" value={draft.date} onChange={event => update('date', event.target.value)} /></label><Button type="button" variant="ghost" size="sm" onClick={() => update('date', '')}>{t.uiClearDueDate}</Button></>;
-      case 'effort': return <>{currentValues(card => card.effort == null ? t.uiNone : new Intl.NumberFormat(locale(lang), { maximumFractionDigits: 20 }).format(card.effort))}<p className="bulk-help">{t.effortHint(effortLabel)}</p><label className="bulk-field">{t.uiEffort}<input data-autofocus type="number" min="0" step="any" value={draft.effort} placeholder={t.uiNone} onChange={event => update('effort', event.target.value)} /></label><Button type="button" variant="ghost" size="sm" onClick={() => update('effort', '')}>{t.uiClearEffort}</Button></>;
+      case 'effort': return <>{currentValues(card => card.effort == null ? t.uiNone : formatNumber(card.effort, 20, lang))}<p className="bulk-help">{t.effortHint(effortLabel)}</p><label className="bulk-field">{t.uiEffort}<input data-autofocus type="number" min="0" step="any" value={draft.effort} placeholder={t.uiNone} onChange={event => update('effort', event.target.value)} /></label><Button type="button" variant="ghost" size="sm" onClick={() => update('effort', '')}>{t.uiClearEffort}</Button></>;
       case 'priority': return <>{currentValues(card => card.priority ? priorityLabel(card.priority, lang) : t.uiNone)}<div className="bulk-pick-list">{([{ value: 'high', label: priorityLabel('high', lang) }, { value: 'medium', label: priorityLabel('medium', lang) }, { value: 'low', label: priorityLabel('low', lang) }, { value: '', get label() { return textNow(text).uiNone; } }] as const).map(priority => <button key={priority.value} type="button" className="bulk-pick-option" aria-pressed={draft.priority === priority.value} onClick={() => update('priority', priority.value)}><span aria-hidden="true" style={{ flex: '0 0 auto', display: 'inline-flex' }}><PriorityIcon priority={priority.value || null} size={16} /></span><span>{priority.label}</span>{draft.priority === priority.value && <Check size={15} />}</button>)}</div></>;
       case 'parent': return <>
         <div className="bulk-tabs" role="group" aria-label={t.uiHeroCard}><Button type="button" variant="ghost" size="sm" aria-pressed={draft.heroMode === 'existing'} onClick={() => update('heroMode', 'existing')}>{t.uiFindExisting}</Button><Button type="button" variant="ghost" size="sm" aria-pressed={draft.heroMode === 'new'} onClick={() => update('heroMode', 'new')}>{t.uiCreateNew}</Button></div>
@@ -642,7 +643,7 @@ export function BulkActions({ cards, catalog, pending, onAction, onOpenDeck, ove
           {currentValues(card => catalog.cards.find(candidate => candidate.id === card.parentId)?.title ?? t.uiNone)}{searchInput(t.uiFindAHeroDocCard)}
           <div className="bulk-pick-list"><button type="button" className="bulk-pick-option" aria-pressed={!draft.parentId} onClick={() => update('parentId', '')}><X size={16} /><span>{t.uiRemoveParent}</span>{!draft.parentId && <Check size={15} />}</button>
             {(['hero', 'doc'] as const).map(kind => {
-              const referenceQuery = query.match(/\bc-[a-z0-9]{10}\b/u)?.[0] ?? query;
+              const referenceQuery = cardReferenceQuery(query);
               const matches = parentCandidates.filter(card => card.kind === kind && [card.title, card.id, shortReference('c', card.id)].join(' ').toLocaleLowerCase('ru').includes(referenceQuery));
               const Icon = kind === 'hero' ? Crown : NotebookText;
               return matches.length > 0 && <div key={kind}><p className="bulk-help">{kind === 'hero' ? t.uiHeroCards : t.uiDocCards}</p>{matches.map(parent => <button key={parent.id} type="button" className="bulk-pick-option" aria-pressed={draft.parentId === parent.id} onClick={() => update('parentId', parent.id)}><Icon size={16} /><span>{parent.title}</span>{draft.parentId === parent.id && <Check size={15} />}</button>)}</div>;
@@ -672,7 +673,7 @@ export function BulkActions({ cards, catalog, pending, onAction, onOpenDeck, ove
     {actions.filter(action => directActions.includes(action.id)).map(action => {
       const disabled = reason(action.id);
       const shortcut = shortcutForBulkAction(action.id);
-      return <Button key={action.id} type="button" variant="ghost" size="icon" className="bulk-action-button" disabled={Boolean(disabled)} aria-label={action.label} aria-keyshortcuts={shortcut?.keys} aria-haspopup="dialog" aria-expanded={menu === action.id} aria-controls={menu === action.id ? id + '-dialog' : undefined} title={disabled ?? (action.label + (shortcut ? ' · ' + shortcut.keys : ''))} onClick={event => openAction(action.id, event.currentTarget)}>{action.Icon ? <action.Icon size={16} /> : <span aria-hidden="true"><PriorityIcon priority={commonPriority} size={16} /></span>}</Button>;
+      return <Button key={action.id} type="button" variant="ghost" size="icon" className="bulk-action-button" disabled={Boolean(disabled)} aria-label={action.label} aria-keyshortcuts={shortcut && shortcutAria(shortcut.combo)} aria-haspopup="dialog" aria-expanded={menu === action.id} aria-controls={menu === action.id ? id + '-dialog' : undefined} title={disabled ?? (action.label + (shortcut ? ' · ' + formatShortcut(shortcut.combo).display : ''))} onClick={event => openAction(action.id, event.currentTarget)}>{action.Icon ? <action.Icon size={16} /> : <span aria-hidden="true"><PriorityIcon priority={commonPriority} size={16} /></span>}</Button>;
     })}
     <DropdownMenu.Root modal={false} open={menu === 'more'} onOpenChange={open => {
       if (open) { openingDialogFromMenu.current = false; setMenu('more'); setError(''); }

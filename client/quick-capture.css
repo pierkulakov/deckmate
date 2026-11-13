@@ -6,13 +6,13 @@
 @media (hover: hover) { .quick-capture-trigger.ui-button:hover:not(:disabled) { background: var(--hover); } }
 
 /* The width matches the Create space popover (380px, 12px gutters); the entrance is the popover slide from its anchor. */
-.quick-capture-panel { position: fixed; top: 60px; right: 12px; z-index: 60; display: flex; flex-direction: column;
-  width: min(380px, calc(100vw - 24px)); max-height: calc(100dvh - 72px); overflow: hidden;
+.quick-capture-panel { position: fixed; top: calc(var(--topbar-height, 52px) + var(--space-2)); right: 12px; z-index: 60; display: flex; flex-direction: column;
+  width: min(380px, calc(100vw - 24px)); max-height: calc(100dvh - var(--topbar-height, 52px) - var(--space-2) - var(--space-3)); overflow: hidden;
   scrollbar-width: thin; animation: overlay-pop var(--motion-spring-quick) var(--ease-spring-quick); transform-origin: top right; }
 
 .quick-capture-close.ui-button { flex-shrink: 0; width: 32px; height: 32px; }
 .quick-capture-body { display: flex; flex-direction: column; gap: var(--space-2); min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
-.quick-capture-caption { margin: 0; color: var(--muted); font-size: 12px; line-height: 16px; }
+.quick-capture-caption { margin: 0; color: var(--muted); font-size: 12px; line-height: 16px; text-wrap: pretty; }
 
 .quick-capture-form { display: flex; flex-direction: column; min-height: 0; }
 .quick-capture-form > .dialog-foot { flex: 0 0 auto; }
@@ -28,7 +28,7 @@
 .quick-capture-warning p { margin: 4px 0 8px; }
 .quick-capture-warning .ui-button { max-width: 100%; white-space: normal; }
 .quick-capture-warning .ui-button[aria-disabled="true"] { opacity: .55; cursor: wait; }
-.quick-capture-note { margin: 0; color: var(--muted); font-size: 12px; line-height: 16px; overflow-wrap: anywhere; }
+.quick-capture-note { margin: 0; color: var(--muted); font-size: 12px; line-height: 16px; overflow-wrap: anywhere; text-wrap: pretty; }
 .quick-capture-note > .spin { vertical-align: -2px; margin-right: 4px; }
 .quick-capture-missing { display: flex; flex-direction: column; align-items: flex-start; gap: var(--space-2); }
 .quick-capture-missing .quick-capture-field { width: 100%; }

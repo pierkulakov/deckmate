@@ -1,8 +1,9 @@
 import { afterEach, expect, it, vi } from 'vitest';
-import { mkdir, mkdtemp, readFile, readdir, rename, rm, symlink, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, readdir, realpath, rename, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { installSkills, localSkillEdits, skillsCli } from '../tools/deckmate-skills.ts';
+import { spawnSync } from 'node:child_process';
+import { installSkills, localSkillEdits, mcpLaunch, planMcpFiles, skillsCli } from '../tools/deckmate-skills.ts';
 
 const agentFiles = vi.hoisted(() => ({ target: '', reads: 0, changeOnRead: 0, failRename: false, injected: false }));
 vi.mock('node:fs/promises', async importOriginal => {
@@ -64,8 +65,28 @@ const version = '2026-11-09';
 const manifestText = '---\nschema: 1\nspaces: []\ndecks: []\ntracks: []\nmembership: []\n---\n# Проект\nТело манифеста.\n';
 const skillText = `---\nname: deckmate\ndescription: Собственный тестовый пакет\nmetadata:\n  version: ${version}\n---\n# Скилл для теста\n`;
 const rulesText = '## Deckmate board\n\nПравила доски.\n';
+const layoutText = '## Board layout\n\n- Одна сущность в колоде.\n';
+
+// 2026-11-11: whether `deckmate` is on PATH picks the MCP launch kind; no test may depend on the host machine.
+const savedPath = { PATH: process.env.PATH, PATHEXT: process.env.PATHEXT };
+let restorePath: (() => void) | null = null;
+
+/** Points PATH at `folders` and PATHEXT at `pathExt` (deleted when omitted); restored after each test. */
+function setPath(folders: string[], pathExt?: string): void {
+  process.env.PATH = folders.join(path.delimiter);
+  if (pathExt === undefined) delete process.env.PATHEXT;
+  else process.env.PATHEXT = pathExt;
+  restorePath ??= () => {
+    if (savedPath.PATH === undefined) delete process.env.PATH;
+    else process.env.PATH = savedPath.PATH;
+    if (savedPath.PATHEXT === undefined) delete process.env.PATHEXT;
+    else process.env.PATHEXT = savedPath.PATHEXT;
+  };
+}
 
 afterEach(async () => {
+  restorePath?.();
+  restorePath = null;
   agentFiles.target = '';
   agentFiles.reads = 0;
   agentFiles.changeOnRead = 0;
@@ -95,10 +116,14 @@ async function put(root: string, relative: string, content: string): Promise<voi
 async function fixture(editedWorkflow = 'Область: {area}.\n') {
   const directory = await mkdtemp(path.join(tmpdir(), 'deckmate-skills-safety-'));
   directories.push(directory);
+  // 2026-11-11: without deckmate on PATH every install lands on the machine-specific launch line and writes no
+  // shared MCP config; the portable-line test below points PATH at a folder of its own.
+  setPath([]);
   const home = path.join(directory, 'Deckmate source');
   const project = path.join(directory, 'Проект with spaces');
   await put(home, 'skills/deckmate/SKILL.md', skillText);
   await put(home, 'skills/deckmate/project-rules.md', rulesText);
+  await put(home, 'skills/deckmate/layout-rules.md', layoutText);
   await put(home, 'skills/deckmate/workflows/analyze.md', `## Задание: research\n${editedWorkflow}`);
   await put(project, 'tasks/deckmate.md', manifestText);
   return { directory, home, project };
@@ -112,6 +137,11 @@ async function install(project: string, home: string, ...extra: string[]): Promi
   } finally {
     log.mockRestore();
   }
+}
+
+async function installMcpPlan(project: string, home: string) {
+  const plans = await planMcpFiles(await realpath(project), mcpLaunch(home));
+  return installSkills(project, home, { mcpSnapshot: plans });
 }
 
 it('refuses to replace changed or added files without --force and keeps them byte for byte', async () => {
@@ -180,6 +210,7 @@ it('reports exactly what was applied when the manifest write fails after the cop
   const otherHome = path.join(path.dirname(home), 'Deckmate source 2');
   await put(otherHome, 'skills/deckmate/SKILL.md', skillText);
   await put(otherHome, 'skills/deckmate/project-rules.md', rulesText);
+  await put(otherHome, 'skills/deckmate/layout-rules.md', layoutText);
   await put(otherHome, 'skills/deckmate/workflows/analyze.md', '## Задание: research\nВторая копия пакета.\n');
   nativeCards.failManifestWrite = true;
   const failure = await installSkills(project, otherHome).then(() => {
@@ -268,6 +299,61 @@ it('rejects an AGENTS.md symbolic link before writing anything', async () => {
   expect(await readFile(outside, 'utf8')).toBe('# Outside\n');
 });
 
+it('rechecks an MCP config immediately before publishing and removes the temporary file on conflict', async () => {
+  const { directory, home, project } = await fixture();
+  const shim = path.join(directory, 'shim');
+  await put(shim, process.platform === 'win32' ? 'deckmate.cmd' : 'deckmate', '');
+  setPath([shim]);
+  // An existing config without a deckmate key: the update path re-reads the file right before the rename.
+  await put(project, '.mcp.json', '{\n  "mcpServers": {}\n}\n');
+  agentFiles.target = path.join(project, '.mcp.json');
+  agentFiles.changeOnRead = 3;
+  await expect(installMcpPlan(project, home)).rejects.toThrow(/stopped at \.mcp\.json \(.*the file changed/u);
+  expect(agentFiles.injected).toBe(true);
+  expect(await readFile(agentFiles.target, 'utf8')).toBe('Concurrent edit\n');
+  expect((await readdir(project)).filter(name => name.endsWith('.tmp'))).toEqual([]);
+});
+
+for (const relative of ['.mcp.json', '.cursor/mcp.json']) {
+  it.each([false, true])(`preserves a concurrent ${relative} server selection from the consent snapshot (existing=%s)`, async existing => {
+    const { directory, home, project } = await fixture();
+    const shim = path.join(directory, 'shim');
+    await put(shim, process.platform === 'win32' ? 'deckmate.cmd' : 'deckmate', '');
+    setPath([shim]);
+    if (relative.startsWith('.cursor/')) await mkdir(path.join(project, '.cursor'));
+    if (existing) await put(project, relative, '{\n  "mcpServers": {}\n}\n');
+    const filename = path.join(project, relative);
+    const foreign = JSON.stringify({ mcpServers: { deckmate: { command: 'user-selected-server', args: [] } } }, null, 2) + '\n';
+    nativeCards.beforeSecondRead = async () => {
+      const actual = await vi.importActual<typeof import('node:fs/promises')>('node:fs/promises');
+      await actual.writeFile(filename, foreign);
+      nativeCards.injected = true;
+    };
+    vi.mocked(writeFile).mockClear();
+    const installing = process.platform === 'win32' ? installMcpPlan(project, home) : install(project, home);
+    await expect(installing).rejects.toThrow(/the file changed/u);
+    expect(nativeCards.injected).toBe(true);
+    expect(await readFile(filename, 'utf8')).toBe(foreign);
+    expect(writeFile).not.toHaveBeenCalled();
+    expect(await readdir(project)).toEqual(expect.not.arrayContaining(['.agents', '.claude', 'AGENTS.md']));
+  });
+}
+
+it('uses the same MCP snapshot for the no-force consent check and publication', async () => {
+  const { directory, home, project } = await fixture();
+  const shim = path.join(directory, 'shim');
+  await put(shim, process.platform === 'win32' ? 'deckmate.cmd' : 'deckmate', '');
+  setPath([shim]);
+  await put(project, '.mcp.json', '{\n  "mcpServers": {}\n}\n');
+  agentFiles.target = path.join(project, '.mcp.json');
+  agentFiles.changeOnRead = 2;
+  const installing = process.platform === 'win32' ? installMcpPlan(project, home) : install(project, home);
+  await expect(installing).rejects.toThrow(/the file changed/u);
+  expect(agentFiles.injected).toBe(true);
+  expect(await readFile(agentFiles.target, 'utf8')).toBe('Concurrent edit\n');
+  expect(await readdir(project)).toEqual(expect.not.arrayContaining(['.agents', '.claude', 'AGENTS.md']));
+});
+
 it('prints one rules status line without writing for each of the four states', async () => {
   const { home, project } = await fixture();
   const status = async () => {
@@ -289,4 +375,45 @@ it('prints one rules status line without writing for each of the four states', a
   const filename = path.join(project, 'AGENTS.md');
   await writeFile(filename, (await readFile(filename, 'utf8')).replace('Правила доски.', 'Old rules.'));
   expect(await status()).toBe('AGENTS.md | differs');
+});
+
+it('preserves the BOM, CRLF and foreign fields when adding the portable MCP server', async () => {
+  const { directory, home, project } = await fixture();
+  const bin = path.join(directory, 'bin');
+  await mkdir(bin);
+  await writeFile(path.join(bin, process.platform === 'win32' ? 'deckmate.cmd' : 'deckmate'), '');
+  setPath([bin], '.CMD');
+  const config = { foreign: 'unchanged', mcpServers: { other: { command: 'other', args: [] } } };
+  const before = '\uFEFF' + JSON.stringify(config, null, 2).replace(/\n/gu, '\r\n') + '\r\n';
+  const filename = path.join(project, '.mcp.json');
+  await writeFile(filename, before);
+  await installMcpPlan(project, home);
+  const after = await readFile(filename, 'utf8');
+  expect(after.startsWith('\uFEFF')).toBe(true);
+  expect(after.replace(/\r\n/gu, '')).not.toContain('\n');
+  const parsed = JSON.parse(after.slice(1));
+  expect(parsed.foreign).toBe(config.foreign);
+  expect(parsed.mcpServers.other).toEqual(config.mcpServers.other);
+  expect(parsed.mcpServers.deckmate).toBeTruthy();
+  expect(after).toBe('\uFEFF' + JSON.stringify(parsed, null, 2).replace(/\n/gu, '\r\n') + '\r\n');
+});
+
+it('never lets a project-local Windows shim intercept the generated MCP launch', async () => {
+  const { directory, home, project } = await fixture();
+  const shim = path.join(directory, 'shim');
+  await put(shim, process.platform === 'win32' ? 'deckmate.cmd' : 'deckmate', '');
+  setPath([shim]);
+  await put(project, 'deckmate.cmd', '@echo intercepted>intercepted.txt\r\n');
+  await put(home, 'bin/deckmate.mjs', 'console.log("trusted-package");\n');
+  const launch = mcpLaunch(home);
+  if (process.platform === 'win32') {
+    expect(path.isAbsolute(launch.command)).toBe(true);
+    expect(launch.kind).toBe('machine');
+    const result = spawnSync(launch.command, launch.args, { cwd: project, encoding: 'utf8', windowsHide: true });
+    expect(result.status).toBe(0);
+    expect(result.stdout.trim()).toBe('trusted-package');
+    expect(await readdir(project)).not.toContain('intercepted.txt');
+    expect((await installSkills(project, home)).mcp.files).toEqual([]);
+    expect(await readdir(project)).not.toContain('.mcp.json');
+  } else expect(launch).toMatchObject({ kind: 'portable', command: 'deckmate' });
 });

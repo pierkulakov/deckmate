@@ -24,6 +24,10 @@ pub fn is_launcher_url(url: &Url) -> bool {
     is_app_page_url(url, "index.html")
 }
 
+pub fn is_startup_url(url: &Url) -> bool {
+    is_app_page_url(url, "startup.html")
+}
+
 pub fn is_app_page_url(url: &Url, page: &str) -> bool {
     let mut url = url.clone();
     url.set_query(None);
@@ -84,7 +88,7 @@ fn record_external(_: &Url) -> bool {
 
 pub fn allow_navigation(app: &AppHandle, url: &Url) -> bool {
     let shell = app::state(app);
-    let returning_to_launcher = is_launcher_url(url)
+    let returning_to_launcher = (is_launcher_url(url) || is_startup_url(url))
         && shell
             .current
             .lock()
@@ -98,7 +102,7 @@ pub fn allow_navigation(app: &AppHandle, url: &Url) -> bool {
         });
         return false;
     }
-    let allowed = is_launcher_url(url) || is_server_url(&shell, url);
+    let allowed = is_launcher_url(url) || is_startup_url(url) || is_server_url(&shell, url);
     if !allowed {
         open_external(app, url);
     }
@@ -111,28 +115,18 @@ pub struct FirstShow {
     loaded: AtomicBool,
     shown: AtomicBool,
     visible: AtomicBool,
-    wait_for_board: AtomicBool,
     notified: tokio::sync::Notify,
 }
 
 impl FirstShow {
-    pub fn new(wait_for_board: bool) -> Self {
-        Self {
-            wait_for_board: AtomicBool::new(wait_for_board),
-            ..Self::default()
-        }
-    }
-
     fn claim(&self, fallback: bool) -> bool {
         self.bounds_ready.load(Ordering::SeqCst)
             && (fallback || self.loaded.load(Ordering::SeqCst))
-            && (fallback || !self.wait_for_board.load(Ordering::SeqCst))
             && !self.shown.swap(true, Ordering::SeqCst)
     }
 
     fn show(&self, window: &WebviewWindow, fallback: bool) {
         if self.claim(fallback) {
-            #[cfg(debug_assertions)]
             if let Ok(url) = window.url() {
                 app::state(window.app_handle())
                     .log
@@ -140,6 +134,9 @@ impl FirstShow {
             }
             let _ = window.as_ref().show();
             let _ = window.show();
+            app::state(window.app_handle())
+                .log
+                .milestone("window-visible");
             self.visible.store(true, Ordering::SeqCst);
             self.notified.notify_waiters();
         }
@@ -154,17 +151,6 @@ pub async fn wait_until_shown(app: &AppHandle) {
             return;
         }
         notified.await;
-    }
-}
-
-pub fn finish_startup(app: &AppHandle) {
-    let shell = app::state(app);
-    shell
-        .first_show
-        .wait_for_board
-        .store(false, Ordering::SeqCst);
-    if let Some(window) = app.get_webview_window("main") {
-        shell.first_show.show(&window, false);
     }
 }
 
@@ -231,11 +217,12 @@ pub fn debug_browser_args() -> Option<String> {
 
 pub fn create(app: &AppHandle) -> tauri::Result<()> {
     let shell = app::state(app);
-    // 2026-11-09: decide before build: the launcher's first load can beat app::startup.
-    if let Some(folder) = &shell.startup_project {
-        shell.status(app, serde_json::json!({"phase":"ready", "path":folder}));
-    }
-    let builder = WebviewWindowBuilder::new(app, "main", WebviewUrl::App("index.html".into()))
+    let page = if shell.startup_project.is_some() {
+        "startup.html"
+    } else {
+        "index.html"
+    };
+    let builder = WebviewWindowBuilder::new(app, "main", WebviewUrl::App(page.into()))
         .title("Deckmate")
         .inner_size(1280.0, 820.0)
         .min_inner_size(960.0, 600.0)
@@ -277,6 +264,7 @@ pub fn create(app: &AppHandle) -> tauri::Result<()> {
         None => builder,
     }
     .build()?;
+    shell.log.milestone("window-created");
     // 2026-11-09: the session-end guard is a safety net; a tao or Windows change that breaks it must not
     // keep Deckmate from opening, so a failure is logged and the window works without it.
     if let Err(error) = crate::session_end::install(&window) {
@@ -311,23 +299,12 @@ pub fn create(app: &AppHandle) -> tauri::Result<()> {
     apply_zoom(&window);
     let fallback_window = window.clone();
     tauri::async_runtime::spawn(async move {
-        tokio::time::sleep(Duration::from_secs(2)).await;
+        tokio::time::sleep(Duration::from_secs(5)).await;
         let first_show = &shell.first_show;
-        if first_show.wait_for_board.load(Ordering::SeqCst)
-            && first_show.loaded.load(Ordering::SeqCst)
-            && fallback_window.url().is_ok_and(|url| is_launcher_url(&url))
-        {
-            let status = shell.pending_status.lock().unwrap().clone();
-            if let Some(mut status) = status.filter(|status| status["phase"] == "starting") {
-                status["phase"] = "ready".into();
-                shell.status(fallback_window.app_handle(), status);
-            }
-            shell.replay_status(fallback_window.app_handle());
-            first_show.show(&fallback_window, true);
-        }
-        tokio::time::sleep(Duration::from_secs(3)).await;
         if !first_show.loaded.load(Ordering::SeqCst)
-            && fallback_window.url().is_ok_and(|url| is_launcher_url(&url))
+            && fallback_window
+                .url()
+                .is_ok_and(|url| is_launcher_url(&url) || is_startup_url(&url))
         {
             let app = fallback_window.app_handle();
             let shell = app::state(app);
@@ -473,10 +450,6 @@ pub fn finish_load(window: &WebviewWindow, navigation: u64, result: Result<(), S
         if let Some(load) = loading.take() {
             // 2026-11-09: Wry's Finished also fires for failed navigations; only success may reveal the board.
             if result.is_ok() {
-                shell
-                    .first_show
-                    .wait_for_board
-                    .store(false, Ordering::SeqCst);
                 shell.first_show.loaded.store(true, Ordering::SeqCst);
                 shell.first_show.show(window, false);
             }
@@ -534,6 +507,7 @@ mod tests {
         );
         for html in [
             include_str!("../../launcher/index.html"),
+            include_str!("../../launcher/startup.html"),
             include_str!("../../launcher/whats-new.html"),
         ] {
             let policy = html
@@ -607,16 +581,24 @@ mod tests {
         assert!(!fallback.claim(false));
     }
     #[test]
-    fn auto_open_ignores_launcher_load_until_board_or_fallback() {
-        let show = FirstShow::new(true);
+    fn startup_page_can_show_without_server_and_has_no_launcher_authority() {
+        let url = "http://tauri.localhost/startup.html".parse().unwrap();
+        assert!(is_startup_url(&url));
+        assert!(!is_launcher_url(&url));
+        assert!(!is_startup_url(
+            &"http://tauri.localhost.evil/startup.html".parse().unwrap()
+        ));
+        let show = FirstShow::default();
         show.bounds_ready.store(true, Ordering::SeqCst);
         show.loaded.store(true, Ordering::SeqCst);
-        assert!(!show.claim(false));
-        show.wait_for_board.store(false, Ordering::SeqCst);
         assert!(show.claim(false));
-        let slow = FirstShow::new(true);
-        slow.bounds_ready.store(true, Ordering::SeqCst);
-        assert!(slow.claim(true));
+        let html = include_str!("../../launcher/startup.html");
+        for resource in ["<script", "<link", "<img", "url("] {
+            assert!(
+                !html.contains(resource),
+                "startup must not wait for {resource}"
+            );
+        }
     }
     #[cfg(debug_assertions)]
     #[test]

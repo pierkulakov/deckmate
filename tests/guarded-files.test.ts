@@ -6,11 +6,11 @@ import path from 'node:path';
 import { applyAttachmentEdit, attachmentKey, decodeAttachment, maximumAttachmentBytes, readCardAttachments } from '../server/attachments.ts';
 import { assertCatalogCoverFile, decodeCatalogCover, storeCatalogCover } from '../server/catalog-covers.ts';
 import { createManagedBytes, readManagedMarkdown } from '../server/native-cards.ts';
-import { checkDirectories, checkGuardedFile, guardedDirectory, removeGuardedFile, type DirectoryGuard } from '../server/guarded-files.ts';
+import { checkDirectories, checkGuardedFile, guardedDirectory, removeGuardedFile, renameChecked, type DirectoryGuard } from '../server/guarded-files.ts';
 
 vi.mock('node:fs/promises', async importOriginal => {
   const actual = await importOriginal<typeof filesystem>();
-  return { ...actual, open: vi.fn(actual.open), unlink: vi.fn(actual.unlink), lstat: vi.fn(actual.lstat), mkdir: vi.fn(actual.mkdir) };
+  return { ...actual, open: vi.fn(actual.open), unlink: vi.fn(actual.unlink), lstat: vi.fn(actual.lstat), mkdir: vi.fn(actual.mkdir), rename: vi.fn(actual.rename) };
 });
 
 const roots: string[] = [];
@@ -33,10 +33,55 @@ afterEach(async () => {
   vi.mocked(filesystem.unlink).mockReset().mockImplementation(actual.unlink);
   vi.mocked(filesystem.lstat).mockReset().mockImplementation(actual.lstat);
   vi.mocked(filesystem.mkdir).mockReset().mockImplementation(actual.mkdir);
+  vi.mocked(filesystem.rename).mockReset().mockImplementation(actual.rename);
   for (const root of roots.splice(0)) {
     if (path.dirname(root) !== path.resolve(tmpdir()) || !path.basename(root).startsWith('deckmate-guarded-')) throw new Error('Unexpected fixture cleanup target');
     await rm(root, { recursive: true, force: true });
   }
+});
+
+it('runs caller checks before atomic replacement and leaves the temporary file untouched on conflict', async () => {
+  const root = await fixture();
+  const target = path.join(root, 'target');
+  const temporary = path.join(root, 'temporary');
+  await writeFile(target, 'Original');
+  await writeFile(temporary, 'Replacement');
+  const conflict = new Error('Changed source');
+  const beforeRename = vi.fn().mockRejectedValueOnce(conflict).mockResolvedValue(undefined);
+  const attempts = vi.mocked(filesystem.rename);
+  await expect(renameChecked(temporary, target, { beforeRename })).rejects.toBe(conflict);
+  expect(attempts).not.toHaveBeenCalled();
+  expect(await readFile(target, 'utf8')).toBe('Original');
+  expect(await readFile(temporary, 'utf8')).toBe('Replacement');
+  await renameChecked(temporary, target, { beforeRename });
+  expect(beforeRename).toHaveBeenCalledTimes(2);
+  expect(attempts).toHaveBeenCalledExactlyOnceWith(temporary, target);
+  expect(await readFile(target, 'utf8')).toBe('Replacement');
+  await expect(readFile(temporary)).rejects.toMatchObject({ code: 'ENOENT' });
+});
+
+it.each([
+  { code: 'EPERM', retry: false }, { code: 'EIO', retry: true },
+  { code: 'EPERM', retry: true }, { code: 'EBUSY', retry: true }, { code: 'EACCES', retry: true },
+])('keeps rename retries bounded and opt-in for $code, retry=$retry', async ({ code, retry }) => {
+  const failure = Object.assign(new Error(code), { code });
+  const attempts = vi.mocked(filesystem.rename).mockRejectedValue(failure);
+  const beforeRename = vi.fn().mockResolvedValue(undefined);
+  await expect(renameChecked('temporary', 'target', { beforeRename, retryWindowsRename: retry })).rejects.toBe(failure);
+  const count = retry && process.platform === 'win32' && code !== 'EIO' ? 5 : 1;
+  expect(attempts).toHaveBeenCalledTimes(count);
+  expect(beforeRename).toHaveBeenCalledTimes(count);
+});
+
+it('does not retry a conflict discovered after a transient rename failure', async () => {
+  const sharing = Object.assign(new Error('Sharing violation'), { code: 'EPERM' });
+  const conflict = new Error('Changed source');
+  const attempts = vi.mocked(filesystem.rename).mockRejectedValue(sharing);
+  const beforeRename = vi.fn().mockResolvedValueOnce(undefined).mockRejectedValue(conflict);
+  await expect(renameChecked('temporary', 'target', { beforeRename, retryWindowsRename: true }))
+    .rejects.toBe(process.platform === 'win32' ? conflict : sharing);
+  expect(attempts).toHaveBeenCalledTimes(1);
+  expect(beforeRename).toHaveBeenCalledTimes(process.platform === 'win32' ? 2 : 1);
 });
 
 type Writer = 'attachment' | 'cover' | 'native';

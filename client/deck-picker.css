@@ -43,15 +43,16 @@
 .deck-choice-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .deck-choice-kind { flex-shrink: 0; }
 .deck-choice-current { flex-shrink: 0; margin-left: auto; color: inherit; font-size: 12px; line-height: 14px; }
-.deck-choice-hint { flex-shrink: 0; margin: 0; padding: 0 16px 8px; color: var(--edit-hint); font-size: 12px; line-height: 20px; }
+.deck-choice-hint { display: flex; flex-wrap: wrap; align-items: center; column-gap: var(--kbd-gap); flex-shrink: 0; margin: 0; padding: 0 16px 8px; color: var(--edit-hint); font-size: 12px; line-height: 20px; }
 /* 2026-11-11: no padding on the right — the trailing period must hug the word; the min-width target grows to the left. */
 .deck-choice-confirm { height: 24px; margin: -3px 0; padding: 0 0 0 8px; border: 0; border-radius: var(--control-radius); background: transparent; color: var(--button-ink, var(--ink)); font-size: 12px; font-weight: 500; line-height: 14px; letter-spacing: .01em; text-align: right; vertical-align: middle; }
 @media (hover: hover) { .deck-choice-confirm:hover:not(:disabled) { background: var(--hover); } }
 @media (prefers-reduced-motion: reduce) { .deck-picker-popover { animation: none; } .deck-choice-option { transition: none; } }
 
 /* 2026-11-10: keyboard focus uses the shared app ring. */
-.deck-choice-hint kbd { display: inline-block; min-width: 0; height: auto; padding: 1px 2px; border: var(--control-hairline) solid var(--control-line); border-radius: var(--control-radius); background: transparent; color: inherit; font-family: 'Geist Mono', monospace; font-size: 10px; font-weight: 500; line-height: 10px; text-transform: uppercase; box-shadow: none; }
-.deck-choice-confirm { min-width: 58px; }
+.deck-choice-hint kbd { min-width: 0; height: 14px; padding: 1px 2px; border: var(--control-hairline) solid var(--control-line); border-radius: var(--control-radius); background: transparent; color: inherit; font-family: 'Geist Mono', monospace; font-size: 10px; font-weight: 500; line-height: 10px; text-transform: uppercase; box-shadow: none; }
+/* The sentence's final period is a separate flex item: cancel only the gap after the button so it hugs the label. */
+.deck-choice-confirm { min-width: 58px; margin-right: calc(-1 * var(--kbd-gap)); }
 @media (pointer: coarse) {
   .deck-picker-pill, .deck-picker-open, .deck-choice-search, .deck-choice-option, .deck-choice-confirm { min-height: var(--control-target-touch); }
   .deck-picker-pill, .deck-picker-open { min-width: var(--control-target-touch); }

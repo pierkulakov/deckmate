@@ -1,11 +1,9 @@
 import type { WarmupQueue } from './first-screen-warmup.ts';
 
-// 2026-11-10: variable faces cover their entire weight range, but unicode subsets and the two fixed Geist faces
-// are separate resources. Loading only the initial Latin sans face leaves the first editor/picker changing fonts.
+// 2026-11-12: the editor face is loaded by the editor, not by the gallery's idle work.
 const interfaceFonts = [
   ...[400, 500, 600, 700].map(weight => ({ font: `${weight} 14px "Source Sans 3"`, sample: 'Deckmate Карточка' })),
   ...[400, 500].map(weight => ({ font: `${weight} 14px "Geist Mono"`, sample: '0123456789' })),
-  ...[400, 500, 600].map(weight => ({ font: `${weight} 14px "Roboto Mono Variable"`, sample: 'Markdown Карточка' })),
 ];
 
 export function warmInterfaceFonts(queue: WarmupQueue) {

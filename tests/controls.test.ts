@@ -23,11 +23,10 @@ describe.skipIf(!browserPath)('hairline controls and keyboard-only focus (browse
   }
 
   async function open(theme: 'dark' | 'light' = 'dark') {
-    await page.send('Page.navigate', { url: browserFixtureUrl('controls') + '?instance=' + Math.random() });
-    await until('Boolean(window.controlsTest)');
-    await page.evaluate(`controlsTest.render(${JSON.stringify({ theme })})`);
-    await until(`Boolean(document.querySelector('#close'))`);
-    await page.evaluate('document.fonts.ready');
+    await page.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 0, y: 0, buttons: 0 });
+    await page.evaluate(`window.previousControl = document.querySelector('#close'); controlsTest.render(${JSON.stringify({ theme })})`);
+    await until(`Boolean(document.querySelector('#close') && document.querySelector('#close') !== window.previousControl)`);
+    await page.evaluate('window.scrollTo(0, 0); document.fonts.ready');
   }
 
   async function center(selector: string) {
@@ -45,7 +44,6 @@ describe.skipIf(!browserPath)('hairline controls and keyboard-only focus (browse
     await page.send('Input.dispatchMouseEvent', { type: 'mouseMoved', ...point, buttons: 0 });
     await page.send('Input.dispatchMouseEvent', { type: 'mousePressed', ...point, button: 'left', buttons: 1, clickCount: 1 });
     await page.send('Input.dispatchMouseEvent', { type: 'mouseReleased', ...point, button: 'left', buttons: 0, clickCount: 1 });
-    await delay(50);
   }
 
   async function press(key: 'Tab' | 'Enter' | 'Escape', shift = false) {
@@ -54,7 +52,6 @@ describe.skipIf(!browserPath)('hairline controls and keyboard-only focus (browse
       await page.send('Input.dispatchKeyEvent', { type, key, code: key, windowsVirtualKeyCode: codes[key], modifiers: shift ? 8 : 0,
         text: type === 'keyDown' && key === 'Enter' ? '\r' : undefined });
     }
-    await delay(50);
   }
 
   /** The focused element, whether it shows the keyboard ring, and how many rings or field edges mark it. */
@@ -88,6 +85,8 @@ describe.skipIf(!browserPath)('hairline controls and keyboard-only focus (browse
 
   beforeAll(async () => {
     page = await openHeadlessBrowser({ width: 900, height: 700, scale: 1 });
+    await page.send('Page.navigate', { url: browserFixtureUrl('controls') });
+    await until('Boolean(window.controlsTest)');
   }, 60000);
   afterAll(async () => { await page?.close(); }, 20000);
 
@@ -234,7 +233,7 @@ describe.skipIf(!browserPath)('hairline controls and keyboard-only focus (browse
       for (const [first, second] of [['#outline', '#ghost'], ['#button-outline', '#button-ghost'],
         ['#segment-a', '#segment-b'], ['#menu-a', '#menu-b']]) {
         await hover('#first');
-        await delay(150);
+        await until(`!document.querySelector(${JSON.stringify(first)}).matches(':hover')`);
         const idle = await styleOf(first);
         const geometry = await page.evaluate(`(() => { const e = document.querySelector(${JSON.stringify(first)}); const r = e.getBoundingClientRect(); const s = getComputedStyle(e); return [r.x, r.y, r.width, r.height, s.fontWeight, s.borderTopWidth]; })()`);
         await hover(first);
@@ -455,7 +454,7 @@ describe.skipIf(!browserPath)('hairline controls and keyboard-only focus (browse
     const point = await center('#close');
     await page.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [point] });
     await page.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
-    await delay(100);
+    await until(`document.activeElement.id === 'opener'`);
     expect(await focusState()).toMatchObject({ id: 'opener', visible: false, rings: [] });
     await page.send('Emulation.setTouchEmulationEnabled', { enabled: false });
   });

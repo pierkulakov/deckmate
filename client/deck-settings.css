@@ -95,7 +95,8 @@
 }
 @media (max-width: 540px) {
   .deck-settings-dialog { height: calc(100dvh - 24px); width: calc(100vw - 24px); }
-  .deck-settings-layout { display: flex; flex-direction: column; }
+  /* 2026-11-12: the stacked fields use the column width rather than their intrinsic input width. */
+  .deck-settings-layout { display: flex; flex-direction: column; align-items: stretch; }
   .deck-settings-main { flex: none; }
   .deck-settings-fields { flex: none; overflow: visible; }
   .deck-settings-picker { flex: none; min-height: 0; }

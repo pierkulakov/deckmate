@@ -105,7 +105,7 @@ jobs:
           DRY_RUN: ${{ steps.release.outputs.dry_run }}
           RELEASE_TAG: ${{ steps.release.outputs.release_tag }}
         run: node desktop/scripts/github-release.mjs require-ci
-      - run: npm ci
+      - run: npm ci --prefer-offline
       - run: npm run build
       - name: Pack release
         id: package
@@ -146,13 +146,15 @@ jobs:
         with:
           node-version-file: package.json
           cache: npm
-          cache-dependency-path: package-lock.json
+          cache-dependency-path: |
+            package-lock.json
+            desktop/package-lock.json
       - name: Use the preflight release version
         id: desktop
         env:
           VERSION: ${{ needs.preflight.outputs.version }}
         run: Add-Content -Path $env:GITHUB_OUTPUT -Value "version=$env:VERSION"
-      - run: npm ci
+      - run: npm ci --prefer-offline
       - name: Show the pinned Rust toolchain
         working-directory: desktop/src-tauri
         run: |
@@ -167,7 +169,7 @@ jobs:
         run: node desktop/scripts/prepare-sidecar.mjs
       - name: Install desktop dependencies
         working-directory: desktop
-        run: npm ci
+        run: npm ci --prefer-offline
       - name: Check updater signing secrets
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}

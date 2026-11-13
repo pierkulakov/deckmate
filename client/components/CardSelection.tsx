@@ -11,6 +11,8 @@ import { BulkActions } from './BulkActions.tsx';
 import { Button } from './ui/button.tsx';
 import { ALL_SHORTCUTS, BULK_SHORTCUTS, matchShortcut, resolveHoveredCardShortcut, shortcutTargetBlocked } from '../keyboard-shortcuts.ts';
 import { failureMessage } from '../failure-message.ts';
+import { copyText } from '../clipboard.ts';
+import { formatShortcut, shortcutAria, shortcutDisplay } from '../shortcut-format.ts';
 import '../card-selection.css';
 
 const text = defineText({
@@ -21,9 +23,10 @@ const text = defineText({
   saveFailed: "Could not save changes. Your card selection was kept.",
   actions: "Selected card actions",
   clear: "Clear selection",
-  clearHint: "Clear selection · Escape",
   selectedHint: (count: string, total: string) => `${count} of ${total} shown selected`,
-  selectAllHint: "Select all shown cards · Ctrl/Cmd+A",
+  selectAllHint: "Select all shown cards",
+  selectAllKeys: "Ctrl/Cmd+A",
+  escapeKey: "Escape",
   selectionActions: "Selection actions",
   limit: "Limit: 1,000 cards",
   compatibleDecks: "Decks compatible with all selected cards are shown.",
@@ -42,9 +45,10 @@ const text = defineText({
   saveFailed: "Не удалось сохранить изменения. Выбор карточек сохранён.",
   actions: "Действия с выбранными карточками",
   clear: "Снять выбор",
-  clearHint: "Снять выбор · Escape",
   selectedHint: (count: string, total: string) => `Выбрано ${count} из ${total} показанных`,
-  selectAllHint: "Выбрать все показанные карточки · Ctrl/Cmd+A",
+  selectAllHint: "Выбрать все показанные карточки",
+  selectAllKeys: "Ctrl/Cmd+A",
+  escapeKey: "Escape",
   selectionActions: "Действия с выделением",
   limit: "Лимит — 1000 карточек",
   compatibleDecks: "Показаны колоды, совместимые со всеми выбранными карточками.",
@@ -229,8 +233,8 @@ export function SelectionToolbar({ selectedCards, source, catalog, totalShown, p
     if (busy || selected.length === 0) return;
     setActionError('');
     const text = selected.map(card => `${card.title.replace(/\s+/gu, ' ').trim()} — ${location.origin}/r/${shortReference('c', card.id)}?source=${source}`).join('\n');
-    try { await navigator.clipboard.writeText(text); setCopyCount(selected.length); setCopyState('copied'); }
-    catch { setCopyState('error'); }
+    if (await copyText(text)) { setCopyCount(selected.length); setCopyState('copied'); }
+    else setCopyState('error');
   }
 
   async function moveCards(target: string | null) {
@@ -254,13 +258,13 @@ export function SelectionToolbar({ selectedCards, source, catalog, totalShown, p
   if (selected.length === 0) return null;
   return <section className="card-selection-toolbar card-selection-bar" aria-label={t.actions} aria-busy={busy}>
     <div className="card-selection-core">
-      <Button type="button" variant="ghost" size="icon" className="card-selection-clear" disabled={busy} onClick={onClear} aria-label={t.clear} title={t.clearHint}><X size={17} /></Button>
+      <Button type="button" variant="ghost" size="icon" className="card-selection-clear" disabled={busy} onClick={onClear} aria-label={t.clear} title={`${t.clear} · ${shortcutDisplay({ key: 'Escape' }, t.escapeKey)}`}><X size={17} /></Button>
       <strong className="card-selection-count" aria-live="polite" title={t.selectedHint(amount(selected.length), amount(totalShown))}>{t.selected} <span>{amount(selected.length)}</span></strong>
-      <Button type="button" variant="outline" size="sm" className="card-selection-all" disabled={busy || selected.length >= totalShown} onClick={onSelectAll} aria-keyshortcuts="Control+A Meta+A" title={t.selectAllHint}>{t.uiSelectAll}</Button>
+      <Button type="button" variant="outline" size="sm" className="card-selection-all" disabled={busy || selected.length >= totalShown} onClick={onSelectAll} aria-keyshortcuts="Control+A Meta+A" title={`${t.selectAllHint} · ${shortcutDisplay({ key: 'KeyA', modifiers: ['primary'] }, t.selectAllKeys)}`}>{t.uiSelectAll}</Button>
       <span className="card-selection-divider" aria-hidden="true" />
       <div className="card-selection-buttons" role="group" aria-label={t.selectionActions}>
         {canWrite && <DropdownMenu.Root modal={false} open={openMenu === 'move'} onOpenChange={open => { setOpenMenu(open ? 'move' : null); if (open) setActionError(''); }}>
-          <DropdownMenu.Trigger asChild><Button type="button" variant="ghost" size="icon" disabled={mutationDisabled} aria-label={t.uiMoveToDeck} aria-keyshortcuts={bulkMoveShortcut?.keys} title={exceedsBulkLimit ? t.limit : t.uiMoveToDeck + ' · ' + (bulkMoveShortcut?.keys ?? '')}>{running ? <LoaderCircle className="spin" size={17} /> : <Layers size={17} />}</Button></DropdownMenu.Trigger>
+          <DropdownMenu.Trigger asChild><Button type="button" variant="ghost" size="icon" disabled={mutationDisabled} aria-label={t.uiMoveToDeck} aria-keyshortcuts={bulkMoveShortcut && shortcutAria(bulkMoveShortcut.combo)} title={exceedsBulkLimit ? t.limit : t.uiMoveToDeck + (bulkMoveShortcut ? ' · ' + formatShortcut(bulkMoveShortcut.combo).display : '')}>{running ? <LoaderCircle className="spin" size={17} /> : <Layers size={17} />}</Button></DropdownMenu.Trigger>
           <DropdownMenu.Portal><DropdownMenu.Content className="card-selection-menu dialog-panel" align="start" sideOffset={7} collisionPadding={12} aria-label={t.uiMoveToDeck} onEscapeKeyDown={event => { event.preventDefault(); setOpenMenu(null); }}>
             <DropdownMenu.Label className="card-selection-menu-heading">{t.moveCount(selected.length)}</DropdownMenu.Label>
             <p className="card-selection-menu-hint">{t.compatibleDecks}</p>

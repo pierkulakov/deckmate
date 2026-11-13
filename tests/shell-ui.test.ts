@@ -3,6 +3,8 @@ import { createBrowserSession } from './browser-session.ts';
 import { requireBrowser } from './browser-environment.ts';
 import { expectPageStateDuring, waitForLayout } from './browser-layout.ts';
 import { version } from '../package.json';
+import { mkdirSync, writeFileSync } from 'node:fs';
+import path from 'node:path';
 
 const browserPath = requireBrowser();
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
@@ -106,6 +108,77 @@ describe.skipIf(!browserPath)('application shell (browser)', () => {
   afterAll(async () => {
     await session.close();
   }, 20000);
+
+  it('does not fetch unused sections or editors while the gallery is idle', async () => {
+    await until(`Boolean(document.querySelector('.catalog-spaces'))`);
+    await expectPageStateDuring(evaluate, `!performance.getEntriesByType('resource').some(entry => ['Vision-', 'TimelineView-', 'CardPreview-', 'CardComposer-', 'JourneyEditor-'].some(prefix => entry.name.split('/').pop().startsWith(prefix)))`, 4000);
+    expect(session.errors).toEqual([]);
+  }, 15000);
+
+  it('keeps the deck panel visible until the cold composer and its styles are ready', async () => {
+    await render('app', { deck: true }, 1280);
+    await until(`Boolean(document.querySelector('.deck-action-rail button[aria-label="New card"]'))`);
+    await send('Network.enable');
+    await send('Network.emulateNetworkConditions', { offline: false, latency: 350, downloadThroughput: -1, uploadThroughput: -1 });
+    try {
+      await evaluate(`document.querySelector('.deck-action-rail button[aria-label="New card"]').click()`);
+      await expectPageStateDuring(evaluate, `(() => {
+        const panel = document.querySelector('.catalog-content-layout');
+        return panel && getComputedStyle(panel).display !== 'none'
+          && (!panel.querySelector('.catalog-preview-slot') || Boolean(panel.querySelector('.card-composer .card-edit-text')));
+      })()`, 700);
+      await until(`Boolean(document.querySelector('.card-composer .card-edit-text'))`);
+    } finally {
+      await send('Network.emulateNetworkConditions', { offline: false, latency: 0, downloadThroughput: -1, uploadThroughput: -1 });
+    }
+    expect(session.errors).toEqual([]);
+  });
+
+  it('cancels an intent warmup when New card opens without stealing editor focus', async () => {
+    await render('app', { deck: true }, 1280);
+    await until(`Boolean(document.querySelector('.deck-action-rail button[aria-label="New card"]'))`);
+    await evaluate(`(() => { const button = document.querySelector('.deck-action-rail button[aria-label="New card"]'); button.focus(); button.click(); })()`);
+    await until(`Boolean(document.querySelector('.card-composer .card-edit-text'))`);
+    await until(`document.activeElement === document.querySelector('.card-composer .card-edit-text') && !document.querySelector('[data-interface-warmup]')`);
+    expect(session.errors).toEqual([]);
+  });
+
+  it('centres both kinds of keycap without text-box or block alignment', async () => {
+    await render('app', {}, 1280);
+    await click('.shortcuts-help-trigger');
+    await until(`Boolean(document.querySelector('.shortcuts-panel-key'))`);
+    const result = await evaluate(`(() => {
+      const removed = [];
+      for (const sheet of document.styleSheets) {
+        let rules;
+        try { rules = sheet.cssRules; } catch { continue; }
+        for (let index = rules.length - 1; index >= 0; index--) {
+          const rule = rules[index];
+          if (rule instanceof CSSSupportsRule && rule.conditionText.includes('text-box')) {
+            removed.push({ sheet, index, css: rule.cssText }); sheet.deleteRule(index);
+          }
+        }
+      }
+      const probe = document.createElement('kbd'); probe.textContent = 'N'; document.body.append(probe);
+      try {
+        const measure = element => {
+          const range = document.createRange(); range.selectNodeContents(element);
+          const box = element.getBoundingClientRect(), text = range.getBoundingClientRect();
+          return { display: getComputedStyle(element).display, offset: Math.abs((text.top + text.bottom - box.top - box.bottom) / 2) };
+        };
+        return { removed: removed.length, key: measure(probe), shortcut: measure(document.querySelector('.shortcuts-panel-key')) };
+      } finally {
+        probe.remove();
+        for (const item of removed.reverse()) item.sheet.insertRule(item.css, item.index);
+      }
+    })()`);
+    expect(result.removed).toBeGreaterThan(0);
+    expect(result.key.display).toBe('inline-flex');
+    expect(result.shortcut.display).toBe('flex');
+    expect(result.key.offset).toBeLessThan(2);
+    expect(result.shortcut.offset).toBeLessThan(2);
+    await key('Escape');
+  });
 
   it('C02 keeps notifications out of the workspace until requested and restores the entry focus', async () => {
     await render('app', { notifications: true }, 375);
@@ -364,6 +437,56 @@ describe.skipIf(!browserPath)('application shell (browser)', () => {
     });
   });
 
+  it('reserves touch targets for header tools and short search results above the phone breakpoint', async () => {
+    await inTouchMode(async () => {
+      for (const width of [820, 1700]) {
+        await render('app', { lang: 'ru', notifications: true }, width);
+        await until(`Boolean(document.querySelector('.topbar-shortcuts button'))`);
+        const layout = await evaluate(`(() => {
+          const tools = [...document.querySelectorAll('.topbar-actions > button, .topbar-shortcuts, .global-search')]
+            .map(el => el.getBoundingClientRect()).filter(r => r.width > 0);
+          return { targets: tools.every(r => r.width >= 44 && r.height >= 44),
+            separated: tools.every((r, i) => tools.slice(i + 1).every(s => r.right <= s.left || s.right <= r.left || r.bottom <= s.top || s.bottom <= r.top)),
+            tabs: [...document.querySelectorAll('.global-tabs button')].every(el => el.getBoundingClientRect().height >= 44) };
+        })()`);
+        expect(layout).toEqual({ targets: true, separated: true, tabs: true });
+        await search('gd:tasks');
+        await until(`Boolean(document.querySelector('.global-search-nav'))`);
+        await waitForLayout(evaluate, '.global-search-pop');
+        expect(await evaluate(`(() => {
+          const row = document.querySelector('.global-search-nav').getBoundingClientRect();
+          const field = document.querySelector('.global-search-field').getBoundingClientRect();
+          const pop = document.querySelector('.global-search-pop').getBoundingClientRect();
+          return row.height >= 44 && pop.top >= field.bottom;
+        })()`)).toBe(true);
+        await key('Escape');
+      }
+    });
+  });
+
+  it('anchors quick capture below either header layout and keeps its actions visible in a short touch window', async () => {
+    await inTouchMode(async () => {
+      for (const width of [375, 820, 1700]) {
+        await render('app', { lang: 'ru' }, width);
+        await send('Emulation.setDeviceMetricsOverride', { width, height: 600, deviceScaleFactor: 1, mobile: false });
+        await click('.quick-capture-trigger');
+        await until(`Boolean(document.querySelector('.quick-capture-input:not(:disabled)'))`);
+        await waitForLayout(evaluate, '.quick-capture-panel');
+        const layout = await evaluate(`(() => {
+          const box = selector => document.querySelector(selector).getBoundingClientRect();
+          const panel = box('.quick-capture-panel'), head = box('.global-topbar'), foot = box('.quick-capture-footer');
+          const body = document.querySelector('.quick-capture-body');
+          return { clearsHeader: panel.top >= head.bottom + 8, fits: panel.bottom <= innerHeight - 12,
+            actionsVisible: foot.top >= panel.top && foot.bottom <= panel.bottom,
+            scrolls: body.scrollHeight > body.clientHeight, noOverflow: panel.left >= 0 && panel.right <= innerWidth };
+        })()`);
+        expect(layout).toEqual({ clearsHeader: true, fits: true, actionsVisible: true, scrolls: true, noOverflow: true });
+        await key('Escape');
+        await until(`!document.querySelector('.quick-capture-panel') && document.activeElement.matches('.quick-capture-trigger')`);
+      }
+    });
+  });
+
   it('global search shares the recessed field and dialog frame at desktop and phone widths', async () => {
     for (const width of [375, 1440]) {
       await render('app', {}, width);
@@ -462,6 +585,90 @@ describe.skipIf(!browserPath)('application shell (browser)', () => {
       expect(await evaluate(`document.activeElement.matches('.server-status')`)).toBe(true);
     }
   });
+
+  it('keeps every server state identifiable without color or motion and names its visible label', async () => {
+    const labels: Record<string, Record<string, [string, string]>> = {
+      en: { live: ['Live', 'Live'], saving: ['Saving…', 'Saving changes…'], saved: ['Saved', 'Saved'],
+        reconnecting: ['Connecting…', 'Reconnecting…'], offline: ['Offline', 'Server stopped'] },
+      ru: { live: ['На связи', 'На связи'], saving: ['Сохраняю…', 'Сохраняю изменения…'], saved: ['Сохранено', 'Сохранено'],
+        reconnecting: ['Подключаюсь…', 'Переподключение…'], offline: ['Нет связи', 'Сервер остановлен'] },
+    };
+    async function checkState(state: string) {
+      for (const width of [861, 900, 1280, 375]) {
+        await send('Emulation.setDeviceMetricsOverride', { width, height: 800, deviceScaleFactor: 1, mobile: false });
+        if (width === 375) {
+          await until(`!document.querySelector('.breadcrumb .server-status')`);
+          await click('.mission-control-trigger');
+          await until(`Boolean(document.querySelector('.mission-control .server-status'))`);
+        } else await until(`Boolean(document.querySelector('.breadcrumb .server-status'))`);
+        for (const theme of ['light', 'dark']) {
+          await evaluate(`document.documentElement.classList.toggle('dark', ${theme === 'dark'})`);
+          for (const lang of ['en', 'ru']) {
+            const [chip, detail] = labels[lang][state];
+            const name = chip === detail ? chip : `${chip} — ${detail}`;
+            await evaluate(`window.shellTest.setLang(${JSON.stringify(lang)})`);
+            // 2026-11-13: "Saved" lasts 1.6 s, shorter than sixteen layout checks on a slow runner; restart it per check.
+            if (state === 'saved') {
+              await evaluate('window.shellTest.startSave(0)');
+              await until(`Boolean(document.querySelector('.server-status.is-saved'))`);
+            }
+            await until(`document.querySelector('.server-status')?.getAttribute('aria-label') === ${JSON.stringify(name)}`);
+            const result = await evaluate(`(() => {
+              const button = document.querySelector('.server-status');
+              const label = button.querySelector('.server-status-labels .is-active');
+              const box = button.getBoundingClientRect(), text = label.getBoundingClientRect();
+              const tabs = document.querySelector('.global-tabs'), canvas = document.createElement('canvas').getContext('2d');
+              const tabsFit = tabs.scrollWidth <= tabs.clientWidth && [...tabs.querySelectorAll('button')].every(tab => {
+                const style = getComputedStyle(tab); canvas.font = style.font;
+                return canvas.measureText(tab.textContent).width <= tab.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
+              });
+              return { state: button.classList.contains('is-${state}'), name: button.getAttribute('aria-label'),
+                live: document.querySelector('.server-status-slot [role="status"]').textContent,
+                label: label.textContent, shown: text.width > 0 && getComputedStyle(label).opacity === '1',
+                fits: box.left >= 0 && box.right <= innerWidth && (!text.width || text.left >= box.left && text.right <= box.right),
+                tabsFit, overflow: document.documentElement.scrollWidth > innerWidth };
+            })()`);
+            expect(result).toEqual({ state: true, name, live: detail, label: chip,
+              shown: width === 1280 || width === 375 || state !== 'live', fits: true, tabsFit: true, overflow: false });
+            if (width === 1280 && theme === 'dark') {
+              const document = await send('DOM.getDocument');
+              const button = await send('DOM.querySelector', { nodeId: document.root.nodeId, selector: '.server-status' });
+              const tree = await send('Accessibility.getPartialAXTree', { nodeId: button.nodeId, fetchRelatives: false });
+              expect(tree.nodes.find((node: { role?: { value: string } }) => node.role?.value === 'button')?.name?.value).toBe(name);
+            }
+            if ([900, 1280].includes(width) && lang === 'ru' && ['live', 'reconnecting', 'offline'].includes(state) && process.env.DECKMATE_A11Y_SHOTS) {
+              await waitForLayout(evaluate, '.server-status');
+              mkdirSync(process.env.DECKMATE_A11Y_SHOTS, { recursive: true });
+              const image = await send('Page.captureScreenshot', { format: 'png' });
+              writeFileSync(path.join(process.env.DECKMATE_A11Y_SHOTS, `status-${state}-${theme}-${width}.png`), Buffer.from(image.data, 'base64'));
+            }
+          }
+        }
+        if (width === 375) await click('.mission-control-head button');
+      }
+      await send('Emulation.setDeviceMetricsOverride', { width: 900, height: 800, deviceScaleFactor: 1, mobile: false });
+      await until(`Boolean(document.querySelector('.breadcrumb .server-status'))`);
+    }
+    await send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: 'reduce' }] });
+    try {
+      await render('app', {}, 900);
+      await until(`Boolean(document.querySelector('.server-status.is-live'))`);
+      await checkState('live');
+      await evaluate('window.shellTest.startSave(4000)');
+      await until(`Boolean(document.querySelector('.server-status.is-saving'))`);
+      await checkState('saving');
+      await until(`Boolean(document.querySelector('.server-status.is-saved'))`);
+      await checkState('saved');
+      await until(`Boolean(document.querySelector('.server-status.is-live'))`);
+      await evaluate('window.shellTest.disconnect(true)');
+      await until(`Boolean(document.querySelector('.server-status.is-reconnecting'))`);
+      await checkState('reconnecting');
+      await until(`Boolean(document.querySelector('.server-status.is-offline'))`, 220);
+      await checkState('offline');
+    } finally {
+      await send('Emulation.setEmulatedMedia', { features: [] });
+    }
+  }, 45000);
 
   it('gallery: formerly piled decks are ordinary covers with no pile control', async () => {
     await render('app', {}, 1280);
@@ -659,6 +866,24 @@ describe.skipIf(!browserPath)('application shell (browser)', () => {
     }
   });
 
+  it('workspace: a scrolled phone menu keeps Close reachable and returns focus to the header', async () => {
+    await inTouchMode(async () => {
+      for (const theme of ['light', 'dark']) for (const lang of ['en', 'ru']) {
+        await workspace({ workspace: shortcutProjects, theme, lang }, 375);
+        await send('Emulation.setDeviceMetricsOverride', { width: 375, height: 600, deviceScaleFactor: 1, mobile: false });
+        await evaluate(`document.querySelector('.mission-control').scrollTop = 100000`);
+        const close = await evaluate(`(() => {
+          const menu = document.querySelector('.mission-control'), button = menu.querySelector('.mission-control-head button');
+          const r = button.getBoundingClientRect(), x = r.left + r.width / 2, y = r.top + r.height / 2;
+          return { x, y, reachable: r.top >= 0 && r.bottom <= innerHeight && button.contains(document.elementFromPoint(x, y)), scrolled: menu.scrollTop > 0 };
+        })()`);
+        expect(close.reachable && close.scrolled).toBe(true);
+        for (const type of ['mousePressed', 'mouseReleased']) await send('Input.dispatchMouseEvent', { type, x: close.x, y: close.y, button: 'left', clickCount: 1 });
+        await until(`!document.querySelector('.mission-control') && document.activeElement.matches('.mission-control-trigger')`);
+      }
+    });
+  });
+
   it('workspace: Ctrl+1…9 label the first nine rows in list order, the current row keeping its place', async () => {
     await workspace({ workspace: shortcutProjects }, 375);
     // The shell menu pins Ctrl+N to the Nth workspace entry, and the bridge returns that order, so the Nth row wears it.
@@ -669,18 +894,18 @@ describe.skipIf(!browserPath)('application shell (browser)', () => {
       const rows = [...document.querySelectorAll('.mission-control-workspace-row')];
       return [rows[0].querySelector('.mission-control-workspace-open').getAttribute('aria-keyshortcuts'),
         rows[2].querySelector('.mission-control-workspace-open').getAttribute('aria-current'),
-        rows[2].querySelector('.shortcuts-panel-key').textContent,
+        rows[2].querySelector('.shortcuts-panel-key').getAttribute('aria-hidden'),
         rows[9].querySelector('.mission-control-workspace-open').getAttribute('aria-keyshortcuts')];
-    })()`)).toEqual(['Control+1 Alt+ArrowUp Alt+ArrowDown', 'true', 'Ctrl+3', 'Alt+ArrowUp Alt+ArrowDown']);
+    })()`)).toEqual(['Control+1 Alt+ArrowUp Alt+ArrowDown', 'true', 'true', 'Alt+ArrowUp Alt+ArrowDown']);
     // The chip is the shortcuts window's keycap, and the tile windows spell the projects' initials in white.
     expect(await evaluate(`(() => {
-      const chip = getComputedStyle(document.querySelector('.shortcuts-panel-key'));
+      const chip = getComputedStyle(document.querySelector('.mission-control-workspace-row .shortcuts-panel-key'));
        const currentTile = document.querySelector('.mission-control-project > .mission-control-project-row .mission-control-recent-tile');
       const rowTile = document.querySelector('.mission-control-workspace-row .mission-control-recent-tile');
       const window = getComputedStyle(rowTile, '::before');
-       return [chip.textTransform, chip.borderTopStyle, currentTile,
+       return [chip.textTransform, chip.borderTopStyle, chip.backgroundImage, currentTile,
         rowTile.getAttribute('data-initials'), window.color, window.fontSize];
-     })()`)).toEqual(['uppercase', 'solid', null, 'ДР', 'rgb(255, 255, 255)', '10px']);
+     })()`)).toEqual(['uppercase', 'solid', 'none', null, 'ДР', 'rgb(255, 255, 255)', '10px']);
     // Phone width: the chip clears the remove button, the current mark and the two-line clamped name.
     expect(await workspaceLayoutFailures()).toEqual([]);
     await click('.mission-control-workspace-row:nth-child(3) .mission-control-workspace-open');
@@ -1144,6 +1369,42 @@ describe.skipIf(!browserPath)('application shell (browser)', () => {
     expect(await evaluate(`document.documentElement.scrollHeight === innerHeight`)).toBe(true);
   });
 
+  it('keeps composer band labels and priority icon within their controls', async () => {
+    const results = [];
+    for (const width of [375, 1280]) for (const theme of ['light', 'dark']) for (const lang of ['en', 'ru']) {
+      await render('app', { deck: true, theme, lang }, width);
+      await click(`.deck-action-rail button[aria-label="${lang === 'ru' ? 'Новая карточка' : 'New card'}"]`);
+      await until(`Boolean(document.querySelector('.card-composer-band'))`);
+      await waitForLayout(evaluate, '.card-composer-band');
+      if (process.env.COMPOSER_CAPTURE && width === 375 && lang === 'en') {
+        const image = await send('Page.captureScreenshot', { format: 'png' });
+        writeFileSync(path.join(process.env.COMPOSER_CAPTURE, `${theme}.png`), Buffer.from(image.data, 'base64'));
+      }
+      const measure = () => evaluate(`(() => {
+        const band = document.querySelector('.card-composer-band').getBoundingClientRect();
+        const buttons = [...document.querySelectorAll('.card-composer-band button')];
+        const boxes = buttons.map(button => button.getBoundingClientRect());
+        return { labels: buttons.map((button, i) => {
+          const label = button.firstElementChild, range = document.createRange(); range.selectNodeContents(label);
+          const rects = [...range.getClientRects()], box = boxes[i];
+          return rects.length === 1 && rects.every(r => r.left >= box.left - 1 && r.right <= box.right + 1 && r.top >= band.top && r.bottom <= band.bottom);
+        }), separated: boxes[0].right <= boxes[1].left, icon: buttons[1].querySelector('svg path')?.getAttribute('d'),
+          extraValue: Boolean(buttons[1].querySelector('strong')) };
+      })()`);
+      const unset = await measure();
+      await click('.card-composer-band button:last-child');
+      await until(`Boolean(document.querySelector('.card-composer-settings:not([hidden]) select'))`);
+      await evaluate(`(() => { const select = [...document.querySelectorAll('.card-composer-settings select')].find(e => [...e.options].some(o => o.value === 'high')); select.value = 'high'; select.dispatchEvent(new Event('change', { bubbles: true })); })()`);
+      const high = await measure();
+      results.push({ width, theme, lang, unset, high });
+      await evaluate(`(() => { const select = [...document.querySelectorAll('.card-composer-settings select')].find(e => [...e.options].some(o => o.value === 'high')); select.value = ''; select.dispatchEvent(new Event('change', { bubbles: true })); })()`);
+      await until(`document.querySelector('.card-composer-band button:last-child svg path')?.getAttribute('d') === 'M5 8h6'`);
+    }
+    for (const result of results) {
+      expect(result, JSON.stringify(result)).toMatchObject({ unset: { labels: [true, true], separated: true, icon: 'M5 8h6', extraValue: false }, high: { labels: [true, true], separated: true, icon: 'M3 2.5l5 3 5-3', extraValue: false } });
+    }
+  });
+
   it.each([375, 1280])('L-02/L-03/L-08: composer controls and deck search fit at %s px', async width => {
     for (const theme of ['light', 'dark']) for (const lang of ['ru', 'en']) {
       await render('app', { deck: true, theme, lang }, width);
@@ -1371,6 +1632,140 @@ describe.skipIf(!browserPath)('application shell (browser)', () => {
       }
       sample();
     })`)).toBe(1);
+  });
+
+  it.each(['light', 'dark'])('keeps the server status ends round during saves in the %s theme', async theme => {
+    for (const lang of ['en', 'ru']) {
+      await render('app', { theme, lang }, 1280);
+      await waitForLayout(evaluate, '.server-status-labels');
+      const samples = await evaluate(`new Promise(resolve => {
+        const button = document.querySelector('.server-status');
+        const face = button.querySelector('.server-status-face');
+        const middle = face.firstElementChild;
+        const dot = button.querySelector('.server-status-dot');
+        const result = [];
+        const start = performance.now();
+        window.shellTest.startSave(800);
+        function sample() {
+          const box = face.getBoundingClientRect(), center = middle.getBoundingClientRect();
+          const left = getComputedStyle(face, '::before'), right = getComputedStyle(face, '::after');
+          const matrix = new DOMMatrixReadOnly(right.transform);
+          const dotBox = dot.getBoundingClientRect();
+          result.push({ height: box.height, leftRadius: left.borderTopLeftRadius, rightRadius: right.borderTopRightRadius,
+            capWidth: parseFloat(right.width), capScale: matrix.a, capShift: matrix.e, join: center.right - (box.right + matrix.e - 11),
+            dotCenter: dotBox.y + dotBox.height / 2 - (box.y + box.height / 2) });
+          if (performance.now() - start < 350) requestAnimationFrame(sample);
+          else resolve(result);
+        }
+        requestAnimationFrame(sample);
+      })`);
+      expect(samples.length).toBeGreaterThan(3);
+      expect(Math.max(...samples.map((sample: { capShift: number }) => sample.capShift))
+        - Math.min(...samples.map((sample: { capShift: number }) => sample.capShift))).toBeGreaterThan(5);
+      for (const sample of samples) {
+        expect(sample.height).toBe(22);
+        expect(sample.leftRadius).toBe('11px'); expect(sample.rightRadius).toBe('11px');
+        expect(sample.capWidth).toBe(11); expect(sample.capScale).toBe(1);
+        expect(Math.abs(sample.join)).toBeLessThan(1);
+        expect(Math.abs(sample.dotCenter)).toBeLessThan(.1);
+      }
+      const insets = await evaluate(`(() => {
+        const button = document.querySelector('.server-status'), face = button.querySelector('.server-status-face');
+        const label = button.querySelector('.server-status-labels .is-active').getBoundingClientRect();
+        const cap = new DOMMatrixReadOnly(getComputedStyle(face, '::after').transform);
+        return { dot: button.querySelector('.server-status-dot').offsetLeft,
+          label: face.getBoundingClientRect().right + cap.e - label.right };
+      })()`);
+      expect(insets.dot).toBe(8); expect(insets.label).toBeCloseTo(8, 0);
+      await until(`Boolean(document.querySelector('.server-status.is-saved.is-pinged'))`);
+      expect(await evaluate(`getComputedStyle(document.querySelector('.server-status .server-status-dot'), '::after').animationName`)).toBe('server-status-arrive');
+      await evaluate('window.shellTest.startSave(200)');
+      await until(`Boolean(document.querySelector('.server-status.is-saving:not(.is-pinged)'))`);
+      await until(`Boolean(document.querySelector('.server-status.is-saved'))`);
+      await delay(1700);
+    }
+  });
+
+  it('keeps the dot-only server capsule compact and its touch target separate', async () => {
+    await inTouchMode(async () => {
+      for (const width of [1024, 1280, 375]) {
+        await render('app', {}, width);
+        if (width === 375) await click('.mission-control-trigger');
+        await until(`Boolean(document.querySelector('.server-status'))`);
+        await waitForLayout(evaluate, '.server-status');
+        const geometry = await evaluate(`(() => {
+          const button = document.querySelector('.server-status'), face = button.querySelector('.server-status-face');
+          const box = button.getBoundingClientRect(), faceBox = face.getBoundingClientRect();
+          const cap = new DOMMatrixReadOnly(getComputedStyle(face, '::after').transform);
+          const dot = button.querySelector('.server-status-dot').getBoundingClientRect();
+          const logo = document.querySelector('.mission-control-trigger').getBoundingClientRect();
+          return { width: box.width, height: box.height, faceHeight: faceBox.height, faceWidth: faceBox.width + cap.e,
+            dotCenter: dot.y + dot.height / 2 - (faceBox.y + faceBox.height / 2),
+            separate: box.right <= logo.left || logo.right <= box.left || box.bottom <= logo.top || logo.bottom <= box.top };
+        })()`);
+        expect(geometry.width).toBeGreaterThanOrEqual(44); expect(geometry.height).toBeGreaterThanOrEqual(44);
+        expect(geometry.faceHeight).toBe(22); expect(Math.abs(geometry.dotCenter)).toBeLessThan(.1);
+        expect(geometry.separate).toBe(true);
+        if (width === 1024) expect(geometry.faceWidth).toBeCloseTo(24, 1);
+      }
+    });
+  });
+
+  it('rehugs the server label when the responsive layout hides and restores it', async () => {
+    await render('app', { lang: 'ru' }, 1280);
+    for (const width of [1024, 1280]) {
+      await send('Emulation.setDeviceMetricsOverride', { width, height: 800, deviceScaleFactor: 1, mobile: false });
+      await waitForLayout(evaluate, '.server-status');
+      const geometry = await evaluate(`(() => {
+        const face = document.querySelector('.server-status-face');
+        const label = document.querySelector('.server-status-labels .is-active');
+        const right = face.getBoundingClientRect().right + new DOMMatrixReadOnly(getComputedStyle(face, '::after').transform).e;
+        return { width: right - face.getBoundingClientRect().left,
+          labelShown: getComputedStyle(label.parentElement).display !== 'none', inset: right - label.getBoundingClientRect().right };
+      })()`);
+      if (width === 1024) {
+        expect(geometry.labelShown).toBe(false);
+        expect(geometry.width).toBeCloseTo(24, 1);
+      } else {
+        expect(geometry.labelShown).toBe(true);
+        expect(geometry.inset).toBeCloseTo(8, 0);
+      }
+    }
+  });
+
+  it('highlights every part of the server capsule on hover', async () => {
+    await render('app', {}, 1280);
+    await waitForLayout(evaluate, '.server-status');
+    await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 0, y: 0 });
+    const background = `(() => { const face = document.querySelector('.server-status-face');
+      return [getComputedStyle(face, '::before').backgroundColor, getComputedStyle(face.firstElementChild).backgroundColor,
+        getComputedStyle(face, '::after').backgroundColor]; })()`;
+    const idle = await evaluate(background);
+    const point = await evaluate(`(() => { const r = document.querySelector('.server-status').getBoundingClientRect(); return { x: r.left + 10, y: r.top + r.height / 2 }; })()`);
+    await send('Input.dispatchMouseEvent', { type: 'mouseMoved', ...point });
+    const hover = await evaluate(background);
+    expect(new Set(hover).size).toBe(1);
+    expect(hover[0]).not.toBe(idle[0]);
+    await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 0, y: 0 });
+  });
+
+  it('honors reduced motion for the server capsule and ping', async () => {
+    await send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: 'reduce' }] });
+    try {
+      await render('app', {}, 1280);
+      await evaluate('window.shellTest.startSave(400)');
+      await until(`Boolean(document.querySelector('.server-status.is-saving'))`);
+      expect(await evaluate(`getComputedStyle(document.querySelector('.server-status .server-status-dot')).animationName`)).toBe('none');
+      await until(`Boolean(document.querySelector('.server-status.is-saved.is-pinged'))`);
+      expect(await evaluate(`(() => {
+        const face = document.querySelector('.server-status-face');
+        return { cap: getComputedStyle(face, '::after').transitionDuration,
+          middle: getComputedStyle(face.firstElementChild).transitionDuration,
+          ping: getComputedStyle(document.querySelector('.server-status .server-status-dot'), '::after').animationName };
+      })()`)).toEqual({ cap: '0s', middle: '0s', ping: 'none' });
+    } finally {
+      await send('Emulation.setEmulatedMedia', { features: [] });
+    }
   });
 
   it('has no uncaught browser errors', () => { expect(browserErrors.flat()).toEqual([]); });

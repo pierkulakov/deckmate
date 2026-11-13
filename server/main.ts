@@ -1,9 +1,12 @@
-import { createApp } from './app.ts';
+import * as module from 'node:module';
 import { loadConfig } from './config.ts';
 import { installShutdownHandlers } from './shutdown.ts';
 
+// 2026-11-12: the desktop sidecar runs this entry directly rather than passing through the CLI.
+module.enableCompileCache?.();
 const config = await loadConfig();
-const app = await createApp(config);
+const { createApp } = await import('./app.ts');
+const app = await createApp(config, { deferStartup: true });
 try {
   await app.listen({ host: config.host ?? '127.0.0.1', port: config.port });
 } catch (error) {

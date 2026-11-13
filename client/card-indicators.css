@@ -34,7 +34,7 @@
 .deck-card-face-meta { display: flex; flex-direction: column; flex: 0 0 auto; gap: 3px; min-width: 0; margin-top: auto; padding-top: 3px; color: var(--card-muted); }
 .deck-card-face-meta:empty { display: none; }
 /* 2026-11-11: a separate Hand row leaves the centered medallion clear without squeezing the status line. */
-.deck-card-hand-row { display: flex; align-items: center; min-height: 14px; }
+.deck-card-hand-row { display: flex; align-items: center; gap: 5px; min-height: 14px; }
 .hand-slot .deck-card-hand-row > .card-hand-indicator { display: none; }
 .card-face-status { display: flex; align-items: baseline; gap: 3px; min-width: 0; font-size: 10px; line-height: 14px; font-weight: 400; }
 .card-face-state { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

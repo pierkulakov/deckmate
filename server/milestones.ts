@@ -5,7 +5,7 @@ import { readProjectMarkdown } from './native-cards.ts';
 import { milestonesPath } from '../src/planning-files.ts';
 import { defineText, serverText } from './i18n.ts';
 import { invalidPlanning, validatePlanningDetails } from './run-model.ts';
-import { parseYamlFrontMatter } from './yaml-front-matter.ts';
+import { isPlainRecord, parseYamlFrontMatter } from './yaml-front-matter.ts';
 
 /** 2026-11-04: Milestones record key project dates in one registry, like Card Options. */
 
@@ -37,11 +37,6 @@ const digest = (bytes: Buffer) => createHash('sha256').update(bytes).digest('hex
 
 export interface MilestonesSource { hash: string; milestones: MilestoneRecord[]; warnings: string[] }
 
-function record(value: unknown): value is Record<string, unknown> {
-  return value !== null && typeof value === 'object' && !Array.isArray(value)
-    && [Object.prototype, null].includes(Object.getPrototypeOf(value));
-}
-
 export function parseMilestones(bytes: Buffer): MilestoneRecord[] {
   if (bytes.length > 1024 * 1024) throw new Error(serverText(milestoneText).sizeLimit);
   const { document } = parseYamlFrontMatter(bytes, {
@@ -49,12 +44,12 @@ export function parseMilestones(bytes: Buffer): MilestoneRecord[] {
     aliases: 'reject', aliasError: serverText(milestoneText).noAliases,
   });
   const metadata: unknown = document.toJS({ maxAliasCount: 0 });
-  if (!record(metadata) || metadata.schema !== 1 || !Array.isArray(metadata.milestones) || metadata.milestones.length > 1000) {
+  if (!isPlainRecord(metadata) || metadata.schema !== 1 || !Array.isArray(metadata.milestones) || metadata.milestones.length > 1000) {
     throw new Error(serverText(milestoneText).schema);
   }
   const identifiers = new Set<string>();
   const milestones = metadata.milestones.map((value: unknown) => {
-    if (!record(value) || Object.keys(value).some(key => !['id', 'title', 'date', 'color', 'projectSpecific', 'description', 'cover', 'history'].includes(key))) {
+    if (!isPlainRecord(value) || Object.keys(value).some(key => !['id', 'title', 'date', 'color', 'projectSpecific', 'description', 'cover', 'history'].includes(key))) {
       throw new Error(serverText(milestoneText).fields);
     }
     if (typeof value.id !== 'string' || !/^[a-z0-9][a-z0-9-]{0,79}$/u.test(value.id) || identifiers.has(value.id)) throw new Error(serverText(milestoneText).identifier);

@@ -5,7 +5,7 @@ import type { CatalogCard, CatalogDeck, CatalogMember, CardPriority } from '../.
 import { collectProjectTags, defaultTagColor, validTagName, type ProjectTag } from '../../src/project-tags.ts';
 import { TagSelectionList } from './TagPicker.tsx';
 import { TagBadge } from './CardTags.tsx';
-import { DeckHeaderHint } from './Deck.tsx';
+import { DeckHeaderHint } from './DeckHeaderHint.tsx';
 import { Button } from './ui/button.tsx';
 import { defineText, useLang, useText } from '../i18n.ts';
 import { priorityLabel } from '../locales/common.ts';

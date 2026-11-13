@@ -1,9 +1,18 @@
 // 2026-11-03: compact references are deterministic aliases, never authorization tokens.
 // Resolve against the catalog and reject ambiguity; full IDs remain canonical in files.
 import { defaultLang, defineText, type Lang } from './i18n.ts';
+import type { DataSource } from './workspace-contracts.ts';
 
 const text = defineText({ ambiguous: 'The short reference is ambiguous. Use the full ID.' },
   { ambiguous: 'Короткая ссылка неоднозначна. Используйте полный ID.' });
+
+export function cardLink(ref: string, source: DataSource, fragment?: string): string {
+  return `/r/${ref}?source=${source}${fragment ? `#${fragment}` : ''}`;
+}
+
+export function cardReferenceQuery(query: string): string {
+  return query.match(/\bc-[a-z0-9]{10}\b/u)?.[0] ?? query;
+}
 
 export function shortReference(kind: 'c' | 'p' | 'v', id: string): string {
   let hash = 14695981039346656037n;

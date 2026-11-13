@@ -1,4 +1,4 @@
-import { lstat, mkdir, open, realpath, unlink } from 'node:fs/promises';
+import { lstat, mkdir, open, realpath, rename, unlink } from 'node:fs/promises';
 import type { BigIntStats } from 'node:fs';
 import path from 'node:path';
 
@@ -20,6 +20,21 @@ export interface DirectoryGuard {
 
 export function sameIdentity(first: BigIntStats, second: BigIntStats): boolean {
   return first.dev === second.dev && first.ino === second.ino;
+}
+
+/** 2026-11-12: a transient Windows sharing failure never authorizes publication without fresh caller checks. */
+export async function renameChecked(temporary: string, filename: string,
+  options: { beforeRename?: () => Promise<void>; retryWindowsRename?: boolean } = {}): Promise<void> {
+  for (let attempt = 0; ; attempt += 1) {
+    await options.beforeRename?.();
+    try { await rename(temporary, filename); return; }
+    catch (error) {
+      const code = (error as NodeJS.ErrnoException).code;
+      if (!options.retryWindowsRename || process.platform !== 'win32'
+        || !['EPERM', 'EBUSY', 'EACCES'].includes(code ?? '') || attempt >= 4) throw error;
+      await new Promise(resolve => setTimeout(resolve, 25 * (attempt + 1)));
+    }
+  }
 }
 
 function samePath(first: string, second: string): boolean {

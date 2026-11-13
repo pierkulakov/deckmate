@@ -1,9 +1,8 @@
 /* ConfirmStrip: window.confirm replaced by an in-form strip (2026-11-05). Tokens come from styles.css; the calm
    two-button question follows the card-draft-banner. It replaces a footer row or sits inside a heading row. */
-.confirm-strip { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 4px 12px; min-height: 32px; margin: 0; padding: 5px 8px; border: 1px solid var(--line); border-radius: var(--glass-radius); background: var(--surface); color: var(--ink); animation: confirm-strip-in 160ms var(--ease-out); }
-.confirm-strip-question { margin: 0; font-size: 12px; font-weight: 600; line-height: 1.5; }
-.confirm-strip-actions { display: inline-flex; align-items: center; gap: 8px; }
-.confirm-strip .ui-button { height: 26px; padding: 0 10px; font-size: 11px; }
+.confirm-strip { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: var(--space-2) var(--space-3); min-height: 32px; margin: 0; padding: var(--space-2); border: 1px solid var(--line); border-radius: var(--glass-radius); background: var(--surface); color: var(--ink); animation: confirm-strip-in 160ms var(--ease-out); }
+.confirm-strip-question { min-width: 0; margin: 0; font-size: 12px; font-weight: 600; line-height: 1.5; overflow-wrap: anywhere; }
+.confirm-strip-actions { display: inline-flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: var(--space-2); min-width: 0; max-width: 100%; margin-inline-start: auto; }
 .confirm-strip-confirm.is-danger { border-color: var(--danger); color: var(--danger); }
 @media (hover: hover) { .confirm-strip-confirm.is-danger:hover:not(:disabled) { background: color-mix(in srgb, var(--danger) 12%, var(--surface)); } }
 .confirm-strip .ui-button:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }

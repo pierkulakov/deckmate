@@ -99,7 +99,7 @@ export default function VisionCardNode({ card, cardId, view, catalog, lookups, i
       <span className="deckmate-card-kind" aria-hidden="true">{kindLabel(card.kind, lang)}</span>
       <span className="vision-lane-main"><strong className="deckmate-card-title" title={card.title}>{card.title}</strong>
         <span className="deckmate-card-meta">{owner && <span className="deckmate-card-owner" title={owner}>{owner}</span>}<CardTags tags={card.tags} definitions={catalog?.projectTags} compact maxVisible={1} disabled={!interactive} /></span></span>
-      <CardMetrics card={card} lookups={lookups} showEffort={false} className="vision-card-priority-icon" /><CardFaceStatus status={status} />
+      <CardMetrics card={card} lookups={lookups} showEffort={false} className="vision-card-priority-icon" /><CardFaceStatus status={status} hideQuestions />
     </>}
     {view === 'mini' && <>
       <div className="deckmate-card-head">
@@ -107,7 +107,7 @@ export default function VisionCardNode({ card, cardId, view, catalog, lookups, i
         <strong className="deckmate-card-title" title={card.title}>{card.title}</strong>
       </div>
       <div className="deckmate-card-meta">
-        <CardFaceStatus status={status} hideWorkflow />
+        <CardFaceStatus status={status} hideWorkflow hideQuestions />
       </div>
       <div className={'deckmate-card-meta deckmate-card-foot' + (stateBand ? ' is-state-band' : '')}>
         {stateBand && <span className="deckmate-card-state-word">{stateLabel(stateBand, lang)}</span>}
@@ -123,7 +123,7 @@ export default function VisionCardNode({ card, cardId, view, catalog, lookups, i
         {interactive && <span className="deckmate-card-open"><ArrowUpRight size={12} />{t.open}</span>}
       </div>
       <div className="deckmate-card-meta">
-        <CardFaceStatus status={status} hideWorkflow />
+        <CardFaceStatus status={status} hideWorkflow hideQuestions />
         {deck && <span className="deckmate-card-deck" title={deck.title}>{deck.title}</span>}
         {owner && <span className="deckmate-card-owner" title={owner}>{owner}</span>}
       </div>

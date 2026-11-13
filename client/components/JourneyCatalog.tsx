@@ -209,6 +209,7 @@ export function JourneyCatalog({ catalog, deck, journey, disabled, source = 'san
   const [importing, setImporting] = useState(false);
   const results = useRef<HTMLDivElement>(null);
   const searchInput = useRef<HTMLInputElement>(null);
+  const catalogTitle = useRef<HTMLSpanElement>(null);
   const returningTo = useRef<string | null>(null);
   const selected = templates.find(template => templateKey(template) === selectedKey);
   const selectedText = selected && templateText(selected, lang);
@@ -229,7 +230,9 @@ export function JourneyCatalog({ catalog, deck, journey, disabled, source = 'san
     setSelectedKey(null);
   }
   useLayoutEffect(() => {
-    if (selectedKey || !returningTo.current) return;
+    if (selectedKey) return;
+    // 2026-11-12: the replaced opener must not leave focus on the dialog; a title avoids opening the phone keyboard.
+    if (!returningTo.current) { moveFocus(catalogTitle.current, { quiet: true }); return; }
     const key = returningTo.current;
     returningTo.current = null;
     const opener = [...(results.current?.querySelectorAll<HTMLButtonElement>('.journey-catalog-tile') ?? [])].find(button => button.dataset.templateKey === key);
@@ -246,7 +249,7 @@ export function JourneyCatalog({ catalog, deck, journey, disabled, source = 'san
       <nav className="journey-catalog-breadcrumbs" aria-label={t.templateNavigation}>
         <button type="button" className="control control-ghost" disabled={importing} aria-label={selected ? t.backToTemplates : t.backToJourney} onClick={selected ? backToTemplates : onBack}><ChevronLeft size={14} aria-hidden="true" />{selected ? t.templates : <><span className="journey-deck-icon" aria-hidden="true"><Layers size={11} /></span><span title={deck.title}>{deck.title}</span></>}</button>
         <ChevronRight size={14} aria-hidden="true" />
-        <span aria-current="page" title={selectedText?.title ?? t.templates}>{selectedText?.title ?? t.templates}</span>
+        <span ref={catalogTitle} tabIndex={-1} aria-current="page" title={selectedText?.title ?? t.templates}>{selectedText?.title ?? t.templates}</span>
       </nav>
       {journey && <JourneyOperationBadge journey={journey} />}
       {!selected && <label className="journey-catalog-search control-field"><input ref={searchInput} aria-label={t.templateSearch} type="search" value={search} placeholder={t.search} onChange={event => setSearch(event.target.value)} /><Search size={14} aria-hidden="true" /></label>}
@@ -283,7 +286,9 @@ function JourneyTemplateDetail({ catalog, deck, journey, template, disabled, sou
   const [saving, setSaving] = useState<'add' | 'replace' | null>(null);
   const [confirmReplace, setConfirmReplace] = useState<string | null>(null);
   const mappingId = useId();
+  const heading = useRef<HTMLHeadingElement>(null);
   const savingRef = useRef(false);
+  useLayoutEffect(() => { moveFocus(heading.current, { quiet: true }); }, []);
   const busy = disabled || saving !== null || !!journey?.pendingOperation;
   const zones = templateZones(template);
   const inspected = template.steps.find(step => step.id === inspectedId);
@@ -323,7 +328,7 @@ function JourneyTemplateDetail({ catalog, deck, journey, template, disabled, sou
   return <div className="journey-catalog-detail" aria-busy={saving !== null}>
     <div className="journey-catalog-detail-scroll">
       <header className="journey-catalog-detail-heading">
-        <div><h2>{localized.title}</h2><TemplateTags tags={template.tags} />{template.source === 'project' && <span className="journey-catalog-badge"><FolderOpen size={11} />{t.project}</span>}</div>
+        <div><h2 ref={heading} tabIndex={-1}>{localized.title}</h2><TemplateTags tags={template.tags} />{template.source === 'project' && <span className="journey-catalog-badge"><FolderOpen size={11} />{t.project}</span>}</div>
         <p><TemplateAuthor author={template.author} /><span>{t.lastUpdated}<time dateTime={template.updated}>{updatedLabel(template.updated, lang)}</time></span></p>
       </header>
       <p className="journey-catalog-description">{localized.description}</p>

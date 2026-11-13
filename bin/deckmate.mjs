@@ -6,6 +6,9 @@ if (majorVersion < 26) {
   console.error(`Deckmate requires Node.js 26 or newer; found ${process.versions.node}.`);
   process.exitCode = 1;
 } else {
+  // 2026-11-12: enable before importing the application graph; Node honors NODE_COMPILE_CACHE and its opt-out.
+  const { enableCompileCache } = await import('node:module');
+  enableCompileCache?.();
   // cli-entry.js needs only node:path and node:url, so it reports errors of every later import as one line.
   const { reportCliError } = await import('../dist/server/cli-entry.js');
   try {

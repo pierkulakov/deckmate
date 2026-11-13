@@ -1,6 +1,6 @@
 import { defineText, locale, useLang, useText } from '../i18n.ts';
 import { kindLabel, priorityLabel, stateLabel } from '../locales/common.ts';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { startTransition, Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowDownWideNarrow, Info, MoreHorizontal, Pencil, Pin, PinOff, Plus, Search, Trash2 } from 'lucide-react';
 import * as Dialog from '@radix-ui/react-dialog';
 import type { CatalogCard, CatalogView, MilestoneRecord, RunRecord } from '../../src/catalog-contracts.ts';
@@ -16,7 +16,8 @@ import { memberForOwner } from './CardOwnerAvatar.tsx';
 import { MilestoneForm, PlanningPopover } from './PlanningPopover.tsx';
 import { useConfirmStrip } from './ConfirmStrip.tsx';
 import { SelectionToolbar, useCardSelection } from './CardSelection.tsx';
-import { CardComposer } from './CardComposer.tsx';
+import { CardComposer, composerResource } from './card-composer-resource.ts';
+import { preload } from '../prepared-resource.ts';
 import { PlanningStats } from './PlanningStats.tsx';
 import { PlanningDetails } from './PlanningDetails.tsx';
 import { RunControls } from './RunControls.tsx';
@@ -213,6 +214,8 @@ export function PlanningScope({ title, subtitle, target, retainedPlan, cards, ca
   useEffect(() => () => onDirtyChange(false), [onDirtyChange]);
 
   function closeComposer() { setComposing(false); setComposerDirty(false); }
+  // 2026-11-12: keep the plan visible while the first editor import installs its styles.
+  function openComposer() { startTransition(() => setComposing(true)); }
 
   async function createInPlan(action: CatalogAction): Promise<boolean> {
     if (missingPlan || !writable || pending) return false;
@@ -307,7 +310,7 @@ export function PlanningScope({ title, subtitle, target, retainedPlan, cards, ca
   const filtered = Boolean(query || mine);
   const filteredMessage = mine ? t.filteredHint : t.noResults;
   const canAddCard = Boolean(target && target.kind !== 'dueDate' && writable && !mutationDisabled && !composing && catalog.decks.length);
-  const addCardAction = canAddCard ? { label: t.addCard, onClick: () => setComposing(true) } : undefined;
+  const addCardAction = canAddCard ? { label: t.addCard, onClick: openComposer } : undefined;
 
   return <section className="planning-collection" aria-label={title}>
     <header className="planning-collection-header">
@@ -340,9 +343,9 @@ export function PlanningScope({ title, subtitle, target, retainedPlan, cards, ca
       onMove={deckId => onEdit({ action: 'bulk-assign-deck', cards: selection.map(card => ({ cardId: card.id, sourceHash: card.sourceHash })), deckId })}
       onAddTrack={trackId => onEdit({ action: 'bulk-add-track', cards: selection.map(card => ({ cardId: card.id, sourceHash: card.sourceHash })), trackId })} />
     {createdId && <div className="notice" role="status">{attachFailed ? t.attachFailed : t.attaching}{attachFailed && <Button size="sm" variant="outline" disabled={pending} onClick={() => void attachCreated()}>{t.retry}</Button>}</div>}
-    <div className="planning-collection-body">
+    <Suspense><div className="planning-collection-body">
       <nav className="planning-rail deck-action-rail" aria-label={t.actions}>
-        {target && <Button variant="ghost" size="icon" aria-label={t.addToPlan} title={t.addCard} disabled={mutationDisabled || composing || !catalog.decks.length} onClick={() => setComposing(true)}><Plus size={18} /></Button>}
+        {target && <Button variant="ghost" size="icon" aria-label={t.addToPlan} title={t.addCard} disabled={mutationDisabled || composing || !catalog.decks.length} onPointerEnter={() => preload(composerResource)} onFocus={() => preload(composerResource)} onClick={openComposer}><Plus size={18} /></Button>}
         <Button variant="ghost" size="icon" aria-label={t.grouping} title={t.grouping} aria-pressed={ordering} onClick={() => setOrdering(value => !value)}><ArrowDownWideNarrow size={18} /></Button>
       </nav>
       {(information || composing) && <aside className="planning-details">
@@ -369,7 +372,7 @@ export function PlanningScope({ title, subtitle, target, retainedPlan, cards, ca
           ? <EmptyState variant="filtered" art="no-results" title={t.filteredTitle} message={filteredMessage} onReset={() => { setQuery(''); setMine(false); }} />
           : <EmptyState variant="first-run" art="first-card" title={t.empty} message={t.emptyHint} action={addCardAction} />)}
       </div>
-    </div>
+    </div></Suspense>
     <Dialog.Root open={Boolean(deletion)} onOpenChange={open => { if (!open && !pending) setDeletion(null); }}><Dialog.Portal><Dialog.Overlay className="planning-calendar-overlay" /><Dialog.Content className="planning-calendar planning-delete-dialog dialog-panel">
       <header className="dialog-head"><Dialog.Title className="dialog-title">{t.confirmDelete(title)}</Dialog.Title></header>
       <div className="dialog-body"><Dialog.Description className="dialog-description">{t.deleteDescription(unarchivedCount, amount(affectedCards.length), pinned)}</Dialog.Description>

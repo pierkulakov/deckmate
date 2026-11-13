@@ -11,6 +11,7 @@ import { prepareCardOptionsPatch } from '../server/card-options.ts';
 import { clearParseCache } from '../server/parse-cache.ts';
 import { registerRequestLang } from '../server/i18n.ts';
 import type { NativeCardMetadata } from '../server/native-cards.ts';
+import * as nativeCards from '../server/native-cards.ts';
 import type { CatalogView } from '../src/catalog-contracts.ts';
 
 const parseCounts = vi.hoisted(() => new Map<string, number>());
@@ -24,6 +25,13 @@ vi.mock('../server/parse-cache.ts', async importOriginal => {
         parseCounts.set(namespace, (parseCounts.get(namespace) ?? 0) + 1);
         return compute();
       });
+    },
+    parseFileCached<Result>(namespace: string, identity: string, bytes: Buffer, mtimeMs: number | null,
+      compute: (hash: string) => Result, previous?: import('../server/parse-cache.ts').FileParse<Result>) {
+      return actual.parseFileCached(namespace, identity, bytes, mtimeMs, hash => {
+        parseCounts.set(namespace, (parseCounts.get(namespace) ?? 0) + 1);
+        return compute(hash);
+      }, previous);
     },
   };
 });
@@ -100,12 +108,61 @@ function cardParses() {
   return { legacy: parseCounts.get('project-file') ?? 0, native: parseCounts.get('native-card') ?? 0 };
 }
 
+it('bounds concurrent legacy reads in full scans and multi-file refreshes without changing their order', async () => {
+  const { root } = await fixture();
+  const paths = Array.from({ length: 64 }, (_, index) => `docs/bounded-${String(index).padStart(3, '0')}.md`);
+  await Promise.all(paths.map(relative => writeFile(path.join(root, relative), `# ${relative}\nBody.\n`)));
+  const read = nativeCards.readProjectMarkdown;
+  let active = 0;
+  let peak = 0;
+  const reading = vi.spyOn(nativeCards, 'readProjectMarkdown').mockImplementation(async (directory, relative) => {
+    if (!paths.includes(relative)) return read(directory, relative);
+    active++;
+    peak = Math.max(peak, active);
+    try { return await read(directory, relative); }
+    finally { active--; }
+  });
+  try {
+    const before = await readFreshProjectCatalog(root);
+    expect(peak).toBeGreaterThan(1);
+    expect(peak).toBeLessThanOrEqual(32);
+    expect(before.documents.filter(document => paths.includes(document.path)).map(document => document.path)).toEqual(paths);
+    peak = 0;
+    const after = await refreshProjectCatalog(root, before, [...paths].reverse());
+    expect(peak).toBeGreaterThan(1);
+    expect(peak).toBeLessThanOrEqual(32);
+    expect(JSON.stringify(after)).toBe(JSON.stringify(before));
+  } finally { reading.mockRestore(); }
+});
+
+it('bounds native invalidation batches, discards partial directory failures and recovers the full catalog', async () => {
+  const { root, native } = await fixture();
+  const paths = [native.relative];
+  for (let index = 0; index < 64; index++) paths.push((await writeNative(root)).relative);
+  const before = await readFreshProjectCatalog(root);
+  const read = nativeCards.readNativeCards;
+  const unavailable = { ...await read(root, []), warnings: ['cards: inaccessible directory'] };
+  const reading = vi.spyOn(nativeCards, 'readNativeCards');
+  try {
+    const after = await refreshProjectCatalog(root, before, [...paths].reverse());
+    expect(reading).toHaveBeenCalledTimes(3);
+    for (const [, selected] of reading.mock.calls) expect(selected?.length).toBeLessThanOrEqual(32);
+    expect(JSON.stringify(after)).toBe(JSON.stringify(before));
+    reading.mockImplementationOnce(read).mockResolvedValueOnce(unavailable);
+    const failed = await refreshProjectCatalog(root, after, paths);
+    expect(failed.cards.filter(card => card.id.startsWith('card:'))).toHaveLength(0);
+    expect(failed.warnings).toContain(unavailable.warnings[0]);
+    const recovered = await refreshProjectCatalog(root, failed, [paths[0]]);
+    expect(JSON.stringify(recovered)).toBe(JSON.stringify(before));
+  } finally { reading.mockRestore(); }
+});
+
 it('reuses raw legacy and native parses after LRU eviction while full scans still read every source', async () => {
   const { root, native } = await fixture();
   const document = await writeNative(root, { kind: 'doc', state: null, title: 'Native document' }, '## Открыто\n- Native question\n');
   const before = await readFreshProjectCatalog(root);
   const frozenBefore = structuredClone(before);
-  expect(before.cards.find(card => card.id === document.id)?.openQuestions).toEqual([{ text: 'Native question', taskRef: null }]);
+  expect(before.cards.find(card => card.id === document.id)?.openQuestions).toEqual([{ text: 'Native question', taskRef: null, assignee: null, target: null }]);
   expect(parseCounts.get('doc-questions')).toBeGreaterThan(0);
   resetMeasurements();
   const after = await readFreshProjectCatalog(root);

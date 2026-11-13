@@ -17,6 +17,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { freePort } from './free-port.ts';
 import { connectToHeadlessBrowser, type HeadlessPage } from './layout-capture.ts';
+import { clipboardAvailability } from './desktop-clipboard.ts';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const root = path.join(here, '..');
@@ -418,26 +419,32 @@ async function main(): Promise<number> {
     if (bridgeCheck.board !== 'object') throw new SmokeFailure('window.deckmateBoard is missing on the board page');
     if (bridgeCheck.desktop !== 'undefined') throw new SmokeFailure('window.deckmateDesktop leaked onto the board page');
     currentStep = 'b-clipboard';
-    // 2026-11-09: writeText needs a focused document; when another window owns the desktop focus the
-    // check failed with "Document is not focused", so the page is told it has focus for this step.
+    const clipboardAccess = clipboardAvailability();
+    const skipClipboard = (step: string) => {
+      if (!clipboardAccess.available) console.log(`skip ${step} — ${clipboardAccess.reason}`);
+    };
     await page!.send('Emulation.setFocusEmulationEnabled', { enabled: true });
-    // 2026-11-11: focus alone is not user activation; CDP supplies the gesture context without granting clipboard permissions.
-    const clipboardResponse = await page!.send('Runtime.evaluate', {
-      expression: `(async () => {
-        try {
-          await navigator.clipboard.writeText('deckmate-smoke');
-          let readDenied = false;
-          try { await navigator.clipboard.readText(); } catch { readDenied = true; }
-          return { written: true, readDenied };
-        } catch (error) { return { written: false, error: String(error) }; }
-      })()`,
-      userGesture: true, returnByValue: true, awaitPromise: true,
-    });
-    const clipboard = clipboardResponse.result?.result?.value;
-    if (!clipboard?.written || !clipboard.readDenied) {
-      throw new SmokeFailure(`clipboard write/read policy failed: ${JSON.stringify(clipboard)}`);
-    }
-    pass('b-clipboard', 'clipboard.writeText resolved with a user gesture; clipboard.readText was denied');
+    if (clipboardAccess.available) {
+      // 2026-11-09: writeText needs a focused document; when another window owns the desktop focus the
+      // check failed with "Document is not focused", so the page is told it has focus for this step.
+      // 2026-11-11: focus alone is not user activation; CDP supplies the gesture context without granting clipboard permissions.
+      const clipboardResponse = await page!.send('Runtime.evaluate', {
+        expression: `(async () => {
+          try {
+            await navigator.clipboard.writeText('deckmate-smoke');
+            let readDenied = false;
+            try { await navigator.clipboard.readText(); } catch { readDenied = true; }
+            return { written: true, readDenied };
+          } catch (error) { return { written: false, error: String(error) }; }
+        })()`,
+        userGesture: true, returnByValue: true, awaitPromise: true,
+      });
+      const clipboard = clipboardResponse.result?.result?.value;
+      if (!clipboard?.written || !clipboard.readDenied) {
+        throw new SmokeFailure(`clipboard write/read policy failed: ${JSON.stringify(clipboard)}`);
+      }
+      pass('b-clipboard', 'clipboard.writeText resolved with a user gesture; clipboard.readText was denied');
+    } else skipClipboard('b-clipboard');
     const notification = await page!.callFunction(`() => Notification.requestPermission()`);
     if (notification !== 'denied') throw new SmokeFailure(`notifications were not denied: ${notification}`);
     pass('b-notifications', 'Notification.requestPermission resolved denied without a prompt');
@@ -455,19 +462,27 @@ async function main(): Promise<number> {
     if ((await page!.evaluate('window.__smokePrints === 0 && window.__smokeDocument === true')) !== true) {
       throw new SmokeFailure('Ctrl+P printed or F5 reloaded the page');
     }
-    await shortcut('a', 'KeyA', 65);
-    await shortcut('c', 'KeyC', 67);
-    await shortcut('x', 'KeyX', 88);
-    if ((await page!.evaluate(`document.getElementById('smoke-edit').value`)) !== '') throw new SmokeFailure('Ctrl+A/C/X editing failed');
-    await shortcut('v', 'KeyV', 86);
-    if ((await page!.evaluate(`document.getElementById('smoke-edit').value`)) !== 'editing') throw new SmokeFailure('Ctrl+V editing failed');
-    await shortcut('z', 'KeyZ', 90);
-    if ((await page!.evaluate(`document.getElementById('smoke-edit').value`)) !== '') throw new SmokeFailure('Ctrl+Z editing failed');
-    await shortcut('y', 'KeyY', 89);
-    if ((await page!.evaluate(`document.getElementById('smoke-edit').value`)) !== 'editing') throw new SmokeFailure('Ctrl+Y editing failed');
+    pass('b-keys', 'CDP Ctrl+P/F5 did not print/reload');
+    if (clipboardAccess.available) {
+      await shortcut('a', 'KeyA', 65);
+      await shortcut('c', 'KeyC', 67);
+      await shortcut('x', 'KeyX', 88);
+      if ((await page!.evaluate(`document.getElementById('smoke-edit').value`)) !== '') throw new SmokeFailure('Ctrl+A/C/X editing failed');
+      await shortcut('v', 'KeyV', 86);
+      if ((await page!.evaluate(`document.getElementById('smoke-edit').value`)) !== 'editing') throw new SmokeFailure('Ctrl+V editing failed');
+      await shortcut('z', 'KeyZ', 90);
+      if ((await page!.evaluate(`document.getElementById('smoke-edit').value`)) !== '') throw new SmokeFailure('Ctrl+Z editing failed');
+      await shortcut('y', 'KeyY', 89);
+      if ((await page!.evaluate(`document.getElementById('smoke-edit').value`)) !== 'editing') throw new SmokeFailure('Ctrl+Y editing failed');
+      pass('b-keys-clipboard', 'Ctrl+A/C/X/V/Z/Y still edit text');
+    } else skipClipboard('b-keys-clipboard');
     await page!.evaluate(`document.getElementById('smoke-edit').remove()`);
-    pass('b-keys', 'CDP Ctrl+P/F5 did not print/reload; Ctrl+A/C/X/V/Z/Y still edit text');
-    await pasteInEditors(boardOrigin);
+    if (clipboardAccess.available) {
+      await pasteInEditors(boardOrigin);
+    } else {
+      skipClipboard('b-card-paste');
+      skipClipboard('b-vision-paste');
+    }
     currentStep = 'b';
     // CDP exposes only the document title (Target.getTargetInfo), not the window title, so read
     // the title Win32-side through PowerShell; headless sessions without a window skip with a note.
@@ -748,6 +763,7 @@ async function main(): Promise<number> {
     pass('updates', 'update defaults persisted; debug updater stayed disabled');
 
     // 2026-11-09: repeat with lastProject: the launcher's load must not expose a frame before the board.
+    // 2026-11-12: auto-open shows the local startup page at once, then the board; the launcher still never shows.
     currentStep = 'restart-visibility';
     await poll(async () => shell.exitCode !== null || shell.signalCode !== null, 'the first shell to exit', 10000);
     await page.close();
@@ -756,24 +772,20 @@ async function main(): Promise<number> {
     let visibleLauncher = false;
     await poll(async () => {
       const sample = await page!.evaluate(`({ url: location.href, visible: document.visibilityState, ready: document.readyState, board: !!document.querySelector('${boardSelector}') })`);
-      if (sample.visible === 'visible' && sample.url.includes('tauri.localhost')) {
+      if (sample.visible === 'visible' && sample.url.includes('tauri.localhost') && new URL(sample.url).pathname !== '/startup.html') {
         visibleLauncher = true;
       }
       return sample.url.startsWith('http://127.0.0.1:') && sample.ready === 'complete' && sample.board;
     }, 'the last project to auto-open', 30000);
     if (visibleLauncher) throw new SmokeFailure('a visible launcher frame appeared during auto-open');
-    const restartVisibility = await page.evaluate('window.__deckmateFirstLoadVisibility');
-    if (restartVisibility?.atLoad !== 'hidden') {
-      throw new SmokeFailure(`auto-open window was visible before board load: ${JSON.stringify(restartVisibility)}`);
-    }
     await poll(async () => (await page!.evaluate('document.visibilityState')) === 'visible',
       'the loaded auto-open board to become visible', 10000);
     const firstShows = readFileSync(path.join(settings, 'server.log'), 'utf8').split(/\r?\n/u)
       .filter(line => line.includes('main first show:'));
-    if (firstShows.length !== 2 || !firstShows[1].includes('http://127.0.0.1:')) {
-      throw new SmokeFailure(`auto-open exposed a launcher before the board: ${JSON.stringify(firstShows)}`);
+    if (firstShows.length !== 2 || !firstShows[1].includes('tauri.localhost/startup.html')) {
+      throw new SmokeFailure(`auto-open did not show the startup page first: ${JSON.stringify(firstShows)}`);
     }
-    pass('restart-visibility', 'same settings auto-opened last project; board load was hidden; first visible frame was the loaded board');
+    pass('restart-visibility', 'same settings auto-opened last project; the startup page was the first visible frame, then the loaded board; the launcher never showed');
     if (saved.serverPort !== Number(new URL(boardOrigin).port)
       || (await page!.evaluate('location.origin')) !== boardOrigin
       || (await page!.evaluate(`localStorage.getItem('deckmate-smoke-origin')`)) !== 'kept') {

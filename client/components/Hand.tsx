@@ -25,6 +25,7 @@ import { useCardLayoutMotion } from '../useCardLayoutMotion.ts';
 import { AgentQueueHint } from './AgentQueueHint.tsx';
 import type { ShortcutScreen } from '../keyboard-shortcuts.ts';
 import { ShortcutsHelp } from './ShortcutsHelp.tsx';
+import { formatShortcut } from '../shortcut-format.ts';
 import { navigateTabs } from '../tab-navigation.ts';
 import { Button } from './ui/button.tsx';
 import { EmptyState } from './EmptyState.tsx';
@@ -84,7 +85,7 @@ const text = defineText({
   doneThisWeek: (count: number, effort: number) => `This week: ${count.toLocaleString(locale())} · Effort ${effort.toLocaleString(locale())}`,
   doneLastWeek: (count: number, effort: number) => `Last week: ${count.toLocaleString(locale())} · Effort ${effort.toLocaleString(locale())}`,
   noDoneCards: 'No accepted cards in this pile yet.',
-  dragInstructions: 'Press Space to pick up a Hand card. Arrow keys change its position, Space drops it, and Escape cancels the move.',
+  dragInstructions: (space: string, arrows: string, escape: string) => `Press ${space} to pick up a Hand card. ${arrows} change its position, ${space} drops it, and ${escape} cancels the move.`,
   dragStart: (card: string) => `Picked up card “${card}”.`,
   dragOver: (card: string, position: number, total: number) => `Card “${card}”, position ${position.toLocaleString(locale())} of ${total.toLocaleString(locale())}.`,
   outsideHand: 'Outside the Hand.',
@@ -155,7 +156,7 @@ const text = defineText({
   doneThisWeek: (count: number, effort: number) => `За неделю: ${count.toLocaleString(locale())} · оценка ${effort.toLocaleString(locale())}`,
   doneLastWeek: (count: number, effort: number) => `За прошлую неделю: ${count.toLocaleString(locale())} · оценка ${effort.toLocaleString(locale())}`,
   noDoneCards: 'В стопке пока нет принятых карточек.',
-  dragInstructions: 'Нажмите пробел, чтобы поднять карточку Hand. Стрелки меняют позицию, пробел завершает перенос, Escape отменяет.',
+  dragInstructions: (space: string, arrows: string, escape: string) => `Нажмите ${space.toLowerCase()}, чтобы поднять карточку Hand. ${arrows} меняют позицию, ${space.toLowerCase()} завершает перенос, ${escape} отменяет.`,
   dragStart: (card: string) => `Поднята карточка «${card}».`,
   dragOver: (card: string, position: number, total: number) => `Карточка «${card}», позиция ${position.toLocaleString(locale())} из ${total.toLocaleString(locale())}.`,
   outsideHand: 'За пределами Hand.',
@@ -613,7 +614,8 @@ function HandBoard({ hand, canReorder, decksById, lookups, projectTags, onOpenCa
     if (typeof getComputedStyle !== 'function') return null;
     return readMotionTokens('--motion-material');
   }, []);
-  const openIds = useMemo(() => splitHand(hand.cards).openCards.map(card => card.id), [hand.cards]);
+  const { openCards, queuedCards } = useMemo(() => splitHand(hand.cards), [hand.cards]);
+  const openIds = useMemo(() => openCards.map(card => card.id), [openCards]);
   const cardName = (id: string | number) => hand.cards.find(card => card.id === id)?.title ?? t.card;
   const [drag, setDrag] = useState<{ preview: CardDragPreview | null; queueTitle: string | null } | null>(null);
   const [dropAnimation, setDropAnimation] = useState<typeof motion>(null);
@@ -638,7 +640,7 @@ function HandBoard({ hand, canReorder, decksById, lookups, projectTags, onOpenCa
       setDrag(null);
       onDragEnd(event);
     }} accessibility={{
-    screenReaderInstructions: { draggable: t.dragInstructions },
+    screenReaderInstructions: { draggable: t.dragInstructions(formatShortcut({ key: 'Space' }).name, formatShortcut({ key: 'ArrowKeys' }).name, formatShortcut({ key: 'Escape' }).name) },
     announcements: {
       onDragStart: ({ active }) => t.dragStart(cardName(active.id)),
       onDragOver: ({ active, over }) => over ? t.dragOver(cardName(active.id), openIds.indexOf(String(over.id)) + 1, openIds.length) : t.outsideHand,
@@ -650,7 +652,7 @@ function HandBoard({ hand, canReorder, decksById, lookups, projectTags, onOpenCa
       <div ref={layoutMotion} className={'hand-board' + (dragging ? ' is-card-transfer-active' : '') + (overlayActive ? ' has-hand-drag-overlay' : '')}>
         <SortableContext items={openIds} strategy={handSorting}>
           {children}
-          <HandQueue cards={splitHand(hand.cards).queuedCards} decksById={decksById} lookups={lookups} projectTags={projectTags} canReorder={canReorder} overlayActive={Boolean(drag?.queueTitle)} onOpenCard={onOpenCard} onRemove={onRemove} />
+          <HandQueue cards={queuedCards} decksById={decksById} lookups={lookups} projectTags={projectTags} canReorder={canReorder} overlayActive={Boolean(drag?.queueTitle)} onOpenCard={onOpenCard} onRemove={onRemove} />
         </SortableContext>
       </div>
       <DragOverlay dropAnimation={dropAnimation} adjustScale={false} style={{ pointerEvents: 'none' }}>

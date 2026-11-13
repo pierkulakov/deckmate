@@ -2,7 +2,7 @@ import { useState } from 'react';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import { Shield } from 'lucide-react';
 import type { CatalogDeck, CatalogMember } from '../../src/catalog-contracts.ts';
-import { DeckHeaderHint } from './Deck.tsx';
+import { DeckHeaderHint } from './DeckHeaderHint.tsx';
 import { Button } from './ui/button.tsx';
 import { defineText, useText } from '../i18n.ts';
 import { stateLabel } from '../locales/common.ts';

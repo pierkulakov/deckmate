@@ -230,12 +230,15 @@ it('routes card creation to the running server and keeps the native format read-
     expect(text(relative)).toMatch(/stop and tell the person/u);
   }
   const api = text('references/api.md');
-  const rules = text('project-rules.md');
-  const creationBody = (source: string) => JSON.parse(/\{"action":"create-card"[^\n]+\}/u.exec(source)![0]);
-  expect(creationBody(api)).toEqual(creationBody(rules));
+  expect(api).toMatch(/\{"action":"create-card"[^\n]+\}/u);
   expect(api.indexOf('GET http://127.0.0.1:4317/api/snapshot')).toBeLessThan(api.indexOf('GET /api/catalog?source=sandbox'));
   expect(api.indexOf('GET /api/catalog?source=sandbox')).toBeLessThan(api.indexOf('POST /api/catalog'));
   expect(text('references/cards.md')).toContain('reference for reading existing cards, not instructions to create or edit card files by hand');
+  // 2026-11-11: project-rules.md points agents at the MCP server; the HTTP recipe lives in references/api.md only.
+  const rules = text('project-rules.md');
+  expect(rules).toContain('`deckmate` MCP server');
+  expect(rules).toContain('deckmate project --help');
+  expect(rules).not.toContain('http://127.0.0.1');
   for (const file of files.filter(file => file.relative.startsWith('workflows/'))) {
     expect(file.text, file.relative).not.toMatch(/(?:create[^\n]*offline as|create native cards|edit its native file|through UI \/ \[native files\])/iu);
   }

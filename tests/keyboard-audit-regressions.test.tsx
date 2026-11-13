@@ -1,13 +1,14 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { isValidElement, type ReactElement, type ReactNode } from 'react';
-import * as Dialog from '@radix-ui/react-dialog';
 import { readFileSync } from 'node:fs';
 import { Excalidraw, restore } from '@excalidraw/excalidraw';
 import { EditorCommandMenu } from '../client/components/EditorCommandMenu.tsx';
 import { ShortcutsHelp } from '../client/components/ShortcutsHelp.tsx';
+import { ShortcutsHelpDialog } from '../client/components/ShortcutsHelpDialog.tsx';
 import { useCardSelection } from '../client/components/CardSelection.tsx';
 import Vision from '../client/components/Vision.tsx';
 import { ALL_SHORTCUTS, matchShortcut, type ShortcutScreen } from '../client/keyboard-shortcuts.ts';
+import { Keys } from '../client/components/Keys.tsx';
 import { setLang } from '../client/i18n.ts';
 import type { CatalogView } from '../src/catalog-contracts.ts';
 import type { WorkspaceSnapshot } from '../src/workspace-contracts.ts';
@@ -33,7 +34,7 @@ vi.mock('@excalidraw/excalidraw', () => ({
   convertToExcalidrawElements: (elements: unknown) => elements,
 }));
 vi.mock('../client/useCatalog.ts', () => ({ useCatalog: () => ({ catalog: fixture.catalog, error: fixture.catalogError, refresh: fixture.refresh }) }));
-vi.mock('../client/components/Deck.tsx', () => ({ DeckHeaderHint: () => null }));
+vi.mock('../client/components/DeckHeaderHint.tsx', () => ({ DeckHeaderHint: () => null }));
 vi.mock('../client/components/JourneyPanel.tsx', () => ({ CatalogReferenceLink: () => null }));
 vi.mock('../client/components/BulkActions.tsx', () => ({ BulkActions: () => null }));
 vi.mock('../client/components/CatalogCardTile.tsx', () => ({ cardIcons: {} }));
@@ -76,6 +77,7 @@ const board = { id: 'remembered', title: 'Existing board', hash: 'original-hash'
   scene: { type: 'excalidraw', version: 2, elements: [{ id: 'kept', type: 'rectangle', version: 1 }], appState: {}, files: {} } };
 const vision = () => Vision({ snapshot, refreshKey: 0, dark: false, onEditing: vi.fn(), onOpenCard: vi.fn() });
 const help = (screens: readonly ShortcutScreen[] = ['app'], writable = true) => ShortcutsHelp({ screens, writable, vision: true });
+const helpDialog = (screens: readonly ShortcutScreen[] = ['app'], writable = true) => ShortcutsHelpDialog({ open: true, screens, writable, vision: true, opener: null, onClose: vi.fn() });
 const canvas = () => find(element => element.type === Excalidraw);
 const button = (label: string) => find(element => element.props.onClick && (element.props.children === label || element.props.children?.includes?.(label)));
 async function settle(component = vision) { for (let index = 0; index < 30; index++) await Promise.resolve(); render(component); }
@@ -85,6 +87,7 @@ beforeEach(() => {
   fixture.catalog = null; fixture.catalogError = null;
   vi.stubGlobal('Element', Target); vi.stubGlobal('HTMLElement', Target);
   vi.stubGlobal('window', new EventTarget());
+  vi.stubGlobal('navigator', { platform: 'Win32' });
   vi.stubGlobal('document', { documentElement: { lang: '' }, cookie: '', activeElement: null,
     getElementById: () => null, querySelectorAll: () => [], execCommand: () => false });
   vi.stubGlobal('localStorage', { getItem: (name: string) => stored.get(name) ?? null, setItem: (name: string, value: string) => stored.set(name, value), removeItem: (name: string) => stored.delete(name) });
@@ -108,12 +111,28 @@ it.each([
   expect(onChange).toHaveBeenCalledWith(expected);
 });
 
+it('formats with Command on a Mac without breaking the existing Control binding', () => {
+  vi.stubGlobal('navigator', { platform: 'MacIntel' });
+  const onChange = vi.fn();
+  render(() => EditorCommandMenu({ value: 'text', onChange, catalog, disabled: false }));
+  const textarea = find(element => element.type === 'textarea');
+  textarea.props.ref.current = { selectionStart: 0, selectionEnd: 4, maxLength: 1000, focus: vi.fn(), setSelectionRange: vi.fn() };
+  const event = { code: 'KeyB', key: 'и', shiftKey: false, ctrlKey: false, metaKey: true, altKey: false, nativeEvent: {}, preventDefault: vi.fn(), stopPropagation: vi.fn() };
+  textarea.props.onKeyDown(event);
+  expect(event.preventDefault).toHaveBeenCalledOnce();
+  expect(onChange).toHaveBeenCalledWith('**text**');
+  expect(matchShortcut(key('KeyA', 'ф', { metaKey: true }), ALL_SHORTCUTS)?.id).toBe('bulk-select-all');
+});
+
 it('leaves ? inside the Vision canvas to Excalidraw and opens Deckmate help outside', () => {
   render(help);
   dispatch(key('Slash', '?', { shiftKey: true }), new Target(true)); render(help);
-  expect(find(element => element.type === Dialog.Root).props.open).toBe(false);
+  expect(find(element => element.props.vision === true)).toBeUndefined();
   dispatch(key('Slash', '?', { shiftKey: true })); render(help);
-  expect(find(element => element.type === Dialog.Root).props.open).toBe(true);
+  expect(find(element => element.props.vision === true).props.open).toBe(true);
+  dispatch(key('Slash', '?', { shiftKey: true })); render(help);
+  expect(find(element => element.props.vision === true).props.open).toBe(false);
+  hooks.reset(); render(helpDialog);
   expect(nodes().some(element => element.props.children === 'The Vision canvas has its own shortcuts: focus the canvas and press ? for its help.')).toBe(true);
 });
 
@@ -135,14 +154,14 @@ it.each(['en', 'ru'] as const)('renders precisely the registry rows for every sc
   for (let mask = 0; mask < 16; mask++) for (const writable of [false, true]) {
     hooks.reset();
     const selected = screens.filter((_, index) => mask & (1 << index));
-    render(() => help(selected, writable));
+    render(() => helpDialog(selected, writable));
     const rows = nodes().filter(element => element.type === 'li');
     const shown = rows.flatMap(row => {
       const label = find(element => element.props.className === 'shortcuts-panel-label', row).props.children;
-      return nodes(row).filter(element => element.type === 'kbd').map(element => [element.props.children, label]);
+      return nodes(row).filter(element => element.type === Keys).map(element => [element.props.combo, label]);
     });
     const expected = ALL_SHORTCUTS.filter(item => selected.includes(item.screen) && (writable || !item.edits));
-    expect(shown).toEqual(expected.map(item => [item.keys, item.label]));
+    expect(shown).toEqual(expected.map(item => [item.combo, item.label]));
     for (const item of expected) {
       const event = key(item.code ?? item.codes?.[0] ?? '', item.key ?? 'ф', { shiftKey: item.shift ?? false, ctrlKey: item.command ?? false });
       expect(matchShortcut(event, [item])?.id).toBe(item.id);
@@ -152,7 +171,7 @@ it.each(['en', 'ru'] as const)('renders precisely the registry rows for every sc
 
 it.each([false, true])('shows desktop palette/zoom caveats only with the bridge (desktop=%s)', desktop => {
   if (desktop) Object.assign(window, { deckmateBoard: {} });
-  render(help);
+  render(helpDialog);
   const paragraphs = nodes().filter(element => element.type === 'p').map(element => element.props.children).join('\n');
   expect(paragraphs.includes('Ctrl+/')).toBe(desktop);
   expect(paragraphs.includes('Ctrl+Shift+P')).toBe(desktop);

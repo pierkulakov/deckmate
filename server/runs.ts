@@ -11,7 +11,7 @@ import { milestonesPath } from '../src/planning-files.ts';
 import { readProjectMarkdown } from './native-cards.ts';
 import { runsPath } from '../src/planning-files.ts';
 import { defineText, serverText } from './i18n.ts';
-import { parseYamlFrontMatter } from './yaml-front-matter.ts';
+import { isPlainRecord, parseYamlFrontMatter } from './yaml-front-matter.ts';
 
 /**
  * 2026-11-04: a Run is a recurring work period with dates.
@@ -54,11 +54,6 @@ const digest = (bytes: Buffer) => createHash('sha256').update(bytes).digest('hex
 
 export interface RunsSource { hash: string; runs: RunRecord[]; configurations: RunConfiguration[]; warnings: string[] }
 
-function record(value: unknown): value is Record<string, unknown> {
-  return value !== null && typeof value === 'object' && !Array.isArray(value)
-    && [Object.prototype, null].includes(Object.getPrototypeOf(value));
-}
-
 export function parseRunRegistry(bytes: Buffer): { runs: RunRecord[]; configurations: RunConfiguration[] } {
   if (bytes.length > 1024 * 1024) throw new Error(serverText(runText).sizeLimit);
   const { document } = parseYamlFrontMatter(bytes, {
@@ -66,7 +61,7 @@ export function parseRunRegistry(bytes: Buffer): { runs: RunRecord[]; configurat
     aliases: 'reject', aliasError: serverText(runText).noAliases,
   });
   const metadata: unknown = document.toJS({ maxAliasCount: 0 });
-  if (!record(metadata) || metadata.schema !== 1 || !Array.isArray(metadata.runs) || metadata.runs.length > 1000) {
+  if (!isPlainRecord(metadata) || metadata.schema !== 1 || !Array.isArray(metadata.runs) || metadata.runs.length > 1000) {
     throw new Error(serverText(runText).schema);
   }
   const identifiers = new Set<string>();
@@ -76,7 +71,7 @@ export function parseRunRegistry(bytes: Buffer): { runs: RunRecord[]; configurat
   const parsedConfigurations = configurations.map(validateRunConfiguration);
   if (new Set(parsedConfigurations.map(configuration => configuration.id)).size !== parsedConfigurations.length) invalidPlanning('configurations.id');
   const runs = metadata.runs.map((value: unknown) => {
-    if (!record(value) || Object.keys(value).some(key => !['id', 'number', 'start', 'end', 'goal', 'configurationId', 'description', 'cover', 'finishedAt', 'statistics', 'history'].includes(key))) {
+    if (!isPlainRecord(value) || Object.keys(value).some(key => !['id', 'number', 'start', 'end', 'goal', 'configurationId', 'description', 'cover', 'finishedAt', 'statistics', 'history'].includes(key))) {
       throw new Error(serverText(runText).fields);
     }
     if (typeof value.id !== 'string' || !/^[a-z0-9][a-z0-9-]{0,79}$/u.test(value.id) || identifiers.has(value.id)) throw new Error(serverText(runText).identifier);

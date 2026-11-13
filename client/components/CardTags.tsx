@@ -21,7 +21,7 @@ const text = defineText({
   projectTag: 'Тег проекта', outsideRegistry: 'Вне реестра', tagCard: 'Карточка тега',
 });
 
-export function TagGlyph({ tag }: { tag: ProjectTag }) {
+function TagGlyph({ tag }: { tag: ProjectTag }) {
   if (tag.emoji) return <span className="card-tag-emoji" aria-hidden="true">{tag.emoji}</span>;
   const icon = tagIconDataUrl(tag);
   return icon ? <img className="card-tag-icon" src={icon} alt="" aria-hidden="true" /> : null;
@@ -68,13 +68,6 @@ function ProjectTagList({ tags }: { tags: readonly ProjectTag[] }) {
   const t = useText(text);
   return <><span className="card-project-tags-title">{t.projectTags}</span>
     {tags.map(tag => <TagInfo key={tag.name} name={tag.name} definition={tag} />)}</>;
-}
-
-/** Glyphs alone for places that already name the card, such as a Sub Card's Hero strip. */
-export function TagGlyphs({ tags = [], definitions = [] }: { tags?: readonly string[]; definitions?: readonly ProjectTag[] }) {
-  const marked = glyphTags(resolveProjectTags(tags, definitions));
-  if (!marked.length) return null;
-  return <span className="card-title-tags" aria-hidden="true">{marked.map(tag => <TagGlyph key={tag.name} tag={tag} />)}</span>;
 }
 
 export function TagTitlePrefix({ tags = [], definitions = [] }: { tags?: readonly string[]; definitions?: readonly ProjectTag[] }) {

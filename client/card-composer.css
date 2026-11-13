@@ -24,12 +24,16 @@
 /* 2026-11-11: repeat creation is secondary to Save, but keeps a readable sentence-case label. */
 .card-composer-again { flex-shrink: 0; padding: var(--space-3) var(--space-2) var(--space-2); }
 .card-composer-again > .deck-panel-switch-row { justify-content: flex-end; gap: var(--space-2); min-height: 12px; height: auto; color: var(--edit-hint); font-size: 12px; line-height: 16px; letter-spacing: .01em; }
-.card-composer-again > .deck-panel-switch-row > label { flex: 0 1 auto; overflow: visible; white-space: normal; }
 .card-composer-again .deck-panel-switch:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 /* 2026-11-11: reserve the label's target in flow so repeat creation never overlaps Save or the property band. */
-.card-composer-again > .deck-panel-switch-row > label { display: inline-flex; align-items: center; min-height: 24px; padding-inline-end: 36px; margin-inline-end: -36px; }
+.card-composer-again > .deck-panel-switch-row > label { display: inline-flex; align-items: center; flex: 0 1 auto; min-height: 24px; padding-inline-end: 36px; margin-inline-end: -36px; overflow: visible; white-space: normal; }
 /* The empty owner slot allows a 44px band; an open card needs 58px for its medallion. */
 .card-preview-sheet > .card-composer-band { height: 44px; min-height: 44px; }
+/* 2026-11-12: the shared preview stylesheet can arrive after the composer when chunks load on demand. */
+.card-preview .card-composer-band { grid-template-columns: minmax(0, 1fr) auto; }
+.card-preview .card-composer-band .ui-button.card-preview-property-shortcut:last-child { justify-self: end; }
+.card-composer-band .card-preview-property-shortcut > span:first-child { white-space: nowrap; }
+.card-composer-band .priority-icon { flex: none; }
 
 .card-composer-settings { overflow: auto; padding: 20px 16px; scrollbar-width: thin; scrollbar-gutter: stable; }
 .card-composer-settings > header { display: flex; align-items: center; gap: 8px; margin-bottom: 16px; color: var(--muted); }

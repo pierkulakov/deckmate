@@ -180,7 +180,6 @@
   .planning-view.planning-parity { --shelf-inset: var(--space-3); padding: 16px 12px 40px; }
   .planning-collection-header { padding: var(--space-3); }
   .planning-collection-header h2, .planning-collection-header p { white-space: normal; overflow-wrap: anywhere; }
-  .planning-collection-title p, .planning-collection-header .planning-count > span + span { display: none; }
   .planning-collection-tools { padding: var(--space-3); }
   .planning-collection-tools > .ui-button { flex-basis: auto; margin-right: auto; }
   .planning-search { flex-basis: calc(100% - 120px); margin-left: 0; }

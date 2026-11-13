@@ -35,7 +35,7 @@
 .deck-settings-color-toggle input::after { content: ''; position: absolute; width: 16px; height: 16px; top: -2px; left: 0; border: 1px solid var(--line); border-radius: 50%; background: var(--toggle-knob, var(--surface)); transition: left var(--motion-feedback) var(--ease-out); }
 .deck-settings-color-toggle input:checked { background: var(--toggle-on, var(--accent)); }
 .deck-settings-color-toggle input:checked::after { left: 12px; }
-/* 2026-11-08: an outline on hover read as a focus ring after a mouse click; hover only lifts the track, keyboard focus keeps the ring. */
+/* 2026-11-13: hover lifts the track; Tab uses the shared inner edge. */
 @media (hover: hover) { .deck-settings-color-toggle input:hover:not(:disabled) { filter: brightness(1.15); } }
 .deck-settings-color-toggle input:disabled { opacity: .5; cursor: default; }
 .deck-settings-color-picker { display: flex; flex-shrink: 0; align-items: center; gap: 4px; font-size: var(--text-help-size); color: var(--muted); }
@@ -72,7 +72,8 @@
 /* Covers as a picture grid: the picture is the choice, its name lives in the tooltip and the label (2026-11-05). */
 .deck-art-library { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(128px, 100%), 1fr)); gap: 8px; }
 .deck-art-option { display: block; width: 100%; aspect-ratio: 10 / 7; padding: 0; overflow: hidden; border: 0; border-radius: var(--control-radius); background: var(--ground); }
-.deck-art-option .deck-art-image { display: block; width: 100%; height: 100%; object-fit: cover; image-rendering: pixelated; transition: transform var(--control-hover-duration) var(--ease-out), filter var(--control-hover-duration) ease-out; }
+.deck-art-option .deck-art-image { width: 100%; height: 100%; object-fit: cover; image-rendering: pixelated; transition: opacity var(--image-reveal-duration, var(--motion-feedback)) var(--ease-out), transform var(--control-hover-duration) var(--ease-out), filter var(--control-hover-duration) ease-out; }
+.deck-art-option img.deck-art-image { display: block; }
 .deck-art-option:hover:not(:disabled) .deck-art-image { transform: scale(1.04); filter: brightness(1.06); }
 /* 2026-11-07: the attribution belongs to the library, outside its scrolling pictures. */
 .deck-settings-picker-footer { display: flex; flex: 0 0 auto; align-items: center; flex-wrap: wrap; gap: 8px 16px; min-height: 39px; margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--line); }

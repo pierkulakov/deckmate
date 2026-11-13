@@ -74,7 +74,7 @@ describe.skipIf(!browserPath)('attachment row actions (browser)', () => {
     expect(errors).toEqual([]);
   });
 
-  it('recentres a panned image when zoom returns to 100%', async () => {
+  it('recentres a panned image slot when zoom returns to 100%', async () => {
     await render({ writable: false });
     await evaluate(`document.querySelector('.attachments-row-actions button[title="View Silhouette [v2].png"]').click()`);
     await until(`Boolean(document.querySelector('.attachment-viewer'))`);
@@ -86,12 +86,12 @@ describe.skipIf(!browserPath)('attachment row actions (browser)', () => {
     // 2026-11-11: Edge releases capture before mousemove when the held button is omitted from the CDP command.
     await session.send('Input.dispatchMouseEvent', { type:'mouseMoved', button:'left', buttons:1, x:point.x+80, y:point.y+40 });
     // 2026-11-11: pointer coordinates can be subpixel; compare translation numerically before releasing capture.
-    await until(`(() => { const transform = new DOMMatrix(getComputedStyle(document.querySelector('.attachment-viewer img')).transform);
+    await until(`(() => { const transform = new DOMMatrix(getComputedStyle(document.querySelector('.attachment-viewer-pan > :is(img, .image-fallback)')).transform);
       return Math.abs(transform.m41 - 80) < 0.01 && Math.abs(transform.m42 - 40) < 0.01; })()`);
     await session.send('Input.dispatchMouseEvent', { type:'mouseReleased', button:'left', clickCount:1, x:point.x+80, y:point.y+40 });
     await evaluate(`document.querySelector('.attachment-viewer [aria-label="Zoom out"]').click()`);
     await until(`document.querySelector('.attachment-viewer-zoom').textContent === '100%'`);
-    expect(await evaluate(`document.querySelector('.attachment-viewer img').style.transform`)).toBe('translate(0px, 0px) scale(1)');
+    expect(await evaluate(`document.querySelector('.attachment-viewer-pan > :is(img, .image-fallback)').style.transform`)).toBe('translate(0px, 0px) scale(1)');
   });
 
   it('returns keyboard focus to the image opener after Escape', async () => {

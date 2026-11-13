@@ -1,0 +1,8 @@
+* { box-sizing: border-box; }
+body { margin: 0; color: var(--ink); background: var(--canvas); }
+button, input { font: inherit; }
+.project-fixture { display: flex; flex-direction: column; gap: 8px; padding: 16px; max-width: 600px; }
+.fixture-controls { display: flex; justify-content: space-between; gap: 8px; }
+.fixture-controls > button { display: flex; align-items: center; gap: 8px; color: var(--ink); background: var(--ground); border: 0; padding: 8px; }
+.fixture-controls > button > span { display: flex; flex-direction: column; text-align: left; }
+.project-fixture .mission-control-workspace-list { max-height: 300px; }

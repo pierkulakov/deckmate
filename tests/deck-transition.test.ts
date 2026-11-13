@@ -133,7 +133,8 @@ describe.skipIf(!browserPath)('deck transition continuity (browser)', () => {
     expect(Math.abs(frames[1].x - first.x)).toBeLessThanOrEqual(1);
     expect(Math.abs(frames[1].y - first.y)).toBeLessThanOrEqual(1);
     expect(Math.abs(frames[1].width - first.width)).toBeLessThanOrEqual(1);
-    expect(frames.some(frame => frame.paused)).toBe(false);
+    // 2026-11-13: cold layers may prepare at frame zero, but preparation must never interrupt travel.
+    for (const frame of frames.filter(frame => frame.paused)) expect(frame.progress).toBe(0);
     const home = direction === 'open' ? first : last;
     const shelf = direction === 'open' ? last : first;
     const shelfScale = shelf.width / home.width;
@@ -241,8 +242,8 @@ describe.skipIf(!browserPath)('deck transition continuity (browser)', () => {
       // 2026-11-10: opening focuses the deck title quietly, so no tooltip pops up on Close.
       expect(await page.evaluate(`document.activeElement === document.querySelector('.deck-open-toolbar .page-title') && !document.activeElement.matches(':focus-visible') && !document.querySelector('.deck-header-hint')`)).toBe(true);
       expectContinuous(await transition('close', 'top', action), 'close');
-      // Keyboard navigation restores both the cover and its visible focus ring.
-      expect(await page.evaluate(`document.activeElement === document.querySelector('.catalog-cover-item [data-deck-cover="top"]') && document.activeElement.matches(':focus-visible')`)).toBe(true);
+      // 2026-11-13: closing restores the cover quietly; the next Tab resumes visible navigation.
+      expect(await page.evaluate(`document.activeElement === document.querySelector('.catalog-cover-item [data-deck-cover="top"]') && getComputedStyle(document.activeElement).outlineStyle === 'none'`)).toBe(true);
     }
     expectContinuous(await transition('open', 'top', 'forward'), 'open');
     expect(await page.evaluate(`document.activeElement === document.querySelector('.deck-open-toolbar .page-title')`)).toBe(true);
@@ -276,7 +277,7 @@ describe.skipIf(!browserPath)('deck transition continuity (browser)', () => {
       }
       expect(closing.at(-1)!.scroll).toBeCloseTo(scroll, 0);
       expect(await page.evaluate(`!document.querySelector('.deck-view').inert && getComputedStyle(document.querySelector('.deck-view')).visibility === 'visible'`)).toBe(true);
-      expect(await page.evaluate(`document.activeElement === document.querySelector('.catalog-cover-item [data-deck-cover="lower"]') && document.activeElement.matches(':focus-visible')`)).toBe(true);
+      expect(await page.evaluate(`document.activeElement === document.querySelector('.catalog-cover-item [data-deck-cover="lower"]') && getComputedStyle(document.activeElement).outlineStyle === 'none'`)).toBe(true);
     } finally { await page.send('Emulation.setEmulatedMedia', { features: [] }); }
   });
 });

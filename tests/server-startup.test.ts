@@ -58,7 +58,8 @@ it('listens and serves the shell and health before project checks, watching and 
   vi.spyOn(fileEvents, 'watchProjectFiles').mockImplementation(() => ({ ready: watching.promise, close: async () => watching.release() }));
   const replace = vi.spyOn(ProjectIndex.prototype, 'replace');
   const register = vi.spyOn(discovery, 'registerRunningServer');
-  const app = await createApp(config, { deferStartup: true });
+  const onStartupError = vi.fn();
+  const app = await createApp(config, { deferStartup: true, onStartupError });
   apps.push(app);
   const address = await app.listen({ host: '127.0.0.1', port: 0 });
   const headers = { host: new URL(address).host };
@@ -88,7 +89,68 @@ it('listens and serves the shell and health before project checks, watching and 
   expect(cards.json().map((card: { title: string }) => card.title)).toEqual(['Searchable task']);
   expect(replace).toHaveBeenCalledTimes(1);
   expect(register).not.toHaveBeenCalled();
+  expect(onStartupError).not.toHaveBeenCalled();
   expect(await readdir(config.dataRoot)).toEqual(['features']);
+});
+
+it('reports a deferred initialization failure once with its original cause after HTTP readiness', async () => {
+  const config = await fixture();
+  const startup = gate();
+  const failure = new Error('The path is outside the project.');
+  const initialize = vi.spyOn(Repository.prototype, 'initialize').mockImplementation(async () => {
+    await startup.promise;
+    throw failure;
+  });
+  const onStartupError = vi.fn();
+  const app = await createApp(config, { deferStartup: true, onStartupError });
+  apps.push(app);
+  const address = await app.listen({ host: '127.0.0.1', port: 0 });
+  const headers = { host: new URL(address).host };
+  expect((await app.inject({ url: '/', headers })).statusCode).toBe(200);
+  expect(initialize).not.toHaveBeenCalled();
+  const requests = Promise.all(['/api/catalog', '/api/snapshot', '/api/cards'].map(url => app.inject({ url, headers })));
+  await vi.waitFor(() => expect(initialize).toHaveBeenCalledTimes(1));
+  expect(onStartupError).not.toHaveBeenCalled();
+  expect((await app.inject({ url: '/api/health', headers })).statusCode).toBe(200);
+  startup.release();
+  for (const response of await requests) {
+    expect(response.statusCode).toBe(500);
+    expect(response.body).not.toContain(failure.message);
+  }
+  expect((await app.inject({ url: '/api/catalog', headers })).statusCode).toBe(500);
+  expect(onStartupError).toHaveBeenCalledExactlyOnceWith(failure);
+  expect(initialize).toHaveBeenCalledTimes(1);
+  expect((await app.inject({ url: '/api/health', headers })).statusCode).toBe(200);
+});
+
+it.each(['snapshot', 'catalog'] as const)('reports a failed first %s read after initialization', async step => {
+  const config = await fixture();
+  const failure = new Error('Project data could not be read.');
+  if (step === 'snapshot') vi.spyOn(Repository.prototype, 'snapshot').mockRejectedValue(failure);
+  else vi.spyOn(CatalogService.prototype, 'get').mockRejectedValue(failure);
+  const onStartupError = vi.fn();
+  const app = await createApp(config, { deferStartup: true, onStartupError });
+  apps.push(app);
+  const headers = { host: '127.0.0.1:4317' };
+  const other = step === 'snapshot' ? 'catalog' : 'snapshot';
+  expect((await app.inject({ url: `/api/${other}`, headers })).statusCode).toBe(200);
+  const responses = await Promise.all([1, 2].map(() => app.inject({ url: `/api/${step}`, headers })));
+  expect(responses.map(response => response.statusCode)).toEqual([500, 500]);
+  expect(onStartupError).toHaveBeenCalledExactlyOnceWith(failure);
+});
+
+it.each(['snapshot', 'catalog'] as const)('keeps later %s read failures in the API after a successful first read', async step => {
+  const config = await fixture();
+  const onStartupError = vi.fn();
+  const app = await createApp(config, { deferStartup: true, onStartupError });
+  apps.push(app);
+  const headers = { host: '127.0.0.1:4317' };
+  expect((await app.inject({ url: `/api/${step}`, headers })).statusCode).toBe(200);
+  const failure = new Error('A later read failed.');
+  if (step === 'snapshot') vi.spyOn(Repository.prototype, 'snapshot').mockRejectedValue(failure);
+  else vi.spyOn(CatalogService.prototype, 'get').mockRejectedValue(failure);
+  expect((await app.inject({ url: `/api/${step}`, headers })).statusCode).toBe(500);
+  expect(onStartupError).not.toHaveBeenCalled();
 });
 
 it('closes a watcher whose initial scan is still pending without opening the catalog', async () => {
@@ -180,7 +242,8 @@ it('falls back to fresh catalog reads after the initial watcher scan fails', asy
   const config = await fixture();
   const close = vi.fn(async () => {});
   vi.spyOn(fileEvents, 'watchProjectFiles').mockImplementation(() => ({ ready: Promise.reject(new Error('Watch unavailable')), close }));
-  const app = await createApp(config, { deferStartup: true });
+  const onStartupError = vi.fn();
+  const app = await createApp(config, { deferStartup: true, onStartupError });
   apps.push(app);
   const headers = { host: '127.0.0.1:4317' };
   const first = await app.inject({ url: '/api/catalog', headers });
@@ -191,4 +254,5 @@ it('falls back to fresh catalog reads after the initial watcher scan fails', asy
   const search = await app.inject({ url: '/api/cards?text=unwatched&kind=task', headers });
   expect(search.statusCode, search.body).toBe(200);
   expect(search.json()).toHaveLength(1);
+  expect(onStartupError).not.toHaveBeenCalled();
 });

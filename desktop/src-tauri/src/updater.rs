@@ -172,7 +172,7 @@ pub fn toggle_auto_check(app: &AppHandle) {
         .log
         .write(format!("updater automatic checks: {enabled}"));
     shell.updates.wake.notify_one();
-    menu::rebuild(app);
+    menu::sync(app);
 }
 
 pub fn start(app: AppHandle) {
@@ -186,7 +186,7 @@ pub fn start(app: AppHandle) {
         let first_check = tokio::time::Instant::now() + Duration::from_secs(15);
         let shell = app::state(&app);
         let guard = shell.updates.operation.lock().await;
-        menu::rebuild(&app);
+        menu::sync(&app);
         let pending = shell.settings.lock().unwrap().updates.pending.clone();
         cleanup_temporary(
             &std::env::temp_dir(),
@@ -201,7 +201,7 @@ pub fn start(app: AppHandle) {
             restore_cache(&app);
         }
         drop(guard);
-        menu::rebuild(&app);
+        menu::sync(&app);
         // 2026-11-09: cached reminders belong to startup, not the delayed/background download path.
         if shell.updates.ready_version().is_some() {
             window::wait_until_shown(&app).await;
@@ -275,7 +275,7 @@ pub async fn check(app: &AppHandle, manual: bool) {
     if !manual && !shell.settings.lock().unwrap().updates.auto_check {
         return;
     }
-    menu::rebuild(app);
+    menu::sync(app);
     shell
         .log
         .write(format!("updater checking (manual: {manual})"));
@@ -305,7 +305,7 @@ pub async fn check(app: &AppHandle, manual: bool) {
         }
     }
     drop(guard);
-    menu::rebuild(app);
+    menu::sync(app);
 }
 
 async fn check_inner(app: &AppHandle, manual: bool) -> Result<(), String> {
@@ -324,7 +324,7 @@ async fn check_inner(app: &AppHandle, manual: bool) -> Result<(), String> {
     }
     let Some(mut update) = found else {
         clear_ready(&shell);
-        menu::rebuild(app);
+        menu::sync(app);
         shell.log.write("updater no newer non-skipped version");
         if manual {
             progress(app, ProgressBarStatus::None, None);
@@ -516,7 +516,7 @@ async fn notify_or_offer(app: &AppHandle, update: &Update, portable: bool, manua
         if let Some(window) = app.get_webview_window("main") {
             let _ = window.request_user_attention(Some(tauri::UserAttentionType::Informational));
         }
-        menu::rebuild(app);
+        menu::sync(app);
     } else {
         offer(app, update, portable).await;
     }
@@ -538,7 +538,7 @@ async fn remind_cached(app: &AppHandle) {
         }
     }
     drop(guard);
-    menu::rebuild(app);
+    menu::sync(app);
 }
 
 fn notes<'a>(raw: &'a Value, fallback: Option<&'a str>, language: &str) -> &'a str {
@@ -710,7 +710,7 @@ pub async fn install_ready(app: &AppHandle) {
     let Ok(guard) = shell.updates.operation.try_lock() else {
         return;
     };
-    menu::rebuild(app);
+    menu::sync(app);
     let ready = shell.updates.ready.lock().unwrap().clone();
     let portable = shell.updates.portable_offer.lock().unwrap().clone();
     if let Some(ready) = ready {
@@ -719,7 +719,7 @@ pub async fn install_ready(app: &AppHandle) {
         offer(app, &update, true).await;
     }
     drop(guard);
-    menu::rebuild(app);
+    menu::sync(app);
 }
 
 async fn install_locked(app: &AppHandle) {
@@ -901,7 +901,7 @@ fn restore_cache(app: &AppHandle) {
                 ready.update.version
             ));
             *shell.updates.ready.lock().unwrap() = Some(Arc::new(ready));
-            menu::rebuild(app);
+            menu::sync(app);
         }
         other => {
             if let Err(error) = other {

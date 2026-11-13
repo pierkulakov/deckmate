@@ -3,7 +3,6 @@
 /* The gate icon shows incoming counts on the left, outgoing counts on the right and a state strip below. */
 .dependency-gate { display: inline-flex; align-items: center; gap: 4px; height: 20px; margin-left: auto; padding: 0 6px; border: var(--control-hairline) solid var(--control-line); border-radius: var(--control-radius); background: transparent; color: var(--muted); font: 10px 'Geist Mono', monospace; line-height: 1; }
 .dependency-gate:hover:not(:disabled) { border-color: var(--button-line); color: var(--ink); background: var(--hover); }
-.dependency-gate:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
 .dependency-gate svg { flex-shrink: 0; }
 .dependency-gate.is-blocked { border-color: var(--danger); color: var(--danger); }
 .dependency-gate-bar { display: flex; gap: 2px; position: absolute; top: 100%; left: 1px; right: 1px; height: 2px; margin-top: 1px; }

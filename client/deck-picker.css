@@ -4,7 +4,6 @@
 .deck-picker-pill { max-width: 100%; padding: 0 3px; border: var(--control-hairline) solid var(--control-line); }
 .deck-picker-pill > svg, .deck-picker-open > svg { flex-shrink: 0; }
 /* 2026-11-10: the picker sits flush with the scrolling card panel edge, which would clip an outer ring on the left. */
-.deck-picker-pill:focus-visible { outline-offset: -2px; }
 .deck-picker-name { min-width: 0; overflow: hidden; padding-left: 2px; text-overflow: ellipsis; }
 .deck-picker-open { flex-shrink: 0; padding: 0 8px 0 4px; border: 0; cursor: pointer; }
 .deck-picker-pill[aria-expanded="true"] { border-color: var(--mark); background: var(--mark-tint); color: var(--mark); }
@@ -17,7 +16,7 @@
 .deck-picker-open:disabled { cursor: default; opacity: .5; }
 
 .deck-thumb { position: relative; display: inline-grid; flex: 0 0 16px; width: 16px; height: 16px; place-items: center; overflow: hidden; border-radius: 4px; background: var(--deck-color, var(--line)); color: var(--muted); box-shadow: var(--card-row-shadow, var(--card-shadow)); }
-.deck-thumb img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.deck-thumb > :is(img, .image-fallback) { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; image-rendering: pixelated; }
 .deck-thumb.is-empty { background: var(--surface); }
 
 .deck-picker-popover { position: fixed; z-index: 120; display: flex; flex-direction: column; width: min(340px, calc(100vw - 24px)); overflow: hidden; border: 1px solid var(--line); border-radius: var(--glass-radius); background: var(--surface); color: var(--ink); box-shadow: var(--shadow); animation: overlay-pop var(--motion-spring-quick) var(--ease-spring-quick); }

@@ -23,6 +23,7 @@ import { orderedRunChoices, runChoiceLabel } from '../run-label.ts';
 import { failureMessage } from '../failure-message.ts';
 import { catalogStore } from '../catalog-store.ts';
 import { moveFocus } from '../focus.ts';
+import { useMenuHandoff } from '../useMenuHandoff.ts';
 import { AgentQueueHint } from './AgentQueueHint.tsx';
 import { formatShortcut, shortcutAria } from '../shortcut-format.ts';
 import '../bulk-actions.css';
@@ -363,7 +364,7 @@ export function BulkActions({ cards, catalog, pending, onAction, onOpenDeck, ove
   const moreButton = useRef<HTMLButtonElement | null>(null);
   const actionBar = useRef<HTMLDivElement | null>(null);
   const [compact, setCompact] = useState(false);
-  const openingDialogFromMenu = useRef(false);
+  const menuHandoff = useMenuHandoff();
   const dialog = useRef<HTMLDivElement | null>(null);
   const currentSelection = useRef('');
   const id = useId();
@@ -410,9 +411,10 @@ export function BulkActions({ cards, catalog, pending, onAction, onOpenDeck, ove
   }, []);
 
   useEffect(() => {
+    menuHandoff.cancel();
     exportRequest.current?.abort();
     if (!inFlight.current) { setMenu(null); setError(''); setFailedStateCards([]); setConfirmingDependencies(false); setDependenciesConfirmed(false); }
-  }, [selectionKey]);
+  }, [selectionKey, menuHandoff.cancel]);
   useEffect(() => { duplicateIds.current.clear(); newHeroId.current = null; }, [source]);
   useEffect(() => () => exportRequest.current?.abort(), []);
   useEffect(() => {
@@ -676,18 +678,18 @@ export function BulkActions({ cards, catalog, pending, onAction, onOpenDeck, ove
       return <Button key={action.id} type="button" variant="ghost" size="icon" className="bulk-action-button" disabled={Boolean(disabled)} aria-label={action.label} aria-keyshortcuts={shortcut && shortcutAria(shortcut.combo)} aria-haspopup="dialog" aria-expanded={menu === action.id} aria-controls={menu === action.id ? id + '-dialog' : undefined} title={disabled ?? (action.label + (shortcut ? ' · ' + formatShortcut(shortcut.combo).display : ''))} onClick={event => openAction(action.id, event.currentTarget)}>{action.Icon ? <action.Icon size={16} /> : <span aria-hidden="true"><PriorityIcon priority={commonPriority} size={16} /></span>}</Button>;
     })}
     <DropdownMenu.Root modal={false} open={menu === 'more'} onOpenChange={open => {
-      if (open) { openingDialogFromMenu.current = false; setMenu('more'); setError(''); }
+      if (open) { menuHandoff.cancel(); setMenu('more'); setError(''); }
       else setMenu(current => current === 'more' ? null : current);
     }}>
       <DropdownMenu.Trigger asChild><Button ref={moreButton} type="button" variant="ghost" size="icon" disabled={busy || !selected.length} aria-label={t.uiMoreActions} title={t.uiMoreActions}><MoreHorizontal size={17} /></Button></DropdownMenu.Trigger>
-      <DropdownMenu.Portal><DropdownMenu.Content className="bulk-more-menu dialog-panel" align="end" sideOffset={7} collisionPadding={10} onEscapeKeyDown={event => { event.preventDefault(); closeMenu(); }} onCloseAutoFocus={event => { if (openingDialogFromMenu.current) event.preventDefault(); }}>
+      <DropdownMenu.Portal><DropdownMenu.Content className="bulk-more-menu dialog-panel" align="end" sideOffset={7} collisionPadding={10} onEscapeKeyDown={event => { event.preventDefault(); closeMenu(); }} onCloseAutoFocus={menuHandoff.onCloseAutoFocus}>
         {actionGroups.map(group => <DropdownMenu.Group key={group.key}>
           <DropdownMenu.Label className="bulk-more-heading">{t[group.key]}</DropdownMenu.Label>
           {compact && group.key === 'organization' && overflowOrganization}
           {compact && group.key === 'export' && overflowExport}
           {[...actions, ...extraActions].filter(action => group.ids.includes(action.id) && !directActions.includes(action.id)).map(action =>
             <DropdownMenu.Item key={action.id} className="bulk-more-item" disabled={Boolean(reason(action.id))} title={reason(action.id) ?? undefined}
-              onSelect={event => { event.preventDefault(); openingDialogFromMenu.current = true; openAction(action.id, moreButton.current ?? undefined); }}>{action.Icon ? <action.Icon size={16} /> : <span aria-hidden="true"><PriorityIcon priority={commonPriority} size={16} /></span>}<span>{action.label}</span></DropdownMenu.Item>)}
+              onSelect={() => menuHandoff.defer(() => openAction(action.id, moreButton.current ?? undefined))}>{action.Icon ? <action.Icon size={16} /> : <span aria-hidden="true"><PriorityIcon priority={commonPriority} size={16} /></span>}<span>{action.label}</span></DropdownMenu.Item>)}
         </DropdownMenu.Group>)}
       </DropdownMenu.Content></DropdownMenu.Portal>
     </DropdownMenu.Root>

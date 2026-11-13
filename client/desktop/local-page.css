@@ -1,0 +1,3 @@
+/* 2026-11-13: native show waits for decoded fonts and artwork, keeping the first visible layout stable. */
+html { background-color: var(--canvas); }
+html[data-paint-pending] body { visibility: hidden; }

@@ -1,4 +1,4 @@
-import { Fragment, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
+import { useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import type { CatalogCard } from '../../src/catalog-contracts.ts';
 
 interface VirtualCardGridProps {
@@ -126,6 +126,13 @@ function sameWindow(previous: GridWindow, next: GridWindow): boolean {
 export function VirtualCardGrid({ cards, enabled, pinnedIds, children }: VirtualCardGridProps) {
   const element = useRef<HTMLDivElement>(null);
   const [visibleWindow, setVisibleWindow] = useState<GridWindow | null>(null);
+  const initiallyVirtual = useRef(enabled);
+  const currentCards = useRef(cards);
+  const remeasure = useRef<(() => void) | null>(null);
+  useLayoutEffect(() => {
+    currentCards.current = cards;
+    remeasure.current?.();
+  }, [cards]);
 
   useLayoutEffect(() => {
     const grid = element.current;
@@ -133,17 +140,23 @@ export function VirtualCardGrid({ cards, enabled, pinnedIds, children }: Virtual
     let frame: number | null = null;
     let active = true;
     let measured = false;
+    let waitingFor: Animation | undefined;
     const measure = () => {
       frame = null;
       const moving = movingAncestor(grid);
       // Measure again once the move ends; the first read still runs, so a grid never starts as one column.
       if (moving) {
-        moving.finished.then(schedule, schedule);
+        if (moving !== waitingFor) {
+          waitingFor = moving;
+          moving.finished.then(schedule, schedule);
+        }
         if (measured) return;
       }
+      waitingFor = moving;
       if (grid.getBoundingClientRect().width === 0) return;
       measured = true;
       const metrics = gridMetrics(grid);
+      const cards = currentCards.current;
       const bounds = grid.getBoundingClientRect();
       const viewport = visibleBounds(grid);
       const origin = bounds.top + metrics.insetTop;
@@ -156,6 +169,10 @@ export function VirtualCardGrid({ cards, enabled, pinnedIds, children }: Virtual
       setVisibleWindow(previous => previous && sameWindow(previous, next) ? previous : next);
     };
     const schedule = () => { if (active && frame === null) frame = requestAnimationFrame(measure); };
+    remeasure.current = () => {
+      if (frame !== null) cancelAnimationFrame(frame);
+      measure();
+    };
     measure();
     const observer = typeof ResizeObserver === 'function' ? new ResizeObserver(schedule) : null;
     observer?.observe(grid);
@@ -165,6 +182,7 @@ export function VirtualCardGrid({ cards, enabled, pinnedIds, children }: Virtual
     document.addEventListener('focusout', schedule);
     return () => {
       active = false;
+      remeasure.current = null;
       if (frame !== null) cancelAnimationFrame(frame);
       observer?.disconnect();
       window.removeEventListener('scroll', schedule, true);
@@ -173,24 +191,24 @@ export function VirtualCardGrid({ cards, enabled, pinnedIds, children }: Virtual
       document.removeEventListener('focusout', schedule);
       virtualGrids.delete(grid);
     };
-  }, [enabled, cards]);
+  }, [enabled]);
 
-  if (!enabled) return <div ref={element} className="deck-grid catalog-card-grid">{cards.map(card => <Fragment key={card.id}>{children(card)}</Fragment>)}</div>;
-  // 2026-11-10: CSS lays out the first batch before measurement, so no JS copy of the tile scale can drift.
-  if (!visibleWindow) return <div ref={element} className="deck-grid catalog-card-grid">{cards.slice(0, 24).map(card => <Fragment key={card.id}>{children(card)}</Fragment>)}</div>;
-  const pinned = new Set([...pinnedIds, ...visibleWindow.interactionIds]);
-  const rows = Math.ceil(cards.length / visibleWindow.columns);
-  const style: CSSProperties = {
-    height: visibleWindow.insetTop + visibleWindow.bottomInset + Math.max(0, rows * visibleWindow.rowHeight - (visibleWindow.rowHeight - visibleWindow.tileHeight)),
-    gridAutoRows: visibleWindow.tileHeight,
+  // 2026-11-13: the same keyed cell survives enabling/disabling windowing; a short first batch would also clamp scrollTop.
+  const measured = enabled ? visibleWindow : null;
+  const pinned = new Set([...pinnedIds, ...(measured?.interactionIds ?? [])]);
+  const rows = measured ? Math.ceil(cards.length / measured.columns) : 0;
+  const style: CSSProperties | undefined = measured ? {
+    height: measured.insetTop + measured.bottomInset + Math.max(0, rows * measured.rowHeight - (measured.rowHeight - measured.tileHeight)),
+    gridAutoRows: measured.tileHeight,
     alignContent: 'start',
-  };
-  return <div ref={element} className="deck-grid catalog-card-grid" data-virtual-card-grid=""
-    data-card-window={[visibleWindow.start, visibleWindow.end, visibleWindow.columns, ...pinned].join(':')} style={style}>
-    {cards.flatMap((card, index) => {
-      if ((index < visibleWindow.start || index >= visibleWindow.end) && !pinned.has(card.id)) return [];
+  } : undefined;
+  return <div ref={element} className="deck-grid catalog-card-grid" data-virtual-card-grid={measured ? '' : undefined}
+    data-card-window={measured ? [measured.start, measured.end, measured.columns, ...pinned].join(':') : undefined} style={style}>
+    {(enabled && !measured && initiallyVirtual.current ? cards.slice(0, 24) : cards).flatMap((card, index) => {
+      if (measured && (index < measured.start || index >= measured.end) && !pinned.has(card.id)) return [];
       return <div key={card.id} data-virtual-card-cell={card.id} style={{ minWidth: 0,
-        gridRowStart: Math.floor(index / visibleWindow.columns) + 1, gridColumnStart: index % visibleWindow.columns + 1 }}>{children(card)}</div>;
+        gridRowStart: measured ? Math.floor(index / measured.columns) + 1 : undefined,
+        gridColumnStart: measured ? index % measured.columns + 1 : undefined }}>{children(card)}</div>;
     })}
   </div>;
 }

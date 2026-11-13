@@ -1,0 +1,13 @@
+/* 2026-11-13: waiting for a module keeps the page footprint; optional dialogs leave the current surface visible. */
+.lazy-section-page { min-width: 0; min-height: 100%; }
+.lazy-section-panel { min-width: 0; height: var(--lazy-section-height); overflow: auto; }
+.lazy-section-dialog { position: fixed; z-index: 120; right: var(--space-4); bottom: var(--space-4); max-width: calc(100vw - 32px); pointer-events: none; }
+.lazy-section-dialog > .loading-state { flex-direction: row; border-radius: var(--glass-radius); background: var(--surface); box-shadow: var(--shadow); padding: var(--space-3) var(--space-4); }
+.lazy-section-error { text-align: center; overflow-wrap: anywhere; }
+.lazy-section-scrim { position: fixed; inset: 0; z-index: 120; background: var(--scrim); }
+.lazy-section-dialog-error { position: fixed; z-index: 121; left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(500px, calc(100vw - 32px)); }
+/* 2026-11-13: phone sheets are fixed or portaled; their empty grid slot must not push the covered card list down. */
+@media (max-width: 760px) {
+  .catalog-preview-slot:not([hidden]) { display: contents; }
+  .lazy-section-panel { position: fixed; z-index: 80; inset: 0; height: 100dvh; background: var(--canvas); }
+}

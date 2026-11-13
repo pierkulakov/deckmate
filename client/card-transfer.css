@@ -7,7 +7,7 @@
 .is-card-transfer-active .deck-card-space { pointer-events: none; }
 .card-transfer-handle { display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto; width: 24px; height: 24px; padding: 3px; border: 0; border-radius: var(--control-radius); color: var(--muted); background: transparent; cursor: grab; touch-action: none; }
 @media (hover: hover) { .card-transfer-handle:hover { color: var(--ink); background: var(--hover); } }
-.card-transfer-handle:focus-visible { color: var(--ink); background: var(--hover); outline: 2px solid var(--focus); outline-offset: 2px; }
+.card-transfer-handle:focus-visible:where(:root[data-tab-focus] *) { color: var(--ink); background: var(--hover); }
 .card-transfer-handle[aria-disabled="true"] { cursor: default; opacity: .35; }
 .deck-card > .card-transfer-handle { position: absolute; z-index: 6; right: 3px; top: 3px; width: 22px; height: 22px; color: var(--card-ink); background: var(--card-face); opacity: 0; }
 /* The pointer drags the whole tile (2026-11-04), so the grip shows only for keyboard drag; on hover it just hid the title's end. */
@@ -32,7 +32,7 @@
 .card-transfer-target-row { display: flex; flex-wrap: wrap; gap: 10px; }
 .card-transfer-target { display: flex; flex-direction: column; gap: var(--space-1); width: 104px; padding: 0; border: 0; background: none; color: var(--ink); font: inherit; text-align: left; transition: opacity var(--motion-feedback); }
 .card-transfer-thumb { position: relative; display: grid; place-items: center; width: 104px; height: 64px; overflow: hidden; border-radius: var(--glass-radius); color: var(--overlay-ink); box-shadow: var(--card-shadow); transition: box-shadow var(--motion-feedback); }
-.card-transfer-thumb img { width: 100%; height: 100%; object-fit: cover; image-rendering: pixelated; }
+.card-transfer-thumb > :is(img, .image-fallback) { width: 100%; height: 100%; object-fit: cover; image-rendering: pixelated; }
 .card-transfer-name { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; padding-inline: 2px; font-size: 12px; font-weight: 600; line-height: 16px; overflow-wrap: anywhere; }
 /* 2026-11-06: one rule (the solid ring of the first was always overridden), and the dashed edge sits on the thumb's own edge:
    at −4 px the Unassigned slot read 8 px shorter than the deck covers beside it. */

@@ -60,12 +60,13 @@ describe.skipIf(!browserPath)('tile selection corner (browser)', () => {
     const completed = renderExtra({ ...hero, id: 'completed', state: 'done' }, true);
     setLang('en');
     vi.unstubAllGlobals();
-    const css = (await Promise.all(['client/styles.css', 'client/card-material.css', 'client/card-family.css', 'client/card-indicators.css', 'client/card-transfer.css'].map(path => readFile(path, 'utf8')))).join('\n');
+    const css = (await Promise.all(['client/tokens.css', 'client/styles.css', 'client/card-material.css', 'client/card-family.css', 'client/card-indicators.css', 'client/card-transfer.css', 'client/focus.css'].map(path => readFile(path, 'utf8')))).join('\n');
     page = await openHeadlessBrowser({ width: 800, height: 600, scale: 1 }, undefined, { browserPath: browserPath! });
     await page.send('Emulation.setFocusEmulationEnabled', { enabled: true });
     await page.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: 'no-preference' }] });
     const frame = (await page.send('Page.getFrameTree')).result.frameTree.frame.id;
     await page.send('Page.setDocumentContent', { frameId: frame, html: `<html class="dark"><head><style>${css}</style><style>body { padding: 100px; } .deck-card-space { width: 115px; }</style></head><body>${markup}<div class="catalog-card-grid">${english}${russian}${completed}</div></body></html>` });
+    await page.evaluate(await readFile('client/focus.js', 'utf8'));
     await page.send('Page.bringToFront');
     const root = (await page.send('DOM.getDocument')).result.root.nodeId;
     cardNode = (await page.send('DOM.querySelector', { nodeId: root, selector: '.deck-card' })).result.nodeId;

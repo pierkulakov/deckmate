@@ -107,10 +107,10 @@ Project data reads, the template plan and short-link redirects accept `?source=l
 | `GET /api/file` | Raw project file; `path` must start with `features/`, `docs/`, `tasks/` or `cards/`, extension `.md .png .jpg .jpeg .webp .svg .gif .pdf`. |
 | `GET /api/file?path=…&from=…&to=…` | Exact Markdown line range, inclusive and 1-based. Both bounds are required, must exist and be ordered. Keeps BOM on line 1, CRLF/LF and the final line ending. Without bounds returns the original whole file. |
 | `GET /api/onboarding-facts` | `{ agentSkill }` for the onboarding quests: whether the `/deckmate` skill is installed in the project folder. |
-| `GET /api/project-templates`, `GET /api/project-templates/:id/plan` | Bundled starter templates; `plan` lists what `apply-project-template` would create in this project, with its `templateHash`. 404 for an unknown ID. |
+| `GET /api/project-templates`, `GET /api/project-templates/:id/plan` | Bundled starter templates; the list is cached in memory and refreshed when template, Journey or cover file metadata changes. GET and HEAD of the list share a limit of 120 requests per 60-second window per server instance; excess requests return 429 with `Retry-After` (whole seconds until the window resets) and a localized `{ message }` body for GET. `plan` lists what `apply-project-template` would create in this project, with its `templateHash`. 404 for an unknown ID. |
 | `GET /api/health` | `{ app, version, pid }`. |
 | `GET /r/<ref>` | Short link (`c-…` card, `p-…` pipeline, `v-…` board) → redirect into the app. 404 when unknown. |
-| `WS /api/events?token=…` | Push on file changes: `{ type: "changed", source, relativePath, detectedAt }`, and `{ type: "watcher-error", source }`. |
+| `WS /api/events?token=…` | Push on file changes: `{ type: "changed", source, relativePath, detectedAt }`, and `{ type: "watcher-error", source }`. Watcher failures are also sent on connection for sources whose watching has already stopped. |
 
 ### Agent context — 2026-11-05
 

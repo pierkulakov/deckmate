@@ -83,7 +83,7 @@ export function CardFocusMode({ title, onBack, cardLayout = false, children }: {
     if (!returnFocus.cardId) return;
     const tile = document.querySelector<HTMLElement>(`[data-card-id="${CSS.escape(returnFocus.cardId)}"] .deck-card-open`);
     moveFocus(tile, { preventScroll: true });
-  }}><div ref={layer} className={'card-focus-mode' + (cardLayout ? ' has-card-layout' : '')} role="dialog" aria-modal="true" aria-label={t.dialogLabel(title)} tabIndex={-1}>
+  }}><div ref={layer} className={'card-focus-mode' + (cardLayout ? ' has-card-layout' : '')} role="dialog" aria-modal="true" aria-label={t.dialogLabel(title)} tabIndex={-1} data-local-escape>
     <button type="button" className="card-focus-mode-back" aria-label={t.exit} title={t.exit} onClick={onBack}><ChevronLeft size={14} aria-hidden="true" /></button>
     <button type="button" className="card-focus-mode-screen" aria-label={fullScreenLabel} title={fullScreenLabel} onClick={toggleFullScreen}>
       {fullScreen ? <Minimize size={16} aria-hidden="true" /> : <Maximize size={16} aria-hidden="true" />}

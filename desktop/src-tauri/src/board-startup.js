@@ -16,7 +16,9 @@
     if (scheduled || document.visibilityState !== 'visible') return;
     const shell = document.querySelector('.app-shell');
     const main = shell?.querySelector('.workspace-main');
-    if (!(Number(shell?.dataset.updatedAt) > 0) || !main?.firstElementChild || main.querySelector('.loading-state, .error-state, .catalog-empty[role="status"]')) return;
+    // 2026-11-13: the shared opening scene covers the real gallery; painted data means its ready state, not its skeleton.
+    if (document.querySelector('.first-screen')?.dataset.state !== 'ready') return;
+    if (!(Number(shell?.dataset.updatedAt) > 0) || !main?.firstElementChild || main.querySelector('.loading-state, .error-state, .catalog-empty[role="status"], .deck-gallery[data-state="loading"]')) return;
     stop();
     requestAnimationFrame(() => requestAnimationFrame(() => {
       performance.mark('deckmate-board-data-painted');

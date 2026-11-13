@@ -1,6 +1,8 @@
 /* 2026-11-09: the stage is opaque until the cover reaches the shelf; tools never show through the departing gallery. */
 .deck-transition-layer { position: fixed; z-index: 25; overflow: hidden; pointer-events: none; background: var(--ground); }
 .deck-transition-ghost { position: absolute; margin: 0; will-change: transform; }
+/* 2026-11-13: page light stays in viewport coordinates while the frozen covers scale above the opaque stage. */
+.deck-transition-light { position: absolute; inset: 0; background-color: var(--canvas); background-image: var(--gallery-light); background-repeat: no-repeat; background-attachment: fixed; }
 /* The cover's shared light layer handles is-transition-hover; its settings button follows the same handoff. */
 .deck-transition-ghost .catalog-cover-item.is-transition-hover .catalog-cover-settings { opacity: 1; }
 /* 2026-11-09: the row leaves its panel: the glass and the light on it go out while the boxes travel, so the open deck's

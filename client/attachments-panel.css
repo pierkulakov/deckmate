@@ -53,8 +53,8 @@
 .attachment-copy-control { position: relative; display: inline-flex; }
 .attachment-copy-control .attachment-copy-feedback { left: auto; right: 0; }
 .attachment-copy-control .attachment-copy-feedback::after { left: auto; right: 8px; }
-.attachments-preview { display: flex; justify-content: center; width: 100%; padding: 0; border: 0; border-radius: var(--control-radius); background: var(--ground); overflow: hidden; cursor: zoom-in; }
-.attachments-preview img { display: block; max-width: 100%; max-height: 240px; }
+.attachments-preview { position: relative; display: flex; justify-content: center; width: 100%; aspect-ratio: 4 / 3; max-height: 240px; padding: 0; border: 0; border-radius: var(--control-radius); background: var(--ground); overflow: hidden; cursor: zoom-in; }
+.attachments-preview > :is(img, .image-fallback) { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
 .attachments-file { display: flex; align-items: center; gap: 8px; min-width: 0; padding: 12px; border: var(--control-hairline) solid var(--control-line); border-radius: var(--control-radius); background: var(--ground); color: var(--edit-hint); }
 .attachments-file > svg { flex-shrink: 0; }
 .attachments-file > span { min-width: 0; overflow: hidden; color: var(--ink); font-size: 14px; line-height: 16px; white-space: nowrap; text-overflow: ellipsis; }
@@ -80,7 +80,7 @@
 .attachment-viewer-stage { position: relative; display: grid; place-items: center; min-height: 0; flex: 1; overflow: hidden; }
 .attachment-viewer-pan { display: grid; place-items: center; width: 100%; height: 100%; cursor: default; }
 .attachment-viewer-pan.is-dragging { cursor: grabbing; }
-.attachment-viewer-pan img { max-width: calc(100% - 120px); max-height: calc(100% - 40px); border-radius: 4px; user-select: none; touch-action: none; transform-origin: center center; }
+.attachment-viewer-pan > :is(img, .image-fallback) { position: absolute; width: calc(100% - 120px); height: calc(100% - 40px); object-fit: scale-down; border-radius: 4px; user-select: none; touch-action: none; transform-origin: center center; }
 .attachment-viewer-arrow { position: absolute; top: 50%; transform: translateY(-50%); color: var(--overlay-ink); background: color-mix(in srgb, var(--overlay-face) 75%, transparent); }
 .attachment-viewer-previous { left: 14px; }
 .attachment-viewer-next { right: 14px; }

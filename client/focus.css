@@ -1,0 +1,38 @@
+/* 2026-11-13: the inner edge preserves layout and material shadows, including clipped controls and forced-colour themes.
+   Tab enables it independently of the browser's autofocus and programmatic-focus heuristics. */
+:focus { outline: none; }
+:root[data-tab-focus] :where(
+  :focus-visible,
+  .deck-card:has(.deck-card-open:focus-visible),
+  .card-family-row:has(.card-family-row-open:focus-visible),
+  .attach-subcards-row:has(input:focus-visible),
+  .deck-table-row:has(:is(.catalog-table-title, .deck-table-check):focus-visible),
+  .catalog-group-select:has(input:focus-visible),
+  .csv-import-file-label:has(input:focus-visible),
+  .hand-all-toggle:has(input:focus-visible) .hand-all-track,
+  .journey-track-open:focus-visible .journey-track-face,
+  .journey-step-priority:has(select:focus-visible),
+  .planning-color-custom:has(input:focus-visible),
+  .card-family-composer-deck:has(select:focus-visible) > .card-family-composer-field
+) { outline: 2px solid var(--focus-ink, var(--focus)); outline-offset: -2px; }
+
+/* 2026-11-13: fields keep their caret and own edge; composite controls mark the visible face once. */
+:root[data-tab-focus] :is(
+  input:not([type="checkbox"], [type="radio"], [type="range"], [type="color"], [type="file"], [type="button"], [type="submit"], [type="reset"]),
+  textarea, .control-field, .control-field input, .control-field select,
+  .deck-card-open, .card-family-row-open, .attach-subcards-row > input,
+  .deck-table-check, .deck-table .catalog-table-title, .catalog-group-select input,
+  .csv-import-file-label input, .hand-all-toggle input, .journey-track-open,
+  .journey-step-priority select, .planning-color-custom input, .card-family-composer-deck select,
+  .catalog-resize-handle, .catalog-results
+):focus-visible { outline: none; }
+
+:is(.button-primary, .button-default, .card-edit-save) { --focus-ink: var(--violet-fill-ink); }
+:is(.button-default.destructive, .button-default.is-danger) { --focus-ink: var(--danger-fill-ink); }
+:is(.card-preview-material-band, .deck-card-metric, .deck-card-settings) { --focus-ink: var(--card-metal-ink); }
+:is(.card-preview-parent, .card-family-trigger) { --focus-ink: var(--hero-ink); }
+.card-draft-banner-actions { --focus-ink: var(--draft-banner-ink); }
+
+@media (forced-colors: active) {
+  :root[data-tab-focus] { --focus: Highlight; --focus-ink: Highlight; }
+}

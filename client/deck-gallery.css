@@ -3,26 +3,37 @@
    then every space as a panel of 146.67×200 covers. --shelf-inset is the one left edge the name, the readout, the
    panel labels and the covers share. The page light is fixed to the window, so every panel down the scroll has it behind.
    The row's search, scope controls and track select are shared with the card scopes (catalog-header.css). */
-.catalog-view.deck-gallery { --cover-width: var(--gallery-cover-width); --cover-height: var(--gallery-cover-height); --cover-radius: calc(var(--cover-width) / 16.5); --shelf-inset: var(--space-6); max-width: none; padding: 20px 24px 56px 16px; background: var(--gallery-light) no-repeat fixed; }
+/* 2026-11-13: the live home scrollport owns the page light, so short loading, empty and error surfaces reach the window bottom. */
+.workspace-main.board-main:has(> .deck-gallery:not(.deck-transition-ghost)) { background-color: var(--canvas); background-image: var(--gallery-light); background-repeat: no-repeat; background-attachment: fixed; }
+.catalog-view.deck-gallery { --cover-width: var(--gallery-cover-width); --cover-height: var(--gallery-cover-height); --cover-radius: calc(var(--cover-width) / 16.5); --shelf-inset: var(--space-6); max-width: none; min-height: 100%; padding: 20px 24px 56px 16px; background: none; }
 .deck-gallery .deck-gallery-header { display: flex; align-items: flex-start; gap: var(--space-4); min-height: 52px; margin: 0 0 20px; padding: 0 0 0 var(--shelf-inset); border: 0; }
 .deck-gallery .deck-gallery-project { display: flex; align-items: flex-start; gap: var(--space-3); min-width: 0; flex: 0 1 auto; }
+@media (min-width: 1101px) {
+  .deck-gallery .deck-gallery-project { flex: 1 1 0; }
+  .deck-gallery .catalog-heading-actions, .deck-gallery .catalog-browser-navigation, .deck-gallery .catalog-track-picker { flex: 0 0 auto; }
+  .deck-gallery .deck-gallery-search { flex: 0 0 260px; }
+}
 .deck-gallery .deck-gallery-header h1 { margin: 0; font-size: 26px; font-weight: 600; line-height: 30px; letter-spacing: -.015em; color: var(--ink); overflow-wrap: anywhere; text-wrap: balance; }
 /* 2026-11-09: the file inventory is a caption under the project name rather than a footer line under the covers:
    numbers in Geist Mono like the scope choices' counts, parts wrap whole at the separators. */
 .deck-gallery .deck-gallery-title { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
-.deck-gallery .catalog-source { margin: 0; display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 6px; color: var(--ink); font-size: 12px; line-height: 16px; }
-.deck-gallery .catalog-source-part { white-space: nowrap; }
+.deck-gallery .catalog-source { margin: 0; min-height: var(--text-help-leading); display: flex; flex-wrap: wrap; align-items: center; gap: 2px 6px; color: var(--ink); font-size: 12px; line-height: 16px; }
+.deck-gallery .catalog-source-part { display: inline-flex; align-items: center; gap: var(--space-1); white-space: nowrap; }
+.deck-gallery .catalog-source.is-loading { flex-wrap: nowrap; gap: var(--space-2); color: var(--muted); }
+.deck-gallery .catalog-source.is-loading svg { flex: 0 0 var(--space-3); width: var(--space-3); height: var(--space-3); }
+.deck-gallery .catalog-source.is-loading span { min-width: 0; overflow-wrap: anywhere; }
+.deck-gallery .catalog-source.is-resolution { color: var(--muted); }
 .deck-gallery .catalog-source-count { color: var(--ink); font: 500 11px/16px 'Geist Mono', monospace; font-variant-numeric: tabular-nums; }
 .deck-gallery .catalog-source .dot-separator { opacity: .6; }
 .deck-gallery .catalog-source-warnings { padding: 0; border: 0; border-radius: var(--control-radius); background: none; color: var(--warning-ink); font: inherit; font-weight: 500; letter-spacing: .01em; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
 @media (hover: hover) { .deck-gallery .catalog-source-warnings:hover { text-decoration-thickness: 2px; } }
-.deck-gallery .catalog-source-warnings:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 .deck-gallery .catalog-heading-actions { display: flex; align-items: center; gap: 12px; flex: 1; justify-content: flex-end; min-width: 0; min-height: 30px; }
 /* 2026-11-10: the bare 30px "+" was too easy to miss; New space is the one labeled mint action in the row,
    like the Journey button in an open deck. Up to 420px wide it folds back to the icon so the project name keeps its line. */
 /* 2026-11-10: «Create space» is the shared mint creating action (surface.css .action-mint), icon only up to 420px. */
-.deck-gallery .deck-gallery-add { margin-top: 0; }
+.deck-gallery .deck-gallery-add { flex-shrink: 0; margin-top: 0; }
 .deck-gallery .deck-gallery-name { display: flex; align-items: flex-start; gap: var(--space-3); min-width: 0; }
+.deck-gallery .deck-gallery-name h1 { min-width: 0; }
 .deck-gallery .catalog-warnings { max-height: 240px; margin: 0 0 12px var(--shelf-inset); padding: 10px 14px 10px 30px; overflow: auto; list-style: disc; border: .67px solid color-mix(in srgb, var(--warning-ink) 35%, transparent); border-radius: var(--glass-radius); background: var(--warning-bg); color: var(--warning-ink); font-size: 12px; line-height: 1.6; }
 .deck-gallery .catalog-warnings li { overflow-wrap: anywhere; }
 .deck-gallery .deck-gallery-search-status { margin: -12px 0 12px var(--shelf-inset); color: var(--muted); font-size: 12px; }
@@ -53,6 +64,54 @@
   .deck-gallery .catalog-space-actions { margin-top: 0; }
   .deck-gallery .catalog-space-actions .ui-button { width: var(--control-target-touch); min-height: var(--control-target-touch); height: var(--control-target-touch); }
 }
+/* 2026-11-13: loading is the same table, not a second layout. Only opacity changes when confirmed content arrives. */
+.deck-gallery .gallery-body { min-width: 0; }
+.deck-gallery[data-state="ready"] > .gallery-body, .deck-gallery[data-state="empty"] > .gallery-body, .deck-gallery[data-state="error"] > .gallery-body { animation: gallery-reveal var(--motion-feedback) var(--ease-out); }
+@keyframes gallery-reveal { from { opacity: 0; } to { opacity: 1; } }
+/* Independent pulse values arrive in the reserved tracks; fading their content keeps the metric swap out of layout-shift scoring. */
+.project-pulse :is(.project-pulse-value, .project-pulse-detail, .project-pulse-days, .project-pulse-run-bottom) { animation: gallery-reveal var(--motion-feedback) var(--ease-out); }
+.deck-gallery .catalog-heading-actions[aria-disabled="true"] .catalog-nav-count { visibility: hidden; }
+.deck-gallery .catalog-nav-count { min-width: 2ch; text-align: start; }
+.deck-gallery .catalog-space-heading .shape-heading { display: flex; flex: 1; align-items: center; gap: var(--space-2); min-height: calc(var(--space-4) * 2); margin: 0; }
+.shape-line { display: block; width: var(--space-10); max-width: 100%; height: var(--space-2); border-radius: var(--control-radius); background: var(--pulse-track); }
+.shape-heading .shape-title { flex-shrink: 1; width: calc(var(--gallery-cover-width) + var(--space-6)); height: var(--space-3); }
+.shape-heading .shape-count, .shape-heading .shape-actions { flex-shrink: 0; }
+.shape-heading .shape-actions { width: var(--space-4); margin-inline-start: auto; }
+.catalog-cover-skeleton { pointer-events: none; user-select: none; }
+.catalog-cover-skeleton .catalog-cover-art { background: var(--ground); box-shadow: inset 0 0 0 1px var(--cover-face-edge); }
+.catalog-cover-skeleton .catalog-cover-art::after { display: none; }
+.catalog-cover-skeleton .catalog-cover-backdrop::after { background: var(--cover-face-glass); }
+.catalog-cover-skeleton .shape-name { width: calc(80 * var(--u)); height: var(--space-2); margin: calc(16 * var(--u)) auto 0; }
+.catalog-cover-skeleton .shape-subtitle { width: calc(54 * var(--u)); margin: var(--space-2) auto 0; }
+.catalog-cover-skeleton .shape-plate { width: calc(20 * var(--u)); height: calc(22 * var(--u)); }
+.project-pulse .shape-value { width: var(--space-6); height: var(--space-6); margin-top: var(--space-2); }
+.project-pulse .shape-detail { width: calc(var(--space-10) * 2); margin-top: auto; margin-bottom: var(--space-2); }
+.deck-gallery .gallery-resolution { min-height: calc(var(--gallery-cover-height) + var(--space-10) * 2); padding: 0; }
+.gallery-resolution.ui-error { display: block; }
+.gallery-resolution .ui-empty { padding-top: var(--space-10); padding-bottom: var(--space-10); }
+.gallery-resolution .resolution-icon { width: var(--space-6); height: var(--space-6); margin-bottom: var(--space-2); color: var(--danger); }
+.gallery-resolution details { max-width: 100%; font-size: var(--text-help-size); line-height: var(--text-help-leading); }
+.gallery-resolution summary { min-width: var(--control-target-touch); padding: var(--space-2); color: var(--muted); cursor: pointer; }
+.gallery-resolution details p { margin-top: var(--space-2); text-align: start; }
+.gallery-resolution .ui-button { max-width: 100%; min-height: 36px; white-space: normal; }
+.gallery-resolution .ui-button > span { overflow-wrap: anywhere; }
+.deck-gallery .catalog-space-heading h2 { overflow-wrap: anywhere; }
+.deck-gallery .catalog-space-heading h2 > button { text-align: start; }
+@media (max-width: 980px) {
+  .project-pulse[data-expanded="false"] .shape-value { width: var(--space-4); height: var(--space-2); margin: 0; }
+  .project-pulse[data-expanded="false"] .shape-detail { display: none; }
+}
+@media (pointer: coarse) {
+  .deck-gallery .catalog-space-heading .shape-heading { min-height: var(--control-target-touch); }
+  .gallery-resolution .ui-button, .gallery-resolution summary { min-height: var(--control-target-touch); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .deck-gallery > .gallery-body, .project-pulse :is(.project-pulse-value, .project-pulse-detail, .project-pulse-days, .project-pulse-run-bottom) { animation: none !important; }
+}
+@media (forced-colors: active) {
+  .shape-line { background: GrayText; }
+  .catalog-cover-skeleton { outline: 1px solid GrayText; }
+}
 @media (max-width: 1100px) {
   .deck-gallery .deck-gallery-header { flex-wrap: wrap; }
   .deck-gallery .catalog-heading-actions { flex-basis: 100%; justify-content: flex-start; flex-wrap: wrap; }
@@ -67,4 +126,10 @@
   .deck-gallery .catalog-space-heading { padding-inline: max(var(--shelf-inset), calc((100% - 2 * var(--cover-width) - var(--gallery-cover-gap)) / 2)); }
   .deck-gallery .catalog-space-heading h2 { flex-direction: column; gap: 0; }
   .deck-gallery .catalog-space-heading .catalog-space-count { padding-top: 0; }
+  .deck-gallery .catalog-space-heading .shape-heading { min-height: calc(var(--space-6) * 2); align-items: flex-start; flex-direction: column; gap: var(--space-2); padding-block: var(--space-2); }
+  .shape-heading .shape-actions { display: none; }
+  .gallery-resolution .ui-empty { padding: var(--space-6) var(--space-3); }
+}
+@media (max-width: 420px) and (pointer: coarse) {
+  .deck-gallery .catalog-space-heading .shape-heading { min-height: calc(var(--control-target-touch) + var(--space-4)); }
 }

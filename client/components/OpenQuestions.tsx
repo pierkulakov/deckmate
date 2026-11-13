@@ -279,7 +279,7 @@ export function OpenQuestions({ id, card, catalog, writable, disabled, onEdit, o
     </div>
     <span className="visually-hidden" role="status">{saving ? t.saving : ''}</span>
   </>;
-  const answerForm = answerDraft && <form className="open-question-answer" onSubmit={(event: FormEvent) => { event.preventDefault(); void submit(); }} onKeyDown={keys}>
+  const answerForm = answerDraft && <form className="open-question-answer" data-local-escape onSubmit={(event: FormEvent) => { event.preventDefault(); void submit(); }} onKeyDown={keys}>
     <label className="open-question-field"><span className="visually-hidden">{t.answerLabel}</span><textarea ref={field} className="control-field" value={answerDraft.answer} rows={3} maxLength={200000} placeholder={t.answerPlaceholder} disabled={locked} onChange={event => { setAnswerDraft({ ...answerDraft, answer: event.target.value }); setError(''); }} /></label>
     {answerAssignee && <p className="open-question-hint">{t.addressedTo(answerAssignee)}</p>}
     {formFooter}
@@ -323,7 +323,7 @@ export function OpenQuestions({ id, card, catalog, writable, disabled, onEdit, o
     {writable && !active && <Button type="button" variant="ghost" size="sm" className="open-question-ask-action" disabled={locked} onClick={() => {
       setError(''); clearCopyFeedback(); setAskDraft({ text: '', assignee: '', targetId: card.id, section: '', search: '', sourceHash: card.sourceHash });
     }}><MessageCircleQuestion size={16} aria-hidden="true" />{t.ask}</Button>}
-    {askDraft && <form className="open-question-ask" onSubmit={(event: FormEvent) => { event.preventDefault(); void submit(); }} onKeyDown={keys}>
+    {askDraft && <form className="open-question-ask" data-local-escape onSubmit={(event: FormEvent) => { event.preventDefault(); void submit(); }} onKeyDown={keys}>
       <label className="open-question-field"><span>{t.questionLabel}</span><textarea ref={field} className="control-field" value={askDraft.text} rows={3} maxLength={200000} placeholder={t.questionPlaceholder} disabled={locked} onChange={event => setAskDraft({ ...askDraft, text: event.target.value })} /></label>
       <label className="open-question-field"><span>{t.member}</span><select className="control-field" value={askDraft.assignee} disabled={locked} onChange={event => setAskDraft({ ...askDraft, assignee: event.target.value })}><option value="">{t.nobody}</option>{(catalog.members ?? []).map(member => <option key={member.id} value={member.id}>@{member.label}</option>)}</select></label>
       <label className="open-question-field"><span>{t.searchCards}</span><input type="search" className="control-field" value={askDraft.search} disabled={locked} onChange={event => setAskDraft({ ...askDraft, search: event.target.value })} /></label>

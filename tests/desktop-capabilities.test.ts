@@ -12,7 +12,7 @@ describe('desktop capabilities', () => {
     expect(files.length).toBeGreaterThan(0);
   });
 
-  it('grants the remote board exactly its eight narrow commands', () => {
+  it('grants the remote board exactly its ten narrow commands', () => {
     const board = JSON.parse(readFileSync(new URL('board.json', capabilitiesDir), 'utf8'));
     expect(board.local).toBe(false);
     expect(board.remote.urls).toEqual(['http://127.0.0.1:*']);
@@ -21,7 +21,7 @@ describe('desktop capabilities', () => {
       'allow-board-recent-projects', 'allow-board-workspace-projects',
       'allow-board-add-to-workspace', 'allow-board-remove-from-workspace',
       'allow-board-move-in-workspace', 'allow-board-switch-project', 'allow-board-show-start-screen',
-      'allow-board-set-dirty',
+      'allow-board-set-dirty', 'allow-board-set-theme', 'allow-board-set-language',
     ].sort());
   });
 
@@ -29,7 +29,9 @@ describe('desktop capabilities', () => {
     const launcher = JSON.parse(readFileSync(new URL('launcher.json', capabilitiesDir), 'utf8'));
     expect(launcher.local).toBe(true);
     expect(launcher.remote).toBeUndefined();
-    for (const command of ['add-to-workspace', 'remove-from-workspace', 'move-in-workspace']) {
+    expect(launcher.permissions).not.toContain('allow-board-set-theme');
+    expect(launcher.permissions).not.toContain('allow-board-set-language');
+    for (const command of ['add-to-workspace', 'remove-from-workspace', 'move-in-workspace', 'set-theme', 'set-language']) {
       expect(launcher.permissions).toContain(`allow-desktop-${command}`);
     }
   });

@@ -41,6 +41,5 @@
 /* Tailwind preflight drops link color and underline; the foot link reuses the markdown link treatment: --link-ink, a soft underline, accent on hover. */
 .shortcuts-panel-foot a { color: var(--link-ink); text-decoration: underline; text-decoration-color: color-mix(in srgb, var(--link-ink) 35%, transparent); text-underline-offset: 3px; }
 .shortcuts-panel-foot a:hover { text-decoration-color: var(--accent); }
-.shortcuts-panel-foot a:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 @media (pointer: coarse) { .shortcuts-panel-close.ui-button { min-width: var(--control-target-touch, 44px); min-height: var(--control-target-touch, 44px); } }
 @media (prefers-reduced-motion: reduce) { .shortcuts-panel-overlay, .shortcuts-panel { animation: none; } }

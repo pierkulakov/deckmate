@@ -16,7 +16,6 @@ const scriptFile = /\.(?:ts|tsx|js|mjs)$/i;
 // These exact fragments describe product authorship or reproduce a font license, not design decisions.
 const productAttribution: Record<string, RegExp[]> = {
   'client/components/AttachmentsPanel.tsx': [/The server sets the\x20author from x-deckmate-actor\./],
-  'desktop/launcher/fonts/OFL.txt': [/the Copyright Holder\(s\) or the\x20Author\(s\) of the Font/, /Copyright Holder\(s\) and the\x20Author\(s\) or with their explicit written/],
   'docs/catalog.md': [/null or an absent legacy field means the\x20author is unknown\./, /state IDs and the\x20author's text are not translated\./],
   'skills/deckmate/references/api.md': [/`actorMemberId` is the\x20author, not Owner/],
   'skills/deckmate/workflows/plan.md': [/report the decision or outcome back to the\x20author\./],

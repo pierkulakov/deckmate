@@ -1,4 +1,12 @@
 fn main() {
+    // 2026-11-13: generate_context! embeds these pages during Rust compilation, including direct cargo builds.
+    assert!(
+        std::path::Path::new("../dist/index.html").is_file()
+            && std::path::Path::new("../dist/startup.html").is_file()
+            && std::path::Path::new("../dist/whats-new.html").is_file(),
+        "Desktop frontend is missing from desktop/dist. Run `npm run build:desktop` from the repository root before building the Rust shell."
+    );
+    println!("cargo:rerun-if-changed=../dist");
     println!("cargo:rerun-if-changed=../node-runtime.json");
     // 2026-11-09: embed the pinned runtime without starting Node just to show About.
     let runtime: serde_json::Value = serde_json::from_str(
@@ -18,6 +26,7 @@ fn main() {
             "desktop_create_project",
             "desktop_remove_recent",
             "desktop_set_language",
+            "desktop_set_theme",
             "desktop_add_to_workspace",
             "desktop_remove_from_workspace",
             "desktop_move_in_workspace",
@@ -29,6 +38,8 @@ fn main() {
             "board_switch_project",
             "board_show_start_screen",
             "board_set_dirty",
+            "board_set_theme",
+            "board_set_language",
             "whats_new_get",
         ]),
     ))

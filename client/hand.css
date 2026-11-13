@@ -15,11 +15,11 @@
 /* The All Hands switch uses only theme tokens so its track and thumb work in the light theme. */
 .hand-all-toggle { position: relative; display: inline-flex; align-items: center; gap: 8px; color: var(--ink); font-size: 12px; font-weight: 600; cursor: pointer; }
 .hand-all-toggle input { position: absolute; width: 1px; height: 1px; margin: 0; opacity: 0; }
-.hand-all-track { display: inline-flex; align-items: center; width: 32px; height: 18px; padding: 2px; border: 0.67px solid var(--line); border-radius: 9px; background: var(--ground); transition: background var(--motion-feedback), border-color var(--motion-feedback); }
+/* 2026-11-13: the content-box width accounts for the rendered hairline, keeping the thumb's end gaps equal. */
+.hand-all-track { container-type: inline-size; display: inline-flex; align-items: center; width: 32px; height: 18px; padding: 2px; border: 0.67px solid var(--line); border-radius: 9px; background: var(--ground); transition: background var(--motion-feedback), border-color var(--motion-feedback); }
 .hand-all-thumb { width: 14px; height: 14px; border-radius: 50%; background: var(--muted); transition: translate var(--motion-feedback) var(--ease-out), background var(--motion-feedback); }
 .hand-all-toggle input:checked + .hand-all-track { border-color: var(--accent); background: var(--accent); }
-.hand-all-toggle input:checked + .hand-all-track .hand-all-thumb { translate: 14px 0; background: var(--surface); }
-.hand-all-toggle input:focus-visible + .hand-all-track { outline: 2px solid var(--focus); outline-offset: 2px; }
+.hand-all-toggle input:checked + .hand-all-track .hand-all-thumb { translate: calc(100cqi - 100%) 0; background: var(--surface); }
 .hand-member-picker { width: 280px; min-width: 0; max-width: 100%; }
 .hand-member-picker select { width: 100%; min-width: 0; max-width: 100%; padding: 0 24px 0 8px; font-size: 12px; font-weight: 500; }
 
@@ -27,7 +27,7 @@
 .hand-all-list { display: flex; flex-direction: column; gap: 20px; }
 .hand-all-member { display: flex; flex-direction: column; gap: 8px; }
 .hand-all-member + .hand-all-member { padding-top: 16px; }
-.hand-all-member-heading { display: flex; align-items: flex-start; gap: var(--space-2); min-height: 28px; color: var(--hand-panel-ink); }
+.hand-all-member-heading { display: flex; align-items: center; gap: var(--space-2); min-height: 28px; color: var(--hand-panel-ink); }
 .hand-all-member-heading h2 { min-width: 0; margin: 0; overflow-wrap: anywhere; font-size: 14px; font-weight: 600; line-height: 16px; }
 .hand-all-member-heading .card-owner-avatar { width: 28px; height: 28px; }
 .hand-all-member .hand-queue { margin: 0; }
@@ -44,7 +44,6 @@
 .hand-slot-handle { right: var(--space-1); cursor: grab; touch-action: none; }
 .hand-slot-remove { left: var(--space-1); cursor: pointer; }
 .hand-slot:focus-within > :is(.hand-slot-handle, .hand-slot-remove) { opacity: 1; }
-.hand-slot :is(.hand-slot-handle, .hand-slot-remove):focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 @media (hover: hover) { .hand-slot:hover > :is(.hand-slot-handle, .hand-slot-remove) { opacity: 1; } }
 @media (hover: none), (pointer: coarse) {
   .hand-slots.has-slot-actions { row-gap: calc(var(--tile-gap) + var(--control-target-touch, 44px) + var(--space-1)); padding-bottom: calc(var(--control-target-touch, 44px) + var(--space-1)); }
@@ -60,7 +59,6 @@
 .hand-slot-done-chip { display: grid; place-items: center; width: 32px; height: 32px; padding: 4px; border-radius: 50%; background: var(--hand-slot-background); }
 .hand-slot-done-label { font-size: 12px; font-weight: 700; line-height: 14px; }
 .hand-slot-done-week { color: var(--muted); font-size: 12px; line-height: 16px; }
-.hand-slot-done:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 @media (hover: hover) { .hand-slot-done:hover { background: var(--hover); } }
 .hand-done-list:not([hidden]) { margin-top: var(--space-3); }
 .hand-done-list > p { margin: 0 0 var(--space-2); color: var(--muted); font-size: 12px; line-height: 16px; }
@@ -92,6 +90,7 @@
 .hand-tabs { align-items: flex-end; flex-wrap: nowrap; gap: var(--space-6); margin: 0 0 var(--space-4); }
 .hand-tab-list { display: flex; flex: 1; min-width: 0; flex-wrap: wrap; align-items: flex-end; gap: 0 var(--space-6); }
 .hand-tab { gap: var(--space-2); }
+.hand-tab > .reserved-text { white-space: normal; }
 .hand-tab-count { color: var(--muted); }
 .hand-tab-count.is-due-now { color: var(--danger); }
 .hand-tab-count.is-due-soon { color: var(--warning-ink); }
@@ -152,7 +151,8 @@
   .hand-view { --shelf-inset: var(--space-3); }
   .hand-panel-header .page-tools { margin-inline-start: 0; }
   .hand-member-picker { width: 100%; }
-  .hand-tabs { align-items: flex-end; gap: 12px; }
+  .hand-tabs { align-items: flex-end; flex-wrap: wrap; gap: var(--space-3); }
+  .hand-tab-list { flex-basis: 100%; }
   .hand-tab-list { gap: 0 var(--space-4); }
   .hand-queue-open { flex-wrap: wrap; gap: var(--space-1) var(--space-2); }
   .hand-queue-open > .hand-queue-title { flex: 1 0 100%; white-space: normal; overflow-wrap: anywhere; }

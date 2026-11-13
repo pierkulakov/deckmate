@@ -2,7 +2,7 @@
    are dialog-panel/dialog-head/dialog-body/dialog-foot; only the position, the member grid and the field specifics
    stay here. Fields use the shared recessed well. */
 .members-editor { position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%); z-index: 80;
-  display: flex; flex-direction: column; width: min(880px, calc(100vw - 32px)); max-height: min(calc(100dvh - 24px), 780px);
+  display: flex; flex-direction: column; width: min(880px, calc(100vw - 32px)); height: min(640px, calc(100dvh - 24px)); max-height: min(calc(100dvh - 24px), 780px);
   animation: dialog-drop var(--motion-spring-firm) var(--ease-spring-firm); }
 .members-editor-header, .members-editor-footer { flex: 0 0 auto; }
 .members-editor-heading { display: flex; flex-direction: column; gap: 4px; min-width: 0; }

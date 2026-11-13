@@ -1,6 +1,6 @@
 {
   "name": "deckmate",
-  "version": "0.8.0",
+  "version": "0.8.1",
   "description": "A local Markdown project board for teams of people and AI agents. Card decks, Runs and Journeys as plain files in your repository; no account, no cloud sync.",
   "license": "AGPL-3.0-only",
   "author": "pierkulakov",
@@ -44,6 +44,7 @@
     "shots": "node tools/readme-shots.ts",
     "build:client": "vite build --config app.vite.config.ts",
     "build:server": "tsc -p tsconfig.server.json",
+    "build:desktop": "vite build --config desktop.vite.config.ts",
     "prepack": "npm run build"
   },
   "dependencies": {

@@ -27,16 +27,6 @@
    only, so a hover can ease and never blinks (the «5 Sub Cards» flicker). Sizes stay with each component: 24px compact,
    30px tools, 32px rail and reading actions. The Button variants in styles.css (.button-outline/-ghost/-default) are the
    same rules. */
-:root {
-  --control-radius: 2px; --control-hairline: .67px; --control-field: var(--surface); --control-field-line: #85718f;
-  --control-target-touch: 44px;
-  /* 2026-11-11: the quiet edge is the violet button line, 38% into the page (the label names
-     the control, the line only draws its shape). Hover brings back the full --button-line. */
-  --control-line: color-mix(in srgb, var(--button-line) 62%, var(--ground));
-  /* The mark of a chosen control: the accent, its tint behind the label, a stronger tint on hover. */
-  --mark: var(--accent); --mark-tint: color-mix(in srgb, var(--accent) 9%, transparent); --mark-tint-strong: color-mix(in srgb, var(--accent) 16%, transparent);
-}
-:root.dark { --control-field: var(--ground); --control-field-line: #8a91ab; --mark: #dfcaf2; --mark-tint: color-mix(in srgb, var(--accent) 16%, transparent); --mark-tint-strong: color-mix(in srgb, var(--accent) 26%, transparent); }
 
 /* A control's size and type: a 30px tool with a 13/500 label (components set 24px or 32px where they need it). */
 .control { display: inline-flex; align-items: center; justify-content: center; gap: var(--space-2); min-height: 30px; max-width: 100%; padding: var(--space-1) var(--space-2); font-size: var(--text-ui-size); font-weight: 500; letter-spacing: .01em; line-height: var(--text-ui-leading); white-space: normal; overflow-wrap: anywhere; }
@@ -143,7 +133,7 @@
   .page-head { padding-inline-start: var(--shelf-inset, var(--space-2)); }
   .page-title { font-size: 22px; line-height: 26px; }
   .action-mint { width: 30px; padding: 0; justify-content: center; }
-  .action-mint > span { display: none; }
+  .action-mint > span, .action-mint > span.reserved-text { display: none; }
 }
 @media (hover: none) { .panel-actions { opacity: 1; } }
 /* 2026-11-11: only the minimum target grows; extra padding or fixed widths would make dense toolbars wrap early.

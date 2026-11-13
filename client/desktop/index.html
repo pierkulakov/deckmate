@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'; connect-src 'self' ipc: http://ipc.localhost">
+  <title>Deckmate</title>
+  <script src="theme.js"></script>
+  <script src="focus.js"></script>
+  <link rel="preload" href="../../assets/fonts/source-sans-3/SourceSans3-latin-wght.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="../../assets/fonts/source-sans-3/SourceSans3-cyrillic-wght.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="start.css">
+  <script src="page-ready.js"></script>
+</head>
+<body>
+  <div id="root">
+    <main class="launcher" id="launcher" aria-busy="true">
+      <section class="intro">
+        <header class="brand">
+          <svg class="deckmate-mark" width="40" height="40" viewBox="0 0 16 16" shape-rendering="crispEdges" aria-hidden="true" focusable="false">
+            <path class="deckmate-mark-back" d="M3 4H4V13H11V14H10V15H3V14H2V5H3Z"/>
+            <path class="deckmate-mark-front" d="M6 1H13V2H14V11H13V12H6V11H5V2H6Z"/>
+            <path class="deckmate-mark-pip" d="M9 4H10V5H11V6H12V7H11V8H10V9H9V8H8V7H7V6H8V5H9Z"/>
+          </svg>
+          <h1 class="wordmark">Deckmate</h1>
+        </header>
+      </section>
+      <div class="project-sections"></div>
+      <footer class="bar"></footer>
+    </main>
+  </div>
+  <script type="module" src="start.tsx"></script>
+</body>
+</html>

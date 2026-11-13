@@ -5,7 +5,7 @@ import { CaptureUpdateAction, Excalidraw, convertToExcalidrawElements, restore, 
 import type { AppState, ExcalidrawImperativeAPI, ExcalidrawProps } from '@excalidraw/excalidraw/types';
 import type { ExcalidrawEmbeddableElement } from '@excalidraw/excalidraw/element/types';
 import '@excalidraw/excalidraw/index.css';
-import { ArrowUpRight, Check, Clapperboard, Gauge, Link2, MoreHorizontal, PencilLine, LoaderCircle, Plus, Save, Search, Type } from 'lucide-react';
+import { ArrowUpRight, Check, Clapperboard, Gauge, Link2, MoreHorizontal, PencilLine, Plus, Save, Search, Type } from 'lucide-react';
 import { BOARD_ACCESS_KEY, boardAccesses, boardCardIdOf, boardCustomValue, isBoardProtocolLink } from '../../src/board-contracts.ts';
 import type { BoardAccess, BoardDocument, BoardScene, BoardSmartQuery, BoardSummary } from '../../src/board-contracts.ts';
 import type { CatalogCard } from '../../src/catalog-contracts.ts';
@@ -23,6 +23,7 @@ import { CardTags } from './CardTags.tsx';
 import { CardFaceStatus, cardFaceStatus } from './CardIndicators.tsx';
 import { buildCatalogLookups } from '../catalog-lookups.ts';
 import { EmptyState } from './EmptyState.tsx';
+import { LoadingState } from './LoadingState.tsx';
 import { shortReference } from '../../src/references.ts';
 import { CatalogReferenceLink } from './JourneyPanel.tsx';
 import VisionCardNode, { visionCardSize, visionCardViewOf, visionCardViewOptions } from './VisionCardNode.tsx';
@@ -30,6 +31,8 @@ import VisionSmartNode, { visionSmartSize } from './VisionSmartNode.tsx';
 import { fitVisionContent, fitVisionOnOpen, resetVisionZoom } from '../vision-viewport.ts';
 import { desktopBoard } from '../desktop-bridge.ts';
 import { deferredVisionScene, sanitizeVisionScene, visionSceneSignature } from '../vision-scene.ts';
+import { useVisionLayers } from '../useVisionLayers.ts';
+import { ReservedText } from '../ReservedText.tsx';
 import { BoardSceneSafetyError, boardImageMimeTypes, boardSafetyText, boardVideoAddress, isSafeBoardEmbed, isSafeBoardImage, isSafeBoardLink, maximumBoardBytes, maximumBoardImageBytes, sanitizeBoardScene, type BoardSafetyIssue } from '../../src/board-scene-safety.ts';
 import '../vision.css';
 
@@ -297,8 +300,10 @@ export default function Vision({ snapshot, refreshKey, dark, onEditing, onOpenCa
   const [boards, setBoards] = useState<BoardSummary[]>([]);
   const [document, setDocument] = useState<BoardDocument | null>(null);
   const [title, setTitle] = useState(() => textNow(text).newScheme);
+  const [titleHintDismissed, setTitleHintDismissed] = useState(false);
   const [initialData, setInitialData] = useState<ExcalidrawProps['initialData']>(null);
   const [canvasKey, setCanvasKey] = useState(0);
+  const [canvasReady, setCanvasReady] = useState(false);
   const [dirty, setDirty] = useState(false);
   const [sceneRevision, setSceneRevision] = useState(0);
   const [pending, setPending] = useState(false);
@@ -317,6 +322,8 @@ export default function Vision({ snapshot, refreshKey, dark, onEditing, onOpenCa
   const [videoError, setVideoError] = useState<string | null>(null);
   const [captionDraft, setCaptionDraft] = useState('');
   const api = useRef<ExcalidrawImperativeAPI | null>(null);
+  const canvasHost = useRef<HTMLDivElement | null>(null);
+  useVisionLayers(canvasHost);
   const fitOnOpen = useRef(true);
   const draftId = useRef<string>(crypto.randomUUID());
   const scene = useRef(emptyScene);
@@ -400,6 +407,7 @@ export default function Vision({ snapshot, refreshKey, dark, onEditing, onOpenCa
     setLinkedIds(next?.linkedCardIds ?? []); setDirty(false); reportError(null); setRestoreFailed(false);
     boardCardIds.current = new Set(next?.linkedCardIds ?? []);
     // A pending restore keeps the canvas unmounted so the loading state shows instead of an empty board.
+    setCanvasReady(false);
     setInitialData(mountCanvas ? { ...restored, scrollToContent: true } : null); setCanvasKey(value => value + 1);
   }
 
@@ -712,30 +720,35 @@ export default function Vision({ snapshot, refreshKey, dark, onEditing, onOpenCa
     ? (new Set(selectedCardNodes.map(node => visionCardViewOf(boardCustomValue(node.customData, 'CardView'))))).size === 1
       ? visionCardViewOf(boardCustomValue(selectedCardNodes[0].customData, 'CardView')) : ''
     : '';
-  const saveStateText = boardSaveStateText(dirty, document, opening, t);
+  const defaultTitle = !document && !titleEdited.current;
   return <section className="vision-workspace page-light">
     {/* 2026-11-10: the toolbar is the tab's page head (surface.css): the board name is the 26/700 title with the save
         state and reference as its quiet caption, «New board» is the one creating action, the picker and actions sit right. */}
-    <header className="vision-toolbar page-head">
+    <header className="vision-toolbar page-head" aria-busy={opening}>
       <div className="page-head-main">
         <div className="page-title-block">
           <div className="vision-title-field">
-            <input className="page-title vision-board-name" aria-label={t.schemeTitle} aria-describedby="vision-board-full-title" title={opening ? undefined : title} value={opening ? '' : title} maxLength={120} disabled={!editable || pending || opening} onChange={event => { titleEdited.current = true; currentTitle.current = event.target.value; setTitle(event.target.value); setDirty(hasUnsavedChanges()); }} />
-            <span className="vision-title-full" id="vision-board-full-title" role="tooltip">{opening ? '' : title}</span>
+            {defaultTitle && <span className="page-title vision-title-reserve" aria-hidden="true"><ReservedText values={{ en: text.en.newScheme, ru: text.ru.newScheme }} /></span>}
+            <input className="page-title vision-board-name" aria-label={t.schemeTitle} aria-describedby="vision-board-full-title" title={opening ? undefined : title} value={opening ? '' : title} maxLength={120} disabled={!editable || pending || opening}
+              onBlur={() => setTitleHintDismissed(false)}
+              onKeyDown={event => { if (event.key === 'Escape' && !titleHintDismissed) { event.preventDefault(); event.stopPropagation(); setTitleHintDismissed(true); } }}
+              onChange={event => { titleEdited.current = true; currentTitle.current = event.target.value; setTitle(event.target.value); setDirty(hasUnsavedChanges()); }} />
+            <span className="vision-title-full" id="vision-board-full-title" role="tooltip" data-dismissed={titleHintDismissed || undefined}>{opening ? '' : title}</span>
           </div>
-          <div className="page-caption"><span className="vision-save-state">{saveStateText}</span>
+          <div className="page-caption"><span className="vision-save-state"><ReservedText values={{ en: boardSaveStateText(dirty, document, opening, text.en), ru: boardSaveStateText(dirty, document, opening, text.ru) }} /></span>
             {document && <CatalogReferenceLink kind="v" id={document.id} source={snapshot.source} />}
           </div>
         </div>
-        <button type="button" className="action-mint vision-new-board" aria-label={t.newBoard} title={t.newBoard} disabled={editing || opening} onClick={() => display(null)}><Plus size={15} aria-hidden="true" /><span>{t.newBoard}</span></button>
+        <button type="button" className="action-mint vision-new-board" aria-label={t.newBoard} title={t.newBoard} disabled={editing || opening} onClick={() => display(null)}><Plus size={15} aria-hidden="true" /><ReservedText values={{ en: text.en.newBoard, ru: text.ru.newBoard }} /></button>
       </div>
       <div className="page-tools">
         <select className="control-field vision-board-picker" aria-label={t.board} value={document?.id ?? ''} disabled={editing || opening} onChange={event => { if (event.target.value) void open(event.target.value); else display(null); }}>
           <option value="">{restoring ? t.loadingBoard : boardChoiceTitle}</option>{boards.map(board => <option key={board.id} value={board.id}>{board.title}</option>)}
         </select>
+        {opening && <span className="control vision-access" aria-hidden="true"><MoreHorizontal size={14} /><ReservedText className="vision-access-state" values={{ en: text.en.editable, ru: text.ru.editable }} /></span>}
         {document && <DropdownMenu.Root>
           <DropdownMenu.Trigger className="control vision-access" aria-label={t.boardAccess} disabled={!snapshot.writable || pending || document.access === 'locked'}>
-            <MoreHorizontal size={14} /><span className={`vision-access-state${document.access === 'locked' ? ' is-locked' : ''}`}>{accessTitle(document.access, lang)}</span>
+            <MoreHorizontal size={14} /><ReservedText className={`vision-access-state${document.access === 'locked' ? ' is-locked' : ''}`} values={{ en: accessTitle(document.access, 'en'), ru: accessTitle(document.access, 'ru') }} />
           </DropdownMenu.Trigger>
           {/* 2026-11-10: the access menu shares the dialog frame (dialog-panel): the 12px corners, hairline and app shadow. */}
           <DropdownMenu.Portal><DropdownMenu.Content className="dropdown dialog-panel" align="start" sideOffset={6}>
@@ -747,9 +760,9 @@ export default function Vision({ snapshot, refreshKey, dark, onEditing, onOpenCa
           </DropdownMenu.Content></DropdownMenu.Portal>
         </DropdownMenu.Root>}
         <span className="vision-toolbar-actions">
-          <Button size="sm" disabled={!editable || pending || opening || !title.trim()} onClick={() => void save()}><Save size={14} />{t.save}</Button>
-          <Button size="sm" variant="outline" disabled={!editable || pending || opening || !title.trim()} onClick={() => void save(true)}>{t.copy}</Button>
-          <Button size="sm" variant="ghost" disabled={pending || !dirty} onClick={() => display(document)}>{t.discard}</Button>
+          <Button size="sm" disabled={!editable || pending || opening || !title.trim()} onClick={() => void save()}><Save size={14} /><ReservedText values={{ en: text.en.save, ru: text.ru.save }} /></Button>
+          <Button size="sm" variant="outline" disabled={!editable || pending || opening || !title.trim()} onClick={() => void save(true)}><ReservedText values={{ en: text.en.copy, ru: text.ru.copy }} /></Button>
+          <Button size="sm" variant="ghost" disabled={pending || !dirty} onClick={() => display(document)}><ReservedText values={{ en: text.en.discard, ru: text.ru.discard }} /></Button>
         </span>
       </div>
     </header>
@@ -760,14 +773,17 @@ export default function Vision({ snapshot, refreshKey, dark, onEditing, onOpenCa
     {catalogError && <div className="catalog-error vision-error" role="alert"><span>{catalogError}</span><Button size="sm" variant="outline" onClick={() => void refreshCatalog()}>{t.retry}</Button></div>}
     {warnings.map(warning => <div className="notice" role="status" key={warning}>{warning}</div>)}
     {stale && <div className="notice">{t.stale} <button disabled={editing} onClick={() => void open(document.id)}>{t.loadNewVersion}</button></div>}
-    {accessBlocked && <div className="notice">{t.openedAs(accessTitle(document!.access, lang))}{document!.access === 'readonly' && t.switchEditable}</div>}
+    {accessBlocked && <div className="notice"><ReservedText values={{
+      en: text.en.openedAs(accessTitle(document!.access, 'en')) + (document!.access === 'readonly' ? text.en.switchEditable : ''),
+      ru: text.ru.openedAs(accessTitle(document!.access, 'ru')) + (document!.access === 'readonly' ? text.ru.switchEditable : ''),
+    }} /></div>}
     <div className="vision-body"><div className="vision-board">
       <div className="vision-viewport-tools" role="group" aria-label={t.viewport}>
-        <Button size="sm" variant="ghost" data-vision-viewport="overview" disabled={!initialData} onClick={() => { if (api.current) fitVisionContent(api.current); }}>{t.overview}</Button>
+        <Button size="sm" variant="ghost" data-vision-viewport="overview" disabled={!initialData} onClick={() => { if (api.current) fitVisionContent(api.current); }}><ReservedText values={{ en: text.en.overview, ru: text.ru.overview }} /></Button>
         <Button size="sm" variant="ghost" data-vision-viewport="actual" aria-label={t.actualSize} disabled={!initialData} onClick={() => { if (api.current) resetVisionZoom(api.current); }}>100%</Button>
-        <Button size="sm" variant="ghost" data-vision-viewport="selection" disabled={!selectedElements.length} onClick={() => { if (api.current) fitVisionContent(api.current, true); }}>{t.toSelection}</Button>
+        <Button size="sm" variant="ghost" data-vision-viewport="selection" disabled={!selectedElements.length} onClick={() => { if (api.current) fitVisionContent(api.current, true); }}><ReservedText values={{ en: text.en.toSelection, ru: text.ru.toSelection }} /></Button>
       </div>
-      <div className="vision-canvas"
+      <div className="vision-canvas" ref={canvasHost}
       onDropCapture={event => {
         const file = event.dataTransfer.files[0];
         if (!file) return;
@@ -784,8 +800,8 @@ export default function Vision({ snapshot, refreshKey, dark, onEditing, onOpenCa
           event.preventDefault(); event.stopPropagation(); reportSafety(['files']);
         }
       }}>
-      {restoring && !initialData && <div className="loading-state vision-loading" role="status" aria-live="polite"><LoaderCircle className="spin" size={22} /><p>{t.loadingBoard}</p></div>}
-      {initialData && <Excalidraw key={`${snapshot.source}-${canvasKey}`} initialData={initialData} excalidrawAPI={instance => { api.current = instance; }}
+      {!canvasReady && !restoreFailed && <LoadingState className="vision-loading" message={t.loadingBoard} />}
+      {initialData && <Excalidraw key={`${snapshot.source}-${canvasKey}`} initialData={initialData} excalidrawAPI={instance => { api.current = instance; setCanvasReady(true); }}
         theme={dark ? 'dark' : 'light'} langCode={locale(lang)} viewModeEnabled={!snapshot.writable || pending || accessBlocked} onChange={onChange}
         validateEmbeddable={validateEmbeddable} renderEmbeddable={renderEmbeddable} aiEnabled={false}
         onPaste={onPaste} onDuplicate={onDuplicate}
@@ -797,29 +813,30 @@ export default function Vision({ snapshot, refreshKey, dark, onEditing, onOpenCa
           if (typeof cardId === 'string') { event.preventDefault(); openCardFromBoard(cardId); }
         }} UIOptions={{ canvasActions: { loadScene: false, saveToActiveFile: false } }} />}
     </div></div><aside className="vision-links">
+      {restoring || (!catalog && !catalogError) ? <LoadingState message={t.loadingBoard} /> : <>
       {/* 2026-11-10: the sidebar is a stack of glass panels over the tab's page light (surface.css), like the home's spaces. */}
       <div className="glass-sheet vision-stack">
         <section className="glass-panel vision-panel">
-          <div className="panel-head"><h2 className="panel-title"><Link2 size={16} aria-hidden="true" />{t.cardsOnBoard}</h2><span className="panel-count">{linkedIds.length}</span></div>
-          <p className="vision-note">{t.cardLinksDescription}</p>
+          <div className="panel-head"><h2 className="panel-title"><Link2 size={16} aria-hidden="true" /><ReservedText values={{ en: text.en.cardsOnBoard, ru: text.ru.cardsOnBoard }} /></h2><span className="panel-count">{linkedIds.length}</span></div>
+          <p className="vision-note"><ReservedText values={{ en: text.en.cardLinksDescription, ru: text.ru.cardLinksDescription }} /></p>
           <label className="vision-search control-field"><Search size={15} aria-hidden="true" /><input placeholder={t.findCard} aria-label={t.findCardForBoard} value={query} onChange={event => setQuery(event.target.value)} /></label>
           {/* 2026-11-10: no matches is a filtered state with a reset; an empty project is a quiet fact, not a failed search. */}
           {query && <div className="vision-results">{results.map(card => <div className="vision-card-row" key={card.id}>
             <button type="button" className="vision-card-row-open" disabled={!editable || pending} onClick={() => addCard(card)}><Plus size={13} /><span title={card.title}>{card.title}<small>{kindLabel(card.kind, lang)} · ${shortReference('c', card.id)}</small><CardFaceStatus status={cardFaceStatus(card, lookups, lang)} /></span></button>
             <div className="vision-card-row-tags"><CardTags tags={card.tags} definitions={catalog?.projectTags} compact maxVisible={1} /></div>
           </div>)}{!results.length && (catalog?.cards.length
-            ? <EmptyState variant="filtered" message={t.noMatches} onReset={() => setQuery('')} />
-            : <EmptyState variant="quiet" message={t.noCards} />)}</div>}
+            ? <EmptyState variant="filtered" message={<ReservedText values={{ en: text.en.noMatches, ru: text.ru.noMatches }} />} onReset={() => setQuery('')} />
+            : <EmptyState variant="quiet" message={<ReservedText values={{ en: text.en.noCards, ru: text.ru.noCards }} />} />)}</div>}
           <div className="vision-linked-list">{linkedIds.map(id => { const card = lookups.cardById.get(id); return <div className="vision-card-row" key={id}>
             <button type="button" className="vision-card-row-open" disabled={editing || !card} onClick={() => onOpenCard(id)}><span title={card?.title}>{card?.title ?? t.cardNotFound}<small>{card ? kindLabel(card.kind, lang) : id}</small>{card && <CardFaceStatus status={cardFaceStatus(card, lookups, lang)} />}</span><ArrowUpRight size={14} /></button>
             <div className="vision-card-row-tags"><CardTags tags={card?.tags} definitions={catalog?.projectTags} compact maxVisible={1} /></div>
           </div>; })}</div>
-          {!linkedIds.length && <EmptyState variant="quiet" message={readOnly ? t.emptyLinkedReadOnly : t.emptyLinked} />}
+          {!linkedIds.length && <EmptyState variant="quiet" message={<ReservedText values={{ en: readOnly ? text.en.emptyLinkedReadOnly : text.en.emptyLinked, ru: readOnly ? text.ru.emptyLinkedReadOnly : text.ru.emptyLinked }} />} />}
         </section>
 
         <section className="glass-panel vision-panel vision-tools">
-          <div className="panel-head"><h3 className="panel-title"><Gauge size={14} aria-hidden="true" />{t.smartNode}</h3></div>
-          <p className="vision-note">{t.smartDescription(stateLabel(SMART_DONE_STATE, lang).toLocaleLowerCase(locale(lang)))}</p>
+          <div className="panel-head"><h3 className="panel-title"><Gauge size={14} aria-hidden="true" /><ReservedText values={{ en: text.en.smartNode, ru: text.ru.smartNode }} /></h3></div>
+          <p className="vision-note"><ReservedText values={{ en: text.en.smartDescription(stateLabel(SMART_DONE_STATE, 'en').toLocaleLowerCase(locale('en'))), ru: text.ru.smartDescription(stateLabel(SMART_DONE_STATE, 'ru').toLocaleLowerCase(locale('ru'))) }} /></p>
           <div className="vision-tool-row vision-smart-controls">
             <select className="control-field" aria-label={t.widgetDeck} value={smartDeckId} disabled={!editable || pending} onChange={event => setSmartDeckId(event.target.value)}>
               {catalog?.decks.length ? catalog.decks.map(deck => <option key={deck.id} value={deck.id}>{deck.title}</option>) : <option value="">{t.noDecks}</option>}
@@ -828,26 +845,26 @@ export default function Vision({ snapshot, refreshKey, dark, onEditing, onOpenCa
               <option value="">{t.allStates}</option>
               {smartStates.map(column => <option key={column.id} value={column.id}>{stateLabel(column.id, lang)}</option>)}
             </select>
-            <Button size="sm" disabled={!editable || pending || !catalog?.decks.length} onClick={addSmartNode}><Plus size={13} />{t.widget}</Button>
+            <Button size="sm" disabled={!editable || pending || !catalog?.decks.length} onClick={addSmartNode}><Plus size={13} /><ReservedText values={{ en: text.en.widget, ru: text.ru.widget }} /></Button>
           </div>
           {/* 2026-11-10: no decks is a fact, not a failure: a quiet note like the other hints, no alert before any attempt. */}
-          {catalog && !catalog.decks.length && <p className="vision-note">{t.noDecksForSmart}</p>}
+          {catalog && !catalog.decks.length && <p className="vision-note"><ReservedText values={{ en: text.en.noDecksForSmart, ru: text.ru.noDecksForSmart }} /></p>}
         </section>
 
         <section className="glass-panel vision-panel vision-tools">
-          <div className="panel-head"><h3 className="panel-title"><Clapperboard size={14} aria-hidden="true" />{t.youtubeTitle}</h3></div>
-          <p className="vision-note">{desktop ? t.desktopVideo : t.youtubeDescription}</p>
+          <div className="panel-head"><h3 className="panel-title"><Clapperboard size={14} aria-hidden="true" /><ReservedText values={{ en: text.en.youtubeTitle, ru: text.ru.youtubeTitle }} /></h3></div>
+          <p className="vision-note"><ReservedText values={{ en: desktop ? text.en.desktopVideo : text.en.youtubeDescription, ru: desktop ? text.ru.desktopVideo : text.ru.youtubeDescription }} /></p>
           <div className="vision-tool-row">
             <input className="control-field" placeholder="https://youtube.com/watch?v=…" aria-label={t.youtubeLink} aria-invalid={Boolean(videoError)} aria-describedby={videoError ? 'vision-video-error' : undefined} value={videoUrl} disabled={!editable || pending} onChange={event => { setVideoUrl(event.target.value); setVideoError(null); }} />
-            <Button size="sm" disabled={!editable || pending || !videoUrl.trim()} onClick={addVideoNode}><Plus size={13} />{desktop ? t.addVideoLink : t.add}</Button>
+            <Button size="sm" disabled={!editable || pending || !videoUrl.trim()} onClick={addVideoNode}><Plus size={13} /><ReservedText values={{ en: desktop ? text.en.addVideoLink : text.en.add, ru: desktop ? text.ru.addVideoLink : text.ru.add }} /></Button>
           </div>
           {videoError && <p className="inline-error" id="vision-video-error" role="alert">{videoError}</p>}
         </section>
 
         {(selectedCardNodes.length > 0 || selectedImage) && <section className="glass-panel vision-panel vision-selected">
-          <div className="panel-head"><h3 className="panel-title">{t.selected}</h3>{selectedCardNodes.length > 1 && <span className="panel-count">{t.nodes(selectedCardNodes.length)}</span>}</div>
+          <div className="panel-head"><h3 className="panel-title"><ReservedText values={{ en: text.en.selected, ru: text.ru.selected }} /></h3>{selectedCardNodes.length > 1 && <span className="panel-count"><ReservedText values={{ en: text.en.nodes(selectedCardNodes.length), ru: text.ru.nodes(selectedCardNodes.length) }} /></span>}</div>
           {selectedCardNodes.length > 0 && <div className="vision-selected-row">
-            <span>{t.view}:</span>
+            <ReservedText values={{ en: text.en.view + ':', ru: text.ru.view + ':' }} />
             <select className="control-field" aria-label={t.cardNodeView} value={commonCardView} disabled={!editable || pending} onChange={event => switchCardView(event.target.value)}>
               {!commonCardView && <option value="">{t.mixed}</option>}
               {visionCardViewOptions.map(option => <option key={option.id} value={option.id}>{option.title}</option>)}
@@ -856,23 +873,24 @@ export default function Vision({ snapshot, refreshKey, dark, onEditing, onOpenCa
           {selectedImage && <div className="vision-selected-row">
             <PencilLine size={13} />
             <input className="control-field" placeholder={t.imageCaption} aria-label={t.imageCaption} value={captionDraft} disabled={!editable || pending} onChange={event => setCaptionDraft(event.target.value)} />
-            <Button size="sm" variant="outline" disabled={!editable || pending || !captionDraft.trim()} onClick={applyImageCaption}>{t.ok}</Button>
+            <Button size="sm" variant="outline" disabled={!editable || pending || !captionDraft.trim()} onClick={applyImageCaption}><ReservedText values={{ en: text.en.ok, ru: text.ru.ok }} /></Button>
           </div>}
-          {selectedImage && <p className="vision-ref-note">{t.captionNote}</p>}
+          {selectedImage && <p className="vision-ref-note"><ReservedText values={{ en: text.en.captionNote, ru: text.ru.captionNote }} /></p>}
         </section>}
 
         <section className="glass-panel vision-panel vision-text-refs">
-          <div className="panel-head"><h3 className="panel-title"><Type size={14} aria-hidden="true" />{t.textRefs}</h3><span className="panel-count">{textRefs.length}</span></div>
-          <p className="vision-ref-note">{t.textRefCard}<code>$c-…</code>{t.textRefCardTail}<code>{t.textRefDeckToken}</code>{t.textRefDeckTail}<code>{t.textRefMemberToken}</code>{t.textRefMemberTail}</p>
+          <div className="panel-head"><h3 className="panel-title"><Type size={14} aria-hidden="true" /><ReservedText values={{ en: text.en.textRefs, ru: text.ru.textRefs }} /></h3><span className="panel-count">{textRefs.length}</span></div>
+          <p className="vision-ref-note"><ReservedText values={{ en: text.en.textRefCard, ru: text.ru.textRefCard }} /><code>$c-…</code><ReservedText values={{ en: text.en.textRefCardTail, ru: text.ru.textRefCardTail }} /><code><ReservedText values={{ en: text.en.textRefDeckToken, ru: text.ru.textRefDeckToken }} /></code><ReservedText values={{ en: text.en.textRefDeckTail, ru: text.ru.textRefDeckTail }} /><code><ReservedText values={{ en: text.en.textRefMemberToken, ru: text.ru.textRefMemberToken }} /></code><ReservedText values={{ en: text.en.textRefMemberTail, ru: text.ru.textRefMemberTail }} /></p>
           {textRefs.map(ref => ref.kind === 'card' && ref.cardId
             ? <button key={ref.token} className="vision-ref-row" onClick={() => openCardFromBoard(ref.cardId!)}>
                 <span className="vision-ref-kind">$</span><span title={ref.title ?? undefined}>{ref.title ?? t.cardNotFound}<small>{ref.token}</small></span><ArrowUpRight size={13} />
               </button>
             : <span key={ref.token} className="vision-ref-row"><span className="vision-ref-kind">{ref.kind === 'deck' ? '$$' : '@'}</span>
                 <span title={ref.title ?? undefined}>{ref.title ?? (ref.kind === 'deck' ? t.deckNotFound : t.memberNotFound)}<small>{ref.token}</small></span></span>)}
-          {!textRefs.length && <EmptyState variant="quiet" message={t.noTextRefs} />}
+          {!textRefs.length && <EmptyState variant="quiet" message={<ReservedText values={{ en: text.en.noTextRefs, ru: text.ru.noTextRefs }} />} />}
         </section>
       </div>
+      </>}
     </aside></div>
     <ShortcutsHelp screens={visionShortcutScreens} writable={snapshot.writable && snapshot.source === 'sandbox'} vision />
   </section>;

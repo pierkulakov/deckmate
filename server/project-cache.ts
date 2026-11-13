@@ -174,9 +174,10 @@ export async function readCoordinationFile(filename: string, options: { volatile
     let expected: BigIntStats;
     try { expected = await checkGuardedFile(guard, filename, { invalidFile, outsideDirectory: invalidFile }); }
     catch (error) {
-      if (!options.volatile || !(error instanceof Error) || error.message !== invalidFile()) throw error;
-      // 2026-11-12: Windows can clear type bits during deletion between lstat and realpath. A vanished or
-      // replaced owner is contention, but a persistent link or other non-file must still fail closed.
+      const deletePending = process.platform === 'win32' && (error as NodeJS.ErrnoException).code === 'EBADF';
+      if (!options.volatile || !(error instanceof Error) || (error.message !== invalidFile() && !deletePending)) throw error;
+      // 2026-11-13: Windows deletion can clear type bits or make realpath fail with EBADF after lstat.
+      // Rechecking distinguishes a vanished or replaced owner from a persistent link or other non-file.
       const current = await lstat(filename, { bigint: true });
       if (current.isFile() || current.mode === 0n || current.nlink === 0n) throw Object.assign(error, { code: 'EBUSY' });
       throw error;

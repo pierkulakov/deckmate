@@ -80,6 +80,28 @@ async function readResponse(response: Response): Promise<CatalogView> {
   throw { message, saved, status: response.status };
 }
 
+// 2026-11-13: JSON responses allocate every entity again; retain equal branches so a file event only invalidates changed data.
+function shareCatalogValue<Value>(previous: Value, next: Value): Value {
+  if (Object.is(previous, next)) return previous;
+  if (!previous || !next || typeof previous !== 'object' || typeof next !== 'object') return next;
+  if (Array.isArray(previous) && Array.isArray(next)) {
+    const byId = new Map(previous.filter(item => item && typeof item.id === 'string').map(item => [item.id, item]));
+    const items = next.map((item, index) => shareCatalogValue(item && typeof item.id === 'string' ? byId.get(item.id) : previous[index], item));
+    return (previous.length === items.length && items.every((item, index) => item === previous[index]) ? previous : items) as Value;
+  }
+  if (Array.isArray(previous) || Array.isArray(next)) return next;
+  const before = previous as Record<string, unknown>;
+  const after = next as Record<string, unknown>;
+  const keys = Object.keys(after);
+  let same = Object.keys(before).length === keys.length;
+  const shared: Record<string, unknown> = { ...after };
+  for (const key of keys) {
+    shared[key] = shareCatalogValue(before[key], after[key]);
+    if (!Object.hasOwn(before, key) || shared[key] !== before[key]) same = false;
+  }
+  return same ? previous : shared as Value;
+}
+
 /** 2026-11-05: one confirmed snapshot per source; optimistic edits never change its revision hashes. */
 export class CatalogStore {
   private state: CatalogState = { catalog: null, loading: true, pending: false, error: null, warning: null };
@@ -105,6 +127,7 @@ export class CatalogStore {
     return () => { this.listeners.delete(listener); };
   };
   private publish(change: Partial<CatalogState>) {
+    if (Object.entries(change).every(([key, value]) => this.state[key as keyof CatalogState] === value)) return;
     this.state = { ...this.state, ...change };
     for (const listener of this.listeners) listener();
   }
@@ -144,15 +167,15 @@ export class CatalogStore {
         const response = await fetch(`/api/catalog?source=${this.source}`, { cache: 'no-store' });
         const result = await readResponse(response);
         // A POST response is authoritative over a GET that started before it completed.
-        if (epoch !== this.writeEpoch) continue;
+        if (epoch !== this.writeEpoch || revision !== this.revision) continue;
         const previous = this.confirmed;
-        this.confirmed = result;
+        this.confirmed = shareCatalogValue<CatalogView>(previous ?? result, result);
         this.loadedRevision = revision;
         this.bulkNeedsRefresh = false;
         if (!this.state.pending) this.optimistic = null;
         this.showConfirmed();
         this.publish({ error: null });
-        if (previous && previous !== result) emitSignal({ type: 'catalog-observed', before: previous, after: result });
+        if (previous && previous !== this.confirmed) emitSignal({ type: 'catalog-observed', before: previous, after: this.confirmed });
       } catch (failure) {
         if (epoch !== this.writeEpoch || revision !== this.revision) continue;
         this.publish({ error: failureMessage(failure) });
@@ -204,7 +227,7 @@ export class CatalogStore {
       });
       const result = await readResponse(response);
       this.writeEpoch += 1;
-      this.confirmed = result;
+      this.confirmed = shareCatalogValue<CatalogView>(this.confirmed ?? result, result);
       this.loadedRevision = startedRevision;
       this.optimistic = null;
       this.showConfirmed();

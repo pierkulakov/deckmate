@@ -11,6 +11,7 @@
     "allow-desktop-create-project",
     "allow-desktop-remove-recent",
     "allow-desktop-set-language",
+    "allow-desktop-set-theme",
     "allow-desktop-add-to-workspace",
     "allow-desktop-remove-from-workspace",
     "allow-desktop-move-in-workspace",

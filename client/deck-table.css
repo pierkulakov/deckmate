@@ -85,7 +85,7 @@
 .deck-table-row.is-multi-selected:where(:not(.is-multi-selected + .is-multi-selected)) { box-shadow: inset 0 4px 5px -4px #0c0a1399; }
 .deck-table-row.is-multi-selected:where(.is-opened:not(.is-multi-selected + .is-multi-selected)) { box-shadow: inset 0 4px 5px -4px #0c0a1399, 0 0 5px 1px color-mix(in srgb, var(--row-ring) 45%, transparent), 0 0 0 1px var(--row-ring); }
 .deck-table-row.is-card-order-target { z-index: 2; box-shadow: inset 0 2px 0 var(--accent), 0 -2px 6px color-mix(in srgb, var(--accent) 60%, transparent); }
-.deck-table-row:has(.catalog-table-title:focus-visible) { z-index: 2; outline: 2px solid var(--focus); outline-offset: -1px; }
+.deck-table-row:has(.catalog-table-title:focus-visible) { z-index: 2; }
 
 .deck-table-row > td { display: flex; align-items: center; min-width: 0; height: 100%; padding: 0 8px; }
 /* 2026-11-10: the row checkbox has its own place at the start of the row, 4 px clear of the state strip and 6 px clear of
@@ -95,8 +95,7 @@
 .deck-table-row > .deck-table-select { position: absolute; z-index: 3; top: 0; left: 4px; width: 16px; padding: 0; }
 .deck-table-row > .deck-table-priority { padding-left: 18px; }
 .deck-table .deck-table-row input.deck-table-check:focus-visible, .deck-table .catalog-card-group-heading input.catalog-group-check:focus-visible { outline: none; }
-.deck-table .deck-table-row:has(input.deck-table-check:focus-visible) { outline: 2px solid var(--focus); outline-offset: -2px; }
-.deck-table .catalog-card-group-heading .catalog-group-select:has(input:focus-visible) { outline: 2px solid var(--focus); outline-offset: -2px; border-radius: var(--control-radius); }
+.deck-table .catalog-card-group-heading .catalog-group-select { border-radius: var(--control-radius); }
 .deck-table-check { display: grid; opacity: 0; transition: opacity var(--motion-feedback); }
 .deck-table-row:hover .deck-table-check, .deck-table-check:is(:focus-visible, :checked) { opacity: 1; }
 .deck-table-priority { color: var(--row-meta); }

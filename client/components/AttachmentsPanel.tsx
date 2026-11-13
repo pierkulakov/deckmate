@@ -5,6 +5,7 @@ import type { CardAttachment, CardAttachments, CatalogCard, CatalogView } from '
 import type { CatalogAction } from '../useCatalog.ts';
 import { Button } from './ui/button.tsx';
 import { AttachmentImageViewer } from './AttachmentImageViewer.tsx';
+import { DecodedImage } from './DecodedImage.tsx';
 import { CardOwnerAvatar } from './CardQuickSettings.tsx';
 import {
   attachmentAddedByLabel, attachmentFileUrl, attachmentSource,
@@ -361,7 +362,7 @@ export function AttachmentsPanel({ card, catalog, writable, onEdit, resource }: 
             </div>
           </div>}
           {viewable
-            ? <button type="button" className="attachments-preview" aria-label={t.view(file.name)} title={file.name} onClick={() => setViewerIndex(images.indexOf(file))}><img src={attachmentFileUrl(source, file.file)} alt="" loading="lazy" /></button>
+            ? <button type="button" className="attachments-preview" aria-label={t.view(file.name)} title={file.name} onClick={() => setViewerIndex(images.indexOf(file))}><DecodedImage src={attachmentFileUrl(source, file.file)} alt="" loading="lazy" /></button>
             : <div className="attachments-file">{file.kind === 'image' ? <ImageIcon size={16} /> : <FileText size={16} />}<span title={file.name}>{file.name}</span>{file.missing && <small>{t.missing}</small>}</div>}
         </li>;
       })}

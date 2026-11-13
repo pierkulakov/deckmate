@@ -1,6 +1,5 @@
 .card-tag-pie { position: relative; display: inline-grid; place-items: center; flex: 0 0 auto; width: var(--space-4); height: var(--space-4); border-radius: 50%; cursor: default; }
 .card-tag-pie::before { content: ''; width: var(--tag-dot-size); height: var(--tag-dot-size); border-radius: inherit; background: var(--tag-pie-background); }
-.card-tag-pie:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 .card-tag-pie[aria-disabled="true"] { pointer-events: none; }
 .deck-card-face > .card-tag-pie { position: absolute; z-index: 3; right: 4px; bottom: 4px; }
 .deck-card-title .card-title-tags { position: relative; z-index: 1; }
@@ -10,7 +9,6 @@
 .card-tags.is-bounded > .tag-badge { flex-shrink: 1; }
 .tag-overflow { flex: 0 0 auto; color: inherit; font-size: var(--tag-compact-font-size); line-height: var(--tag-compact-line-height); }
 button.tag-overflow { min-width: var(--space-6); min-height: var(--space-6); padding: 0 var(--space-1); border: var(--control-hairline) solid var(--control-line); border-radius: var(--control-radius); background: transparent; cursor: pointer; }
-button.tag-overflow:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 button.tag-overflow:disabled { opacity: .5; cursor: default; }
 @media (hover: hover) { button.tag-overflow:hover:not(:disabled) { background: var(--hover); } }
 .tag-badge { display: inline-flex; align-items: center; flex: 0 1 auto; min-width: 0; max-width: min(100%, 220px); height: var(--tag-height); padding: 0; border: 0; border-radius: var(--tag-radius); overflow: hidden; vertical-align: middle; font-size: var(--tag-font-size); font-weight: 700; line-height: var(--tag-line-height); text-align: left; letter-spacing: normal; text-transform: none; }
@@ -27,7 +25,7 @@ button.tag-overflow:disabled { opacity: .5; cursor: default; }
 .tag-badge.is-compact.is-personal .tag-badge-name { padding-inline: 0; }
 .tag-badge.is-compact .tag-badge-glyph { flex-basis: var(--tag-compact-glyph-width); width: var(--tag-compact-glyph-width); }
 .tag-badge-link { display: inline-flex; min-width: 0; max-width: 100%; padding: 0; border: 0; background: transparent; vertical-align: middle; }
-/* 2026-11-08: tag plaques are not underlined; hover only lifts the plaque's tone, keyboard focus keeps its outline. */
+/* 2026-11-13: hover lifts the plaque's tone; Tab uses the shared inner edge without underlining its text. */
 .tag-badge-link { cursor: pointer; }
 @media (hover: hover) { .tag-badge-link:hover:not(:disabled) .tag-badge { filter: brightness(1.15); } }
 .card-tag-emoji { display: inline-block; flex: 0 0 auto; font-size: 14px; line-height: 1; }
@@ -143,8 +141,6 @@ button.tag-overflow:disabled { opacity: .5; cursor: default; }
 .tag-conflict { display: grid; gap: var(--space-2); padding: var(--space-3); border: 1px solid var(--line); border-radius: var(--glass-radius); }
 .tag-choice:disabled, .tag-color-swatch:disabled { opacity: .5; cursor: default; }
 .tag-card-result:disabled, .tag-card-link > input:disabled { opacity: .5; cursor: default; }
-.tag-badge-link:focus-visible, .tag-choice:focus-visible, .tag-color-swatch:focus-visible, .card-tag-link:focus-visible, .tag-card-result:focus-visible, .tag-symbol-choice:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
-.tag-choice.card-properties-tag-chip:focus-visible { outline-offset: 2px; }
 @media (pointer: coarse) {
   .tag-picker-dialog .ui-button { min-width: var(--control-target-touch); min-height: var(--control-target-touch); }
   .tag-choice, .tag-choice.card-properties-tag-chip, .tag-icon-tab, .tag-card-result, .card-tag-link, .tag-search, .tag-card-link > input, .tag-editor fieldset > label input, .tag-hex input, .card-tag-menu-item { min-height: var(--control-target-touch); }

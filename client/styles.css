@@ -1,4 +1,6 @@
 @import "tailwindcss";
+@import "./tokens.css";
+@import "./focus.css";
 /* Shared tag styles keep project labels readable in both themes. */
 :root {
   --tag-background: #1c1a24;
@@ -23,110 +25,12 @@
   --tag-dot-size: 10px;
 }
 :root.dark { --tag-personal-foreground: #dac2f0; }
-/* Source Sans 3 (OFL 1.1, Adobe; fontsource-variable 5.2.9) is the interface font. */
-@font-face { font-family: 'Source Sans 3'; src: url('../assets/fonts/source-sans-3/SourceSans3-latin-wght.woff2') format('woff2-variations'); font-weight: 200 900; font-display: swap; unicode-range: U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD; }
-@font-face { font-family: 'Source Sans 3'; src: url('../assets/fonts/source-sans-3/SourceSans3-cyrillic-wght.woff2') format('woff2-variations'); font-weight: 200 900; font-display: swap; unicode-range: U+0301,U+0400-045F,U+0490-0491,U+04B0-04B1,U+2116; }
-@font-face { font-family: 'Geist Mono'; src: url('../assets/fonts/geist/GeistMono-Regular.ttf'); font-weight: 400; font-display: swap; }
-/* Medium serves the 500 tile numbers of DESIGN.md; with synthesis off, 600 and 700 requests resolve to it instead of Regular. */
-@font-face { font-family: 'Geist Mono'; src: url('../assets/fonts/geist/GeistMono-Medium.ttf'); font-weight: 500; font-display: swap; }
-/* Roboto Mono (OFL 1.1, fontsource-variable 5.2.9) is the card editor's monospace font. */
-@font-face { font-family: 'Roboto Mono Variable'; src: url('../assets/fonts/roboto-mono/RobotoMono-latin-wght.woff2') format('woff2-variations'); font-weight: 100 700; font-display: swap; unicode-range: U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD; }
-@font-face { font-family: 'Roboto Mono Variable'; src: url('../assets/fonts/roboto-mono/RobotoMono-cyrillic-wght.woff2') format('woff2-variations'); font-weight: 100 700; font-display: swap; unicode-range: U+0301,U+0400-045F,U+0490-0491,U+04B0-04B1,U+2116; }
-
-:root { color-scheme: light; --font-sans: 'Source Sans 3', sans-serif; --canvas: #f0ecf4; --surface: #f3f0f6; --ground: #ebe5f0; --sidebar: #e1d9e8; --ink: #2f2440; --muted: #51445f; --line: #afa1bd; --hover: #dcd2e6; --accent: #68428b; --accent-soft: #e4d8ef; --focus: #6e4697; --mint: #a8eedf; --mint-ink: #0c5547; --mint-edge: #5fcfb9; --danger: #983c56; --warning-bg: #f9edcf; --warning-ink: #80531c; --mark-back: #a184e0; --mark-front: #6538a3; --mark-pip: #e8ad2e; --edit-bg: #efebf4; --edit-line: #a38acb; --edit-link: #4a3a63; --edit-cancel: #b64267; --edit-hint: var(--muted); --edit-save: #7a5aae; --plum: #8a6aa6; --champagne: #cb973c; --shadow: 0 8px 28px #30243812; --panel-gradient: linear-gradient(145deg, color-mix(in srgb, var(--surface) 93%, var(--plum)), var(--surface) 72%); --chrome-gradient: linear-gradient(120deg, color-mix(in srgb, var(--sidebar) 92%, var(--plum)), var(--sidebar) 58%, color-mix(in srgb, var(--sidebar) 96%, var(--champagne))); font-family: var(--font-sans); font-synthesis: none; }
-/* Dark is the default theme. */
-:root.dark { color-scheme: dark; --canvas: #322f40; --surface: #39354a; --ground: #27242f; --sidebar: #1c1a24; --chrome: #27242f; --ink: #edeef2; --muted: #cdc8dc; --line: #4a4560; --hover: #443f59; --accent: #c3a3e5; --accent-soft: #453351; --focus: #cfb4ec; --danger: #edaaa9; --warning-bg: #4a3a22; --warning-ink: #fde793; --plum: #906cbd; --champagne: #f7e18e; --shadow: 0 10px 28px #0c0a1366; --scrim: color-mix(in srgb, #11151f 38%, transparent);
-  --tab-idle: #6e6884; --tab-idle-ink: var(--count-face); --tab-ink: #e2dcee; --mint: #a8eedf; --mint-ink: #0c5547; --mint-edge: #74dcc8; --quote-bg: #0f3a35; --quote-bar: #a8eedf; --quote-edge: #2a8a7b; --hero-glow: #e5b65066; --hero-chip: #f4e4b8; --gold-chip-ink: #8a5300; --mark-back: #7a52d6; --mark-front: #b08af3; --mark-pip: #f5c24c;
-  /* Card edit-mode tokens. */
-  /* 2026-11-11: editor Save keeps a darker fill than outline controls so its light label remains readable. */
-  --edit-bg: #2e1e34; --edit-line: #a38acb; --edit-link: #e7dff7; --edit-cancel: #e7a9ab; --edit-hint: #e3dff0; --edit-save: #8362b1;
-  --panel-gradient: linear-gradient(var(--surface), var(--surface)); --chrome-gradient: linear-gradient(var(--chrome), var(--chrome));
-  --card-face: #322f40; --card-ink: #f9f9fa; --card-muted: #cdc8dc; --card-edge: #4a4560; --card-metal: #c6bee3; --card-metal-ink: #2b2540; --card-highlight: #7fd9c7; --hero-metal: #e8bd48; --card-shadow: 0 2px 6px #0c0a1355; --card-hover-shadow: 0 6px 16px #0c0a1377;
-  /* Family panel tokens for Hero and Sub Cards; the light theme falls back to base tokens. */
-  --card-strip: #968db6; --hero-strip: #e5b650; --card-meta-ink: #e3dff0; --button-line: #a58cbf; --card-current-ring: #63e6cfd9; --card-row-shadow: 0 0 1px #0000003d, 0 1.5px 9px #0000003d;
-  /* Journey tokens cover the sea, step waves and hazard frame; the light theme falls back to base tokens. */
-  --journey-sea: #083051; --journey-bar: #0d4065; --journey-zone: #0e2847; --journey-wave-back: #245575; --journey-wave-mid: #447b88; --journey-wave-front: #6298a3; --journey-wave-ground: #0c1624;
-  --journey-band: #4b3168; --journey-stripe: #d6b23a; --journey-preview: #2b123d; --journey-scrim: #4b4f5ae6; --violet-fill: #68478c; --danger-fill: #983c56;
-  /* Ordering, Tags and action-rail tokens; the light theme falls back to base tokens. */
-  --button-ink: #e7dff7; --violet-fill-ink: #f5effc; --toggle-off: #514a66; --toggle-on: #2fae97; --toggle-knob: #ffffff; --panel-box-line: #736b8f; }
-/* Shared card material keeps the same identity in Decks, Board and Hand. */
-/* 2026-11-11: lightly tinted card faces separate reading from the page without a pure-white field. Image overlays keep a fixed pair (--overlay-*). */
-/* 2026-11-06: --scrim backs every dialog. The light theme veils the page with the palette's violet-black (as Deck settings does), so the page under a dialog stays lilac instead of turning cold gray; the dark theme overrides it with a navy veil. --scrim-heavy is the image viewer's near-black field in both themes. */
-:root { --card-face: #f8f6fa; --card-ink: #2a2440; --card-muted: #514a66; --card-edge: #b5a9c4; --card-metal: #cdc8dc; --card-metal-ink: #40465a; --overlay-ink: #f9f9fa; --overlay-face: #322f40; --hero-metal: #edc451; --hero-ink: #24180a; --hero-sheen: #fff4c2; --hero-strip: #bf8f34; --hero-chip: #f4e4b8; --hero-step-done: #fff9dd; --hero-step-working: #fff4c2b8; --hero-step-review: #e0ced7b3; --hero-step-blocked: #eea39abf; --hero-step-empty: #fff4c257; --doc-metal: #e0ac86; --doc-ink: #2e1606; --accepted-metal: #34a865; --accepted-metal-ink: #102016; --started-metal: #9fc3ee; --started-metal-ink: #0f2238; --review-metal: #a57fe6; --review-metal-ink: #1c1033; --card-highlight: #2b9e7f; --card-shadow: 0 5px 12px #18213624; --card-hover-shadow: 0 9px 20px #18213638; --kind-hero-bg: #f4e7c6; --kind-hero-ink: #876125; --kind-task-bg: #c5d9ed; --kind-task-ink: #1d4873; --kind-doc-bg: #f6e3a6; --kind-doc-ink: #9d5f00; --quote-bg: #e2f7ef; --quote-bar: #2fae97; --quote-edge: #74dcc8; --count-face: #ffffff; --count-foot: #e2dcee; --count-ink: #4c5060; --cover-window: #1c1a24; --motion-feedback: 150ms; --scrim: color-mix(in srgb, #24182d 40%, transparent); --scrim-heavy: #080b12cc; --busy-dim-delay: 300ms; --motion-material: 220ms; --ease-out: cubic-bezier(.16, 1, .3, 1); }
-/* 2026-11-09: Decks home is a glass showcase with gradients and softly lit materials, kept minimal and easy
-   to read. A cover is drawn in --u, 1/132 of its width, so the gallery and shelf reuse one drawing at different scales.
-   2026-11-10: the shelf has its own 165×225 size; the base 132×180 tokens still belong to the settings preview. The rim
-   lights the deck color the same in both themes; the glass, the page light behind it and the light a cover throws on the
-   glass follow the page. */
-:root {
-  --cover-width: 132px;
-  --cover-height: 180px;
-  --cover-radius: calc(var(--cover-width) / 16.5);
-  --cover-rim: inset 0 1px 0 rgb(255 255 255 / .32), inset 0 0 0 1px rgb(255 255 255 / .1);
-  /* 2026-11-10: a cover rests on the glass like a real object: a crisp contact shadow, a short one and a soft one. */
-  --cover-lift: 0 1px 1px rgb(48 36 56 / .3), 0 3px 6px -2px rgb(48 36 56 / .24), 0 14px 24px -14px rgb(48 36 56 / .45);
-  /* Lacquer: a broad sheen over the upper left of every cover, and a fine bevel that catches the light on its top edge. */
-  --cover-lacquer: linear-gradient(158deg, rgb(255 255 255 / .14), rgb(255 255 255 / .04) 26%, transparent 44%);
-  /* The dark a cover's frame is mounted in: the deck color pulled toward it reads as a setting, not a second color. */
-  --cover-mount: #5f5672;
-  /* 2026-11-10: a cover frame at rest is glass; its face is glass only while its picture is read, with a hairline edge. The
-     face's bowed foot is shaded in plum and lighter here, since black over a pastel face turns it muddy. */
-  --cover-glass: linear-gradient(rgb(255 255 255 / .62), rgb(255 255 255 / .4));
-  --cover-face-glass: rgb(255 255 255 / .58);
-  --cover-face-edge: rgb(120 96 150 / .22);
-  --cover-face-arc: rgb(72 48 96 / .07);
-  --cover-bevel: inset 0 1px 0 rgb(255 255 255 / .42), inset 0 -1px 0 rgb(0 0 0 / .22);
-  --cover-medallion: #e7dcf8;
-  --cover-medallion-ink: #6538a3;
-  /* 2026-11-10: the gallery cover stays 146.67×200 while the shelf uses a 165×225 face.
-     The deck art is 100×70 art pixels across 120u, so at 10/9 one art pixel is exactly two device pixels at 150%
-     display scale and three at 225%; at 5/4 it was an uneven 2.25. */
-  --gallery-cover-width: calc(1320px / 9);
-  --gallery-cover-height: 200px;
-  --shelf-cover-width: 165px;
-  --shelf-cover-height: 225px;
-  /* 2026-11-10: 16u is 17.78px in the gallery and 20px on the shelf, so the frozen row grows by 9/8 and lands column for column. */
-  --gallery-cover-gap: calc(var(--gallery-cover-width) * 16 / 132);
-  /* 2026-11-10, the Foil Rule (DESIGN.md «Controls»): panels keep the --glass-* names but are flat sheets: one
-     face, a crisp 1px edge, a 4px corner, no blur and no lift. Lit, blurred glass with a 12px corner read as capsules,
-     and its soft rim lost the panel's edge. */
-  --glass-radius: 4px;
-  --glass-face: linear-gradient(var(--surface), var(--surface));
-  --glass-rim: inset 0 0 0 1px var(--line);
-  --glass-lift: 0 0 0 0 transparent;
-  --glass-seam: var(--line);
-  --glass-blur: none;
-  --gallery-light: radial-gradient(56% 460px at 8% -20px, color-mix(in srgb, var(--plum) 24%, transparent), transparent), radial-gradient(40% 400px at 96% 40px, color-mix(in srgb, var(--champagne) 20%, transparent), transparent), radial-gradient(34% 300px at 52% -60px, color-mix(in srgb, #2fae97 9%, transparent), transparent);
-  --space-1: 4px;
-  --space-2: 8px;
-  --space-3: 12px;
-  --space-4: 16px;
-  --space-6: 24px;
-  --space-10: 40px;
-  --add-deck-tint: color-mix(in srgb, var(--ink) 4%, transparent);
-  --pulse-face: var(--ground); --pulse-bar: #52917a; --pulse-today: #2b9e7f; --pulse-track: #dccde9;
-}
-:root.dark {
-  --cover-lift: 0 1px 1px rgb(0 0 0 / .5), 0 3px 6px -2px rgb(0 0 0 / .4), 0 14px 24px -14px rgb(0 0 0 / .7);
-  --cover-mount: #16141c;
-  --cover-glass: linear-gradient(rgb(255 255 255 / .1), rgb(255 255 255 / .045));
-  --cover-face-glass: rgb(255 255 255 / .06);
-  --cover-face-edge: rgb(255 255 255 / .12);
-  --cover-face-arc: rgb(0 0 0 / .14);
-  --glass-face: linear-gradient(rgb(255 255 255 / .045), rgb(255 255 255 / .045));
-  --glass-rim: inset 0 0 0 1px rgb(255 255 255 / .1);
-  --glass-seam: rgb(255 255 255 / .1);
-  --gallery-light: radial-gradient(56% 460px at 8% -20px, color-mix(in srgb, var(--accent) 32%, transparent), transparent), radial-gradient(40% 400px at 96% 40px, color-mix(in srgb, var(--mint) 13%, transparent), transparent), radial-gradient(34% 300px at 52% -60px, color-mix(in srgb, var(--champagne) 8%, transparent), transparent);
-  --pulse-bar: #5f9f85; --pulse-today: #a8eedf; --pulse-track: #39354a;
-}
 /* 2026-11-07: one elevation ladder for the full-screen layers. The stray 1000–1201 values (document preview, attach
    subcards, shortcuts help, attachment viewer, card-parent-picker) joined the regular 0–181 scale, and the ? help
    rose above the dialogs it used to tie with (1100/1101); the image viewer stays the top layer. */
 :root { --z-preview-overlay: 200; --z-preview-pane: 201; --z-attach-overlay: 210; --z-attach-dialog: 211; --z-parent-picker: 215; --z-help-overlay: 220; --z-help-panel: 221; --z-viewer-overlay: 230; --z-viewer: 231; }
 * { box-sizing: border-box; }
 body { margin: 0; color: var(--ink); background: var(--canvas); font-size: 14px; -webkit-font-smoothing: antialiased; }
-/* 2026-11-05: selected green rows need dark ink; light-theme accent rows need light ink. */
-:root { --link-ink: var(--accent); }
 /* 2026-11-06: gold chips (card links, activity cards, the Hand due-soon count) keep one gold face in both themes. With the token only
    in dark, a light due-soon count lost its face, and the warning-pair fallback of links read as near-white beside white count chips.
    Light ink is the warning ink (5.4:1 on the gold); dark keeps its own ink. */
@@ -151,11 +55,9 @@ input[type="checkbox"]:not([role="switch"]):indeterminate::before { -webkit-mask
   input[type="checkbox"]:not([role="switch"]):hover:not(:disabled),
   .markdown li.check-item.is-toggleable:has(> p:hover) > input:not(:disabled) { --control-hover-duration: var(--motion-control); border-color: var(--focus); }
 }
-input[type="checkbox"]:not([role="switch"]):focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 @media (prefers-reduced-motion: reduce) { input[type="checkbox"]:not([role="switch"]), input[type="checkbox"]:not([role="switch"])::before { transition: none; } }
 /* Windows contrast themes force backgrounds away, so the drawn mark would vanish: hand the box back to the system. */
 @media (forced-colors: active) { input[type="checkbox"]:not([role="switch"]) { appearance: auto; } input[type="checkbox"]:not([role="switch"])::before { content: none; } }
-:root.dark { --link-ink: var(--edit-link); }
 button, input, textarea, select { font: inherit; }
 /* 2026-11-09: a select with a transparent background hands its light ink to the native list, which Chrome draws on
    white — unreadable in the dark theme. Options carry the theme's own surface and ink everywhere. */
@@ -165,16 +67,8 @@ button { cursor: pointer; }
 button:disabled { cursor: default; opacity: .5; }
 button, a { -webkit-tap-highlight-color: transparent; }
 a { color: inherit; }
-/* 2026-11-10: one keyboard focus indicator, an outer 2px ring 2px off the edge. It shows only for keyboard focus: the
-   browser keeps it off after a click or a tap, and focus moved by script follows the last input (client/focus.ts). A
-   control that marks focus its own way (a text field's edge, a menu row's highlight, a card tile) turns the ring off. */
-:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
-/* 2026-11-09: text entry shows focus by its caret and its own border; the global ring would draw a second frame around it.
-   Selects, checkboxes and buttons keep the ring. */
-:is(input:not([type="checkbox"], [type="radio"], [type="range"], [type="color"], [type="file"], [type="button"], [type="submit"], [type="reset"]), textarea):focus-visible { outline: none; }
 /* Hover enters quickly and leaves immediately: adjacent controls must not retain two highlights. Opacity has a separate
    delay only while a write is busy, so the delayed dim never becomes a delayed hover. */
-:root { --motion-control: 100ms; }
 :where(button, a, [role="button"], [role="tab"], [role="radio"], [role="menuitem"], [role="menuitemradio"], [role="menuitemcheckbox"], [role="option"], .csv-import-file-label) {
   --control-hover-duration: 0ms;
   transition: background-color var(--control-hover-duration) ease-out, color var(--control-hover-duration) ease-out,
@@ -192,19 +86,6 @@ button:disabled, .ui-button[aria-disabled="true"] { --control-opacity-duration: 
 .ui-button[aria-disabled="true"] { opacity: .5; cursor: default; }
 ::selection { background: var(--accent-soft); }
 .dark ::selection { background: var(--accent); color: var(--surface); }
-/* 2026-11-08: scrollbar-width is not inherited, so every inner scrollport needs the shared material. */
-* { scrollbar-color: var(--line) transparent; scrollbar-width: thin; }
-@supports selector(::-webkit-scrollbar) {
-  /* Chromium ignores the custom parts when either standard property is non-auto, including local thin rules. */
-  * { scrollbar-color: auto !important; scrollbar-width: auto !important; }
-  ::-webkit-scrollbar { width: 6px; height: 6px; }
-  ::-webkit-scrollbar-track, ::-webkit-scrollbar-corner { background: transparent; }
-  ::-webkit-scrollbar-thumb { background: var(--line); border-radius: 3px; }
-  ::-webkit-scrollbar-button { display: none; width: 0; height: 0; }
-  /* Scrollports that hide their bar on purpose (tab strip, neighbour shelf, panels with their own fade) keep it hidden;
-     a new hidden scrollport joins this list, or the reset above brings its bar back. */
-  :is(.global-tabs, .deck-neighbor-rail, .deck-choice-list, .card-properties-slot, .deck-summary.deck-narrow-panel) { scrollbar-width: none !important; }
-}
 /* 2026-11-05: flat key-hint chips invert to dark ink in light mode; a light chip reached only 1.05:1 on light fields.
    Top-bar tabs keep a mid-tone idle fill with light text, accent hover and page-color active fill with ink. */
 :root { --kbd-face: var(--ink); --kbd-ink: var(--surface); --kbd-gap: var(--space-1); --tab-idle: var(--muted); --tab-idle-ink: var(--surface); --tab-ink: var(--ink); --tab-hover: var(--accent); --tab-hover-ink: var(--surface); }
@@ -222,6 +103,8 @@ kbd { display: inline-flex; align-items: center; justify-content: center; text-a
 @media (hover: hover) { .source-switch:hover:not(:disabled) { border-color: var(--button-line); background: var(--hover); } }
 /* 2026-11-08: contain absolute descendants (including accessible hidden text) in the workspace's own scroll area. */
 .workspace-main { position: relative; overflow: auto; min-height: 0; flex: 1; scroll-behavior: smooth; scroll-padding-top: 32px; scrollbar-gutter: stable; } /* Reserve scrollbar space so the layout stays stable when it appears. */
+/* 2026-11-13: fixed glyph origins keep centered controls and multiline notes stable when a board changes language. */
+.workspace-main .reserved-text { text-align: start; }
 /* 2026-11-06: an empty open deck has no scrollbar; reserving its gutter left a blank strip beside the full-width toolbar. */
 .workspace-main:has(> .catalog-view.is-deck-open) { scrollbar-gutter: auto; }
 /* 2026-11-09: a priority drop can add a tile row and reveal the workspace scrollbar. Keep its gutter reserved while the
@@ -263,7 +146,6 @@ kbd { display: inline-flex; align-items: center; justify-content: center; text-a
 .markdown li.check-item.is-toggleable > p { cursor: pointer; }
 /* 2026-11-10: the Button variants follow the hairline controls in surface.css, which also draw .button-outline,
    .button-ghost and the pressed state; the light theme gets its own button tokens, so a fallback no longer decides. */
-:root { --button-line: #816594; --button-ink: var(--ink); --violet-fill: #68428b; --violet-fill-ink: #fdfaff; --danger-fill: #983c56; --danger-fill-ink: #ffffff; }
 /* The edge colour belongs to each variant: surface.css can load before this file (components import it), so a colour
    set here would override the outline's hairline. */
 .ui-button { display: inline-flex; align-items: center; justify-content: center; gap: var(--space-2); max-width: 100%; border-radius: var(--control-radius); border-style: solid; border-width: var(--control-hairline); font-weight: 500; letter-spacing: .01em; white-space: normal; overflow-wrap: anywhere; }
@@ -281,7 +163,7 @@ kbd { display: inline-flex; align-items: center; justify-content: center; text-a
 .dropdown-item { display: flex; align-items: center; gap: var(--space-2); border-radius: var(--control-radius); padding: var(--space-2); font-size: var(--text-ui-size); line-height: var(--text-ui-leading); cursor: pointer; outline: none; }
 /* 2026-11-06: --hover alone sits at 1.2:1 on the menu surface, too faint to follow by keyboard; the inset focus line is the
    one the selection and bulk menus already use. */
-.dropdown-item[data-highlighted] { background: var(--hover); box-shadow: inset 0 0 0 1px var(--focus); }
+.dropdown-item[data-highlighted] { background: var(--hover); }
 .dropdown-item[data-disabled] { opacity: .45; pointer-events: none; }
 .menu-check { margin-left: auto; }
 .menu-caption { color: var(--muted); font-size: var(--text-help-size); line-height: var(--text-help-leading); margin-left: var(--space-4); }
@@ -331,9 +213,8 @@ kbd { display: inline-flex; align-items: center; justify-content: center; text-a
    token dropped the focus outline and turned the hover/focus edge into currentColor. */
 :root { --tile-highlight: var(--card-highlight); }
 :root.dark { --tile-highlight: #63e6cf; }
-/* 2026-11-10: keyboard focus uses its own outline, not a second mint hover/current ring. */
+/* 2026-11-13: a restored opener keeps the resting material; Tab adds only the shared inner edge. */
 .deck-card-space:hover .deck-card:where(:not(:has(.deck-card-open:disabled), :has(:focus-visible))) { border-color: var(--tile-highlight); box-shadow: 0 0 0 1px color-mix(in srgb, var(--tile-highlight) 44%, transparent), 0 0 12px color-mix(in srgb, var(--tile-highlight) 19%, transparent); }
-.deck-card:has(.deck-card-open:focus-visible) { outline: 2px solid var(--focus); outline-offset: 2px; }
 .deck-card-open { position: relative; z-index: 2; display: flex; flex-direction: column; flex: 1; min-height: 0; width: 100%; text-align: left; border: 0; background: none; color: inherit; padding: 8px 7px 5px; border-radius: 4px 4px 0 0; }
 .deck-card-title { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; font-weight: 500; font-size: 14px; line-height: 17px; letter-spacing: -.2px; overflow-wrap: anywhere; }
 /* The satin finish, shadowed seam and reflection overlay come from card-material.css; the matte top stays flat. */
@@ -350,7 +231,6 @@ kbd { display: inline-flex; align-items: center; justify-content: center; text-a
 .deck-card > .card-family-trigger { --material-position: absolute; position: absolute; z-index: 5; top: 0; inset-inline: 0; width: 100%; max-width: none; height: 18px; min-height: 18px; padding: 2px 2px 2px 5px; border: 0; border-radius: 4px 4px 0 0; color: var(--hero-ink); font-size: 9.5px; font-weight: 600; line-height: 14px; letter-spacing: 0; }
 /* 2026-11-11: the 14px checkbox at −8px ends 6px inside the card; the inset keeps affiliation clear in every state. */
 .deck-card:has(> .catalog-card-checkbox) > .card-family-trigger { padding-left: 6px; }
-.deck-card > .card-family-trigger:focus-visible { outline: 2px solid var(--hero-ink); outline-offset: -2px; }
 .deck-card:has(> .card-family-trigger) .deck-card-open { padding-top: 24px; }
 @media (max-width: 760px) { .deck-view { padding: 27px 20px 40px; } .deck-heading { align-items: start; flex-direction: column; gap: 18px; } }
 @media (prefers-reduced-motion: reduce) { .deck-card { transform: none !important; } .deck-card > .card-family-trigger { transition: none; } }
@@ -373,8 +253,7 @@ kbd { display: inline-flex; align-items: center; justify-content: center; text-a
 .catalog-view { max-width: 1600px; }
 .catalog-heading { align-items: center; margin-bottom: 20px; }
 .catalog-heading h1 { margin-bottom: 7px; overflow-wrap: anywhere; }
-.catalog-heading-actions, .catalog-updating { display: flex; align-items: center; gap: 10px; }
-.catalog-updating { color: var(--muted); font-size: 11px; white-space: nowrap; }
+.catalog-heading-actions { display: flex; align-items: center; gap: 10px; }
 /* 2026-11-10: the deck and card search boxes are hairline fields (surface.css .control-field: the well, the quiet edge). */
 .catalog-search { display: flex; align-items: center; gap: 9px; flex: 1 1 260px; min-width: 0; border: var(--control-hairline) solid var(--control-field-line); border-radius: var(--control-radius); padding: 0 11px; color: var(--muted); background: var(--control-field); transition: border-color var(--motion-feedback), box-shadow var(--motion-feedback); }
 /* 2026-11-10: a search box shows focus on its own edge beside the caret; the outer ring it drew on :focus-within came
@@ -398,7 +277,7 @@ kbd { display: inline-flex; align-items: center; justify-content: center; text-a
 .catalog-space-empty, .catalog-empty { color: var(--muted); font-size: 13px; line-height: 1.7; padding: 24px 0; margin: 0; max-width: 70ch; }
 .catalog-results { min-width: 0; }
 /* 2026-11-10: an opened preview keeps its mint ring unless keyboard focus supplies the indicator. */
-.catalog-card-grid .deck-card.is-selected:not(:has(:focus-visible)) { border-color: var(--tile-highlight); box-shadow: 0 0 0 2px color-mix(in srgb, var(--tile-highlight) 85%, transparent), 0 0 18px color-mix(in srgb, var(--tile-highlight) 38%, transparent); }
+.catalog-card-grid .deck-card.is-selected:not(:has(:focus-visible, .deck-card-open:focus)) { border-color: var(--tile-highlight); box-shadow: 0 0 0 2px color-mix(in srgb, var(--tile-highlight) 85%, transparent), 0 0 18px color-mix(in srgb, var(--tile-highlight) 38%, transparent); }
 .catalog-card-doc .deck-card-band { --metal-base: var(--doc-metal); }
 /* 2026-11-09: under a two-line title the Doc face runs its own text and fades out above
    the band, so beside Hero and Task titles it reads as a page. */
@@ -489,10 +368,10 @@ kbd { display: inline-flex; align-items: center; justify-content: center; text-a
 /* 2026-11-09: whatever a :hover or :focus-* rule styles below its anchor is named by a class. Chromium keeps one invalidation
    set per pseudo-class, so `.catalog-resize-handle:hover > span` restyled every span under any element the pointer
    entered or left — each move across the card grid restyled hundreds of elements. */
-/* 2026-11-11: the line follows the sticky panel beside it — same top and visible height — instead of running the whole
-   length of the card list, where it outgrew the panel and scrolled away from it. The shared measured height accounts for the shelf above it.
-   2026-11-11: with no card open there is no panel to follow, so the line runs to the bottom of the visible layout. */
-.catalog-resize-line { position: sticky; top: calc(var(--catalog-content-offset, 0px) - var(--catalog-resize-lift, 0px)); display: block; width: 1px; height: min(100% + var(--catalog-resize-lift, 0px), calc(var(--preview-height, calc(var(--catalog-scroll-height, 100dvh) - var(--catalog-content-offset, 0px))) + var(--catalog-resize-lift, 0px))); margin-top: calc(-1 * var(--catalog-resize-lift, 0px)); margin-left: 3px; background: var(--line); transition: background-color 160ms; }
+/* 2026-11-13: the divider always spans the header gap, including before a card's lazy styles load. Its shared lift
+   covers both the flow position and sticky inset; the measured card height keeps its bottom beside the sheet.
+   Paint above the toolbar's z-index 30: its opaque ::after otherwise hides the lifted pixels despite correct bounds. */
+.catalog-resize-line { position: sticky; z-index: 31; top: calc(var(--catalog-content-offset, 0px) - var(--card-panel-lift, 0px)); display: block; width: 1px; height: min(100% + var(--card-panel-lift, 0px), calc(var(--preview-height, calc(var(--catalog-scroll-height, 100dvh) - var(--catalog-content-offset, 0px))) + var(--card-panel-lift, 0px))); margin-top: calc(-1 * var(--card-panel-lift, 0px)); margin-left: 3px; background: var(--line); transition: background-color 160ms; }
 .catalog-resize-handle:is(:hover, :focus-visible) > .catalog-resize-line { background: var(--focus); }
 /* 2026-11-06: keyboard focus widens the handle line instead of framing the whole column with a second ring. */
 .catalog-resize-handle:focus-visible { outline: none; }
@@ -500,9 +379,9 @@ kbd { display: inline-flex; align-items: center; justify-content: center; text-a
 /* 2026-11-10: no bottom padding here: the open deck fills the main area and its results column keeps the bottom space
    (deck-workbench.css); one rule, so CSS load order cannot bring the 40px back. */
 .catalog-view.is-deck-open { max-width: none; padding: 12px 16px 0; }
-/* 2026-11-05: in an open deck the breathing room below the cards sits inside the columns, so the divider and the sidebar
-   scroller run the full height of the list. */
-.catalog-view:is(.is-deck-open, .card-scope-view) .catalog-content-layout > :is(.catalog-results, .catalog-preview-slot) { padding-bottom: 24px; }
+/* 2026-11-13: match the measured sheet's 12px bottom clearance. A larger sticky tail pushes the sheet upward at the
+   list end, growing --preview-height on each measurement and pulling the divider over the toolbar. */
+.catalog-view:is(.is-deck-open, .card-scope-view) .catalog-content-layout > .catalog-preview-slot { padding-bottom: var(--space-3); }
 .catalog-table-group th > span { vertical-align: middle; }.catalog-group-count { margin-left: 8px; font: 10px 'Geist Mono', monospace; }
 .catalog-table-title { display: inline-flex; align-items: baseline; gap: 5px; min-width: 0; flex: 1 1 140px; }
 .catalog-table-title > svg { flex-shrink: 0; align-self: start; margin-top: 2px; color: var(--muted); }
@@ -524,11 +403,11 @@ kbd { display: inline-flex; align-items: center; justify-content: center; text-a
 /* 2026-11-10: scope choices are ghost controls (DESIGN.md «Controls», the Foil Rule): plain labels, the current one marked
    like any chosen control — the mark's hairline and label over its tint, never a filled pill. */
 .catalog-nav-section button { display: inline-flex; align-items: center; gap: 7px; padding: 7px 9px; border: var(--control-hairline) solid transparent; border-radius: var(--control-radius); background: transparent; color: var(--ink); font-size: 12px; font-weight: 500; letter-spacing: .01em; white-space: nowrap; }
-.catalog-nav-section button > span { font: 10px 'Geist Mono', monospace; color: var(--muted); }
+.catalog-nav-section button > .catalog-nav-count { font: 10px 'Geist Mono', monospace; color: var(--muted); }
 .catalog-nav-section button:hover { background: var(--hover); }.catalog-nav-section button[aria-current="page"] { border-color: var(--mark); background: var(--mark-tint); color: var(--mark); }
 .catalog-nav-section button[aria-current="page"]:hover { background: var(--mark-tint-strong); }
 /* The count takes the mark too: the muted grey sat at 3.9:1 on the tint. */
-.catalog-nav-section button[aria-current="page"] > span { color: inherit; }
+.catalog-nav-section button[aria-current="page"] > .catalog-nav-count { color: inherit; }
 .catalog-track-picker { min-width: 0; }.catalog-track-picker .catalog-nav-label span { margin-left: 8px; font-weight: 400; }
 .catalog-track-picker select { width: 100%; min-width: 0; height: 32px; padding: 4px 8px; color: var(--ink); border: var(--control-hairline) solid var(--control-field-line); border-radius: var(--control-radius); background-color: var(--control-field); font-size: 12px; }
 .catalog-track-picker select:focus { border-color: var(--focus); box-shadow: inset 0 0 0 1px var(--focus); outline: none; }
@@ -542,7 +421,8 @@ kbd { display: inline-flex; align-items: center; justify-content: center; text-a
 .catalog-card-group:not(:has(> .catalog-card-group-heading)) > .catalog-card-grid { padding-top: 12px; }
 @media (hover: none), (pointer: coarse) { .catalog-card-grid { row-gap: 20px; } }
 .deck-toolbar-search { flex: 0 1 260px; min-width: 64px; margin-left: 7px; padding-inline: 8px; }.deck-toolbar-search input { height: 29px; font-size: 11px; }
-.catalog-content-layout { display: grid; grid-template-columns: minmax(0, 1fr); align-items: start; gap: 8px; min-width: 0; }
+.catalog-content-layout { --card-panel-lift: var(--space-2); display: grid; grid-template-columns: minmax(0, 1fr); align-items: start; gap: 8px; min-width: 0; }
+.card-scope-view .catalog-content-layout { --card-panel-lift: calc(var(--space-4) + var(--space-1)); }
 /* The card column is 503 px; below about 420 px, sheet actions wrap into the band. */
 .catalog-content-layout.has-summary, .catalog-content-layout.has-preview { grid-template-columns: minmax(min(420px, 100%), min(var(--left-panel-width, 503px), 62%)) 8px minmax(0, 1fr); }
 .catalog-preview-slot { min-width: 0; position: sticky; top: var(--catalog-content-offset, 0px); }
@@ -571,8 +451,7 @@ input[type="checkbox"].catalog-card-checkbox::after { content: ''; position: abs
 .catalog-card-grid .deck-card.is-multi-selected { border-color: var(--check-on-edge); background: color-mix(in srgb, var(--check-on-face) 18%, var(--card-face)); transform: translateY(3px); box-shadow: inset 0 4px 8px -3px #0c0a1380; transition: transform 420ms cubic-bezier(.33, 1, .68, 1), box-shadow var(--motion-material), border-color var(--motion-feedback); }
 .catalog-card-grid .deck-card.is-multi-selected::after { content: ''; position: absolute; inset: -1px; z-index: 5; border: 2px solid var(--check-on-edge); border-radius: 5px; pointer-events: none; }
 .catalog-card-grid .deck-card.is-multi-selected > .deck-card-band { filter: saturate(.85) brightness(.92); }
-.catalog-card-grid .deck-card.is-multi-selected.is-selected:not(:has(:focus-visible)) { box-shadow: inset 0 4px 8px -3px #0c0a1380, 0 0 0 2px color-mix(in srgb, var(--tile-highlight) 85%, transparent), 0 0 18px color-mix(in srgb, var(--tile-highlight) 38%, transparent); }
-.catalog-card-grid .deck-card.is-multi-selected:has(.deck-card-open:focus-visible) { outline: 2px solid var(--focus); outline-offset: 2px; }
+.catalog-card-grid .deck-card.is-multi-selected.is-selected:not(:has(:focus-visible, .deck-card-open:focus)) { box-shadow: inset 0 4px 8px -3px #0c0a1380, 0 0 0 2px color-mix(in srgb, var(--tile-highlight) 85%, transparent), 0 0 18px color-mix(in srgb, var(--tile-highlight) 38%, transparent); }
 @media (prefers-reduced-motion: reduce) { .catalog-card-grid .deck-card.is-multi-selected { transform: translateY(3px) !important; transition: none; } }
 .catalog-selection-dock { margin-bottom: 12px; background: var(--ground); }
 .catalog-view[data-selection-sticky="true"] > .catalog-selection-dock { position: sticky; top: var(--deck-sticky-offset, 0px); z-index: 20; }
@@ -602,50 +481,13 @@ input[type="checkbox"].catalog-card-checkbox::after { content: ''; position: abs
 .mission-control-head > button { margin-left: auto; flex-shrink: 0; }
 .mission-control-project { flex-shrink: 0; padding: 16px; }
 .mission-control-project > h2 { margin: 0 0 12px; color: var(--muted); font-size: 12px; font-weight: 600; line-height: 14px; letter-spacing: .24px; text-transform: uppercase; }
-.mission-control-project-row { display: flex; align-items: center; gap: 10px; min-width: 0; padding: 8px; border-radius: var(--control-radius); background: var(--ground); }
-.mission-control-project-row div { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
-.mission-control-project-row strong { overflow: hidden; font-size: 14px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
-.mission-control-project-row span { color: var(--muted); font-size: 12px; }
 .mission-control-project > .mission-control-project-row strong { white-space: normal; overflow-wrap: anywhere; line-height: 1.25; }
 .mission-control-project > .mission-control-project-row span { line-height: 1.4; }
 /* 2026-11-08: the avatar remains only on the current project row in a browser (no bridge); with the bridge both rows wear a tile. */
 .mission-control-avatar { display: grid; place-items: center; flex: 0 0 32px; width: 32px; height: 32px; border: 1px solid var(--line); border-radius: var(--glass-radius); background: var(--surface); font-weight: 600; }
-/* 2026-11-08: a miniature deck cover per project — the same cast 165deg tile as the launcher's recent list
-   (desktop/launcher/launcher.css .recent-tile), 32×42 instead of 40×52 to fit the narrow menu panel. The dark
-   window is the cover token; the rim, lift and card shadow are the client's own cover material. */
-.mission-control-recent-tile { position: relative; overflow: hidden; flex: 0 0 32px; width: 32px; height: 42px; border-radius: 4px; background: linear-gradient(165deg, color-mix(in srgb, var(--tile) 78%, #ffffff), var(--tile) 55%, color-mix(in srgb, var(--tile) 70%, #000000)); box-shadow: var(--cover-rim), var(--card-shadow); }
-/* The window carries the project's initials (data-initials, the launcher's attr() rule): white on the dark
-   window mix — over every palette tile color that mix stays near --cover-window, well past 4.5:1 in both themes. */
-.mission-control-recent-tile::before { content: attr(data-initials); position: absolute; left: 3px; right: 3px; top: 3px; height: 19px; border-radius: 2px; display: grid; place-items: center; background: color-mix(in srgb, var(--cover-window) 82%, var(--tile)); color: #fff; font-family: var(--font-sans); font-size: 10px; font-weight: 700; line-height: 1; }
-.mission-control-recent-tile::after { content: ''; position: absolute; left: 5px; bottom: 4px; width: 14px; height: 3px; border-radius: 1.5px; background: #ffffffb0; }
-/* A switch in flight spins over the tile in the covers' white ink, like the kind badges on deck covers. */
-.mission-control-recent-tile > .spin { position: absolute; inset: 0; margin: auto; color: #fff; }
-/* 2026-11-08: Deckmate Desktop's bridge adds the other recent projects under the current one. The bounded list scrolls
-   inside the panel so the app menu below stays on screen; hover/focus match the menu rows. */
-.mission-control-recent { display: flex; flex-direction: column; gap: 6px; margin-top: 10px; }
-.mission-control-recent-viewport { position: relative; }
-.mission-control-recent-viewport[data-more]::after { content: ''; position: absolute; inset: auto 0 0; height: 18px; background: linear-gradient(transparent, var(--surface)); pointer-events: none; }
-.mission-control-recent-viewport:focus-within::after { display: none; }
-/* The permanent 6px gutter sits in the panel padding, not inside the project rows. */
-.mission-control-recent-list { display: flex; flex-direction: column; gap: 4px; width: calc(100% + 6px); max-height: 306px; margin: 0; padding: 0; list-style: none; overflow-y: auto; overscroll-behavior: contain; scrollbar-gutter: stable; }
-.mission-control-recent-list::-webkit-scrollbar-thumb { background: transparent; }
-.mission-control-recent-list:hover::-webkit-scrollbar-thumb, .mission-control-recent-list:focus-within::-webkit-scrollbar-thumb { background: var(--line); }
-.mission-control-recent-list .mission-control-project-row { width: 100%; border: 0; color: var(--ink); background: var(--ground); font: inherit; text-align: left; cursor: pointer; }
-.mission-control-recent-list .mission-control-project-row:hover:not(:disabled) { background: var(--hover); }
-.mission-control-recent-list .mission-control-project-row:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
-.mission-control-recent-list .mission-control-project-row:disabled { cursor: default; }
-.mission-control-recent-row > div { flex: 1; }
-.mission-control-project-row .mission-control-recent-heading { flex-direction: row; align-items: baseline; justify-content: space-between; gap: 6px; }
-.mission-control-recent-heading strong { min-width: 0; }
-.mission-control-recent-path { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-/* The relative time reads as a number, so it takes the counters' mono face with tabular digits, as on the launcher.
-   No font: shorthand — the minifier reorders declarations, and the shorthand would reset font-variant-numeric after it. */
-.mission-control-recent-time { flex: 0 0 auto; color: var(--muted); font-family: 'Geist Mono', monospace; font-size: 12px; font-weight: 500; font-variant-numeric: tabular-nums; white-space: nowrap; }
-.mission-control-recent-failure { margin: 0; color: var(--danger); font-size: 12px; line-height: 1.45; overflow-wrap: anywhere; }
 .mission-control-recent-open { display: inline-flex; align-items: center; gap: 6px; align-self: flex-start; min-height: 28px; margin: 0 0 0 8px; border: 0; padding: 2px 0; color: var(--muted); background: transparent; font-size: 12px; text-align: left; text-decoration: underline; text-decoration-color: color-mix(in srgb, currentColor 35%, transparent); text-underline-offset: 3px; cursor: pointer; }
 .mission-control-recent-open svg { flex-shrink: 0; }
 .mission-control-recent-open:hover:not(:disabled) { color: var(--ink); }
-.mission-control-recent-open:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 .mission-control-recent-open:disabled { cursor: default; }
 :is(.mission-control-menu, .mission-control-sections) { display: flex; flex: 0 0 auto; flex-direction: column; margin-top: auto; padding: 8px 0; border-top: 1px solid var(--line); }
 .mission-control-sections { margin-top: 0; }
@@ -654,7 +496,6 @@ input[type="checkbox"].catalog-card-checkbox::after { content: ''; position: abs
 :is(.mission-control-menu, .mission-control-sections) button > span { display: flex; flex: 1; flex-direction: column; gap: 2px; min-width: 0; overflow-wrap: anywhere; }
 :is(.mission-control-menu, .mission-control-sections) button small { color: var(--muted); font-size: 12px; font-weight: 400; }
 :is(.mission-control-menu, .mission-control-sections) button:hover:not(:disabled) { background: var(--hover); }
-:is(.mission-control-menu, .mission-control-sections) button:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
 /* The menu row sets cursor: pointer at the same weight as the global button:disabled, so only the cursor needs restoring. */
 :is(.mission-control-menu, .mission-control-sections) button:disabled { cursor: default; }
 .mission-control-menu button.is-destructive, .mission-control-menu button.is-destructive > svg { color: var(--danger); }
@@ -663,38 +504,12 @@ input[type="checkbox"].catalog-card-checkbox::after { content: ''; position: abs
 .mission-control-workspace h3 { margin: 0 0 2px; color: var(--muted); font-size: 12px; font-weight: 600; line-height: 1.4; }
 .mission-control-workspace-empty { margin: 0 0 4px; color: var(--muted); font-size: 13px; line-height: 1.5; text-wrap: pretty; }
 .mission-control-workspace-message { display: flex; align-items: center; gap: 8px; margin: 8px 0; color: var(--muted); font-size: 12px; }
-/* The reserved scrollbar sits in the section's padding, keeping tiles aligned with the current project. */
-.mission-control-workspace-list { display: flex; flex-direction: column; gap: 4px; width: calc(100% + 6px); max-height: clamp(120px, calc(100dvh - 630px), 306px); margin: 0; padding: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-gutter: stable; list-style: none; }
-.mission-control-workspace-row { position: relative; flex: 0 0 auto; min-width: 0; border-radius: var(--control-radius); background: var(--ground); }
-.mission-control-workspace-row.is-current { background: var(--accent-soft); box-shadow: inset 0 0 0 1px var(--line); }
-.mission-control-workspace-open { position: relative; width: 100%; min-height: 58px; padding-right: 36px; border: 0; color: var(--ink); background: transparent; text-align: left; touch-action: pan-y; cursor: pointer; }
-.mission-control-workspace-open[aria-disabled="true"] { cursor: default; }
-.mission-control-workspace-open:hover:not([aria-disabled="true"]) { background: var(--hover); }
-.mission-control-workspace-open:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
-.mission-control-workspace-copy { flex: 1; }
-.mission-control-workspace-copy strong { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; white-space: normal; overflow-wrap: anywhere; line-height: 1.25; }
-.mission-control-workspace-path { overflow-wrap: anywhere; line-height: 1.3; }
-.mission-control-workspace-current { position: absolute; right: 12px; top: calc(50% - 7px); color: var(--focus); }
-.mission-control-workspace-row.is-missing .mission-control-recent-tile { opacity: .45; filter: saturate(.4); }
-.mission-control-workspace-row.is-missing strong { color: var(--muted); }
-.mission-control-workspace-copy .mission-control-workspace-missing { color: var(--muted); font-size: 11px; }
-.mission-control-workspace-row:not(.is-current):not(.is-missing) .mission-control-workspace-open[aria-disabled="true"] { opacity: .6; }
-.mission-control-workspace-remove { position: absolute; right: 4px; top: calc(50% - 14px); display: grid; place-items: center; width: 28px; height: 28px; padding: 0; border: 0; border-radius: 4px; opacity: 0; color: var(--muted); background: transparent; cursor: pointer; }
-.mission-control-workspace-row:hover .mission-control-workspace-remove, .mission-control-workspace-row:focus-within .mission-control-workspace-remove, .mission-control-workspace-row.is-missing .mission-control-workspace-remove { opacity: 1; }
-.mission-control-workspace-row:hover .mission-control-workspace-current, .mission-control-workspace-row:focus-within .mission-control-workspace-current { visibility: hidden; }
-.mission-control-workspace-remove:hover:not(:disabled) { color: var(--danger); background: var(--hover); }
-.mission-control-workspace-remove:focus-visible, .mission-control-workspace-add:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
-.mission-control-workspace-remove:disabled { cursor: default; }
-.mission-control-workspace-row.is-dragging { z-index: 1; background: var(--hover); box-shadow: var(--card-hover-shadow), inset 0 0 0 2px var(--focus); }
-.mission-control-workspace-row.is-dragging .mission-control-workspace-open { cursor: grabbing; }
-.mission-control-workspace-list[data-dragging] .mission-control-workspace-remove { visibility: hidden; }
 .mission-control-workspace-actions { display: flex; align-items: center; gap: 10px; color: var(--muted); }
 .mission-control-workspace-add { display: inline-flex; align-items: center; gap: var(--space-2); min-height: 32px; max-width: 100%; padding: var(--space-1) var(--space-2); border: var(--control-hairline) solid var(--control-line); border-radius: var(--control-radius); background: transparent; color: var(--ink); font-size: var(--text-ui-size); line-height: var(--text-ui-leading); text-align: left; cursor: pointer; }
 .mission-control-workspace-add svg { flex-shrink: 0; }
 .mission-control-workspace-add:hover:not(:disabled), .mission-control-workspace-add[data-state="open"] { background: var(--hover); }
 .mission-control-workspace-add:disabled { cursor: default; }
 .mission-control-workspace-note { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.4; }
-.mission-control-retry { border: 0; padding: 4px 0; background: transparent; color: inherit; font: inherit; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
 .mission-control-workspace-menu { z-index: 95; width: min(288px, calc(100vw - 32px)); min-width: 0; max-height: min(360px, var(--radix-dropdown-menu-content-available-height)); overflow-y: auto; overscroll-behavior: contain; }
 .mission-control-workspace-menu .dropdown-item { min-height: 36px; font-size: 13px; line-height: 1.3; overflow-wrap: anywhere; }
 .mission-control-workspace-menu .dropdown-item > svg { flex-shrink: 0; }
@@ -704,11 +519,7 @@ input[type="checkbox"].catalog-card-checkbox::after { content: ''; position: abs
 .mission-control-workspace-recent > span:last-child { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
 .mission-control-workspace-recent strong { overflow-wrap: anywhere; font-weight: 600; }
 .mission-control-workspace-recent small { color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
-@media (hover: none) { .mission-control-workspace-remove { opacity: 1; } .mission-control-workspace-current { display: none; } }
-/* 2026-11-11: reserve the enlarged action in the row so touch removal never covers a project name or its shortcut. */
 @media (pointer: coarse) {
-  .mission-control-workspace-open { padding-right: calc(var(--control-target-touch) + var(--space-2) + var(--space-1)); }
-  .mission-control-workspace-remove { top: calc(50% - var(--control-target-touch) / 2); width: var(--control-target-touch); height: var(--control-target-touch); }
   .mission-control-workspace-add, .mission-control-workspace-menu .dropdown-item { min-height: var(--control-target-touch); }
 }
 @media (prefers-reduced-motion: reduce) { .mission-control { animation: none; } .mission-control-menu button { transition: none; } }

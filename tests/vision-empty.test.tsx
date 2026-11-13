@@ -138,6 +138,6 @@ it('a project without decks is a quiet note, not an alert, and the Widget stays 
   expect(markup).not.toContain('inline-error');
   const deckSelect = find(element => element.props['aria-label'] === 'Widget deck')!;
   expect(deckSelect.props['aria-invalid']).toBeUndefined();
-  const widget = find(element => element.props.children?.some?.((child: unknown) => child === 'Widget' || (isValidElement<Record<string, unknown>>(child) && child.props.children === 'Widget')));
+  const widget = find(element => element.props.onClick && renderToStaticMarkup(element).replace(/<[^>]*>/gu, '') === 'Widget');
   expect(widget!.props.disabled).toBe(true);
 });

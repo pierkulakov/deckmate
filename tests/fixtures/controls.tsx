@@ -100,8 +100,7 @@ function render(options: { theme?: 'light' | 'dark' } = {}) {
   root.render(<Gallery key={Math.random()} />);
 }
 
-// Escape returns focus to the opener from a window capture listener, the earliest place an app can handle a key; the
-// ring must still follow this keyboard input, not the click before it.
+// 2026-11-13: even a window capture listener must restore focus quietly when Escape ends Tab navigation.
 window.addEventListener('keydown', event => {
   if (event.key === 'Escape') moveFocus(document.querySelector<HTMLElement>('#opener'));
 }, true);

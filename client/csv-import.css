@@ -18,8 +18,7 @@
   border: var(--control-hairline) solid var(--control-line); border-radius: var(--control-radius); color: var(--button-ink); background: transparent;
   font-size: 13px; font-weight: 500; letter-spacing: .01em; cursor: pointer; }
 @media (hover: hover) { .csv-import-file-label:hover:not(:has(input:disabled)) { border-color: var(--button-line); background: var(--hover); color: var(--ink); } }
-/* The real input is a 1 px transparent box, so the visible label carries the keyboard focus ring. */
-.csv-import-file-label:has(input:focus-visible) { outline: 2px solid var(--focus); outline-offset: 2px; }
+/* 2026-11-13: the real input is transparent, so the shared focus edge belongs to its visible label. */
 .csv-import-file-label input { position: absolute; width: 1px; height: 1px; opacity: 0; }
 .csv-import-note { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.6; max-width: 88ch; overflow-wrap: anywhere; }
 .csv-import-file-line { margin: 0; color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }

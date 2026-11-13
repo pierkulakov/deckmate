@@ -1,5 +1,5 @@
 use crate::{job::Job, log::Log, paths::Programs, texts};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::{
     collections::VecDeque, ffi::OsString, io, net::TcpListener, path::Path, process::Stdio,
     time::Duration,
@@ -46,6 +46,7 @@ pub struct Exit {
 pub struct Server {
     stop: watch::Sender<bool>,
     exit: watch::Receiver<Option<Exit>>,
+    project_error: watch::Receiver<Option<String>>,
 }
 
 impl Server {
@@ -68,6 +69,26 @@ impl Server {
         self.request_stop();
         self.exited().await
     }
+
+    pub async fn failed(&self, language: &str) -> Option<Failure> {
+        let mut project_error = self.project_error.clone();
+        let exit = tokio::select! {
+            Ok(_) = project_error.wait_for(|value| value.is_some()) => None,
+            exit = self.exited() => Some(exit),
+        };
+        if let Some(message) = project_error.borrow().as_ref() {
+            return Some(Failure::new(
+                "start-failed",
+                format!("{}\n{message}", texts::text(language, "openFailed")),
+            ));
+        }
+        exit.filter(|exit| !exit.expected).map(|exit| {
+            Failure::new(
+                "start-failed",
+                texts::format(language, "serverStopped", "code", exit_code(exit.code)),
+            )
+        })
+    }
 }
 
 #[cfg(test)]
@@ -77,7 +98,12 @@ impl Server {
     pub fn idle() -> Self {
         let (stop, _) = watch::channel(false);
         let (_, exit) = watch::channel(None);
-        Self { stop, exit }
+        let (_, project_error) = watch::channel(None);
+        Self {
+            stop,
+            exit,
+            project_error,
+        }
     }
 }
 
@@ -219,6 +245,7 @@ pub fn start_on_port(
     let (ready, ready_receiver) = oneshot::channel();
     let (stop, stop_receiver) = watch::channel(false);
     let (exit, exit_receiver) = watch::channel(None);
+    let (project_error, project_error_receiver) = watch::channel(None);
     let folder = folder.to_owned();
     tokio::spawn(async move {
         let mut process = Process {
@@ -226,6 +253,7 @@ pub fn start_on_port(
             stdin,
             ready: Some(ready),
             output: receiver,
+            project_error,
             stderr: VecDeque::new(),
             language,
             started: false,
@@ -268,6 +296,7 @@ pub fn start_on_port(
         Server {
             stop,
             exit: exit_receiver,
+            project_error: project_error_receiver,
         },
         ready_receiver,
     ))
@@ -276,6 +305,12 @@ pub fn start_on_port(
 enum Output {
     Ready(String),
     Stderr(String),
+    ProjectError(String),
+}
+
+#[derive(Deserialize)]
+struct ProjectError {
+    message: String,
 }
 
 fn output_line(bytes: &[u8], stderr: bool, sender: &mpsc::UnboundedSender<Output>, log: &Log) {
@@ -286,6 +321,10 @@ fn output_line(bytes: &[u8], stderr: bool, sender: &mpsc::UnboundedSender<Output
     ));
     if stderr {
         let _ = sender.send(Output::Stderr(line));
+    } else if let Some(payload) = line.strip_prefix("Deckmate: project-error ") {
+        if let Ok(error) = serde_json::from_str::<ProjectError>(payload) {
+            let _ = sender.send(Output::ProjectError(error.message));
+        }
     }
 }
 
@@ -334,6 +373,7 @@ struct Process {
     stdin: Option<ChildStdin>,
     ready: Option<oneshot::Sender<Result<String, Failure>>>,
     output: mpsc::UnboundedReceiver<Output>,
+    project_error: watch::Sender<Option<String>>,
     stderr: VecDeque<String>,
     language: String,
     started: bool,
@@ -354,6 +394,16 @@ impl Process {
                     self.started = true;
                     let _ = ready.send(Ok(url));
                 }
+            }
+            Output::ProjectError(message) => {
+                // 2026-11-13: retain the first cause across navigation and process exit until the launcher can show it.
+                self.project_error.send_if_modified(|value| {
+                    if value.is_some() {
+                        return false;
+                    }
+                    *value = Some(message);
+                    true
+                });
             }
         }
     }
@@ -690,6 +740,89 @@ pub(crate) mod tests {
         assert!(exit.expected);
         assert!(!exit.forced);
         assert_eq!(exit.code, Some(0));
+        assert!(process.failed("en").await.is_none());
+    }
+
+    #[tokio::test]
+    async fn deferred_project_failure_survives_fragmented_utf8_and_graceful_stop() {
+        let fixture = Fixture::new(
+            r#"
+            console.log('Deckmate: http://127.0.0.1:' + process.env.DECKMATE_PORT);
+            console.error('Deckmate: project-error {"message":"stderr is not a project event"}');
+            console.log('prefix Deckmate: project-error {"message":"not a project event"}');
+            console.log('Deckmate: project-error {broken}');
+            console.log('Deckmate: project-error {"message":7}');
+            const event = Buffer.from('Deckmate: project-error ' + JSON.stringify({ message: 'Unreadable project\nПапка недоступна' }) + '\r\n');
+            const split = event.indexOf(Buffer.from('П')) + 1;
+            setTimeout(() => {
+                process.stdout.write(event.subarray(0, split));
+                setTimeout(() => {
+                    process.stdout.write(event.subarray(split));
+                    console.log('Deckmate: project-error {"message":"later failure"}');
+                }, 30);
+            }, 30);
+            process.stdin.once('data', data => process.exit(JSON.parse(data).type === 'shutdown' ? 0 : 2));
+        "#,
+        );
+        let (process, ready) = fixture.start();
+        assert!(ready.await.unwrap().is_ok());
+        let failure = time::timeout(Duration::from_secs(5), process.failed("ru"))
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(failure.code, "start-failed");
+        assert_eq!(
+            failure.message,
+            format!(
+                "{}\nUnreadable project\nПапка недоступна",
+                texts::text("ru", "openFailed")
+            )
+        );
+        let exit = process.stop().await;
+        assert!(exit.expected && !exit.forced);
+        assert_eq!(exit.code, Some(0));
+        assert_eq!(process.failed("ru").await.unwrap().message, failure.message);
+    }
+
+    #[tokio::test]
+    async fn project_failure_is_retained_when_the_process_exits_before_navigation_finishes() {
+        let fixture = Fixture::new(
+            r#"
+            console.log('Deckmate: http://127.0.0.1:' + process.env.DECKMATE_PORT);
+            console.log('Deckmate: project-error {"message":"Project data is damaged"}');
+            process.exitCode = 7;
+        "#,
+        );
+        let (process, ready) = fixture.start();
+        assert!(ready.await.unwrap().is_ok());
+        assert_eq!(process.exited().await.code, Some(7));
+        let failure = process.failed("en").await.unwrap();
+        assert_eq!(failure.code, "start-failed");
+        assert_eq!(
+            failure.message,
+            format!(
+                "{}\nProject data is damaged",
+                texts::text("en", "openFailed")
+            )
+        );
+    }
+
+    #[tokio::test]
+    async fn unexpected_exit_after_readiness_still_reports_the_exit_code() {
+        let fixture = Fixture::new(
+            r#"
+            console.log('Deckmate: http://127.0.0.1:' + process.env.DECKMATE_PORT);
+            process.exitCode = 7;
+        "#,
+        );
+        let (process, ready) = fixture.start();
+        assert!(ready.await.unwrap().is_ok());
+        let failure = process.failed("en").await.unwrap();
+        assert_eq!(failure.code, "start-failed");
+        assert_eq!(
+            failure.message,
+            texts::format("en", "serverStopped", "code", 7)
+        );
     }
 
     #[tokio::test]

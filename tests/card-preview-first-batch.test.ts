@@ -2,6 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { openHeadlessBrowser, type HeadlessPage } from '../tools/layout-capture.ts';
 import { browserFixtureUrl } from './browser-fixture.ts';
 import { requireBrowser } from './browser-environment.ts';
+import { waitForLayout } from './browser-layout.ts';
 import { shortReference } from '../src/references.ts';
 import { recordDecision } from '../src/open-questions.ts';
 import { mkdir, writeFile } from 'node:fs/promises';
@@ -520,6 +521,74 @@ describe.skipIf(!browserPath)('open card first UX batch (real browser)', () => {
     }
   });
 
+  it.each([1440, 375])('labels only Doc previews without clipping or shifting content at %s px', async width => {
+    await page.send('Emulation.setDeviceMetricsOverride', { width, height: 900, deviceScaleFactor: 1, mobile: false });
+    try {
+      for (const theme of ['dark', 'light']) for (const lang of ['en', 'ru']) {
+        for (const kind of ['task', 'hero']) {
+          await render({ kind, theme, lang });
+          expect(await page.evaluate(`document.querySelector('.card-preview-kind')`)).toBe(null);
+        }
+        const frames = await page.callFunction(`async function(options) {
+          await document.fonts.ready;
+          const originalFetch = window.fetch;
+          let releaseContent;
+          window.fetch = (...args) => {
+            const response = originalFetch(...args);
+            if (!String(args[0]).startsWith('/api/card-content')) return response;
+            return new Promise(resolve => { releaseContent = () => resolve(response); });
+          };
+          try {
+            return await new Promise((resolve, reject) => {
+              const frames = [], started = performance.now();
+              window.firstBatch.render(options);
+              function sample() {
+                const preview = document.querySelector('.card-preview-doc');
+                const sheet = preview?.querySelector('.card-preview-sheet').getBoundingClientRect();
+                const title = preview?.querySelector('.card-preview-title');
+                const body = preview?.querySelector('.card-preview-document');
+                if (title && body) {
+                  frames.push({ label: preview.querySelector('.card-preview-kind')?.textContent,
+                    title: title.getBoundingClientRect().top - sheet.top, body: body.getBoundingClientRect().top - sheet.top });
+                  if (frames.length === 3) releaseContent?.();
+                  if (frames.length >= 12 && preview.querySelector('.card-content-save-status.is-calm')) return resolve(frames);
+                }
+                if (performance.now() - started > 5000) return reject(new Error('Doc preview did not finish loading'));
+                requestAnimationFrame(sample);
+              }
+              requestAnimationFrame(sample);
+            });
+          } finally { releaseContent?.(); window.fetch = originalFetch; }
+        }`, { kind: 'doc', state: null, title: 'Document preview', theme, lang }) as { label: string; title: number; body: number }[];
+        expect(frames.every(frame => frame.label === 'Doc Card')).toBe(true);
+        for (const key of ['title', 'body'] as const) {
+          const positions = frames.map(frame => frame[key]);
+          expect(Math.max(...positions) - Math.min(...positions)).toBeLessThanOrEqual(1);
+        }
+        await waitForLayout(page.evaluate, '.card-preview-sheet, .card-preview-kind');
+        expect(await page.evaluate(`(() => {
+          const label = document.querySelector('.card-preview-kind'), text = label.querySelector('span');
+          const icon = label.querySelector('svg'), tools = document.querySelector('.card-preview-subcards-actions');
+          const rect = label.getBoundingClientRect(), iconRect = icon.getBoundingClientRect(), textRect = text.getBoundingClientRect();
+          const style = getComputedStyle(label), range = document.createRange();
+          range.selectNodeContents(text);
+          return { text: label.textContent, icon: icon.classList.contains('lucide-file-text'), hiddenIcon: icon.getAttribute('aria-hidden'),
+            weight: style.fontWeight, muted: style.color === getComputedStyle(tools.querySelector('button')).color,
+            aligned: Math.abs(iconRect.top + iconRect.height / 2 - textRect.top - textRect.height / 2) < 1,
+            oneLine: range.getClientRects().length === 1, fits: rect.left >= 0 && rect.right <= tools.getBoundingClientRect().left
+              && text.scrollWidth <= text.clientWidth && text.scrollHeight <= text.clientHeight,
+            overflow: document.documentElement.scrollWidth > innerWidth };
+        })()`)).toEqual({ text: 'Doc Card', icon: true, hiddenIcon: 'true', weight: '600', muted: true, aligned: true, oneLine: true, fits: true, overflow: false });
+        if (process.env.DECKMATE_DOC_PREVIEW_SHOTS) {
+          await mkdir(process.env.DECKMATE_DOC_PREVIEW_SHOTS, { recursive: true });
+          const screenshot = await page.send('Page.captureScreenshot', { format: 'png' });
+          await writeFile(path.join(process.env.DECKMATE_DOC_PREVIEW_SHOTS, `doc-${theme}-${lang}-${width}.png`), Buffer.from(screenshot.result.data, 'base64'));
+        }
+      }
+      expect(page.consoleErrors).toEqual([]);
+    } finally { await page.send('Emulation.clearDeviceMetricsOverride'); }
+  });
+
   it('exposes Sub Card state and full title to readers and keyboard tooltips', async () => {
     await render({ family: true, kind: 'hero', lang: 'ru' });
     expect(await page.evaluate(`document.querySelector('.card-family-list .card-family-row-state').textContent`)).toBe('В работе');
@@ -586,7 +655,8 @@ describe.skipIf(!browserPath)('open card first UX batch (real browser)', () => {
     await click('.card-edit-save');
     await until(`document.querySelector('.card-content-save-status')?.textContent === 'Сохранено в файле'`);
     expect(await page.evaluate('window.firstBatch.requests[0].action')).toBe('update-card-content');
-    await until(`document.activeElement === document.querySelector('.card-content-edit-action') && document.activeElement.matches(':focus-visible')`);
+    await until(`document.activeElement === document.querySelector('.card-content-edit-action')`);
+    expect(await page.evaluate(`getComputedStyle(document.activeElement).outlineStyle`)).toBe('none');
   });
 
   it.each(['light', 'dark'])('shows keyboard focus on the scrolling questions panel in %s', async theme => {
@@ -595,6 +665,7 @@ describe.skipIf(!browserPath)('open card first UX batch (real browser)', () => {
     try {
       const markdown = `## Open questions\n\n${Array.from({ length: 12 }, (_, index) => `- Question ${index + 1}?`).join('\n')}`;
       await render({ kind: 'doc', lang: 'ru', theme, markdown });
+      await key('Tab');
       await page.evaluate(`document.querySelector('.card-preview-open-questions').focus({ focusVisible: true })`);
       await key('Enter');
       await until(`document.activeElement === document.querySelector('.card-related-slot')`);

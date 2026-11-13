@@ -1,0 +1,3 @@
+.reserved-text.reserved-text { display: inline-grid; min-width: 0; gap: 0; vertical-align: top; }
+.reserved-text::after, .reserved-text > span { grid-area: 1 / 1; min-width: 0; }
+.reserved-text::after { content: attr(data-reserve); visibility: hidden; pointer-events: none; }

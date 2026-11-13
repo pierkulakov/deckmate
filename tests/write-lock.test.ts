@@ -4,6 +4,7 @@ import { mkdir, mkdtemp, readFile, rm, symlink, utimes, writeFile } from 'node:f
 import * as filesystem from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import * as timers from 'node:timers/promises';
 import { CatalogError, CatalogService } from '../server/catalog-service.ts';
 import { emptyManifest, readProjectCatalog, renderCatalogManifest } from '../server/catalog.ts';
 import { writeCatalogBatch } from '../server/cli-write.ts';
@@ -20,7 +21,13 @@ import { readCardAttachments } from '../server/attachments.ts';
 
 vi.mock('node:fs/promises', async importOriginal => {
   const actual = await importOriginal<typeof import('node:fs/promises')>();
-  return { ...actual, open: vi.fn(actual.open), lstat: vi.fn(actual.lstat), link: vi.fn(actual.link), unlink: vi.fn(actual.unlink) };
+  return { ...actual, open: vi.fn(actual.open), lstat: vi.fn(actual.lstat), realpath: vi.fn(actual.realpath),
+    link: vi.fn(actual.link), unlink: vi.fn(actual.unlink) };
+});
+
+vi.mock('node:timers/promises', async importOriginal => {
+  const actual = await importOriginal<typeof import('node:timers/promises')>();
+  return { ...actual, setTimeout: vi.fn(actual.setTimeout) };
 });
 
 let directory: string;
@@ -57,8 +64,10 @@ afterEach(async () => {
   vi.restoreAllMocks();
   vi.mocked(filesystem.open).mockReset();
   vi.mocked(filesystem.lstat).mockReset();
+  vi.mocked(filesystem.realpath).mockReset();
   vi.mocked(filesystem.link).mockReset();
   vi.mocked(filesystem.unlink).mockReset();
+  vi.mocked(timers.setTimeout).mockReset();
   for (const app of apps.splice(0)) await app.close();
   for (const service of services.splice(0)) await service.close();
   vi.unstubAllEnvs();
@@ -80,6 +89,14 @@ function deferred() {
   let resolve!: () => void;
   const promise = new Promise<void>(done => { resolve = done; });
   return { promise, resolve };
+}
+
+function controlRetryClock() {
+  // 2026-11-13: filesystem and Windows ACL latency must not exhaust synthetic retry budgets;
+  // advancing only by requested backoff makes both success and deadline cases independent of host load.
+  let now = Date.now();
+  vi.spyOn(Date, 'now').mockImplementation(() => now);
+  return vi.mocked(timers.setTimeout).mockImplementation(async ms => { now += Number(ms); });
 }
 
 async function lockOwner(pid: number, startedAt = Date.now()) {
@@ -392,6 +409,27 @@ it('retries an owner that becomes delete-pending during the initial file check',
   expect(await withProjectWriteLock(root, mutate, { timeoutMs: 200, retryMs: 2 })).toBe('written');
   expect(released).toBe(true);
   expect(mutate).toHaveBeenCalledTimes(1);
+});
+
+it.runIf(process.platform === 'win32')('retries EBADF when realpath races with owner deletion', async () => {
+  const { filename } = await lockOwner(process.pid);
+  const actual = await vi.importActual<typeof import('node:fs/promises')>('node:fs/promises');
+  const delay = controlRetryClock();
+  let released = false;
+  vi.mocked(filesystem.realpath).mockImplementation(async (...args) => {
+    if (String(args[0]) === filename && !released) {
+      released = true;
+      await rm(filename);
+      throw Object.assign(new Error('Delete pending'), { code: 'EBADF' });
+    }
+    return actual.realpath(...args);
+  });
+  const mutate = vi.fn(async () => 'written');
+  expect(await withProjectWriteLock(root, mutate, { timeoutMs: 200, retryMs: 2 })).toBe('written');
+  expect(released).toBe(true);
+  expect(mutate).toHaveBeenCalledOnce();
+  expect(delay.mock.calls.map(([ms]) => ms)).toEqual([2]);
+  expect(await filesystem.readdir(path.dirname(filename))).toEqual([]);
 });
 
 it('times out with an unsaved 503 for a live owner and never removes its lock', async () => {
@@ -711,6 +749,7 @@ it.each(['bytes', 'mtime'])('rechecks incomplete owner %s after acquiring the re
 it.each(['EPERM', 'EACCES', 'EBUSY'])('retries %s from exclusive publication and owner reads instead of failing', async code => {
   const actual = await vi.importActual<typeof import('node:fs/promises')>('node:fs/promises');
   const { filename } = await lockOwner(process.pid);
+  const delay = controlRetryClock();
   let attempts = 0;
   let released = false;
   let readFailed = false;
@@ -729,15 +768,22 @@ it.each(['EPERM', 'EACCES', 'EBUSY'])('retries %s from exclusive publication and
   const mutate = vi.fn(async () => 'written');
   expect(await withProjectWriteLock(root, mutate, { timeoutMs: 200, retryMs: 2 })).toBe('written');
   expect(mutate).toHaveBeenCalledTimes(1);
-  expect(attempts).toBeGreaterThanOrEqual(3);
+  expect(attempts).toBe(3);
   expect(readFailed).toBe(true);
+  expect(delay.mock.calls.map(([ms]) => ms)).toEqual([2, 2]);
+  expect(await filesystem.readdir(path.dirname(filename))).toEqual([]);
 });
 
 it('turns persistent permission contention into an unsaved 503 at the deadline', async () => {
+  const delay = controlRetryClock();
+  const mutate = vi.fn();
   vi.mocked(filesystem.open).mockRejectedValue(Object.assign(new Error('Busy'), { code: 'EPERM' }));
   try {
-    await expect(withProjectWriteLock(root, async () => {}, { timeoutMs: 10, retryMs: 2 }))
+    await expect(withProjectWriteLock(root, mutate, { timeoutMs: 10, retryMs: 2 }))
       .rejects.toMatchObject({ status: 503, saved: false });
+    expect(mutate).not.toHaveBeenCalled();
+    expect(filesystem.open).toHaveBeenCalledTimes(6);
+    expect(delay.mock.calls.map(([ms]) => ms)).toEqual([2, 2, 2, 2, 2]);
   } finally { vi.mocked(filesystem.open).mockReset(); }
 });
 

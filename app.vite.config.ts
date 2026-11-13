@@ -2,23 +2,9 @@ import { defineConfig, type ProxyOptions } from 'vite';
 import tailwindcss from '@tailwindcss/vite';
 import { rewriteProxyOrigin } from './tools/dev-proxy.ts';
 import { thirdPartyNoticesPlugin } from './tools/third-party-notices.ts';
+import { earlyThemePlugin } from './tools/classic-scripts.ts';
 import packageInfo from './package.json' with { type: 'json' };
-import { readFileSync } from 'node:fs';
-
-function earlyThemePlugin() {
-  const source = () => readFileSync(new URL('./desktop/launcher/theme.js', import.meta.url), 'utf8');
-  return {
-    name: 'deckmate-early-theme',
-    // 2026-11-09: a classic script must stay synchronous; Vite only bundles module scripts from HTML.
-    generateBundle() { this.emitFile({ type: 'asset' as const, fileName: 'theme.js', source: source() }); },
-    configureServer(server: import('vite').ViteDevServer) {
-      server.middlewares.use('/theme.js', (_request, response) => {
-        response.setHeader('Content-Type', 'text/javascript');
-        response.end(source());
-      });
-    },
-  } satisfies import('vite').Plugin;
-}
+import { radixLayerAlias } from './tools/radix-resolve.ts';
 
 const serverOrigin = `http://127.0.0.1:${process.env.DECKMATE_PORT ?? '4317'}`;
 const devPort = 4318;
@@ -39,6 +25,7 @@ function proxyToDeckmate(webSocket = false): ProxyOptions {
 
 export default defineConfig({
   root: 'client',
+  resolve: { alias: radixLayerAlias },
   define: { __DECKMATE_VERSION__: JSON.stringify(packageInfo.version) },
   plugins: [tailwindcss(), thirdPartyNoticesPlugin(), earlyThemePlugin()],
   build: {

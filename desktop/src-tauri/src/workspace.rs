@@ -41,17 +41,36 @@ pub fn board_addition(
     }
 }
 
-pub fn projects(settings: &Settings, current: Option<&str>, board: bool) -> Value {
-    json!(settings.workspace.iter().map(|entry| {
-        let mut project = json!({"path":entry.path,"name":entry.name,"missing":!Path::new(&entry.path).is_dir()});
-        if board {
-            project["current"] = json!(current.is_some_and(|folder| paths::same_path(folder, &entry.path)));
-        }
-        project
-    }).collect::<Vec<_>>())
+fn project_snapshot(path: &str, name: &str, current: Option<&str>) -> Value {
+    json!({"path":path,"name":name,"missing":!Path::new(path).is_dir(),
+        "current":current.is_some_and(|folder| paths::same_path(folder, path))})
 }
 
-pub fn snapshot(app: &AppHandle, board: bool) -> Value {
+pub fn recent_projects(settings: &Settings, current: Option<&str>) -> Value {
+    json!(settings
+        .recent
+        .iter()
+        .map(|entry| {
+            let mut project = project_snapshot(&entry.path, &entry.name, current);
+            project["lastOpened"] = json!(entry.last_opened);
+            project
+        })
+        .collect::<Vec<_>>())
+}
+
+pub fn projects(settings: &Settings, current: Option<&str>) -> Value {
+    json!(settings
+        .workspace
+        .iter()
+        .map(|entry| project_snapshot(&entry.path, &entry.name, current))
+        .collect::<Vec<_>>())
+}
+
+pub fn result(projects: Value, current: Option<&str>) -> Value {
+    json!({"ok":true,"projects":projects,"current":current})
+}
+
+pub fn snapshot(app: &AppHandle, list: fn(&Settings, Option<&str>) -> Value) -> Value {
     let shell = app::state(app);
     let current = shell
         .current
@@ -60,7 +79,7 @@ pub fn snapshot(app: &AppHandle, board: bool) -> Value {
         .as_ref()
         .map(|current| current.folder.clone());
     let settings = shell.settings.lock().unwrap();
-    projects(&settings, current.as_deref(), board)
+    result(list(&settings, current.as_deref()), current.as_deref())
 }
 
 fn failure_key(code: &str) -> &'static str {
@@ -86,7 +105,6 @@ fn update(
 pub fn changed(
     app: &AppHandle,
     change: impl FnOnce(&mut Settings) -> Result<(), &'static str>,
-    board: bool,
 ) -> Value {
     let shell = app::state(app);
     let saved = update(&shell, change);
@@ -95,16 +113,11 @@ pub fn changed(
             return json!(error);
         }
     }
-    crate::menu::rebuild(app);
+    crate::menu::sync(app);
     if let Err(error) = saved {
         return json!(error);
     }
-    let projects = snapshot(app, board);
-    if board {
-        json!({"ok":true,"projects":projects})
-    } else {
-        json!({"ok":true,"workspace":projects})
-    }
+    snapshot(app, projects)
 }
 
 pub fn add_current(app: &AppHandle) -> Value {
@@ -116,19 +129,15 @@ pub fn add_current(app: &AppHandle) -> Value {
         .as_ref()
         .filter(|current| current.url.is_some())
         .map(|current| current.folder.clone());
-    changed(
-        app,
-        |settings| {
-            board_addition(
-                settings,
-                &json!({"kind":"current"}),
-                current.as_deref(),
-                None,
-            )
-            .and_then(|folder| settings.add_to_workspace(&folder))
-        },
-        true,
-    )
+    changed(app, |settings| {
+        board_addition(
+            settings,
+            &json!({"kind":"current"}),
+            current.as_deref(),
+            None,
+        )
+        .and_then(|folder| settings.add_to_workspace(&folder))
+    })
 }
 
 #[cfg(test)]
@@ -244,6 +253,38 @@ mod tests {
     }
 
     #[test]
+    fn recent_and_workspace_snapshots_follow_folder_removal_and_restoration() {
+        let sandbox = app::tests::Sandbox::new();
+        let folder = sandbox.0.join("project");
+        let path = folder.to_string_lossy();
+        let mut settings = Settings::normalize(Value::Null, "en");
+        settings.remember(&path);
+        settings.add_to_workspace(&path).unwrap();
+        let saved = serde_json::to_value(&settings).unwrap();
+
+        let check = |missing: bool| {
+            let recent = recent_projects(&settings, None);
+            assert_eq!(recent[0]["missing"], missing);
+            assert_eq!(recent[0]["path"], saved["recent"][0]["path"]);
+            assert_eq!(recent[0]["name"], saved["recent"][0]["name"]);
+            assert_eq!(recent[0]["lastOpened"], saved["recent"][0]["lastOpened"]);
+            assert_eq!(projects(&settings, None)[0]["missing"], missing);
+            assert_eq!(serde_json::to_value(&settings).unwrap(), saved);
+        };
+        check(true);
+        std::fs::create_dir(&folder).unwrap();
+        check(false);
+        std::fs::remove_dir(&folder).unwrap();
+        check(true);
+        std::fs::write(&folder, "not a directory").unwrap();
+        check(true);
+        std::fs::remove_file(&folder).unwrap();
+        std::fs::create_dir(&folder).unwrap();
+        check(false);
+        assert!(saved["recent"][0].get("missing").is_none());
+    }
+
+    #[test]
     fn snapshots_report_missing_and_current_without_persisting_them() {
         let mut settings = Settings::normalize(Value::Null, "en");
         let existing = std::env::current_dir()
@@ -257,14 +298,45 @@ mod tests {
             .into_owned();
         settings.add_to_workspace(&existing).unwrap();
         settings.add_to_workspace(&missing).unwrap();
-        let board = projects(&settings, Some(&existing), true);
+        let board = projects(&settings, Some(&existing));
         assert_eq!(board[0]["current"], true);
         assert_eq!(board[0]["missing"], false);
         assert_eq!(board[1]["current"], false);
         assert_eq!(board[1]["missing"], true);
-        assert!(projects(&settings, None, false)[0].get("current").is_none());
+        assert_eq!(projects(&settings, None)[0]["current"], false);
         let saved = serde_json::to_value(settings).unwrap();
         assert!(saved["workspace"][0].get("current").is_none());
         assert!(saved["workspace"][0].get("missing").is_none());
+    }
+
+    #[test]
+    fn launcher_and_board_lists_share_the_result_contract() {
+        let sandbox = app::tests::Sandbox::new();
+        let existing = sandbox.0.to_string_lossy();
+        let missing = sandbox.0.join("missing").to_string_lossy().into_owned();
+        let mut settings = Settings::normalize(Value::Null, "en");
+        for path in [&*existing, &missing] {
+            settings.remember(path);
+            settings.add_to_workspace(path).unwrap();
+        }
+        for current in [None, Some(&*existing), Some("C:/Unpinned")] {
+            for list in [projects, recent_projects] {
+                let reply = result(list(&settings, current), current);
+                assert_eq!(reply.as_object().unwrap().len(), 3);
+                assert_eq!(reply["ok"], true);
+                assert_eq!(reply["current"], json!(current));
+                let entries = reply["projects"].as_array().unwrap();
+                assert_eq!(entries.len(), 2);
+                for entry in entries {
+                    let path = entry["path"].as_str().unwrap();
+                    assert_eq!(entry["missing"], path == missing);
+                    assert_eq!(entry["current"], current == Some(path));
+                }
+            }
+        }
+        assert_eq!(
+            result(json!([]), None),
+            json!({"ok":true,"projects":[],"current":null})
+        );
     }
 }

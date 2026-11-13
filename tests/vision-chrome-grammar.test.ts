@@ -1,10 +1,12 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { isValidElement, type ReactElement, type ReactNode } from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
 import { Excalidraw } from '@excalidraw/excalidraw';
 import type { ExcalidrawProps } from '@excalidraw/excalidraw/types';
 import type { WorkspaceSnapshot } from '../src/workspace-contracts.ts';
 import Vision from '../client/components/Vision.tsx';
 import { EmptyState } from '../client/components/EmptyState.tsx';
+import { LoadingState } from '../client/components/LoadingState.tsx';
 import { setLang } from '../client/i18n.ts';
 
 // The chrome grammar test rides the same hook harness as the other Vision suites: Vision renders to a tree of
@@ -13,6 +15,7 @@ import { setLang } from '../client/i18n.ts';
 // before imports resolve, so the factory is loaded through a dynamic import and awaited by the react mock and
 // this file's body alike.
 const harnessPromise = vi.hoisted(() => import('./react-hook-harness.ts').then(module => module.createHookHarness()));
+const catalogState = vi.hoisted(() => ({ catalog: { cards: [], decks: [], members: [] } as { cards: []; decks: []; members: [] } | null, error: null as string | null }));
 
 vi.hoisted(() => {
   vi.stubGlobal('document', { documentElement: { lang: '' }, cookie: '' });
@@ -30,7 +33,7 @@ vi.mock('@excalidraw/excalidraw', () => ({
   serializeAsJSON: vi.fn(() => '{"elements":[],"appState":{},"files":{}}'),
   convertToExcalidrawElements: (elements: unknown) => elements,
 }));
-vi.mock('../client/useCatalog.ts', () => ({ useCatalog: () => ({ catalog: null, error: null }) }));
+vi.mock('../client/useCatalog.ts', () => ({ useCatalog: () => catalogState }));
 vi.mock('../client/components/JourneyPanel.tsx', () => ({ CatalogReferenceLink: () => null }));
 vi.mock('../client/onboarding/signals.ts', () => ({ emitSignal: vi.fn() }));
 
@@ -60,12 +63,12 @@ function findAll(predicate: (element: Element) => boolean, node = tree, out: Ele
 }
 const byClass = (name: string) => findAll(element => element.props.className === name);
 const byClassStart = (name: string) => findAll(element => typeof element.props.className === 'string' && element.props.className.startsWith(name));
-const textOf = (element: Element) => Array.isArray(element.props.children)
-  ? element.props.children.filter((child: unknown) => typeof child === 'string').join('')
-  : String(element.props.children ?? '');
+const textOf = (element: Element) => renderToStaticMarkup(element).replace(/<[^>]*>/gu, '');
 
 beforeEach(() => {
   hooks.reset();
+  catalogState.catalog = { cards: [], decks: [], members: [] };
+  catalogState.error = null;
   vi.stubGlobal('window', new EventTarget());
   vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, json: async () => [] })));
   setLang('en');
@@ -101,9 +104,9 @@ it('builds the sidebar as one glass sheet of panels with the shared empty states
   expect(byClass('panel-count').map(textOf)).toEqual(['0', '0']);
   // Empty lists explain themselves through the shared EmptyState, not panel-local paragraphs.
   const empties = findAll(element => element.type === EmptyState);
-  expect(empties.map(element => element.props)).toEqual([
-    { variant: 'quiet', message: 'Find a card and click + to add it to the board.' },
-    { variant: 'quiet', message: 'There are no references in text nodes yet.' },
+  expect(empties.map(element => ({ ...element.props, message: renderToStaticMarkup(element.props.message) }))).toEqual([
+    { variant: 'quiet', message: expect.stringContaining('<span>Find a card and click + to add it to the board.</span>') },
+    { variant: 'quiet', message: expect.stringContaining('<span>There are no references in text nodes yet.</span>') },
   ]);
 });
 
@@ -120,6 +123,19 @@ it('still mounts the canvas and keeps the loading plate inside it', () => {
   const canvas = findAll(element => element.type === Excalidraw)[0] as ExcalidrawProps extends never ? never : Element;
   expect(canvas).toBeDefined();
   expect(canvas.props.onChange).toBeTypeOf('function');
+});
+
+it('waits for the first catalog without flashing empty sidebar results, and ends the wait on failure', () => {
+  catalogState.catalog = null;
+  render();
+  const sidebar = () => byClass('vision-links')[0];
+  expect(findAll(element => element.type === LoadingState, sidebar())).toHaveLength(1);
+  expect(findAll(element => element.type === EmptyState, sidebar())).toHaveLength(0);
+  catalogState.error = 'Catalog unavailable';
+  render();
+  expect(findAll(element => element.type === LoadingState, sidebar())).toHaveLength(0);
+  expect(byClass('catalog-error vision-error')).toHaveLength(1);
+  expect(findAll(element => element.props.children === 'Retry')).toHaveLength(1);
 });
 
 it.each(['en', 'ru'] as const)('keeps %s on entry even if the document has a regional locale', lang => {

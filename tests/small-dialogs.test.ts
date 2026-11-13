@@ -40,7 +40,7 @@ describe.skipIf(!browserPath)('small dialogs share the Decks-home dialog grammar
       await until(`Boolean(document.querySelector('.quick-capture-input:not(:disabled)'))`);
     } else if (scene === 'shortcuts') {
       await page.evaluate(`document.querySelector('.shortcuts-help-trigger').click()`);
-      await until(`Boolean(document.querySelector('.shortcuts-panel'))`);
+      await until(`Boolean(document.querySelector('.shortcuts-panel-body'))`);
     } else {
       await until(`Boolean(document.querySelector('.members-editor-list'))`);
     }
@@ -94,10 +94,10 @@ describe.skipIf(!browserPath)('small dialogs share the Decks-home dialog grammar
     await page.evaluate(`smallDialogsTest.render('shortcuts')`);
     await until(`Boolean(document.querySelector('.shortcuts-help-trigger')) && !document.querySelector('.members-editor')`);
     expect(await page.evaluate(`(() => { const hint = document.createElement('div'); hint.className = 'deck-header-hint has-keys'; document.body.append(hint); const style = getComputedStyle(hint); const result = [style.display, style.fontSize]; hint.remove(); return result; })()`)).toEqual(['flex', '12px']);
-    const requested = `performance.getEntriesByType('resource').some(entry => /ShortcutsHelpDialog-[^/]+\\.js/.test(entry.name))`;
+    const requested = `performance.getEntriesByType('resource').some(entry => /ShortcutsHelpContent-[^/]+\\.js/.test(entry.name))`;
     expect(await page.evaluate(requested)).toBe(false);
     await page.evaluate(`window.dispatchEvent(new KeyboardEvent('keydown', { key: '?', bubbles: true, cancelable: true }))`);
-    await until(`Boolean(document.querySelector('.shortcuts-panel'))`);
+    await until(`Boolean(document.querySelector('.shortcuts-panel-body'))`);
     expect(await page.evaluate(requested)).toBe(true);
     await page.evaluate(`window.dispatchEvent(new KeyboardEvent('keydown', { key: '?', bubbles: true, cancelable: true }))`);
     await until(`!document.querySelector('.shortcuts-panel')`);

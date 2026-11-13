@@ -1,19 +1,17 @@
-import { lazy, Suspense, useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import * as Tooltip from '@radix-ui/react-tooltip';
 import { Keyboard } from 'lucide-react';
 import { useText } from '../i18n.ts';
 import { matchShortcut, shortcutTargetBlocked, type ShortcutScreen } from '../keyboard-shortcuts.ts';
 import { emitSignal } from '../onboarding/signals.ts';
-import { preparedResource, preload } from '../prepared-resource.ts';
+import { preload } from '../prepared-resource.ts';
 import { DeckHeaderHint } from './DeckHeaderHint.tsx';
 import { Button } from './ui/button.tsx';
 import { shortcutsHelpText } from './shortcuts-help-text.ts';
+import { ShortcutsHelpDialog, shortcutsHelpResource } from './ShortcutsHelpDialog.tsx';
 import '../surface.css';
 import '../shortcuts-help.css';
-
-const dialogResource = preparedResource(() => import('./ShortcutsHelpDialog.tsx').then(module => ({ default: module.ShortcutsHelpDialog })));
-const ShortcutsHelpDialog = lazy(dialogResource.load);
 
 interface ShortcutsHelpProps {
   /** Show only shortcuts for the user's current screens. */
@@ -52,10 +50,10 @@ export function ShortcutsHelp({ screens, writable, vision = false }: ShortcutsHe
       <Tooltip.Provider delayDuration={200}>
         <DeckHeaderHint side="bottom" label={t.hint} combo={{ key: '?' }}>
           <Button type="button" variant="ghost" size="icon" className="shortcuts-help-trigger" aria-label={t.show} aria-haspopup="dialog" aria-expanded={open}
-            onPointerEnter={() => preload(dialogResource)} onFocus={() => preload(dialogResource)} onClick={event => { opener.current = event.currentTarget; setMounted(true); setOpen(true); }}><Keyboard size={18} aria-hidden="true" /></Button>
+            onPointerEnter={() => preload(shortcutsHelpResource)} onFocus={() => preload(shortcutsHelpResource)} onClick={event => { opener.current = event.currentTarget; setMounted(true); setOpen(true); }}><Keyboard size={18} aria-hidden="true" /></Button>
         </DeckHeaderHint>
       </Tooltip.Provider>
     </>, launcherSlot)}
-    {mounted && <Suspense fallback={null}><ShortcutsHelpDialog open={open} screens={screens} writable={writable} vision={vision} opener={opener.current} onClose={() => setOpen(false)} /></Suspense>}
+    {mounted && <ShortcutsHelpDialog open={open} screens={screens} writable={writable} vision={vision} opener={opener.current} onClose={() => setOpen(false)} />}
   </>;
 }

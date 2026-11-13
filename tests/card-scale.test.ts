@@ -50,7 +50,7 @@ describe.skipIf(!browserPath)('card proportions in the real workbench', () => {
         nextLaneText: next.querySelector('.catalog-group-label').getBoundingClientRect().y - Math.max(...cards.map(r => r.bottom)),
         preview: box('.card-preview-sheet'), previewTitle: font('.card-preview-title'), body: font('.card-preview-document .markdown'),
         column: box('.catalog-preview-slot'), shell: box('.card-preview'), header: box('.card-preview-header'), parent: box('.card-preview-parent'),
-        dock: box('.card-preview-dock'), panels: box('.card-preview-panels'), workspace: box('.workspace-main'), divider: box('.catalog-resize-line'),
+        dock: box('.card-preview-dock'), panels: box('.card-preview-panels'), workspace: box('.workspace-main'), divider: box('.catalog-resize-line'), toolbar: box('.deck-open-toolbar'),
         rail: box('.card-preview-action-rail'), railButton: box('.card-preview-action-rail button'),
         readingInset: getComputedStyle(document.querySelector('.card-preview-reading')).padding,
         panelsOverflow: getComputedStyle(document.querySelector('.card-preview-panels')).overflowY,
@@ -112,7 +112,7 @@ describe.skipIf(!browserPath)('card proportions in the real workbench', () => {
       expect(measurements.railButton.y).toBe(measurements.preview.y);
       expect(measurements.preview.bottom).toBe(measurements.workspace.bottom - 12);
       expect(measurements.preview.height).toBe(measurements.workspace.bottom - 12 - measurements.preview.y);
-      expect(measurements.divider.y).toBe(measurements.shell.y);
+      expect(measurements.divider.y).toBe(measurements.toolbar.bottom);
       expect(measurements.divider.bottom).toBe(measurements.preview.bottom);
       expect(measurements.panelsOverflow).toBe('auto');
     } else {
@@ -277,7 +277,7 @@ describe.skipIf(!browserPath)('card proportions in the real workbench', () => {
         await page.callFunction(`offset => { document.querySelector('.workspace-main').scrollTop = offset; }`, offset);
         await waitForLayout(page.evaluate, '.card-preview, .catalog-resize-line, .card-properties-slot, .card-family-panel');
         const current = await measure();
-        const top = panel ? await page.callFunction(`selector => document.querySelector(selector).getBoundingClientRect().top`, panel) : current.shell.y;
+        const top = panel ? await page.callFunction(`selector => document.querySelector(selector).getBoundingClientRect().top`, panel) : current.toolbar.bottom;
         expect(current.divider.y).toBe(top);
         expect(current.divider.bottom).toBe(current.preview.bottom);
         if (offset) expect(await page.evaluate(`document.querySelector('.workspace-main').scrollTop`)).toBeGreaterThan(0);

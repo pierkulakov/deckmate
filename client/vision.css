@@ -15,7 +15,6 @@
 .deckmate-vision-card.is-missing code { font: 10px 'Geist Mono', monospace; overflow-wrap: anywhere; }
 .deckmate-vision-card { position: relative; }
 .deckmate-card-opener { position: absolute; inset: 0; width: 100%; height: 100%; padding: 0; border: 0; background: transparent; cursor: pointer; }
-.deckmate-card-opener:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
 .deckmate-vision-card .card-tags { position: relative; z-index: 1; min-width: 0; }
 
 .deckmate-card-kind { flex-shrink: 0; align-self: start; margin-top: 1px; padding: 1px 6px; border-radius: var(--control-radius); font-size: 10px; font-weight: 600;
@@ -86,7 +85,6 @@
 .deckmate-vision-video p { margin: 0; color: var(--muted); }
 .vision-video-address { max-width: 100%; overflow-wrap: anywhere; color: var(--muted); }
 .deckmate-vision-video a { flex-shrink: 0; }
-.deckmate-vision-video a:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
 .deckmate-smart-head { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .deckmate-smart-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; font-weight: 500; letter-spacing: -.2px; }
 .deckmate-smart-state { flex-shrink: 0; padding: 1px 6px; border-radius: 3px; background: var(--accent-soft); color: var(--accent); font-size: 10px; }
@@ -106,6 +104,8 @@
 .vision-panel .panel-title { display: flex; align-items: center; gap: var(--space-2); margin: 0; color: var(--ink); font-size: 15px; font-weight: 600; line-height: 24px; }
 .vision-panel .panel-title > svg { flex-shrink: 0; color: var(--muted); }
 .vision-links :is(.vision-note, .vision-ref-note) { margin: 0 0 var(--space-2); font-size: var(--text-help-size); line-height: var(--text-help-leading); }
+.vision-workspace .reserved-text { max-width: 100%; grid-template-columns: minmax(0, 1fr); }
+.vision-ref-note .reserved-text { white-space: pre-wrap; }
 /* Panel fields use the shared recessed well. */
 .vision-tools select, .vision-tools input, .vision-selected-row select, .vision-selected-row input { min-height: 30px; padding: 0 var(--space-2); font-size: var(--text-ui-size); }
 .vision-tools .ui-button { flex-shrink: 0; }
@@ -139,16 +139,24 @@
 /* The name stays bare until hover, then reads as a flat field; it is a title first, never a boxed input.
    The qualified selector outweighs workspace.css's element rule for .vision-toolbar inputs. */
 .vision-title-field { position: relative; min-width: 0; max-width: 460px; }
+/* 2026-11-13: the untouched title is translated too; size its input from the same bilingual reserve as labels. */
+.vision-title-field:has(.vision-title-reserve) { display: grid; }
+.vision-title-reserve, .vision-title-field:has(.vision-title-reserve) .vision-board-name { grid-area: 1 / 1; min-width: 0; }
+.vision-title-reserve { visibility: hidden; padding: 0 var(--space-1); white-space: nowrap; }
+.vision-toolbar .vision-title-field:has(.vision-title-reserve) .vision-board-name { width: 100%; field-sizing: fixed; }
 /* 2026-11-11: the name sizes to its content, so a title that fits the row is never ellipsized while free
    space remains before the tools; it shrinks with the ellipsis only on a real collision (the 375px case). */
 .vision-toolbar .vision-board-name { width: auto; max-width: 100%; field-sizing: content; border: 0; border-radius: var(--control-radius); padding: 0 var(--space-1); background: transparent; text-overflow: ellipsis; }
 .vision-board-name:focus { text-overflow: clip; }
 .vision-title-full { display: none; position: absolute; inset: 100% 0 auto; z-index: 5; padding: var(--space-2) var(--space-3); border: 1px solid var(--line); border-radius: var(--glass-radius); background: var(--surface); color: var(--ink); box-shadow: var(--shadow); font-size: 14px; font-weight: 400; line-height: 20px; overflow-wrap: anywhere; }
-.vision-title-field:focus-within .vision-title-full { display: block; }
+.vision-title-field:focus-within .vision-title-full:not([data-dismissed="true"]) { display: block; }
 @media (hover: hover) { .vision-board-name:hover:not(:disabled) { background: var(--hover); } }
 .vision-board-name:disabled { opacity: .6; }
 /* The caption keeps the save word and the board reference on one quiet line under the name. */
 .vision-toolbar .vision-save-state { display: inline; margin: 0; }
+/* 2026-11-13: the saved reference adds a 26px caption; reserve it while a remembered board is read. */
+.vision-toolbar .page-caption { min-height: 26px; }
+.vision-toolbar[aria-busy="true"] > :is(.page-head-main, .page-tools) { visibility: hidden; }
 /* workspace.css boxes .vision-toolbar select by element; the picker needs the recessed field at higher specificity.
    2026-11-10: flex-shrink must be 0 — a shrinkable item contributes its min-content to the row's intrinsic width and
    the action buttons wrapped under it at every window width. */
@@ -180,9 +188,10 @@
 
 /* 2026-11-08: the canvas has its own palette; a token-backed hint remains readable over any drawing background. */
 .vision-canvas .excalidraw .ToolIcon__keybinding { color: var(--ink); }
-.vision-canvas .excalidraw .HintViewer > span { align-self: center; max-width: 100%; background: var(--canvas); color: var(--muted); border-radius: 3px; }
+.vision-canvas .excalidraw .HintViewer > span { align-self: stretch; text-align: start; max-width: 100%; background: var(--canvas); color: var(--muted); border-radius: 3px; }
+/* 2026-11-13: the native library label shares a slot in both locales, keeping its icon and the central toolbar anchored. */
+.vision-canvas .excalidraw .default-sidebar-trigger .sidebar-trigger__label { width: 6em; text-align: start; }
 /* 2026-11-08: keep focus inside the clipped viewport, above the drawing canvases that cover the container's own outline. */
-.vision-canvas .excalidraw:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
 .vision-canvas .excalidraw:focus-visible::after { content: ''; position: absolute; inset: 0; z-index: var(--zIndex-layerUI); outline: inherit; outline-offset: inherit; pointer-events: none; }
 
 @media (max-width: 760px) {
@@ -191,9 +200,13 @@
   .vision-toolbar.page-head { padding: 10px var(--space-2); }
   .vision-toolbar .page-tools { flex-basis: 100%; margin-inline-start: 0; }
   .vision-toolbar .vision-board-picker { flex-basis: 100%; }
+  /* 2026-11-13: a dedicated action row keeps translated access labels from resizing the canvas. */
+  .vision-toolbar-actions { flex-basis: 100%; justify-content: flex-end; }
   .vision-body { display: flex; flex-direction: column; }
   .vision-board { flex: 0 0 auto; }
-  .vision-board > .vision-canvas { height: 400px; flex: none; }
+  .vision-board > .vision-canvas { --vision-canvas-height: 400px; height: var(--vision-canvas-height); flex: none; }
+  /* 2026-11-13: the embedded editor is shorter than the viewport; its bottom menu must scroll inside the canvas. */
+  .vision-canvas .excalidraw .App-toolbar-content .dropdown-menu-container { max-height: calc(var(--vision-canvas-height) - 2 * var(--space-10)); }
   .vision-body > .vision-links { flex: 0 0 auto; max-height: none; overflow: visible; }
 }
 
@@ -204,4 +217,7 @@
 /* 2026-11-06: while the remembered board is read, the canvas area shows the shared loading state instead of an empty board that
    would be replaced a moment later; the padding is trimmed so the plate sits inside the canvas, not 150 px down the page.
    The plate fades in after the busy delay, so a local read of a few dozen ms opens the board without a spinner blink. */
-.vision-loading { padding: 120px 20px; animation: backdrop-fade var(--motion-feedback) ease-out var(--busy-dim-delay) both; }
+.vision-canvas { position: relative; }
+/* 2026-11-13: canvas initialization finishes after the data read; its waiting layer stays until the API is ready. */
+.vision-loading { position: absolute; inset: 0; z-index: 1; min-height: 400px; background: var(--canvas); }
+.vision-loading > .loading-state { padding: 120px var(--space-4); }

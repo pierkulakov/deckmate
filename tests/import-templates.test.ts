@@ -2,6 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { openHeadlessBrowser, type HeadlessPage } from '../tools/layout-capture.ts';
 import { browserFixtureUrl } from './browser-fixture.ts';
 import { requireBrowser } from './browser-environment.ts';
+import { waitForLayout } from './browser-layout.ts';
 
 const browserPath = requireBrowser();
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
@@ -73,6 +74,22 @@ describe.skipIf(!browserPath)('Import and templates dialogs (browser)', () => {
     // 2026-11-10: the Foil Rule — the resting line is the quiet --control-line, the chosen shelf/option is --mark on
     // --mark-tint (not --violet-fill), and the radius follows --control-radius (2px, was 4px).
     expect(controls.slice(1, 5)).toEqual([controls[5], true, true, true]);
+  });
+
+  it('keeps a delayed first plan from moving its details or footer', async () => {
+    await viewport(1440, 900);
+    await page.evaluate(`window.importTemplatesTest.render('templates', { lang: 'ru', holdPlan: true })`);
+    await until(`Boolean(document.querySelector('.project-template-plan [role=status]'))`);
+    await page.evaluate('document.fonts.ready');
+    await waitForLayout(page.evaluate, '.project-template-picker');
+    await page.evaluate(`window.planShifts=[];window.planObserver=new PerformanceObserver(list=>planShifts.push(...list.getEntries().map(entry=>entry.value)));planObserver.observe({type:'layout-shift'})`);
+    const footer = await page.evaluate(`document.querySelector('.project-template-footer').getBoundingClientRect().y`);
+    await page.evaluate('window.importTemplatesTest.releasePlan()');
+    await until(`Boolean(document.querySelector('.project-template-plan-group') && document.querySelector('.project-template-details'))`);
+    await waitForLayout(page.evaluate, '.project-template-picker');
+    expect(await page.evaluate(`document.querySelector('.project-template-footer').getBoundingClientRect().y`)).toBe(footer);
+    expect(await page.evaluate(`planObserver.disconnect();planShifts.reduce((sum,value)=>sum+value,0)`)).toBeLessThan(0.001);
+    await viewport(1280);
   });
 
   it('keeps the picker inside a 375px viewport with Russian text and the dark theme', async () => {

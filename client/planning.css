@@ -3,7 +3,7 @@
    In light mode, mint text mixes with ink to reach 4.5:1 on --canvas and --ground. Run bars stay dark in both themes; light-theme state tones mix halfway to bar ink to reach 3:1 (--planning-run-tone). */
 :root { --planning-mint: var(--card-highlight); --planning-mint-text: color-mix(in srgb, var(--card-highlight) 65%, var(--ink)); --planning-idle: var(--muted); --planning-run-fill: var(--accent); --planning-run-ink: var(--surface); --planning-run-tone: 50%; }
 :root.dark { --planning-mint: var(--mint-edge); --planning-mint-text: var(--mint-edge); --planning-idle: var(--tab-idle); --planning-run-fill: var(--violet-fill); --planning-run-ink: var(--violet-fill-ink); --planning-run-tone: 100%; }
-.planning-view.planning-parity { --shelf-inset: var(--space-6); padding: 20px 24px 56px 16px; min-width: 0; }
+.planning-view.planning-parity { --shelf-inset: var(--space-6); padding: 20px 24px 56px 16px; min-width: 0; min-height: 100%; }
 .timeline-actions { display: flex; align-items: center; gap: 8px; }
 .timeline-actions .ui-button { width: 30px; height: 30px; min-height: 30px; padding: 0; border-radius: var(--control-radius); }
 /* 2026-11-10: the Timeline's creating action is the shared mint line and label (the Foil Rule), like Create space and Journey. */
@@ -14,11 +14,8 @@
 .planning-create-menu { z-index: 120; width: max-content; max-width: calc(100vw - 24px); max-height: var(--radix-dropdown-menu-content-available-height); overflow: auto; padding: 5px; border: 1px solid var(--line); border-radius: var(--glass-radius); background: var(--surface); color: var(--ink); box-shadow: var(--shadow); animation: overlay-pop var(--motion-spring-quick) var(--ease-spring-quick); }
 .planning-create-menu [role='menuitem'] { display: flex; align-items: center; min-height: 34px; padding: 7px 10px; border-radius: 4px; outline: none; font-size: 13px; cursor: pointer; }
 .planning-create-menu [role='menuitem'][data-highlighted] { background: var(--hover); }
-.planning-create-menu [role='menuitem']:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
 .planning-parity select { max-width: 100%; padding: 6px 10px; font: inherit; }
-.timeline-scroll:focus-visible { outline: 2px solid var(--focus); }
 /* 2026-11-06: the scale runs edge to edge under the top bar, where an outer ring was cut on the left and top. */
-.timeline-scroll:focus-visible { outline-offset: -2px; }
 .planning-parity .notice, .planning-parity .error-banner { margin: 10px 24px; }
 .timeline-scope-panel { margin-top: var(--space-4); padding: 0; }
 .planning-collection { min-width: 0; }
@@ -171,7 +168,6 @@
 .timeline-nothing h2 { overflow-wrap: anywhere; }
 @media (hover: hover) { .timeline-run:hover:not(:disabled), .timeline-milestone-marker:hover:not(:disabled), .timeline-due-marker:hover:not(:disabled) { filter: brightness(1.12); } }
 .timeline-run:active:not(:disabled), .timeline-milestone-marker:active:not(:disabled), .timeline-due-marker:active:not(:disabled) { filter: brightness(.96); }
-.timeline-run:focus-visible, .timeline-milestone-marker:focus-visible, .timeline-due-marker:focus-visible { outline: 2px solid var(--focus); outline-offset: 3px; }
 @media (max-width: 1100px) {
   .planning-details { width: 280px; min-width: 0; }
   .planning-collection-body { gap: 16px; }

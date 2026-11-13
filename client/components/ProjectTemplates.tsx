@@ -188,16 +188,17 @@ export function ProjectTemplates({ snapshot, refreshKey, onClose, onApplied, tes
   const [planRevision, setPlanRevision] = useState(0);
   const [applying, setApplying] = useState(false);
   const [applyMessage, setApplyMessage] = useState('');
-  const selected = templates.find(template => template.id === selectedId);
-  const selectedText = selected && templateText(selected, lang);
-  const details = useMemo(() => markdownParser.parse(selected?.details ?? ''), [selected?.details]);
   const projectShelf = useMemo(() => projectTemplateShelf(catalog.catalog), [catalog.catalog]);
   const shelf = pickedShelf ?? projectShelf ?? rememberedShelf ?? 'games';
   const shelfTemplates = useMemo(() => templates.filter(template => template.category === shelf), [templates, shelf]);
+  // 2026-11-13: the first template is selected in the data commit, without painting an unselected intermediate pane.
+  const selected = shelfTemplates.find(template => template.id === selectedId) ?? shelfTemplates[0];
+  const selectedText = selected && templateText(selected, lang);
+  const details = useMemo(() => markdownParser.parse(selected?.details ?? ''), [selected?.details]);
   const busy = applying || catalog.pending;
   const canWrite = snapshot.writable && snapshot.source === 'sandbox';
   const originalReadOnly = snapshot.editMode === 'sandbox' && snapshot.source === 'live';
-  const currentPlan = plan?.templateId === selectedId ? plan : null;
+  const currentPlan = plan?.templateId === selected?.id ? plan : null;
   const stale = Boolean(currentPlan && catalog.catalog && currentPlan.manifestHash !== catalog.catalog.manifestHash);
   const items = currentPlan?.items.filter(item => samples || item.kind !== 'sample') ?? [];
   const changes = items.filter(item => item.status === 'create' || item.status === 'resume').length;
@@ -216,23 +217,18 @@ export function ProjectTemplates({ snapshot, refreshKey, onClose, onApplied, tes
     return () => controller.abort();
   }, [snapshot.source, lang, reload, t.loadFailed]);
 
-  // The selection follows the shelf: keep the chosen starter while it stays on the shelf, else take the shelf's first.
   useEffect(() => {
-    setSelectedId(current => shelfTemplates.some(template => template.id === current) ? current : shelfTemplates[0]?.id ?? '');
-  }, [shelfTemplates]);
-
-  useEffect(() => {
-    if (!selectedId) return;
+    if (!selected) return;
     const controller = new AbortController();
     setPlan(null);
     setPlanError('');
     setPlanning(true);
-    void loadJson<ProjectTemplatePlan>(`/api/project-templates/${encodeURIComponent(selectedId)}/plan?source=${snapshot.source}`, controller.signal, t.planFailed)
+    void loadJson<ProjectTemplatePlan>(`/api/project-templates/${encodeURIComponent(selected.id)}/plan?source=${snapshot.source}`, controller.signal, t.planFailed)
       .then(result => { if (!controller.signal.aborted) setPlan(result); })
       .catch(error => { if (!controller.signal.aborted) setPlanError(failureMessage(error, t.planFailed)); })
       .finally(() => { if (!controller.signal.aborted) setPlanning(false); });
     return () => controller.abort();
-  }, [selectedId, selected?.fileHash, snapshot.source, lang, planRevision, t.planFailed]);
+  }, [selected?.id, selected?.fileHash, snapshot.source, lang, planRevision, t.planFailed]);
 
   function chooseShelf(category: ProjectTemplateCategory) {
     if (category === shelf) return;
@@ -318,9 +314,9 @@ export function ProjectTemplates({ snapshot, refreshKey, onClose, onApplied, tes
             {!loadError && shelfTemplates.length > 0 && <div className="project-template-grid">{shelfTemplates.map(template => {
               const localized = templateText(template, lang);
               return <button type="button" key={template.id}
-                className="project-template-option" aria-pressed={selectedId === template.id} disabled={busy || loading}
+                className="project-template-option" aria-pressed={selected?.id === template.id} disabled={busy || loading}
                 onClick={() => { setSelectedId(template.id); setApplyMessage(''); revealPane('plan'); }}>
-                <span className="project-template-option-title"><strong>{localized.title}</strong>{selectedId === template.id && <Check size={17} aria-hidden="true" />}</span>
+                <span className="project-template-option-title"><strong>{localized.title}</strong>{selected?.id === template.id && <Check size={17} aria-hidden="true" />}</span>
                 <span className="project-template-description">{localized.description}</span>
                 <span className="project-template-counts">
                   <span><Layers size={13} aria-hidden="true" />{t.decksLabel}: <span className="page-number">{amount(template.decks.length)}</span></span>
@@ -338,13 +334,13 @@ export function ProjectTemplates({ snapshot, refreshKey, onClose, onApplied, tes
                 <Button variant="ghost" size="sm" className="project-template-change" onClick={() => revealPane('browser')}>{t.changeTemplate}</Button></div>
               <p className="project-template-note">{selectedText.description}</p>
               <p className="project-template-note">{t.additive}</p>
-              {!planError && planning && <LoadingState variant="skeleton" message={t.loadingPlan} />}
+              {!planError && (planning || !currentPlan) && <LoadingState variant="skeleton" message={t.loadingPlan} />}
               {planError && <ErrorState variant="banner" className="project-template-state" message={planError}
                 onRetry={() => setPlanRevision(value => value + 1)} pending={planning} />}
               {currentPlan && !planning && <div>
                 {(['create', 'resume', 'reuse', 'skip'] as const).map(status => <PlanGroup key={status} status={status} items={items.filter(item => item.status === status)} />)}
               </div>}
-              {selected.details && <details className="project-template-details"><summary>{t.details}</summary><Markdown tree={details} source={snapshot.source} path={`assets/project-templates/${selected.id}.md`} /></details>}
+              {selected.details && !planning && (currentPlan || planError) && <details className="project-template-details"><summary>{t.details}</summary><Markdown tree={details} source={snapshot.source} path={`assets/project-templates/${selected.id}.md`} /></details>}
             </> : !loading && !loadError && shelfTemplates.length > 0 && <EmptyState message={t.select} />}
           </aside>
         </div>
@@ -364,7 +360,7 @@ export function ProjectTemplates({ snapshot, refreshKey, onClose, onApplied, tes
               {applying && <LoaderCircle size={14} className="spin" />}{applying ? t.applying : t.apply}
             </Button></div>
         </div>
-        {currentPlan && !planning && changes === 0 && <p className="project-template-note" role="status">{t.noChanges}</p>}
+        <p className="project-template-note project-template-outcome" role={currentPlan && !planning && changes === 0 ? 'status' : undefined}>{currentPlan && !planning && changes === 0 ? t.noChanges : null}</p>
       </footer>
     </Dialog.Content>
   </Dialog.Portal></Dialog.Root>;

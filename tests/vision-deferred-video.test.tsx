@@ -29,7 +29,7 @@ vi.mock('@excalidraw/excalidraw', () => ({
   serializeAsJSON: vi.fn((elements: unknown, appState: unknown, files: unknown) => JSON.stringify({ elements, appState, files })),
   convertToExcalidrawElements: (elements: unknown) => elements,
 }));
-vi.mock('../client/useCatalog.ts', () => ({ useCatalog: () => ({ catalog: null, error: null }) }));
+vi.mock('../client/useCatalog.ts', () => ({ useCatalog: () => ({ catalog: { cards: [], decks: [], members: [] }, error: null }) }));
 vi.mock('../client/components/JourneyPanel.tsx', () => ({ CatalogReferenceLink: () => null }));
 vi.mock('../client/onboarding/signals.ts', () => ({ emitSignal: vi.fn() }));
 
@@ -61,7 +61,8 @@ function change(elements: Record<string, unknown>[], files = {}, appState = {}) 
   const onChange = canvas().props.onChange as NonNullable<ExcalidrawProps['onChange']>;
   onChange(elements as never, { selectedElementIds: {}, ...appState } as never, files);
 }
-const dirty = () => find(element => element.props.className === 'vision-save-state')!.props.children;
+const textOf = (element: Element) => renderToStaticMarkup(element).replace(/<[^>]*>/gu, '');
+const dirty = () => textOf(find(element => element.props.className === 'vision-save-state')!);
 
 beforeEach(() => {
   vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
@@ -115,7 +116,7 @@ it('flushes the latest scene before Save, keeps dirty until confirmation, and do
     expect(dirty()).toBe('Unsaved changes');
     return { ok: true, json: async () => ({ id: 'saved', title: body.title, hash: 'hash', access: 'editable', scene: body.scene, linkedCardIds: [] }) };
   }));
-  find(element => element.props.onClick && element.props.children?.some?.((child: unknown) => child === 'Save'))!.props.onClick();
+  find(element => element.props.onClick && textOf(element) === 'Save')!.props.onClick();
   for (let attempt = 0; attempt < 12; attempt++) await Promise.resolve();
   render();
   expect(serializeAsJSON).toHaveBeenCalledTimes(2);
@@ -150,14 +151,14 @@ function desktopRussian() {
 
 it('keeps the stock video node and addition text in an ordinary browser', () => {
   expect(video('https://youtube.com/watch?v=example')).toBeNull();
-  expect(find(element => element.type === 'p' && element.props.children.startsWith?.('A YouTube link'))).toBeDefined();
-  expect(find(element => element.props.children === 'Add as link')).toBeUndefined();
+  expect(find(element => element.type === 'p' && textOf(element).startsWith('A YouTube link'))).toBeDefined();
+  expect(find(element => element.props.onClick && textOf(element) === 'Add as link')).toBeUndefined();
 });
 
 it('shows Russian desktop guidance and a safe Open in browser placeholder for existing and pasted videos', () => {
   desktopRussian();
-  expect(find(element => element.type === 'p' && element.props.children === 'В приложении видео не проигрывается. Добавьте его как ссылку и откройте в браузере.')).toBeDefined();
-  expect(find(element => element.props.onClick && element.props.children?.includes?.('Добавить как ссылку'))).toBeDefined();
+  expect(find(element => element.type === 'p' && textOf(element) === 'В приложении видео не проигрывается. Добавьте его как ссылку и откройте в браузере.')).toBeDefined();
+  expect(find(element => element.props.onClick && textOf(element) === 'Добавить как ссылку')).toBeDefined();
   for (const customData of [{}, { freetionVideo: 'https://youtu.be/example' }, { deckmateVideo: 'https://youtu.be/example' }]) {
     const html = renderToStaticMarkup(video('https://youtu.be/example', customData));
     expect(html).toContain('deckmate-vision-video');
@@ -181,6 +182,6 @@ it('adds a desktop video link with an explicit https address rather than a relat
   canvas().props.excalidrawAPI({ updateScene, getSceneElements: () => [], getAppState: () => ({ scrollX: 0, scrollY: 0, zoom: { value: 1 } }), scrollToContent: vi.fn() });
   find(element => element.props['aria-label'] === 'Ссылка YouTube')!.props.onChange({ target: { value: 'youtu.be/example' } });
   render();
-  find(element => element.props.onClick && element.props.children?.includes?.('Добавить как ссылку'))!.props.onClick();
+  find(element => element.props.onClick && textOf(element) === 'Добавить как ссылку')!.props.onClick();
   expect(updateScene.mock.calls[0][0].elements[0].link).toBe('https://youtu.be/example');
 });

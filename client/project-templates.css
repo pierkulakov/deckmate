@@ -47,6 +47,7 @@
 .project-template-message.ui-button { align-self: flex-start; }
 .project-template-plan > .project-template-error { margin-bottom: var(--space-3); }
 .project-template-note { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; }
+.project-template-outcome { min-height: 18px; }
 .project-template-plan-group { margin-top: var(--space-4); }
 .project-template-plan-group h4 { display: flex; align-items: center; gap: 6px; margin: 0 0 var(--space-2); font-size: 13px; font-weight: 600; }
 .project-template-plan-group h4 > .panel-count { margin-left: auto; }

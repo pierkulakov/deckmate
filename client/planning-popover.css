@@ -43,7 +43,6 @@
 .planning-color-custom input::-webkit-color-swatch-wrapper { padding: 0; }
 .planning-color-custom input::-webkit-color-swatch { border: 0; border-radius: 2px; }
 .planning-color-custom:not(.is-selected) input::-webkit-color-swatch { opacity: 0; }
-.planning-color-custom:focus-within { outline: 2px solid var(--focus); outline-offset: 2px; }
 /* Run schedule form inside the wide popover: three columns, the schedule list below. */
 .planning-popover .run-configuration-form { margin: 0; padding: 0; }
 .planning-popover .run-configuration-form > .planning-form-content > fieldset { gap: 0; }

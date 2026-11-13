@@ -3,7 +3,6 @@
 .run-carry-fields legend { padding: 0 0 12px; font-weight: 600; font-size: 13px; }
 .run-configuration-form { margin-top: 20px; }
 .run-configuration-form select { height: 36px; padding: 6px 10px; border: 1px solid var(--control-line); border-radius: var(--control-radius); background: var(--ground); color: var(--ink); font: inherit; }
-.run-configuration-form select:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 .run-schedule-list { margin-top: 24px; border-top: 1px solid var(--line); padding-top: 16px; }
 .run-schedule-list h3 { font-size: 14px; margin: 0 0 12px; }
 .run-schedule-list > div { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding: 6px 0; font-size: 12px; }

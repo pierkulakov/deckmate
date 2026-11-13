@@ -1,0 +1,127 @@
+/* Source Sans 3 (OFL 1.1, Adobe; fontsource-variable 5.2.9) is the interface font. */
+@font-face { font-family: 'Source Sans 3'; src: url('../assets/fonts/source-sans-3/SourceSans3-latin-wght.woff2') format('woff2-variations'); font-weight: 200 900; font-display: block; unicode-range: U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD; }
+@font-face { font-family: 'Source Sans 3'; src: url('../assets/fonts/source-sans-3/SourceSans3-cyrillic-wght.woff2') format('woff2-variations'); font-weight: 200 900; font-display: block; unicode-range: U+0301,U+0400-045F,U+0490-0491,U+04B0-04B1,U+2116; }
+@font-face { font-family: 'Geist Mono'; src: url('../assets/fonts/geist/GeistMono-Regular.ttf'); font-weight: 400; font-display: block; }
+/* Medium serves the 500 tile numbers of DESIGN.md; with synthesis off, 600 and 700 requests resolve to it instead of Regular. */
+@font-face { font-family: 'Geist Mono'; src: url('../assets/fonts/geist/GeistMono-Medium.ttf'); font-weight: 500; font-display: block; }
+/* Roboto Mono (OFL 1.1, fontsource-variable 5.2.9) is the card editor's monospace font. */
+@font-face { font-family: 'Roboto Mono Variable'; src: url('../assets/fonts/roboto-mono/RobotoMono-latin-wght.woff2') format('woff2-variations'); font-weight: 100 700; font-display: swap; unicode-range: U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD; }
+@font-face { font-family: 'Roboto Mono Variable'; src: url('../assets/fonts/roboto-mono/RobotoMono-cyrillic-wght.woff2') format('woff2-variations'); font-weight: 100 700; font-display: swap; unicode-range: U+0301,U+0400-045F,U+0490-0491,U+04B0-04B1,U+2116; }
+
+:root { color-scheme: light; --font-sans: 'Source Sans 3', sans-serif; --canvas: #f0ecf4; --surface: #f3f0f6; --ground: #ebe5f0; --sidebar: #e1d9e8; --ink: #2f2440; --muted: #51445f; --line: #afa1bd; --hover: #dcd2e6; --accent: #68428b; --accent-soft: #e4d8ef; --focus: #6e4697; --mint: #a8eedf; --mint-ink: #0c5547; --mint-edge: #5fcfb9; --danger: #983c56; --warning-bg: #f9edcf; --warning-ink: #80531c; --mark-back: #a184e0; --mark-front: #6538a3; --mark-pip: #e8ad2e; --edit-bg: #efebf4; --edit-line: #a38acb; --edit-link: #4a3a63; --edit-cancel: #b64267; --edit-hint: var(--muted); --edit-save: #7a5aae; --plum: #8a6aa6; --champagne: #cb973c; --shadow: 0 8px 28px #30243812; --panel-gradient: linear-gradient(145deg, color-mix(in srgb, var(--surface) 93%, var(--plum)), var(--surface) 72%); --chrome-gradient: linear-gradient(120deg, color-mix(in srgb, var(--sidebar) 92%, var(--plum)), var(--sidebar) 58%, color-mix(in srgb, var(--sidebar) 96%, var(--champagne))); font-family: var(--font-sans); font-synthesis: none; }
+/* Dark is the default theme. */
+:root.dark { color-scheme: dark; --canvas: #322f40; --surface: #39354a; --ground: #27242f; --sidebar: #1c1a24; --chrome: #27242f; --ink: #edeef2; --muted: #cdc8dc; --line: #4a4560; --hover: #443f59; --accent: #c3a3e5; --accent-soft: #453351; --focus: #cfb4ec; --danger: #edaaa9; --warning-bg: #4a3a22; --warning-ink: #fde793; --plum: #906cbd; --champagne: #f7e18e; --shadow: 0 10px 28px #0c0a1366; --scrim: color-mix(in srgb, #11151f 38%, transparent);
+  --tab-idle: #6e6884; --tab-idle-ink: var(--count-face); --tab-ink: #e2dcee; --mint: #a8eedf; --mint-ink: #0c5547; --mint-edge: #74dcc8; --quote-bg: #0f3a35; --quote-bar: #a8eedf; --quote-edge: #2a8a7b; --hero-glow: #e5b65066; --hero-chip: #f4e4b8; --gold-chip-ink: #8a5300; --mark-back: #7a52d6; --mark-front: #b08af3; --mark-pip: #f5c24c;
+  /* Card edit-mode tokens. */
+  /* 2026-11-11: editor Save keeps a darker fill than outline controls so its light label remains readable. */
+  --edit-bg: #2e1e34; --edit-line: #a38acb; --edit-link: #e7dff7; --edit-cancel: #e7a9ab; --edit-hint: #e3dff0; --edit-save: #8362b1;
+  --panel-gradient: linear-gradient(var(--surface), var(--surface)); --chrome-gradient: linear-gradient(var(--chrome), var(--chrome));
+  --card-face: #322f40; --card-ink: #f9f9fa; --card-muted: #cdc8dc; --card-edge: #4a4560; --card-metal: #c6bee3; --card-metal-ink: #2b2540; --card-highlight: #7fd9c7; --hero-metal: #e8bd48; --card-shadow: 0 2px 6px #0c0a1355; --card-hover-shadow: 0 6px 16px #0c0a1377;
+  /* Family panel tokens for Hero and Sub Cards; the light theme falls back to base tokens. */
+  --card-strip: #968db6; --hero-strip: #e5b650; --card-meta-ink: #e3dff0; --button-line: #a58cbf; --card-current-ring: #63e6cfd9; --card-row-shadow: 0 0 1px #0000003d, 0 1.5px 9px #0000003d;
+  /* Journey tokens cover the sea, step waves and hazard frame; the light theme falls back to base tokens. */
+  --journey-sea: #083051; --journey-bar: #0d4065; --journey-zone: #0e2847; --journey-wave-back: #245575; --journey-wave-mid: #447b88; --journey-wave-front: #6298a3; --journey-wave-ground: #0c1624;
+  --journey-band: #4b3168; --journey-stripe: #d6b23a; --journey-preview: #2b123d; --journey-scrim: #4b4f5ae6; --violet-fill: #68478c; --danger-fill: #983c56;
+  /* Ordering, Tags and action-rail tokens; the light theme falls back to base tokens. */
+  --button-ink: #e7dff7; --violet-fill-ink: #f5effc; --toggle-off: #514a66; --toggle-on: #2fae97; --toggle-knob: #ffffff; --panel-box-line: #736b8f; }
+/* Shared card material keeps the same identity in Decks, Board and Hand. */
+/* 2026-11-11: lightly tinted card faces separate reading from the page without a pure-white field. Image overlays keep a fixed pair (--overlay-*). */
+/* 2026-11-06: --scrim backs every dialog. The light theme veils the page with the palette's violet-black (as Deck settings does), so the page under a dialog stays lilac instead of turning cold gray; the dark theme overrides it with a navy veil. --scrim-heavy is the image viewer's near-black field in both themes. */
+:root { --card-face: #f8f6fa; --card-ink: #2a2440; --card-muted: #514a66; --card-edge: #b5a9c4; --card-metal: #cdc8dc; --card-metal-ink: #40465a; --overlay-ink: #f9f9fa; --overlay-face: #322f40; --hero-metal: #edc451; --hero-ink: #24180a; --hero-sheen: #fff4c2; --hero-strip: #bf8f34; --hero-chip: #f4e4b8; --hero-step-done: #fff9dd; --hero-step-working: #fff4c2b8; --hero-step-review: #e0ced7b3; --hero-step-blocked: #eea39abf; --hero-step-empty: #fff4c257; --doc-metal: #e0ac86; --doc-ink: #2e1606; --accepted-metal: #34a865; --accepted-metal-ink: #102016; --started-metal: #9fc3ee; --started-metal-ink: #0f2238; --review-metal: #a57fe6; --review-metal-ink: #1c1033; --card-highlight: #2b9e7f; --card-shadow: 0 5px 12px #18213624; --card-hover-shadow: 0 9px 20px #18213638; --kind-hero-bg: #f4e7c6; --kind-hero-ink: #876125; --kind-task-bg: #c5d9ed; --kind-task-ink: #1d4873; --kind-doc-bg: #f6e3a6; --kind-doc-ink: #9d5f00; --quote-bg: #e2f7ef; --quote-bar: #2fae97; --quote-edge: #74dcc8; --count-face: #ffffff; --count-foot: #e2dcee; --count-ink: #4c5060; --cover-window: #1c1a24; --motion-feedback: 150ms; --scrim: color-mix(in srgb, #24182d 40%, transparent); --scrim-heavy: #080b12cc; --busy-dim-delay: 300ms; --motion-material: 220ms; --ease-out: cubic-bezier(.16, 1, .3, 1); }
+/* 2026-11-09: Decks home is a glass showcase with gradients and softly lit materials, kept minimal and easy
+   to read. A cover is drawn in --u, 1/132 of its width, so the gallery and shelf reuse one drawing at different scales.
+   2026-11-10: the shelf has its own 165×225 size; the base 132×180 tokens still belong to the settings preview. The rim
+   lights the deck color the same in both themes; the glass, the page light behind it and the light a cover throws on the
+   glass follow the page. */
+:root {
+  --cover-width: 132px;
+  --cover-height: 180px;
+  --cover-radius: calc(var(--cover-width) / 16.5);
+  --cover-rim: inset 0 1px 0 rgb(255 255 255 / .32), inset 0 0 0 1px rgb(255 255 255 / .1);
+  /* 2026-11-10: a cover rests on the glass like a real object: a crisp contact shadow, a short one and a soft one. */
+  --cover-lift: 0 1px 1px rgb(48 36 56 / .3), 0 3px 6px -2px rgb(48 36 56 / .24), 0 14px 24px -14px rgb(48 36 56 / .45);
+  /* Lacquer: a broad sheen over the upper left of every cover, and a fine bevel that catches the light on its top edge. */
+  --cover-lacquer: linear-gradient(158deg, rgb(255 255 255 / .14), rgb(255 255 255 / .04) 26%, transparent 44%);
+  /* The dark a cover's frame is mounted in: the deck color pulled toward it reads as a setting, not a second color. */
+  --cover-mount: #5f5672;
+  /* 2026-11-10: a cover frame at rest is glass; its face is glass only while its picture is read, with a hairline edge. The
+     face's bowed foot is shaded in plum and lighter here, since black over a pastel face turns it muddy. */
+  --cover-glass: linear-gradient(rgb(255 255 255 / .62), rgb(255 255 255 / .4));
+  --cover-face-glass: rgb(255 255 255 / .58);
+  --cover-face-edge: rgb(120 96 150 / .22);
+  --cover-face-arc: rgb(72 48 96 / .07);
+  --cover-bevel: inset 0 1px 0 rgb(255 255 255 / .42), inset 0 -1px 0 rgb(0 0 0 / .22);
+  --cover-medallion: #e7dcf8;
+  --cover-medallion-ink: #6538a3;
+  /* 2026-11-10: the gallery cover stays 146.67×200 while the shelf uses a 165×225 face.
+     The deck art is 100×70 art pixels across 120u, so at 10/9 one art pixel is exactly two device pixels at 150%
+     display scale and three at 225%; at 5/4 it was an uneven 2.25. */
+  --gallery-cover-width: calc(1320px / 9);
+  --gallery-cover-height: 200px;
+  --shelf-cover-width: 165px;
+  --shelf-cover-height: 225px;
+  /* 2026-11-10: 16u is 17.78px in the gallery and 20px on the shelf, so the frozen row grows by 9/8 and lands column for column. */
+  --gallery-cover-gap: calc(var(--gallery-cover-width) * 16 / 132);
+  /* 2026-11-10, the Foil Rule (DESIGN.md «Controls»): panels keep the --glass-* names but are flat sheets: one
+     face, a crisp 1px edge, a 4px corner, no blur and no lift. Lit, blurred glass with a 12px corner read as capsules,
+     and its soft rim lost the panel's edge. */
+  --glass-radius: 4px;
+  --glass-face: linear-gradient(var(--surface), var(--surface));
+  --glass-rim: inset 0 0 0 1px var(--line);
+  --glass-lift: 0 0 0 0 transparent;
+  --glass-seam: var(--line);
+  --glass-blur: none;
+  --gallery-light: radial-gradient(56% 460px at 8% -20px, color-mix(in srgb, var(--plum) 24%, transparent), transparent), radial-gradient(40% 400px at 96% 40px, color-mix(in srgb, var(--champagne) 20%, transparent), transparent), radial-gradient(34% 300px at 52% -60px, color-mix(in srgb, #2fae97 9%, transparent), transparent);
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-6: 24px;
+  --space-10: 40px;
+  --add-deck-tint: color-mix(in srgb, var(--ink) 4%, transparent);
+  --pulse-face: var(--ground); --pulse-bar: #52917a; --pulse-today: #2b9e7f; --pulse-track: #dccde9;
+}
+:root.dark {
+  --cover-lift: 0 1px 1px rgb(0 0 0 / .5), 0 3px 6px -2px rgb(0 0 0 / .4), 0 14px 24px -14px rgb(0 0 0 / .7);
+  --cover-mount: #16141c;
+  --cover-glass: linear-gradient(rgb(255 255 255 / .1), rgb(255 255 255 / .045));
+  --cover-face-glass: rgb(255 255 255 / .06);
+  --cover-face-edge: rgb(255 255 255 / .12);
+  --cover-face-arc: rgb(0 0 0 / .14);
+  --glass-face: linear-gradient(rgb(255 255 255 / .045), rgb(255 255 255 / .045));
+  --glass-rim: inset 0 0 0 1px rgb(255 255 255 / .1);
+  --glass-seam: rgb(255 255 255 / .1);
+  --gallery-light: radial-gradient(56% 460px at 8% -20px, color-mix(in srgb, var(--accent) 32%, transparent), transparent), radial-gradient(40% 400px at 96% 40px, color-mix(in srgb, var(--mint) 13%, transparent), transparent), radial-gradient(34% 300px at 52% -60px, color-mix(in srgb, var(--champagne) 8%, transparent), transparent);
+  --pulse-bar: #5f9f85; --pulse-today: #a8eedf; --pulse-track: #39354a;
+}
+/* 2026-11-05: selected green rows need dark ink; light-theme accent rows need light ink. */
+:root { --link-ink: var(--accent); }
+:root.dark { --link-ink: var(--edit-link); }
+:root { --motion-control: 100ms; }
+:root { --button-line: #816594; --button-ink: var(--ink); --violet-fill: #68428b; --violet-fill-ink: #fdfaff; --danger-fill: #983c56; --danger-fill-ink: #ffffff; }
+:root {
+  --control-radius: 2px; --control-hairline: .67px; --control-field: var(--surface); --control-field-line: #85718f;
+  --control-target-touch: 44px;
+  /* 2026-11-11: the quiet edge is the violet button line, 38% into the page (the label names
+     the control, the line only draws its shape). Hover brings back the full --button-line. */
+  --control-line: color-mix(in srgb, var(--button-line) 62%, var(--ground));
+  /* The mark of a chosen control: the accent, its tint behind the label, a stronger tint on hover. */
+  --mark: var(--accent); --mark-tint: color-mix(in srgb, var(--accent) 9%, transparent); --mark-tint-strong: color-mix(in srgb, var(--accent) 16%, transparent);
+}
+:root.dark { --control-field: var(--ground); --control-field-line: #8a91ab; --mark: #dfcaf2; --mark-tint: color-mix(in srgb, var(--accent) 16%, transparent); --mark-tint-strong: color-mix(in srgb, var(--accent) 26%, transparent); }
+/* Highlight tone of the satin; Hero surfaces tint it with --hero-sheen (2026-11-05). */
+:root { --metal-sheen: #fff8e8; }
+
+/* 2026-11-08: scrollbar-width is not inherited, so every inner scrollport needs the shared material. */
+* { scrollbar-color: var(--line) transparent; scrollbar-width: thin; }
+@supports selector(::-webkit-scrollbar) {
+  /* Chromium ignores the custom parts when either standard property is non-auto, including local thin rules. */
+  * { scrollbar-color: auto !important; scrollbar-width: auto !important; }
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track, ::-webkit-scrollbar-corner { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--line); border-radius: 3px; }
+  ::-webkit-scrollbar-button { display: none; width: 0; height: 0; }
+  /* Scrollports that hide their bar on purpose (tab strip, neighbour shelf, panels with their own fade) keep it hidden;
+     a new hidden scrollport joins this list, or the reset above brings its bar back. */
+  :is(.global-tabs, .deck-neighbor-rail, .deck-choice-list, .card-properties-slot, .deck-summary.deck-narrow-panel) { scrollbar-width: none !important; }
+}

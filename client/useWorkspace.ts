@@ -6,10 +6,8 @@ import { defineText, textNow, useLang, useText } from './i18n.ts';
 import { publishWorkspaceFileChange } from './workspace-file-events.ts';
 
 const text = defineText({
-  watcherStopped: 'Automatic file watching has stopped. Refresh data manually or restart Deckmate.',
   connectionFailed: 'Could not connect to Deckmate. Check that the app is running.',
 }, {
-  watcherStopped: 'Автоматическое наблюдение за файлами остановилось. Обновляйте данные вручную или перезапустите Deckmate.',
   connectionFailed: 'Не удалось связаться с Deckmate. Проверьте, что приложение запущено.',
 });
 
@@ -26,6 +24,7 @@ export function useWorkspace() {
   const [snapshot, setSnapshot] = useState<WorkspaceSnapshot | null>(null);
   const [source, setSource] = useState<DataSource>(() => new URLSearchParams(location.search).get('catalogSource') === 'live' ? 'live' : 'sandbox');
   const [failure, setFailure] = useState<WorkspaceFailure | null>(null);
+  const [stoppedWatchers, setStoppedWatchers] = useState<Partial<Record<DataSource, boolean>>>({});
   const [connection, setConnection] = useState<ConnectionState>('reconnecting');
   const [sessionToken, setSessionToken] = useState<string>();
   const [updatedAt, setUpdatedAt] = useState(0);
@@ -52,13 +51,13 @@ export function useWorkspace() {
         setSource(data.source);
         return;
       }
+      // 2026-11-13: only a new server session can restore watching; successful reads do not restart it.
+      if (token.current !== data.token) setStoppedWatchers({});
       token.current = data.token;
       prepareCatalogSession(data.token);
       setSessionToken(data.token);
       setSnapshot(data); setUpdatedAt(previous => Math.max(Date.now(), previous + 1));
-      // 2026-11-06: a read that succeeds proves the server answers again, so the banner left by a restart clears itself;
-      // a stopped file watcher stays reported, because a snapshot read does not restart it.
-      setFailure(previous => previous?.code === 'WATCHER' ? previous : null);
+      setFailure(null);
       if (detectedAt) requestAnimationFrame(() => setEventLatency(Date.now() - detectedAt));
     } catch (error) {
       if (requestGeneration === generation.current && selected === currentSource.current) setFailure(normalizeFailure(error));
@@ -131,10 +130,10 @@ export function useWorkspace() {
           }
         }
         if (message.type === 'watcher-error') {
+          setStoppedWatchers(previous => previous[message.source] ? previous : { ...previous, [message.source]: true });
           catalogStore(message.source, sessionToken).invalidate();
           if (message.source !== currentSource.current) return;
           changedFiles.cancel();
-          setFailure({ code: 'WATCHER', message: textNow(text).watcherStopped, textKey: 'watcherStopped' });
           void catalogStore(message.source, sessionToken).load();
           void refresh(message.source);
         }
@@ -167,7 +166,7 @@ export function useWorkspace() {
   }
 
   return { snapshot, source, setSource, failure: failure?.textKey ? { ...failure, message: t[failure.textKey] } : failure,
-    clearFailure: () => setFailure(null), connected: connection === 'live', connection,
+    clearFailure: () => setFailure(null), watcherStopped: Boolean(stoppedWatchers[source]), connected: connection === 'live', connection,
     updatedAt, eventLatency, refresh: async () => {
       await Promise.all([catalogStore(source, token.current || undefined).refresh(), refresh(source)]);
     }, shutdown };

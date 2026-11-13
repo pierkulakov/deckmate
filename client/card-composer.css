@@ -24,7 +24,6 @@
 /* 2026-11-11: repeat creation is secondary to Save, but keeps a readable sentence-case label. */
 .card-composer-again { flex-shrink: 0; padding: var(--space-3) var(--space-2) var(--space-2); }
 .card-composer-again > .deck-panel-switch-row { justify-content: flex-end; gap: var(--space-2); min-height: 12px; height: auto; color: var(--edit-hint); font-size: 12px; line-height: 16px; letter-spacing: .01em; }
-.card-composer-again .deck-panel-switch:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 /* 2026-11-11: reserve the label's target in flow so repeat creation never overlaps Save or the property band. */
 .card-composer-again > .deck-panel-switch-row > label { display: inline-flex; align-items: center; flex: 0 1 auto; min-height: 24px; padding-inline-end: 36px; margin-inline-end: -36px; overflow: visible; white-space: normal; }
 /* The empty owner slot allows a 44px band; an open card needs 58px for its medallion. */

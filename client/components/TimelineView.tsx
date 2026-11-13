@@ -7,6 +7,7 @@ import type { CatalogCard, CatalogView, RunRecord } from '../../src/catalog-cont
 import type { WorkspaceSnapshot } from '../../src/workspace-contracts.ts';
 import type { PlanningEdit } from '../../src/planning-files.ts';
 import { useCatalog } from '../useCatalog.ts';
+import { useMenuHandoff } from '../useMenuHandoff.ts';
 import { readFreshCatalog } from '../catalog-store.ts';
 import '../planning.css';
 import { actorHeaders, currentMember, onMemberChange } from '../current-member.ts';
@@ -19,6 +20,7 @@ import type { ShortcutScreen } from '../keyboard-shortcuts.ts';
 import { ShortcutsHelp } from './ShortcutsHelp.tsx';
 import { Button } from './ui/button.tsx';
 import { defineText, locale, useLang, useText, type Lang } from '../i18n.ts';
+import { ReservedText } from '../ReservedText.tsx';
 import { stateLabel } from '../locales/common.ts';
 import { failureMessage } from '../failure-message.ts';
 import { EmptyState } from './EmptyState.tsx';
@@ -166,7 +168,7 @@ export function TimelineView({ snapshot, refreshKey, selectCurrentRun = false, o
   // A toolbar close or draft switch over a dirty form becomes a request the calendar answers through its strip (2026-11-05).
   const [calendarRequest, setCalendarRequest] = useState<{ id: number; draft: CalendarDraft | null } | null>(null);
   const calendarRequestId = useRef(0);
-  const openingFromMenu = useRef(false);
+  const createMenuHandoff = useMenuHandoff();
   useEffect(() => { onEditing?.(scopeDirty || calendarDirty); }, [scopeDirty, calendarDirty, onEditing]);
   useEffect(() => () => onEditing?.(false), [onEditing]);
   const [memberRevision, setMemberRevision] = useState(0);
@@ -267,8 +269,8 @@ export function TimelineView({ snapshot, refreshKey, selectCurrentRun = false, o
   if (selectedMilestone) { title = selectedMilestone.title; subtitle = `${formatPlanningDate(selectedMilestone.date, lang)} · ${countdown(selectedMilestone.date, today, lang)}`; }
   if (selection?.kind === 'dueDate') { title = t.dueDates(formatPlanningDate(selection.id, lang)); subtitle = member?.label ?? t.myCards; }
   const writable = snapshot.source === 'sandbox' && snapshot.writable;
-  let emptyMessage = t.selectPrompt;
-  if (!hasDates && writable) emptyMessage = `${t.createHintBefore} + ${t.createHintAfter}`;
+  const emptyMessage = (language: Lang) => !hasDates && writable
+    ? `${text[language].createHintBefore} + ${text[language].createHintAfter}` : text[language].selectPrompt;
   function openCalendar(draft: CalendarDraft | null, opener?: HTMLElement | null) {
     if (calendarOpen && calendarDirty) { setCalendarRequest({ id: ++calendarRequestId.current, draft }); return; }
     setPlanningError(null);
@@ -324,14 +326,11 @@ export function TimelineView({ snapshot, refreshKey, selectCurrentRun = false, o
     }
   };
 
-  // 2026-11-06: a modal menu traps focus while its items open the non-modal calendar form; the two scopes passed focus
-  // back and forth until the form saw focus outside and closed, so «Create Milestone» and «Set up recurring Runs» showed no form.
-  // A non-modal menu, as in the bulk «More» menu, lets the form take focus.
   const actions = <div className="timeline-actions page-tools">
       {writable && <DropdownMenu.Root modal={false}><DropdownMenu.Trigger asChild><Button ref={createButton} variant="default" size="icon" className="timeline-create action-mint" aria-label={t.createPlan} title={t.createPlan} disabled={locked || planningPending}><Plus size={18} /></Button></DropdownMenu.Trigger>
-        <DropdownMenu.Portal><DropdownMenu.Content className="planning-create-menu" align="end" sideOffset={6} collisionPadding={12} onCloseAutoFocus={event => { if (openingFromMenu.current) { event.preventDefault(); openingFromMenu.current = false; } }}>
-          <DropdownMenu.Item onSelect={() => { openingFromMenu.current = true; openCalendar({ kind: 'milestone', date: today }, createButton.current); }}>{t.createMilestone}</DropdownMenu.Item>
-          <DropdownMenu.Item onSelect={() => { openingFromMenu.current = true; openCalendar({ kind: 'configuration' }, createButton.current); }}>{t.setupRuns}</DropdownMenu.Item>
+        <DropdownMenu.Portal><DropdownMenu.Content className="planning-create-menu" align="end" sideOffset={6} collisionPadding={12} onCloseAutoFocus={createMenuHandoff.onCloseAutoFocus}>
+          <DropdownMenu.Item onSelect={() => createMenuHandoff.defer(() => openCalendar({ kind: 'milestone', date: today }, createButton.current))}>{t.createMilestone}</DropdownMenu.Item>
+          <DropdownMenu.Item onSelect={() => createMenuHandoff.defer(() => openCalendar({ kind: 'configuration' }, createButton.current))}>{t.setupRuns}</DropdownMenu.Item>
         </DropdownMenu.Content></DropdownMenu.Portal>
       </DropdownMenu.Root>}
       <Button ref={calendarButton} variant="outline" size="icon" className="timeline-tool" aria-label={t.calendar} title={t.calendar} aria-pressed={calendarOpen} disabled={locked || planningPending} onClick={event => { if (calendarOpen) closeCalendar(); else openCalendar(null, event.currentTarget); }}><CalendarDays size={16} /></Button>
@@ -350,11 +349,11 @@ export function TimelineView({ snapshot, refreshKey, selectCurrentRun = false, o
       onPointerMove={event => { if (drag.current?.pointer === event.pointerId) event.currentTarget.scrollLeft = drag.current.left - (event.clientX - drag.current.start); }}
       onPointerUp={() => { drag.current = null; }} onPointerCancel={() => { drag.current = null; }} onLostPointerCapture={() => { drag.current = null; }}>
       <div className="timeline-canvas" style={{ width: model.width, height }}>
-        {model.months.map(date => <span key={date} className="timeline-month" style={{ left: offset(date), top: band.month, width: dayDistance(date, monthStart(date, 1)) * dayWidth }}><span className="timeline-month-label">{monthName(date, lang)}<small>{date.slice(0, 4)}</small></span></span>)}
+        {model.months.map(date => <span key={date} className="timeline-month" style={{ left: offset(date), top: band.month, width: dayDistance(date, monthStart(date, 1)) * dayWidth }}><span className="timeline-month-label"><ReservedText values={{ en: monthName(date, 'en'), ru: monthName(date, 'ru') }} /><small>{date.slice(0, 4)}</small></span></span>)}
         {model.months.map(date => <span key={`strip-${date}`} className="timeline-month-strip" style={{ left: offset(date), top: stripTop, width: dayDistance(date, monthStart(date, 1)) * dayWidth }} aria-hidden="true" />)}
         {model.weeks.map(date => <span key={date} className={`timeline-week-label${date <= today && today < addDays(date, 7) ? ' is-current' : ''}`} style={{ left: offset(date), top: weekTop, width: dayWidth * 7 }}>{isoWeek(date).toLocaleString(locale(lang))}</span>)}
         <span className="timeline-now-line" style={{ left: model.now, top: band.rows - 2 }} aria-hidden="true" />
-        <span className="timeline-now" style={{ left: model.now, top: stripTop }}><span>{formatPlanningDate(today, lang)}</span></span>
+        <span className="timeline-now" style={{ left: model.now, top: stripTop }}><ReservedText values={{ en: formatPlanningDate(today, 'en'), ru: formatPlanningDate(today, 'ru') }} /></span>
         <div className="timeline-past" style={{ width: model.now }} aria-hidden="true" />
         {milestoneMarks.map(mark => {
           const [milestone] = mark.items;
@@ -400,8 +399,8 @@ export function TimelineView({ snapshot, refreshKey, selectCurrentRun = false, o
           message={t.createHintBefore + ' + ' + t.createHintAfter} action={{ label: t.createMilestone, onClick: () => openCalendar({ kind: 'milestone', date: today }) }} />
       : <EmptyState variant="first-run" art="milestone" title={t.noMilestones} message={t.readOnlyPlanHint} />)}</section>}
     {catalog && validSelection && !overview && selection && <div className="timeline-scope-panel glass-panel"><PlanningScope key={`${selection.kind}:${selection.id}:${selection.kind === 'dueDate' ? member?.id : ''}`} title={title} subtitle={subtitle} retainedPlan={retainedPlan} target={selection.kind === 'dueDate' ? undefined : selection} cards={selectedCards} catalog={catalog} snapshot={snapshot} pending={pending || planningPending} onEdit={edit} onOpenCard={onOpenCard} onLockChange={setLocked} onDirtyChange={setScopeDirty} onPlanningEdit={savePlanning} planningError={planningError} onDeleted={() => { setSelection(null); if (storageKey) { try { localStorage.removeItem(storageKey); } catch { /* 2026-11-05: navigation memory is optional. */ } } }} /></div>}
-    {catalog && !validSelection && !overview && <aside className="timeline-nothing glass-panel"><EmptyState variant="first-run" title={t.nothingSelected} art="milestone"
-      message={emptyMessage} /></aside>}
+    {catalog && !validSelection && !overview && <aside className="timeline-nothing glass-panel"><EmptyState variant="first-run" title={<ReservedText values={{ en: text.en.nothingSelected, ru: text.ru.nothingSelected }} />} art="milestone"
+      message={<ReservedText values={{ en: emptyMessage('en'), ru: emptyMessage('ru') }} />} /></aside>}
     {catalog && <PlanningCalendar open={calendarOpen} selected={selection} onClose={hideCalendar} draft={calendarDraft} onDraftChange={setCalendarDraft} onDirtyChange={setCalendarDirty}
       viewRequest={calendarRequest} onViewRequestHandled={() => setCalendarRequest(null)}
       catalog={catalog} cards={cards} today={today} writable={writable} pending={pending || planningPending} error={planningError} onSave={savePlanning} onChoose={target => { setSelection(target); setOverview(false); remember(target); }} />}
@@ -411,10 +410,10 @@ export function TimelineView({ snapshot, refreshKey, selectCurrentRun = false, o
 
 /** Marks that share a spot open a short list; choosing one selects it as a single mark would (2026-11-05). */
 export function TimelineCluster({ trigger, entries, opensForm = false }: { trigger: React.ReactElement; entries: { key: string; icon: React.ReactNode; label: string; date: string; onSelect: () => void }[]; opensForm?: boolean }) {
-  const chosen = useRef(false);
+  const handoff = useMenuHandoff();
   return <span className="timeline-mark"><DropdownMenu.Root modal={false}><DropdownMenu.Trigger asChild>{trigger}</DropdownMenu.Trigger>
     <DropdownMenu.Portal><DropdownMenu.Content className="planning-create-menu timeline-cluster-menu" side="bottom" align="center" sideOffset={6} collisionPadding={12}
-      onCloseAutoFocus={event => { if (chosen.current) { event.preventDefault(); chosen.current = false; } }}>
-      {entries.map(entry => <DropdownMenu.Item key={entry.key} onSelect={() => { chosen.current = opensForm; entry.onSelect(); }}>{entry.icon}<span>{entry.label}</span>{entry.date && <small>{entry.date}</small>}</DropdownMenu.Item>)}
+      onCloseAutoFocus={handoff.onCloseAutoFocus}>
+      {entries.map(entry => <DropdownMenu.Item key={entry.key} onSelect={() => { if (opensForm) handoff.defer(entry.onSelect); else entry.onSelect(); }}>{entry.icon}<span>{entry.label}</span>{entry.date && <small>{entry.date}</small>}</DropdownMenu.Item>)}
     </DropdownMenu.Content></DropdownMenu.Portal></DropdownMenu.Root></span>;
 }

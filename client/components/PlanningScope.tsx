@@ -1,6 +1,7 @@
 import { defineText, locale, useLang, useText } from '../i18n.ts';
 import { kindLabel, priorityLabel, stateLabel } from '../locales/common.ts';
-import { startTransition, Suspense, useEffect, useMemo, useRef, useState } from 'react';
+import { startTransition, useEffect, useMemo, useRef, useState } from 'react';
+import { LazySection } from './LazySection.tsx';
 import { ArrowDownWideNarrow, Info, MoreHorizontal, Pencil, Pin, PinOff, Plus, Search, Trash2 } from 'lucide-react';
 import * as Dialog from '@radix-ui/react-dialog';
 import type { CatalogCard, CatalogView, MilestoneRecord, RunRecord } from '../../src/catalog-contracts.ts';
@@ -343,13 +344,13 @@ export function PlanningScope({ title, subtitle, target, retainedPlan, cards, ca
       onMove={deckId => onEdit({ action: 'bulk-assign-deck', cards: selection.map(card => ({ cardId: card.id, sourceHash: card.sourceHash })), deckId })}
       onAddTrack={trackId => onEdit({ action: 'bulk-add-track', cards: selection.map(card => ({ cardId: card.id, sourceHash: card.sourceHash })), trackId })} />
     {createdId && <div className="notice" role="status">{attachFailed ? t.attachFailed : t.attaching}{attachFailed && <Button size="sm" variant="outline" disabled={pending} onClick={() => void attachCreated()}>{t.retry}</Button>}</div>}
-    <Suspense><div className="planning-collection-body">
+    <div className="planning-collection-body">
       <nav className="planning-rail deck-action-rail" aria-label={t.actions}>
         {target && <Button variant="ghost" size="icon" aria-label={t.addToPlan} title={t.addCard} disabled={mutationDisabled || composing || !catalog.decks.length} onPointerEnter={() => preload(composerResource)} onFocus={() => preload(composerResource)} onClick={openComposer}><Plus size={18} /></Button>}
         <Button variant="ghost" size="icon" aria-label={t.grouping} title={t.grouping} aria-pressed={ordering} onClick={() => setOrdering(value => !value)}><ArrowDownWideNarrow size={18} /></Button>
       </nav>
       {(information || composing) && <aside className="planning-details">
-        {composing ? <CardComposer catalog={catalog} snapshot={snapshot} initialDeckId={catalog.decks.find(deck => deck.kind === 'task' || deck.kind === 'mixed')?.id ?? catalog.decks[0]?.id ?? ''} pending={pending || Boolean(createdId)} onEdit={createInPlan} onClose={closeComposer} onCreated={closeComposer} onDirtyChange={setComposerDirty} /> : <>
+        {composing ? <LazySection mode="panel" onClose={closeComposer}><CardComposer catalog={catalog} snapshot={snapshot} initialDeckId={catalog.decks.find(deck => deck.kind === 'task' || deck.kind === 'mixed')?.id ?? catalog.decks[0]?.id ?? ''} pending={pending || Boolean(createdId)} onEdit={createInPlan} onClose={closeComposer} onCreated={closeComposer} onDirtyChange={setComposerDirty} /></LazySection> : <>
           {run && <PlanningDetails plan={{ kind: 'run', record: run }} catalog={catalog} source={snapshot.source} writable={writable} pending={pending} onSave={onPlanningEdit} onDirtyChange={setDetailsDirty} />}
           {milestone && <PlanningDetails plan={{ kind: 'milestone', record: milestone }} catalog={catalog} source={snapshot.source} writable={writable} pending={pending} onSave={onPlanningEdit} onDirtyChange={setDetailsDirty} />}
           <PlanningStats cards={activeCards} catalog={catalog} run={run} milestoneId={milestone?.id} history={run || milestone ? (run?.history ?? milestone?.history ?? []) : undefined} />
@@ -372,7 +373,7 @@ export function PlanningScope({ title, subtitle, target, retainedPlan, cards, ca
           ? <EmptyState variant="filtered" art="no-results" title={t.filteredTitle} message={filteredMessage} onReset={() => { setQuery(''); setMine(false); }} />
           : <EmptyState variant="first-run" art="first-card" title={t.empty} message={t.emptyHint} action={addCardAction} />)}
       </div>
-    </div></Suspense>
+    </div>
     <Dialog.Root open={Boolean(deletion)} onOpenChange={open => { if (!open && !pending) setDeletion(null); }}><Dialog.Portal><Dialog.Overlay className="planning-calendar-overlay" /><Dialog.Content className="planning-calendar planning-delete-dialog dialog-panel">
       <header className="dialog-head"><Dialog.Title className="dialog-title">{t.confirmDelete(title)}</Dialog.Title></header>
       <div className="dialog-body"><Dialog.Description className="dialog-description">{t.deleteDescription(unarchivedCount, amount(affectedCards.length), pinned)}</Dialog.Description>

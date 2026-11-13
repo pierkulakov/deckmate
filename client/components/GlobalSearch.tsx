@@ -110,10 +110,11 @@ export function GlobalSearch({ snapshot, refreshKey, onOpenCard, onOpenDeck, dis
   const { catalog, error, refresh } = useCatalog(snapshot, refreshKey);
   const t = useText(text);
   const lang = useLang();
-  const [value, setValue] = useState('');
+  const [value, setValueState] = useState('');
   const [caret, setCaret] = useState(0);
   const completionCaret = useRef<number | null>(null);
-  const [open, setOpen] = useState(false);
+  const [open, setOpenState] = useState(false);
+  const pendingEnter = useRef<string | null>(null);
   const [expanded, setExpanded] = useState(false);
   const [syntaxOpen, setSyntaxOpen] = useState(false);
   const [highlighted, setHighlighted] = useState(0);
@@ -144,6 +145,16 @@ export function GlobalSearch({ snapshot, refreshKey, onOpenCard, onOpenDeck, dis
     inputRef.current?.setSelectionRange(completionCaret.current, completionCaret.current);
     completionCaret.current = null;
   }, [value]);
+
+  function setValue(next: string) {
+    pendingEnter.current = null;
+    setValueState(next);
+  }
+
+  function setOpen(next: boolean) {
+    if (!next) pendingEnter.current = null;
+    setOpenState(next);
+  }
 
   function completeTag(suggestion: TagFilterSuggestion) {
     const next = completeTagFilter(value, suggestion);
@@ -245,9 +256,10 @@ export function GlobalSearch({ snapshot, refreshKey, onOpenCard, onOpenDeck, dis
   }, [highlighted, entries, open]);
 
   function closeSearch() {
-    setOpen(false); setExpanded(false);
+    // 2026-11-13: focus first so the input's onFocus cannot reopen the dismissed results.
     if (triggerRef.current?.getBoundingClientRect().width) moveFocus(triggerRef.current);
-    else inputRef.current?.blur();
+    else moveFocus(inputRef.current);
+    setOpen(false); setExpanded(false);
   }
 
   function openResult(card: CatalogCard) {
@@ -271,19 +283,51 @@ export function GlobalSearch({ snapshot, refreshKey, onOpenCard, onOpenDeck, dis
     inputRef.current?.blur();
   }
 
-  function onKeyDown(event: ReactKeyboardEvent<HTMLInputElement>) {
-    if (event.nativeEvent.isComposing) return;
-    if (event.key === 'Escape') {
-      event.preventDefault(); event.stopPropagation();
-      // Escape removes the last filter pill; with no pills left, it closes the overlay.
-      if (pills.length) { removeFilter(pills[pills.length - 1]); return; }
-      closeSearch();
+  function activateEntry(entry: SearchEntry | undefined) {
+    if (!entry) return;
+    if (entry.type === 'tag') completeTag(entry.suggestion);
+    else if (entry.type === 'navigation') openNavigation(entry.target);
+    else openResult(entry.card);
+  }
+
+  // 2026-11-13: Enter follows the typed query, even while deferred results still belong to its predecessor.
+  useLayoutEffect(() => {
+    const query = pendingEnter.current;
+    if (query === null) return;
+    if (!open || disabled || error || query !== value) {
+      pendingEnter.current = null;
       return;
     }
+    if (!catalog || deferredValue !== query) return;
+    pendingEnter.current = null;
+    activateEntry(entries[0]);
+  });
+
+  function onSearchKeyDown(event: ReactKeyboardEvent<HTMLDivElement>) {
+    if (event.nativeEvent.isComposing || event.key !== 'Escape') return;
+    event.preventDefault(); event.stopPropagation();
+    // 2026-11-13: Escape closes search from any place inside it, filters included; Backspace removes the last pill.
+    closeSearch();
+  }
+
+  function onKeyDown(event: ReactKeyboardEvent<HTMLInputElement>) {
+    if (event.nativeEvent.isComposing) return;
     const last = pills.at(-1);
     if (event.key === 'Backspace' && last && event.currentTarget.selectionStart === value.length
       && event.currentTarget.selectionEnd === value.length && !value.slice(last.end).trim()) {
       event.preventDefault(); removeFilter(last); return;
+    }
+    if (event.key === 'Enter') {
+      if (!open || disabled || error) return;
+      event.preventDefault();
+      const query = event.currentTarget.value;
+      if (!catalog || value !== query || deferredValue !== query) {
+        pendingEnter.current = query;
+        return;
+      }
+      pendingEnter.current = null;
+      activateEntry(entries[highlighted] ?? entries[0]);
+      return;
     }
     const count = entries.length;
     if (!count) return;
@@ -291,19 +335,13 @@ export function GlobalSearch({ snapshot, refreshKey, onOpenCard, onOpenDeck, dis
       event.preventDefault();
       const step = event.key === 'ArrowDown' ? 1 : -1;
       setHighlighted(index => (index + step + count) % count);
-    } else if (event.key === 'Enter') {
-      event.preventDefault();
-      const entry = entries[highlighted] ?? entries[0];
-      if (entry.type === 'tag') completeTag(entry.suggestion);
-      else if (entry.type === 'navigation') openNavigation(entry.target);
-      else openResult(entry.card);
     }
   }
 
   const decksById = useMemo(() => new Map(catalog?.decks.map(deck => [deck.id, deck])), [catalog]);
   const lookups = useMemo(() => buildCatalogLookups(catalog?.cards ?? [], catalog?.subCardOrder), [catalog]);
   const members = catalog?.members ?? [];
-  return <div className={`global-search${expanded ? ' is-expanded' : ''}`} ref={fieldRef}>
+  return <div className={`global-search${expanded ? ' is-expanded' : ''}`} ref={fieldRef} onKeyDown={onSearchKeyDown} data-local-escape={open || expanded || undefined}>
     <Button ref={triggerRef} variant="ghost" size="icon" className="global-search-trigger" aria-label={t.searchCards} aria-expanded={expanded}
       disabled={disabled} onClick={() => { if (expanded) closeSearch(); else setExpanded(true); }}><Search size={18} aria-hidden="true" /></Button>
     <div className={`global-search-field control-field${open ? ' is-open' : ''}`}>

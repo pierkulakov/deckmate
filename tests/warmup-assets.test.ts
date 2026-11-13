@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { WarmupQueue, WarmupTask } from '../client/first-screen-warmup.ts';
-import { warmInterfaceFonts, warmVisibleImages } from '../client/warmup-assets.ts';
+import { loadInterfaceFonts, warmVisibleImages } from '../client/warmup-assets.ts';
 
 afterEach(() => vi.unstubAllGlobals());
 function collection() {
@@ -9,12 +9,12 @@ function collection() {
   return { queue, tasks };
 }
 
-describe('idle interface assets', () => {
-  it('warms visible UI fonts without requesting the editor face', async () => {
-    const { queue, tasks } = collection(); const load = vi.fn(async (_font: string, _sample: string) => []);
-    vi.stubGlobal('document', { fonts: { load } }); warmInterfaceFonts(queue);
-    for (const task of tasks) await task.run(new AbortController().signal);
-    expect(tasks).toHaveLength(6); expect(tasks.every(task => task.priority === 0)).toBe(true);
+describe('interface assets', () => {
+  it('loads UI fonts together before revealing text without requesting the editor face', async () => {
+    const load = vi.fn(async (_font: string, _sample: string) => []);
+    vi.stubGlobal('document', { fonts: { load } });
+    await loadInterfaceFonts();
+    expect(load).toHaveBeenCalledTimes(6);
     expect(load).toHaveBeenCalledWith('500 14px "Geist Mono"', '0123456789');
     expect(load.mock.calls.some(([font]) => font.includes('Roboto Mono'))).toBe(false);
     expect(load).toHaveBeenCalledWith('700 14px "Source Sans 3"', 'Deckmate Карточка');

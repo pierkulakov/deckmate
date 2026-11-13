@@ -19,7 +19,6 @@
 .journey-step-card.is-selected { border-color: var(--accent); }
 .journey-step-card.is-inspected { box-shadow: 0 0 0 2px color-mix(in srgb, var(--focus) 35%, transparent); }
 .journey-step-card:hover:not(:disabled) { border-color: var(--accent); }
-.journey-step-card:focus-visible { outline: 2px solid var(--focus); outline-offset: 3px; }
 .journey-step-card:disabled { cursor: wait; opacity: .65; }
 .journey-step-card-top { display: flex; align-items: center; min-height: 30px; padding: 6px 34px 4px 7px; color: var(--muted); font-size: 12px; }
 .journey-step-card-selection { position: absolute; top: 0; right: 0; display: grid; place-items: center; width: 30px; height: 30px; cursor: pointer; }

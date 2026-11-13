@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useLayoutEffect, useRef } from 'react';
 import type { RefObject } from 'react';
 import { moveFocus } from './focus.ts';
+import { readDurationMs } from './motion.ts';
+import { prepareEntrance } from './prepared-motion.ts';
 import './deck-transition.css';
 
 // 2026-11-09: the frozen gallery owns the moving frame. Only after its row becomes the clipped shelf do the live tools
@@ -8,7 +10,7 @@ import './deck-transition.css';
 
 function motionTokens(section: HTMLElement) {
   const style = getComputedStyle(section);
-  return { easing: style.getPropertyValue('--ease-scroll').trim(), feedback: parseFloat(style.getPropertyValue('--motion-feedback')) };
+  return { easing: style.getPropertyValue('--ease-scroll').trim(), feedback: readDurationMs('--motion-feedback') };
 }
 
 type Direction = 'open' | 'close';
@@ -132,7 +134,10 @@ function stage(scrollport: HTMLElement, ghost: HTMLElement, page: DOMRect) {
   layer.setAttribute('aria-hidden', 'true');
   Object.assign(layer.style, { left: port.left + 'px', top: port.top + 'px', width: scrollport.clientWidth + 'px', height: port.height + 'px' });
   Object.assign(ghost.style, { left: page.left - port.left + 'px', top: page.top - port.top + 'px', width: page.width + 'px' });
-  layer.append(ghost);
+  // 2026-11-13: the live scrollport owns the page light; the frozen section needs that viewport-fixed layer beneath it.
+  const light = document.createElement('div');
+  light.className = 'deck-transition-light';
+  layer.append(light, ghost);
   scrollport.append(layer);
   return layer;
 }
@@ -173,6 +178,7 @@ function arrive(section: HTMLElement, snapshot: Snapshot, ready: () => void) {
     // 2026-11-10: the home's top padding belongs to its snapshot too. Cutting the stage at the shelf immediately
     // exposed the new padding before travel; move the viewport cut with the row instead of switching it in one frame.
     layer.animate([{ clipPath: 'inset(0)' }, { clipPath: `inset(${shelfInset}px 0 0)` }], { ...timing, fill: 'forwards' }),
+    layer.querySelector('.deck-transition-light')!.animate([{ opacity: 1 }, { opacity: 0 }], { duration: tokens.feedback, easing: tokens.easing, fill: 'forwards' }),
   ];
   const reveals: Animation[] = [];
   for (const part of section.children) {
@@ -183,8 +189,8 @@ function arrive(section: HTMLElement, snapshot: Snapshot, ready: () => void) {
   // its hover chrome (the settings button) leaves on the next frame.
   coverItemOf(ghost, snapshot.deckId)?.classList.add('is-transition-open');
   requestAnimationFrame(() => { coverItemOf(ghost, snapshot.deckId)?.classList.remove('is-transition-hover'); });
-  // 2026-11-10: this is already a snapshot of painted content, not a mounting overlay. Pausing it for preparation
-  // holds the departing page after navigation has committed and separates the travel from the live-page reveal.
+  // 2026-11-13: the copy still needs its own raster/layers. Prepare travel, clipping, panel fades and live reveal on one clock.
+  const releasePreparation = prepareEntrance(ghost, [...motions, ...reveals, ...ghost.getAnimations({ subtree: true })]);
 
   let stageCleared = false;
   let finished = false;
@@ -198,6 +204,7 @@ function arrive(section: HTMLElement, snapshot: Snapshot, ready: () => void) {
   const finish = () => {
     if (finished) return;
     finished = true;
+    releasePreparation?.();
     for (const motion of [...motions, ...reveals]) motion.cancel();
     clearStage();
   };
@@ -232,7 +239,7 @@ function comeBack(section: HTMLElement, snapshot: Snapshot, ready: () => void) {
   const visibility = section.style.visibility;
   section.inert = true;
   section.style.visibility = 'hidden';
-  const motions: Animation[] = [];
+  const motions: Animation[] = [layer.querySelector('.deck-transition-light')!.animate([{ opacity: 0 }, { opacity: 1 }], { duration: tokens.feedback, easing: tokens.easing, fill: 'both' })];
   if (Math.abs(dx) >= 1 || Math.abs(dy) >= 1 || scale !== 1) {
     const timing: KeyframeAnimationOptions = { duration: travelDuration(dy), easing: tokens.easing };
     const origin = { x: to.left - page.left, y: to.top - page.top };
@@ -247,10 +254,12 @@ function comeBack(section: HTMLElement, snapshot: Snapshot, ready: () => void) {
     }
   }
   for (const tile of ghost.querySelectorAll<HTMLElement>('.catalog-add-deck')) motions.push(tile.animate([{ opacity: 0 }, { opacity: 1 }], { duration: tokens.feedback, easing: tokens.easing }));
+  const releasePreparation = prepareEntrance(ghost, [...motions, ...ghost.getAnimations({ subtree: true })]);
   let finished = false;
   const finish = (restoreFocus = false) => {
     if (finished) return;
     finished = true;
+    releasePreparation?.();
     for (const motion of motions) motion.cancel();
     layer.remove();
     section.inert = wasInert;

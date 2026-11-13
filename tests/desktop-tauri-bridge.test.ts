@@ -1,13 +1,11 @@
-import { readFileSync } from 'node:fs';
-import { runInNewContext } from 'node:vm';
 import { describe, expect, it } from 'vitest';
-
-const source = readFileSync(new URL('../desktop/launcher/tauri-bridge.js', import.meta.url), 'utf8');
+import type { DesktopProjectsSnapshot } from '../client/desktop-bridge.ts';
+import { installStartBridge, type StartBridgeHost } from '../client/desktop/start-bridge.ts';
 
 type Status = { phase: string; path?: string; code?: string; message?: string };
 
 type Bridge = {
-  getState: () => Promise<unknown>;
+  getState: (options?: { refresh: boolean }) => Promise<unknown>;
   chooseFolder: () => Promise<unknown>;
   openProject: (folder: string, ...extra: unknown[]) => Promise<unknown>;
   createProject: (options: { folder: string }) => Promise<unknown>;
@@ -16,14 +14,14 @@ type Bridge = {
   removeFromWorkspace: (folder: string) => Promise<unknown>;
   moveInWorkspace: (folder: string, index: number) => Promise<unknown>;
   setLanguage: (lang: string) => Promise<unknown>;
+  setTheme: (theme: string) => Promise<unknown>;
   onStatus: (callback: (status: Status) => void) => () => void;
 };
 
 type Call = [command: string, args: Record<string, unknown>];
 
-// 2026-11-09: the bridge ships as a page script, not a module; load it the way the launcher does and
-// record the commands it sends. Absent arguments become null, as they are on the Tauri IPC wire.
-function load(invoke: (command: string, args: unknown) => unknown) {
+// 2026-11-13: absent arguments become null, as they are on the Tauri IPC wire.
+function loadBridge(invoke: (command: string, args: unknown) => unknown) {
   let next = 0;
   const callbacks = new Map<number, (event: { payload: unknown }) => void>();
   const removed: unknown[][] = [];
@@ -37,30 +35,32 @@ function load(invoke: (command: string, args: unknown) => unknown) {
       unregisterListener(...args: unknown[]) { removed.push(args); },
     },
   };
-  runInNewContext(source, { window });
+  installStartBridge(window as StartBridgeHost);
   const bridge = (window as { deckmateDesktop?: Bridge }).deckmateDesktop;
-  if (!bridge) throw new Error('tauri-bridge.js defined no window.deckmateDesktop');
+  if (!bridge) throw new Error('No window.deckmateDesktop');
   return { bridge, callbacks, removed };
 }
 
 describe('launcher tauri bridge', () => {
   it('keeps the launcher mock fallback outside Tauri', () => {
     const window = {};
-    runInNewContext(source, { window });
+    expect(installStartBridge(window)).toBeUndefined();
     expect((window as { deckmateDesktop?: unknown }).deckmateDesktop).toBeUndefined();
   });
 
   it('exposes precisely the launcher contract and passes only its arguments', async () => {
     const calls: Call[] = [];
-    const { bridge } = load((command, args) => {
+    const { bridge } = loadBridge((command, args) => {
       calls.push([command, (args ?? null) as Record<string, unknown>]);
       return { ok: true };
     });
+    expect(Object.isFrozen(bridge)).toBe(true);
     expect(Object.keys(bridge)).toEqual([
       'getState', 'chooseFolder', 'openProject', 'createProject', 'removeRecent',
-      'addToWorkspace', 'removeFromWorkspace', 'moveInWorkspace', 'setLanguage', 'onStatus',
+      'addToWorkspace', 'removeFromWorkspace', 'moveInWorkspace', 'setLanguage', 'setTheme', 'onStatus',
     ]);
     await bridge.getState();
+    await bridge.getState({ refresh: true });
     await bridge.chooseFolder();
     await bridge.openProject('C:/demo', true);
     await bridge.createProject({ folder: 'C:/new' });
@@ -69,8 +69,9 @@ describe('launcher tauri bridge', () => {
     await bridge.removeFromWorkspace('C:/old');
     await bridge.moveInWorkspace('C:/demo', -1);
     await bridge.setLanguage('ru');
+    await bridge.setTheme('system');
     expect(calls).toEqual([
-      ['desktop_get_state', null], ['desktop_choose_folder', null],
+      ['desktop_get_state', null], ['desktop_get_state', { refresh: true }], ['desktop_choose_folder', null],
       ['desktop_open_project', { folder: 'C:/demo' }],
       ['desktop_create_project', { options: { folder: 'C:/new' } }],
       ['desktop_remove_recent', { folder: 'C:/old' }],
@@ -78,13 +79,14 @@ describe('launcher tauri bridge', () => {
       ['desktop_remove_from_workspace', { folder: 'C:/old' }],
       ['desktop_move_in_workspace', { folder: 'C:/demo', index: -1 }],
       ['desktop_set_language', { lang: 'ru' }],
+      ['desktop_set_theme', { theme: 'system' }],
     ]);
   });
 
   it('delivers status payloads and unsubscribes safely before registration completes', async () => {
     let registered!: (id: number) => void;
     const calls: Call[] = [];
-    const { bridge, callbacks, removed } = load((command, args) => {
+    const { bridge, callbacks, removed } = loadBridge((command, args) => {
       calls.push([command, (args ?? null) as Record<string, unknown>]);
       if (command === 'plugin:event|listen') return new Promise(resolve => { registered = resolve; });
       return Promise.resolve();
@@ -105,8 +107,22 @@ describe('launcher tauri bridge', () => {
     expect(calls[1][1].eventId).toBe(42);
   });
 
+  it('passes project snapshots and failures through without renaming or dropping fields', async () => {
+    const snapshot: DesktopProjectsSnapshot = { ok: true, projects: [
+      { path: 'C:/Current', name: 'Current', current: true, missing: false },
+      { path: 'C:/Missing', name: 'Missing', current: false, missing: true },
+    ], current: 'C:/Current' };
+    for (const reply of [snapshot, { ok: true, projects: [], current: null }, { ok: false, code: 'save-failed', message: 'EACCES' }]) {
+      const { bridge } = loadBridge(() => Promise.resolve(reply));
+      for (const result of await Promise.all([bridge.getState(), bridge.addToWorkspace('C:/Current'),
+        bridge.removeFromWorkspace('C:/Missing'), bridge.moveInWorkspace('C:/Current', 0), bridge.removeRecent('C:/Missing')])) {
+        expect(result).toBe(reply);
+      }
+    }
+  });
+
   it('releases its callback when the subscription fails and never rejects later', async () => {
-    const { bridge, callbacks } = load(() => Promise.reject(new Error('denied')));
+    const { bridge, callbacks } = loadBridge(() => Promise.reject(new Error('denied')));
     const unsubscribe = bridge.onStatus(() => { throw new Error('no event expected'); });
     await new Promise(resolve => setImmediate(resolve));
     expect(callbacks.size).toBe(0);
@@ -116,17 +132,20 @@ describe('launcher tauri bridge', () => {
   it('waits for status registration before state so startup errors cannot be lost on load', async () => {
     let registered!: (id: number) => void;
     const commands: string[] = [];
-    const { bridge } = load(command => {
+    const { bridge, callbacks } = loadBridge(command => {
       commands.push(command);
       if (command === 'plugin:event|listen') return new Promise(resolve => { registered = resolve; });
-      return Promise.resolve({ recent: [] });
+      callbacks.values().next().value!({ payload: { phase: 'error', code: 'start-failed', message: 'deferred failure' } });
+      return Promise.resolve({ ok: true, projects: [], current: null, recent: [] });
     });
-    bridge.onStatus(() => {});
+    const statuses: Status[] = [];
+    bridge.onStatus(status => statuses.push(status));
     const state = bridge.getState();
     await new Promise(resolve => setImmediate(resolve));
     expect(commands).toEqual(['plugin:event|listen']);
     registered(1);
     await state;
     expect(commands).toEqual(['plugin:event|listen', 'desktop_get_state']);
+    expect(statuses).toEqual([{ phase: 'error', code: 'start-failed', message: 'deferred failure' }]);
   });
 });

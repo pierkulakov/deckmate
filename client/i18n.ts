@@ -2,6 +2,7 @@
 import { useSyncExternalStore } from 'react';
 import { defaultLang, langCookie, localeOf, parseLang, type Lang } from '../src/i18n.ts';
 import { readStoredValue } from './storage.ts';
+import { desktopPreferences, type DesktopResult } from './desktop-bridge.ts';
 
 export { defineText, type Lang } from '../src/i18n.ts';
 
@@ -9,6 +10,8 @@ const storageKey = 'deckmate-language';
 const changeEvent = 'deckmate:language';
 
 function storedLang(): Lang {
+  const language = desktopPreferences()?.language ?? document.documentElement.getAttribute?.('data-shell-lang');
+  if (language === 'en' || language === 'ru') return language;
   try { return parseLang(readStoredValue(localStorage, storageKey)); } catch { return defaultLang; }
 }
 
@@ -28,9 +31,29 @@ export function currentLang(): Lang {
 export function setLang(lang: Lang): void {
   if (lang === current) return;
   current = lang;
-  try { localStorage.setItem(storageKey, lang); } catch { /* without storage the choice lives until reload */ }
+  if (!desktopPreferences()?.setLanguage) {
+    try { localStorage.setItem(storageKey, lang); } catch { /* without storage the choice lives until reload */ }
+  }
   applyToDocument(lang);
   window.dispatchEvent(new Event(changeEvent));
+}
+
+export async function changeLanguage(lang: Lang): Promise<DesktopResult> {
+  const shell = desktopPreferences();
+  if (shell?.setLanguage) {
+    const result = await shell.setLanguage(lang);
+    if (!result.ok) return result;
+  }
+  setLang(lang);
+  return { ok: true };
+}
+
+// 2026-11-13: native menu changes use the same React store, without reloading the board or writing back to IPC.
+if (typeof window !== 'undefined' && (desktopPreferences()?.setLanguage || document.documentElement.getAttribute?.('data-shell-lang'))) {
+  window.addEventListener('deckmate:display', event => {
+    const language = (event as CustomEvent<{ language?: unknown }>).detail?.language;
+    if (language === 'en' || language === 'ru') setLang(language);
+  });
 }
 
 function subscribe(listener: () => void): () => void {

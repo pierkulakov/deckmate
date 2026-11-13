@@ -2,8 +2,41 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 import { runInNewContext } from 'node:vm';
+import { tileColor, tileInitials } from '../../client/project-tile.ts';
 
 const script = readFileSync(new URL('../src-tauri/src/board-startup.js', import.meta.url), 'utf8');
+const splash = readFileSync(new URL('../../client/desktop/startup.js', import.meta.url), 'utf8').replace(/^import .*;\r?\n/u, '');
+
+test('splash reads inert shell data and preserves project text without parsing markup or URL parameters', async () => {
+  for (const language of ['en', 'ru']) {
+    const project = 'Проект "<>&\'';
+    const nodes = new Map(['project-name', 'opening-label', 'return-to-start', 'project-tile'].map(id => [id, {
+      textContent: '', title: '', hidden: true, dataset: {}, style: { setProperty() {} },
+    }]));
+    const documentElement = { lang: '', dataset: { shellLang: language, shellProject: project, shellOpening: 'Opening', shellReturn: 'Return' } };
+    const timers = [];
+    let prepared;
+    runInNewContext(splash, {
+      tileColor, tileInitials,
+      document: { documentElement, getElementById: id => nodes.get(id) },
+      location: { search: '?project=wrong&language=invalid&opening=wrong&return=wrong' },
+      window: { prepareDeckmatePage: () => new Promise(resolve => { prepared = resolve; }) },
+      setTimeout: (callback, delay) => timers.push({ callback, delay }),
+    });
+    assert.equal(documentElement.lang, language);
+    assert.equal(nodes.get('project-name').textContent, project);
+    assert.equal(nodes.get('project-name').title, project);
+    assert.equal(nodes.get('project-tile').dataset.initials, tileInitials(project));
+    assert.equal(nodes.get('opening-label').textContent, 'Opening');
+    assert.equal(nodes.get('return-to-start').textContent, 'Return');
+    assert.equal(timers.length, 0);
+    prepared();
+    await Promise.resolve();
+    assert.equal(timers[0].delay, 4000);
+    timers[0].callback();
+    assert.equal(nodes.get('return-to-start').hidden, false);
+  }
+});
 
 function renderer() {
   const frames = [];
@@ -19,7 +52,7 @@ function renderer() {
   const shell = { dataset: { updatedAt: '0' }, querySelector: () => main };
   const document = {
     visibilityState: 'hidden',
-    querySelector: () => shell,
+    querySelector: selector => selector === '.first-screen' ? { dataset: { state: loading ? 'loading' : 'ready' } } : shell,
     addEventListener: (name, callback) => events.set(name, callback),
     removeEventListener: name => events.delete(name),
   };

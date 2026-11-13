@@ -16,7 +16,6 @@
 .editor-format-toolbar { position: fixed; z-index: 160; display: flex; gap: 2px; padding: 4px; border: 1px solid var(--line); border-radius: var(--glass-radius); background: var(--edit-bg); color: var(--ink); animation: overlay-pop var(--motion-spring-quick) var(--ease-spring-quick); }
 .editor-format-toolbar button { display: grid; place-items: center; width: 34px; height: 30px; padding: 0; border: 0; border-radius: var(--control-radius); background: transparent; color: inherit; cursor: pointer; }
 .editor-format-toolbar button:hover { background: var(--hover); }
-.editor-format-toolbar button:focus-visible, .editor-media-insert button:focus-visible, .editor-media-insert input:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 .editor-command-emoji { font-size: 20px; line-height: 24px; }
 .editor-member-mention { display: inline-flex; vertical-align: middle; align-items: center; gap: 4px; max-width: 100%; padding: 1px 5px 1px 2px; border-radius: var(--control-radius); background: var(--accent-soft); color: var(--ink); font-size: inherit; overflow-wrap: anywhere; }
 .editor-member-mention .card-owner-avatar { width: 22px; height: 22px; }
@@ -24,7 +23,6 @@
    Both themes define the colours in styles.css. clone preserves padding on wrapped lines. */
 .markdown .card-reference-chip { padding: 0 4px; border-radius: var(--control-radius); background: var(--gold-chip); color: var(--gold-chip-ink); font-weight: 500; text-decoration: none; overflow-wrap: anywhere; -webkit-box-decoration-break: clone; box-decoration-break: clone; }
 .markdown a.card-reference-chip:hover { background: color-mix(in srgb, var(--gold-chip) 84%, var(--gold-chip-ink)); }
-.markdown a.card-reference-chip:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
 .markdown .card-reference-chip-id { font-weight: 400; color: color-mix(in srgb, var(--gold-chip-ink) 80%, var(--gold-chip)); }
 .markdown .card-reference-chip.is-missing { background: color-mix(in srgb, var(--muted) 16%, transparent); color: var(--muted); font-weight: 400; }
 .markdown .card-reference-chip.is-image { display: inline-flex; align-items: center; gap: 4px; max-width: 100%; vertical-align: bottom; }

@@ -32,7 +32,6 @@
 .attach-subcards-row.is-selected { border-color: var(--mark); background: var(--mark-tint); color: var(--mark); }
 .attach-subcards-row.is-selected:hover:not(.is-unavailable) { border-color: var(--mark); background: var(--mark-tint-strong); color: var(--mark); }
 /* 2026-11-10: the row rings only for keyboard focus on its checkbox; a click selects it, which its mark already shows. */
-.attach-subcards-row:has(:focus-visible) { outline: 2px solid var(--focus); outline-offset: 2px; }
 .attach-subcards-row > input:focus-visible { outline: none; }
 .attach-subcards-row.is-unavailable { cursor: default; }
 .attach-subcards-row.is-unavailable .attach-subcards-card { opacity: .75; }

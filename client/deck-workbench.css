@@ -1,5 +1,7 @@
 /* The open deck uses one 36px rail, one left slot and a compact card grid. */
 .catalog-workbench { min-width: 0; }
+/* 2026-11-13: this wrapper belongs to the deck layout, including before the first preview stylesheet is loaded. */
+.catalog-results-body { display: contents; }
 /* 2026-11-10: stretch short open decks without constraining the workspace scroll owner. The card scopes (All cards,
    Unassigned, a track) share the open deck's workbench, so they stretch the same way. */
 .workspace-main:has(> .catalog-view:is(.is-deck-open, .card-scope-view)) { padding-bottom: 0; }
@@ -142,11 +144,9 @@
 .deck-neighbor-rail > .catalog-deck-cover { flex: 0 0 var(--shelf-cover-width); height: 120px; padding: 0; border-radius: 0 0 var(--cover-radius) var(--cover-radius); align-self: flex-end; background: transparent; box-shadow: none; transform: translateY(0); opacity: 1; transition: box-shadow var(--motion-feedback); }
 .deck-neighbor-window { position: relative; display: block; width: 100%; height: 100%; overflow: hidden; border-radius: inherit; }
 .deck-neighbor-window > .catalog-deck-cover { position: absolute; bottom: 0; left: 0; }
-/* 2026-11-06: the shelf clips its covers at the bottom edge, so their focus ring is drawn inside the cover. */
-.deck-neighbor-rail > .catalog-deck-cover:focus-visible { outline-color: var(--ink); outline-offset: -4px; }
 /* 2026-11-10: the current deck's frame is filled with its color; its neighbors' frames are glass until the pointer or
    focus reaches them, with the satin's own fade (deck-cover.css). */
-.deck-neighbor-rail > .catalog-deck-cover:is([aria-current="page"], :hover:not(:disabled), :focus-visible) { --cover-rf: 1; }
+.deck-neighbor-rail > .catalog-deck-cover:is([aria-current="page"], :hover:not(:disabled), :focus-visible:where(:root[data-tab-focus] *)) { --cover-rf: 1; }
 .deck-neighbor-rail > .catalog-deck-cover[aria-current="page"]::after { content: ''; position: absolute; bottom: -8px; left: calc(50% - 8px); border-inline: 8px solid transparent; border-bottom: 8px solid var(--sidebar); }
 /* Narrow screens keep the gallery's columns too: below 420 px the gallery starts at 16 px (2026-11-05). */
 @media (max-width: 420px) { .deck-neighbor-rail { padding-left: 16px; } }

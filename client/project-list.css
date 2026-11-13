@@ -1,0 +1,60 @@
+.mission-control-project-row { display: flex; align-items: center; gap: 10px; min-width: 0; padding: 8px; border-radius: var(--control-radius); background: var(--ground); }
+.mission-control-project-row div { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.mission-control-project-row strong { overflow: hidden; font-size: 14px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.mission-control-project-row span { color: var(--muted); font-size: 12px; }
+.mission-control-recent-tile { position: relative; overflow: hidden; flex: 0 0 32px; width: 32px; height: 42px; border-radius: 4px; background: linear-gradient(165deg, color-mix(in srgb, var(--tile) 78%, #ffffff), var(--tile) 55%, color-mix(in srgb, var(--tile) 70%, #000000)); box-shadow: var(--cover-rim), var(--card-shadow); }
+.mission-control-recent-tile::before { content: attr(data-initials); position: absolute; left: 3px; right: 3px; top: 3px; height: 19px; border-radius: 2px; display: grid; place-items: center; background: color-mix(in srgb, var(--cover-window) 82%, var(--tile)); color: #fff; font-family: var(--font-sans); font-size: 10px; font-weight: 700; line-height: 1; }
+.mission-control-recent-tile::after { content: ''; position: absolute; left: 5px; bottom: 4px; width: 14px; height: 3px; border-radius: 1.5px; background: #ffffffb0; }
+.mission-control-recent-tile > .spin { position: absolute; inset: 0; margin: auto; color: #fff; }
+.mission-control-recent-failure { margin: 0; color: var(--danger); font-size: 12px; line-height: 1.45; overflow-wrap: anywhere; }
+.mission-control-retry { border: 0; padding: 4px 0; background: transparent; color: inherit; font: inherit; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
+/* 2026-11-13: the reserved scrollbar sits in the section padding, keeping rows aligned with the project summary. */
+.mission-control-workspace-list { display: flex; flex-direction: column; gap: 4px; width: calc(100% + 6px); max-height: clamp(120px, calc(100dvh - 630px), 306px); margin: 0; padding: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-gutter: stable; list-style: none; }
+.mission-control-workspace-list:empty { display: none; }
+.mission-control-workspace-row { position: relative; flex: 0 0 auto; min-width: 0; border-radius: var(--control-radius); background: var(--ground); }
+.mission-control-workspace-row.is-current { background: var(--accent-soft); box-shadow: inset 0 0 0 1px var(--line); }
+.mission-control-workspace-open { position: relative; width: 100%; min-height: 58px; padding-right: 36px; border: 0; color: var(--ink); background: transparent; text-align: left; touch-action: pan-y; cursor: pointer; }
+.mission-control-workspace-open[aria-disabled="true"] { cursor: default; }
+.mission-control-workspace-open:hover:not([aria-disabled="true"]) { background: var(--hover); }
+.mission-control-workspace-copy { flex: 1; }
+.mission-control-workspace-copy strong { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; white-space: normal; overflow-wrap: anywhere; line-height: 1.25; }
+.mission-control-workspace-copy [hidden] { display: none; }
+.mission-control-workspace-path > bdi { unicode-bidi: plaintext; }
+.mission-control-workspace-path { overflow-wrap: anywhere; line-height: 1.3; user-select: text; cursor: inherit; }
+.mission-control-workspace-current { position: absolute; right: 12px; top: calc(50% - 7px); color: var(--focus); }
+.mission-control-workspace-row.is-missing .mission-control-recent-tile { opacity: .45; filter: saturate(.4); }
+.mission-control-workspace-row.is-missing strong { color: var(--muted); }
+.mission-control-workspace-copy .mission-control-workspace-missing, .mission-control-workspace-missing > span { color: var(--muted); font-size: 11px; }
+.mission-control-workspace-row:not(.is-current):not(.is-missing) .mission-control-workspace-open[aria-disabled="true"] { opacity: .6; }
+.mission-control-workspace-remove { position: absolute; right: 4px; top: calc(50% - 14px); display: grid; place-items: center; width: 28px; height: 28px; padding: 0; border: 0; border-radius: 4px; opacity: 0; color: var(--muted); background: transparent; cursor: pointer; }
+.mission-control-workspace-row:hover .mission-control-workspace-remove, .mission-control-workspace-row:focus-within .mission-control-workspace-remove, .mission-control-workspace-row.is-missing .mission-control-workspace-remove { opacity: 1; }
+.mission-control-workspace-row:hover .mission-control-workspace-current, .mission-control-workspace-row:focus-within .mission-control-workspace-current { visibility: hidden; }
+.mission-control-workspace-remove:hover:not(:disabled) { color: var(--danger); background: var(--hover); }
+.mission-control-workspace-remove:disabled { cursor: default; }
+.mission-control-workspace-row.is-dragging { z-index: 1; background: var(--hover); box-shadow: var(--card-hover-shadow), inset 0 0 0 2px var(--focus); }
+.mission-control-workspace-row.is-dragging .mission-control-workspace-open { cursor: grabbing; }
+.mission-control-workspace-list[data-dragging] .mission-control-workspace-remove { visibility: hidden; }
+.project-list-sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+.project-list-details summary { cursor: pointer; }
+.project-list-details pre { white-space: pre-wrap; font: inherit; }
+/* 2026-11-13: a fixed date column prevents minute ticks from rewrapping the name or moving the row actions. */
+.project-list-when { flex: 0 0 9em; width: 9em; color: var(--muted); font-size: 11px; line-height: 1.3; text-align: right; font-variant-numeric: tabular-nums; }
+.project-list-when .reserved-text, .project-list-when .reserved-text > span { font-size: inherit; }
+.mission-control-workspace-row.has-pin .mission-control-workspace-open { padding-right: 64px; }
+.project-list-pin { right: 32px; }
+.mission-control-workspace-row.has-order .mission-control-workspace-open { padding-right: 92px; }
+.project-list-up { right: 60px; }
+.project-list-down { right: 32px; }
+.project-list-up:hover:not(:disabled), .project-list-down:hover:not(:disabled) { color: var(--ink); }
+.project-list-up:disabled, .project-list-down:disabled { opacity: .4; }
+.project-list-pin:hover:not(:disabled) { color: var(--accent); }
+@media (hover: none) { .mission-control-workspace-remove { opacity: 1; } .mission-control-workspace-current { display: none; } }
+@media (pointer: coarse) {
+  .mission-control-workspace-open { padding-right: calc(var(--control-target-touch) + var(--space-2) + var(--space-1)); }
+  .mission-control-workspace-remove { top: calc(50% - var(--control-target-touch) / 2); width: var(--control-target-touch); height: var(--control-target-touch); }
+  .mission-control-workspace-row.has-pin .mission-control-workspace-open { padding-right: calc(2 * var(--control-target-touch) + var(--space-2) + var(--space-1)); }
+  .project-list-pin { right: calc(var(--control-target-touch) + var(--space-1)); }
+  .mission-control-workspace-row.has-order .mission-control-workspace-open { padding-right: calc(3 * var(--control-target-touch) + var(--space-2) + var(--space-1)); }
+  .project-list-up { right: calc(2 * var(--control-target-touch) + var(--space-1)); }
+  .project-list-down { right: calc(var(--control-target-touch) + var(--space-1)); }
+}

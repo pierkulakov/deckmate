@@ -6,11 +6,9 @@ const interfaceFonts = [
   ...[400, 500].map(weight => ({ font: `${weight} 14px "Geist Mono"`, sample: '0123456789' })),
 ];
 
-export function warmInterfaceFonts(queue: WarmupQueue) {
-  for (const { font, sample } of interfaceFonts) queue.add({
-    key: 'font:' + font, priority: 0,
-    run: () => document.fonts.load(font, sample),
-  });
+export function loadInterfaceFonts() {
+  // 2026-11-13: first-screen text needs every UI face together; a failed face must still allow the error/retry UI.
+  return Promise.allSettled(interfaceFonts.map(({ font, sample }) => document.fonts.load(font, sample)));
 }
 
 export function warmVisibleImages(queue: WarmupQueue) {

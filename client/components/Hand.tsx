@@ -32,6 +32,7 @@ import { EmptyState } from './EmptyState.tsx';
 import { LoadingState } from './LoadingState.tsx';
 import type { PlanningTarget } from './PlanningScope.tsx';
 import { defineText, locale, useLang, useText, type Lang } from '../i18n.ts';
+import { ReservedText } from '../ReservedText.tsx';
 import { kindLabel, stateLabel } from '../locales/common.ts';
 import '../hand.css';
 import '../hand-planning.css';
@@ -503,7 +504,7 @@ export function Hand({ snapshot, refreshKey, onOpenCard: openCard, onOpenMembers
     <label className="hand-all-toggle" title={t.showAllTitle}>
       <input type="checkbox" role="switch" checked={showAllHands} onChange={event => toggleAllHands(event.target.checked)} aria-label={t.allHands} />
       <span className="hand-all-track" aria-hidden="true"><span className="hand-all-thumb" /></span>
-      <span>{t.allHands}</span>
+      <ReservedText values={{ en: text.en.allHands, ru: text.ru.allHands }} />
     </label>
     <label className="hand-member-picker"><span className="visually-hidden">{t.whoseHand}</span>
       <select className="control-field" value={selectedMember} onChange={event => selectMember(event.target.value)} aria-label={t.whoseHand} title={activeHand?.member.label}>{hands.map(({ member }) => <option key={member.id} value={member.id}>{member.label}</option>)}</select>
@@ -537,22 +538,22 @@ export function Hand({ snapshot, refreshKey, onOpenCard: openCard, onOpenMembers
       <div className="hand-tabs control-tabs">
         <div className="hand-tab-list" role="tablist" aria-label={t.handSections} onKeyDown={navigateTabs}>
           {dueTabVisible && <button type="button" role="tab" id="hand-tab-due" aria-controls="hand-tab-panel" tabIndex={activeTab === 'due' ? 0 : -1} aria-selected={activeTab === 'due'} aria-label={t.tabWithCount(dueTabLabel, dueCount)} className={`hand-tab control-tab${activeTab === 'due' ? ' is-active' : ''}`} onClick={() => selectTab('due')}>
-            <span className={`hand-tab-count page-number${dueBadge?.bucket ? ` is-due-${dueBadge.bucket}` : ''}`} aria-hidden="true">{dueCount.toLocaleString(locale())}</span>{dueTabLabel}
+            <span className={`hand-tab-count page-number${dueBadge?.bucket ? ` is-due-${dueBadge.bucket}` : ''}`} aria-hidden="true">{dueCount.toLocaleString(locale())}</span><ReservedText values={{ en: ownHand ? text.en.yourDueCards : text.en.dueCards, ru: ownHand ? text.ru.yourDueCards : text.ru.dueCards }} />
           </button>}
           {runsTabVisible && <button type="button" role="tab" id="hand-tab-runs" aria-controls="hand-tab-panel" tabIndex={activeTab === 'runs' ? 0 : -1} aria-selected={activeTab === 'runs'} aria-label={t.tabWithCount(runsTabLabel, runsOwnedCardCount)} className={`hand-tab control-tab${activeTab === 'runs' ? ' is-active' : ''}`} onClick={() => selectTab('runs')}>
-            <span className="hand-tab-count page-number" aria-hidden="true">{runsOwnedCardCount.toLocaleString(locale())}</span>{runsTabLabel}
+            <span className="hand-tab-count page-number" aria-hidden="true">{runsOwnedCardCount.toLocaleString(locale())}</span><ReservedText values={{ en: ownHand ? text.en.yourRuns : text.en.runs, ru: ownHand ? text.ru.yourRuns : text.ru.runs }} />
           </button>}
           {milestoneTabVisible && <button type="button" role="tab" id="hand-tab-milestone" aria-controls="hand-tab-panel" tabIndex={activeTab === 'milestone' ? 0 : -1} aria-selected={activeTab === 'milestone'} aria-label={t.tabWithCount(t.pinnedMilestone, milestoneOwnedCards.length)} className={`hand-tab control-tab${activeTab === 'milestone' ? ' is-active' : ''}`} onClick={() => selectTab('milestone')}>
-            <span className="hand-tab-count page-number" aria-hidden="true">{milestoneOwnedCards.length.toLocaleString(locale())}</span>{t.pinnedMilestone}
+            <span className="hand-tab-count page-number" aria-hidden="true">{milestoneOwnedCards.length.toLocaleString(locale())}</span><ReservedText values={{ en: text.en.pinnedMilestone, ru: text.ru.pinnedMilestone }} />
           </button>}
           <button type="button" role="tab" id="hand-tab-bookmarks" aria-controls="hand-tab-panel" tabIndex={activeTab === 'bookmarks' ? 0 : -1} aria-selected={activeTab === 'bookmarks'} aria-label={t.tabWithCount(t.bookmarks, bookmarkedCards.length)} className={`hand-tab control-tab${activeTab === 'bookmarks' ? ' is-active' : ''}`} onClick={() => selectTab('bookmarks')}>
-            <span className="hand-tab-count page-number" aria-hidden="true">{bookmarkedCards.length.toLocaleString(locale())}</span>{t.bookmarks}
+            <span className="hand-tab-count page-number" aria-hidden="true">{bookmarkedCards.length.toLocaleString(locale())}</span><ReservedText values={{ en: text.en.bookmarks, ru: text.ru.bookmarks }} />
           </button>
           <button type="button" role="tab" id="hand-tab-team" aria-controls="hand-tab-panel" tabIndex={activeTab === 'team' ? 0 : -1} aria-selected={activeTab === 'team'} className={`hand-tab control-tab${activeTab === 'team' ? ' is-active' : ''}`} onClick={() => selectTab('team')}>
-            <Users size={20} aria-hidden="true" />{t.teamHands}
+            <Users size={20} aria-hidden="true" /><ReservedText values={{ en: text.en.teamHands, ru: text.ru.teamHands }} />
           </button>
         </div>
-        {activeTab === 'due' && <button type="button" className="hand-show-all control" aria-pressed={showAllDue} onClick={() => setShowAllDue(enabled => !enabled)}>{t.showAll}</button>}
+        {activeTab === 'due' && <button type="button" className="hand-show-all control" aria-pressed={showAllDue} onClick={() => setShowAllDue(enabled => !enabled)}><ReservedText values={{ en: text.en.showAll, ru: text.ru.showAll }} /></button>}
       </div>
       {!showAllHands && activeHand
         ? <HandBoard hand={activeHand} canReorder={canReorder} decksById={decksById} lookups={lookups!} projectTags={catalog.projectTags} onOpenCard={onOpenCard} onRemove={canReorder ? removeHandCard : undefined} onDragEnd={event => void finishHandDrag(event)}>
@@ -590,8 +591,8 @@ function DoneSlot({ doneCards, lastWeek, expanded, controls, onToggle }: { doneC
   const title = t.doneSummary(thisWeek.count, thisWeek.effort, lastWeek.count, lastWeek.effort, doneCards.length);
   return <button type="button" className="hand-slot hand-slot-done" aria-expanded={expanded} aria-controls={controls} title={title} onClick={onToggle}>
     <span className="hand-slot-done-chip"><Check size={24} aria-hidden="true" /></span>
-    <span className="hand-slot-done-label">{t.doneCards} <span className="hand-slot-done-count">{doneCards.length.toLocaleString(locale())}</span></span>
-    <span className="hand-slot-done-week">{t.doneThisWeek(thisWeek.count, thisWeek.effort)}</span>
+    <span className="hand-slot-done-label"><ReservedText values={{ en: text.en.doneCards, ru: text.ru.doneCards }} /> <span className="hand-slot-done-count">{doneCards.length.toLocaleString(locale())}</span></span>
+    <ReservedText className="hand-slot-done-week" values={{ en: text.en.doneThisWeek(thisWeek.count, thisWeek.effort), ru: text.ru.doneThisWeek(thisWeek.count, thisWeek.effort) }} />
   </button>;
 }
 

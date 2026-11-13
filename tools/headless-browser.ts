@@ -1,9 +1,9 @@
 import { spawn, type ChildProcess } from 'node:child_process';
-import { mkdtempSync, readFileSync } from 'node:fs';
-import { rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { findBrowser, missingBrowserReason } from './browser-environment.ts';
+import { createBrowserTemp, removeBrowserTemp, setBrowserTempPid } from './browser-temp.ts';
+import { killBrowserTree, waitForExit, watchBrowserProfile } from './browser-watchdog.ts';
 
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 const REQUEST_TIMEOUT_MS = 30_000;
@@ -144,25 +144,23 @@ export interface HeadlessBrowserOptions {
   extraArgs?: string[];
 }
 
-function waitForExit(child: ChildProcess, timeoutMs: number): Promise<void> {
-  if (child.exitCode !== null || child.signalCode !== null) return Promise.resolve();
-  return new Promise(resolve => {
-    const done = () => { clearTimeout(timer); child.off('exit', done); child.off('error', done); resolve(); };
-    const timer = setTimeout(done, timeoutMs);
-    child.once('exit', done);
-    child.once('error', done);
-  });
-}
-
 async function launchBrowser(options: HeadlessBrowserOptions, viewport?: Viewport, browserTarget = false) {
   const browserPath = options.browserPath ?? findHeadlessBrowser();
-  const profile = mkdtempSync(path.join(tmpdir(), 'deckmate-capture-'));
+  const profile = await createBrowserTemp('deckmate-capture-');
   const windowArgs = viewport ? [`--window-size=${viewport.width},${viewport.height}`] : [];
   // 2026-11-12: desktop pointer/motion defaults must be independent of the host; touch and reduced-motion tests override them.
   const desktopArgs = ['--blink-settings=primaryHoverType=2,availableHoverTypes=2,primaryPointerType=4,availablePointerTypes=4', '--force-prefers-no-reduced-motion'];
-  const child = spawn(browserPath, ['--headless=new', '--disable-gpu', '--no-first-run', '--no-default-browser-check',
-    ...windowArgs, ...desktopArgs, ...(options.extraArgs ?? []), '--remote-debugging-port=0', `--user-data-dir=${profile}`, 'about:blank'],
-  { stdio: 'ignore', detached: process.platform !== 'win32', windowsHide: true });
+  let child: ChildProcess;
+  try {
+    child = spawn(browserPath, ['--headless=new', '--disable-gpu', '--no-first-run', '--no-default-browser-check',
+      ...windowArgs, ...desktopArgs, ...(options.extraArgs ?? []), '--remote-debugging-port=0', `--user-data-dir=${profile}`, 'about:blank'],
+    // 2026-11-13: Chromium's scoped_dir/msedge scratch files must share the profile's cleanup lifetime.
+    { stdio: 'ignore', detached: process.platform !== 'win32', windowsHide: true,
+      env: { ...process.env, TEMP: profile, TMP: profile, TMPDIR: profile } });
+  } catch (error) {
+    await removeBrowserTemp(profile);
+    throw error;
+  }
   let launchError: Error | undefined;
   child.on('error', error => { launchError = error; });
   const launchFailure = () => {
@@ -170,11 +168,7 @@ async function launchBrowser(options: HeadlessBrowserOptions, viewport?: Viewpor
     if (child.exitCode !== null || child.signalCode !== null)
       return new Error(`Browser process exited early with code ${child.exitCode} (signal ${child.signalCode})`);
   };
-  // 2026-11-12: killing a coordinator must also end its browser tree instead of leaving headless orphans.
-  if (process.platform === 'win32' && child.pid) {
-    const watch = 'Wait-Process -Id ' + process.pid + ' -ErrorAction SilentlyContinue; $b = Get-Process -Id ' + child.pid + " -ErrorAction SilentlyContinue; if ($b -and $b.ProcessName -match 'msedge|chrome') { taskkill /T /F /PID " + child.pid + ' | Out-Null }';
-    spawn('powershell', ['-NoProfile', '-NonInteractive', '-Command', watch], { detached: true, stdio: 'ignore', windowsHide: true }).unref();
-  }
+  let stopWatching: (() => Promise<void>) | undefined;
   let socket: WebSocket | undefined;
   let closing: Promise<void> | undefined;
   const close = () => closing ??= (async () => {
@@ -184,20 +178,18 @@ async function launchBrowser(options: HeadlessBrowserOptions, viewport?: Viewpor
     }
     socket?.close();
     try {
-      if (process.platform === 'win32' && child.pid) {
-        const killer = spawn('taskkill', ['/T', '/F', '/PID', String(child.pid)], { stdio: 'ignore', windowsHide: true });
-        await waitForExit(killer, 5000);
-      } else if (child.pid) {
-        try { process.kill(-child.pid, 'SIGKILL'); } catch (error) {
-          if ((error as NodeJS.ErrnoException).code !== 'ESRCH') throw error;
-        }
-      }
+      if (child.pid && child.exitCode === null && child.signalCode === null) await killBrowserTree(child.pid);
       if (child.pid) await waitForExit(child, 2000);
     } finally {
-      await rm(profile, { recursive: true, force: true, maxRetries: 15, retryDelay: 100 });
+      await removeBrowserTemp(profile);
+      await stopWatching?.();
     }
   })();
   try {
+    if (child.pid) {
+      await setBrowserTempPid(profile, child.pid);
+      stopWatching = await watchBrowserProfile(profile, child.pid);
+    }
     const deadline = Date.now() + 45_000;
     let port = 0;
     let endpoint = '';

@@ -41,7 +41,8 @@ describe('ProjectPulseStrip stale-while-revalidate cache', () => {
     expect(html).toContain('project-pulse-loading');
     expect(html).toContain('data-expanded="false"');
     expect(html).toContain('role="status">Loading project pulse');
-    expect(html).toContain('project-pulse-placeholder">—');
+    expect(html).toContain('shape-line shape-value');
+    expect(html).not.toContain('>—<');
     expect(html).not.toContain('project-pulse-value');
   });
 
@@ -74,7 +75,8 @@ describe('ProjectPulseStrip stale-while-revalidate cache', () => {
     rememberProjectPulse('sandbox', pulse(3));
     const uncached = renderStrip('live');
     expect(uncached).toContain('project-pulse-loading');
-    expect(uncached).toContain('project-pulse-placeholder">—');
+    expect(uncached).toContain('shape-line shape-value');
+    expect(uncached).not.toContain('>—<');
     expect(uncached).not.toContain('project-pulse-value');
     rememberProjectPulse('live', pulse(7));
     const cached = renderStrip('live');

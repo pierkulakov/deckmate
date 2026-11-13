@@ -89,7 +89,7 @@ describe.skipIf(!browserPath)('Vision tab chrome (browser)', () => {
   it('explains empty panels through the shared EmptyState and counts linked cards', async () => {
     await open('dark');
     expect(await page.evaluate(`document.querySelectorAll('.vision-panel .ui-empty[role=status]').length`)).toBe(1);
-    expect(await page.evaluate(`document.querySelector('.vision-panel .ui-empty').textContent`))
+    expect(await page.evaluate(`document.querySelector('.vision-panel .ui-empty').innerText`))
       .toBe('There are no references in text nodes yet.');
     expect(await page.evaluate(`document.querySelector('.vision-linked-list button')?.textContent ?? ''`)).toContain('One');
     expect(await page.evaluate(`document.querySelector('.vision-panel .panel-count').textContent`)).toBe('1');

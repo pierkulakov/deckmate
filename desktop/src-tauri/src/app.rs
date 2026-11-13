@@ -54,6 +54,7 @@ pub struct Shell {
     pub loading: Mutex<Option<Loading>>,
     pub webview_handlers: tokio::sync::OnceCell<Result<(), String>>,
     pub updates: updater::State,
+    pub menus: menu::State,
     pub whats_new: whats_new::State,
     pub startup_project: Option<String>,
     pub first_show: window::FirstShow,
@@ -93,6 +94,7 @@ impl Shell {
             loading: Mutex::new(None),
             webview_handlers: tokio::sync::OnceCell::new(),
             updates: updater::State::default(),
+            menus: menu::State::default(),
             whats_new: whats_new::State::default(),
             startup_project,
             first_show: window::FirstShow::default(),
@@ -293,7 +295,7 @@ async fn launcher_locked(app: &AppHandle, shell: &Shell, status: Option<Value>) 
     unsaved::leave(app);
     shell.stop().await;
     *shell.pending_status.lock().unwrap() = status;
-    menu::rebuild(app);
+    menu::sync(app);
     if shell
         .while_current(launch, window::wait_until_shown(app))
         .await
@@ -451,7 +453,7 @@ async fn start_project(
         settings.remember(folder);
         Ok(())
     })?;
-    menu::rebuild(app);
+    menu::sync(app);
     let _ = window.set_title(&format!("Deckmate — {}", paths::project_name(folder)));
     // 2026-11-09: finish registering the script before cancellation can hand this webview to another launch.
     crate::webview::board_script(&window, Some(url.clone()))
@@ -462,23 +464,27 @@ async fn start_project(
     if shell.replaced(launch) {
         return Err(shell.failure("superseded", "superseded"));
     }
+    let language = shell.language();
     let loaded = tokio::select! {
-        result = window::navigate_board(&window, &url) => result.map_err(|error| Failure::new("load-failed", error)),
+        biased;
         _ = cancellation.changed() => Err(shell.failure("superseded", "superseded")),
-        exit = process.exited() => Err(Failure::new("start-failed", texts::format(&shell.language(), "serverStopped", "code", server::exit_code(exit.code)))),
+        failure = process.failed(&language) => Err(failure.unwrap_or_else(|| shell.failure("closed", "closed"))),
+        result = window::navigate_board(&window, &url) => result.map_err(|error| Failure::new("load-failed", error)),
     };
     shell.loading.lock().unwrap().take();
     loaded?;
-    watch_exit(app.clone(), process, launch, folder.into());
+    watch_failure(app.clone(), process, launch, folder.into());
     Ok(())
 }
 
-fn watch_exit(app: AppHandle, process: Server, launch: u64, folder: String) {
+fn watch_failure(app: AppHandle, process: Server, launch: u64, folder: String) {
     tauri::async_runtime::spawn(async move {
-        let exit = process.exited().await;
         let shell = state(&app);
+        let Some(failure) = process.failed(&shell.language()).await else {
+            return;
+        };
         let _guard = shell.lifecycle.lock().await;
-        if exit.expected || shell.replaced(launch) {
+        if shell.closing.load(Ordering::SeqCst) || shell.replaced(launch) {
             return;
         }
         if shell
@@ -490,15 +496,6 @@ fn watch_exit(app: AppHandle, process: Server, launch: u64, folder: String) {
         {
             return;
         }
-        let failure = Failure::new(
-            "start-failed",
-            texts::format(
-                &shell.language(),
-                "serverStopped",
-                "code",
-                server::exit_code(exit.code),
-            ),
-        );
         shell.next_launch();
         launcher_locked(&app, &shell, Some(error_status(&folder, &failure))).await;
     });
@@ -840,6 +837,7 @@ pub(crate) mod tests {
             loading: Mutex::new(None),
             webview_handlers: tokio::sync::OnceCell::new(),
             updates: updater::State::default(),
+            menus: menu::State::default(),
             whats_new: whats_new::State::default(),
             startup_project: None,
             first_show: window::FirstShow::default(),

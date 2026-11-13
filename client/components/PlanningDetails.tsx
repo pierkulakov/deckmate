@@ -9,6 +9,7 @@ import { defineText, useText } from '../i18n.ts';
 import { useDesktopDirty } from '../desktop-bridge.ts';
 import { Button } from './ui/button.tsx';
 import { Markdown } from './Markdown.tsx';
+import { DecodedImage } from './DecodedImage.tsx';
 import { MilestoneForm } from './PlanningPopover.tsx';
 import type { SavePlanning } from './TimelineView.tsx';
 import '../planning-details.css';
@@ -65,7 +66,6 @@ export function PlanningDetails({ plan, catalog, source, writable, pending, onSa
   const [conflict, setConflict] = useState<CatalogView | null>(null);
   const [message, setMessage] = useState<keyof typeof text.en | null>(null);
   const [serverError, setServerError] = useState<string | null>(null);
-  const [imageFailed, setImageFailed] = useState(false);
   const descriptionTree = useMemo(() => markdownParser.parse(plan.record.description ?? ''), [plan.record.description]);
   const image = coverSource(plan.record.cover ?? '', source);
   const dirty = editing && JSON.stringify(draft) !== JSON.stringify(initialDraft);
@@ -74,7 +74,6 @@ export function PlanningDetails({ plan, catalog, source, writable, pending, onSa
     : !catalog.milestones?.some(record => record.id === plan.record.id);
   useEffect(() => { onDirtyChange(dirty); }, [dirty, onDirtyChange]);
   useEffect(() => () => onDirtyChange(false), [onDirtyChange]);
-  useEffect(() => { setImageFailed(false); }, [image]);
   useDesktopDirty(dirty);
   useEffect(() => {
     if (!dirty) return;
@@ -132,8 +131,7 @@ export function PlanningDetails({ plan, catalog, source, writable, pending, onSa
 
   return <section className="planning-description-panel">
     {plan.kind === 'run' && !plan.record.configurationId && <div className="planning-run-goal"><h3>{t.goal}</h3><p>{plan.record.goal}</p></div>}
-    {image && !imageFailed && <img className="planning-cover-image" src={image} alt="" loading="lazy" onError={() => setImageFailed(true)} />}
-    {imageFailed && <p className="planning-stat-note">{t.coverUnavailable}</p>}
+    {image && <DecodedImage className="planning-cover-image" src={image} alt="" loading="lazy" fallback={<span>{t.coverUnavailable}</span>} />}
     {plan.record.description ? <div className="planning-description-markdown"><Markdown tree={descriptionTree} source={source} path={plan.kind === 'run' ? 'tasks/deckmate-runs.md' : 'tasks/deckmate-milestones.md'} /></div>
       : <p className="planning-stat-note">{writable ? t.noDescription : t.emptyDescription}</p>}
     {onSave && writable && <Button size="sm" variant="ghost" disabled={pending} onClick={begin}><Pencil size={14} />{t.edit}</Button>}

@@ -8,6 +8,7 @@ import { Button } from './ui/button.tsx';
 import { defineText, useText } from '../i18n.ts';
 import { moveFocus } from '../focus.ts';
 import { formatShortcut } from '../shortcut-format.ts';
+import { DecodedImage } from './DecodedImage.tsx';
 
 const text = defineText({
   view: (name: string) => `View image ${name}`,
@@ -129,7 +130,7 @@ export function AttachmentImageViewer({ images, index, source, previousLabel, ne
         <div ref={stage} className="attachment-viewer-stage">
           <div className={'attachment-viewer-pan' + (dragging ? ' is-dragging' : '')}
             onPointerDown={startPan} onPointerMove={movePan} onPointerUp={endPan} onPointerCancel={endPan} onLostPointerCapture={endPan} onDoubleClick={reset}>
-            <img src={attachmentFileUrl(source, image.file)} alt={image.name} draggable={false}
+            <DecodedImage src={attachmentFileUrl(source, image.file)} alt={image.name} draggable={false}
               style={{ transform: `translate(${offset.x}px, ${offset.y}px) scale(${zoom})` }} />
           </div>
           {!first && <Button type="button" variant="ghost" size="icon" className="attachment-viewer-arrow attachment-viewer-previous" aria-label={previousLabel} title={previousLabel} onClick={() => onIndexChange(index - 1)}><ChevronLeft size={26} /></Button>}

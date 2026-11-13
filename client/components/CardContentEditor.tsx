@@ -172,6 +172,7 @@ export function CardContentEditor({ card, catalog, snapshot, writable, pending, 
   const [currentContent, setCurrentContent] = useState<CardContent | null>(null);
   const [editing, setEditing] = useState(false);
   const editButtonRef = useRef<HTMLButtonElement>(null);
+  const returnFocusToEdit = useRef(false);
   // The whole card is one plain Markdown text; its first line is the title.
   const [draft, setDraft] = useState('');
   const [saving, setSaving] = useState(false);
@@ -402,7 +403,7 @@ export function CardContentEditor({ card, catalog, snapshot, writable, pending, 
       if (saved) {
         finishEditing();
         // Only closing the full editor returns to Edit; saving a reading-mode checklist keeps its own focus.
-        if (returnToEdit && !focusMode) requestAnimationFrame(() => moveFocus(editButtonRef.current, { preventScroll: true }));
+        if (returnToEdit && !focusMode) returnFocusToEdit.current = true;
       } else {
         setSubmittedContent(null);
         // 2026-11-03: a failed quick checkbox edit becomes an explicit draft instead of disappearing.
@@ -421,6 +422,17 @@ export function CardContentEditor({ card, catalog, snapshot, writable, pending, 
     }
   }
 
+  // 2026-11-13: a frame callback could run before the commit that clears `saving`, and a disabled button refuses
+  // focus; Edit takes focus back only once it is enabled again.
+  const editDisabled = Boolean(loadFailure) || pending || saving || blocked;
+  useLayoutEffect(() => {
+    if (!returnFocusToEdit.current || editing || editDisabled) return;
+    returnFocusToEdit.current = false;
+    // Focus the person has already moved elsewhere stays where it is.
+    if (document.activeElement && document.activeElement !== document.body) return;
+    moveFocus(editButtonRef.current, { preventScroll: true });
+  }, [editing, editDisabled]);
+
   // 2026-11-10: at rest the file is simply saved, so that state is a quiet icon with its words for tooltips and screen
   // readers; loading, saving, an unsaved text or a browser draft say so in words.
   const calmStatus = saveStatus === t.savedToFile;
@@ -429,7 +441,7 @@ export function CardContentEditor({ card, catalog, snapshot, writable, pending, 
     {saveStatus && <span className={'card-content-save-status' + (calmStatus ? ' is-calm' : '')} role="status" title={saveStatus}>
       {calmStatus ? <><FileCheck2 size={14} aria-hidden="true" /><span className="visually-hidden">{saveStatus}</span></> : saveStatus}</span>}
     <div className="card-content-reading-actions">{footerActions}
-      {writable && <Button ref={editButtonRef} type="button" size="sm" className="card-content-edit-action" aria-label={t.editCard} disabled={Boolean(loadFailure) || pending || saving || blocked} onClick={startEditing}><Pencil size={14} />{t.edit}</Button>}
+      {writable && <Button ref={editButtonRef} type="button" size="sm" className="card-content-edit-action" aria-label={t.editCard} disabled={editDisabled} onClick={startEditing}><Pencil size={14} />{t.edit}</Button>}
     </div>
   </footer>;
   const comparison = currentContent ?? fallbackContent;

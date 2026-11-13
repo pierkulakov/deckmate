@@ -103,6 +103,7 @@ async function runAttachmentEdit(catalog: CatalogService, config: ServerConfig, 
 }
 
 export async function createApp(config: ServerConfig, options: { deferStartup?: boolean } = {}) {
+  if (process.platform === 'win32') void import('./windows-access.ts').then(module => module.warmWindowsAccess(), () => {});
   const app = Fastify({ logger: false, bodyLimit: 512 * 1024,
     // 2026-11-07: malformed URLs bypass request hooks but still need the same-origin framing policy.
     frameworkErrors: (error, _request, reply: FastifyReply) => { reply.headers(framingHeaders).send(error); },
@@ -846,8 +847,8 @@ export async function createApp(config: ServerConfig, options: { deferStartup?: 
     });
     try {
       await settle(projectStartup);
-      await catalog?.close();
-      await boards?.close();
+      await settle(catalog?.close());
+      await settle(boards?.close());
     } finally {
       try { await settle((await settle(registration))?.()); }
       catch { /* 2026-11-12: stale discovery data must not prevent the remaining shutdown hooks. */ }

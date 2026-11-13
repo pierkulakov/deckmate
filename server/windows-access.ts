@@ -125,6 +125,11 @@ function accessWorker(): ChildProcessWithoutNullStreams {
   return child;
 }
 
+/** 2026-11-13: starting the helper early hides its cold start from the first write after a server starts. */
+export function warmWindowsAccess(): void {
+  if (process.platform === 'win32') accessWorker();
+}
+
 /** 2026-11-13: a closing server must not stay alive for a pending cold check; other writers in the process keep theirs. */
 export function closeWindowsAccess(): void {
   for (const request of pending.values()) request.timer.unref();

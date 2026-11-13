@@ -607,6 +607,11 @@ describe.skipIf(!browserPath)('application shell (browser)', () => {
             const [chip, detail] = labels[lang][state];
             const name = chip === detail ? chip : `${chip} — ${detail}`;
             await evaluate(`window.shellTest.setLang(${JSON.stringify(lang)})`);
+            // 2026-11-13: "Saved" lasts 1.6 s, shorter than sixteen layout checks on a slow runner; restart it per check.
+            if (state === 'saved') {
+              await evaluate('window.shellTest.startSave(0)');
+              await until(`Boolean(document.querySelector('.server-status.is-saved'))`);
+            }
             await until(`document.querySelector('.server-status')?.getAttribute('aria-label') === ${JSON.stringify(name)}`);
             const result = await evaluate(`(() => {
               const button = document.querySelector('.server-status');

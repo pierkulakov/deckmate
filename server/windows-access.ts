@@ -85,7 +85,10 @@ function accessWorker(): ChildProcessWithoutNullStreams {
   // 2026-11-13: a PowerShell 7 parent leaves its PSModulePath behind, and Windows PowerShell then cannot load Get-Acl;
   // without the variable it builds its own default module path.
   const env = Object.fromEntries(Object.entries(process.env).filter(([name]) => name.toLowerCase() !== 'psmodulepath'));
-  const child = spawn(executable, ['-NoLogo', '-NoProfile', '-NonInteractive', '-Command', script], { windowsHide: true, env });
+  // 2026-11-13: the long-lived helper must not hold the project or a temporary folder as its working directory,
+  // or Windows refuses to rename or remove that folder while the helper lives.
+  const cwd = path.dirname(executable);
+  const child = spawn(executable, ['-NoLogo', '-NoProfile', '-NonInteractive', '-Command', script], { windowsHide: true, env, cwd });
   worker = child;
   workerAnswered = false;
   let received = '';

@@ -9,7 +9,8 @@ import path from 'node:path';
 // 2026-11-10: the card scopes share the Decks home's header row and the open deck's workbench, and say which
 // emptiness they show: every card in a deck, an empty track, cards only hidden by search, or no cards at all.
 const browserPath = requireBrowser();
-type PlateMeasurement = { frames: { opacity: number; connected: boolean; stable: boolean }[][]; label: string };
+type PlateFrame = { opacity: number; owner: boolean; connected: boolean; stable: boolean };
+type PlateMeasurement = { frames: PlateFrame[][]; label: string };
 describe.skipIf(!browserPath)('card scope views', () => {
   let page: HeadlessPage;
   async function until(expression: string) {
@@ -22,8 +23,14 @@ describe.skipIf(!browserPath)('card scope views', () => {
     throw new Error(expression + '\n' + state + '\n' + page.consoleErrors.join('\n'));
   }
   const text = (selector: string) => page.evaluate(`document.querySelector(${JSON.stringify(selector)})?.textContent ?? null`);
+  function expectStablePlate(frames: PlateFrame[][]) {
+    // 2026-11-14: only the preview's owner control deliberately dims to .8 while disabled during a write.
+    expect(frames.flat().every(frame => frame.connected && frame.stable
+      && frame.opacity >= (frame.owner ? .8 : 1) && frame.opacity <= 1), JSON.stringify(frames)).toBe(true);
+  }
   const click = (selector: string) => page.evaluate(`document.querySelector(${JSON.stringify(selector)}).click()`);
   async function pointer(selector: string) {
+    await until(`Boolean(document.querySelector(${JSON.stringify(selector)}))`);
     const point = await page.callFunction(`selector => {
       const button = document.querySelector(selector);
       button.scrollIntoView({ block: 'nearest' });
@@ -149,7 +156,7 @@ describe.skipIf(!browserPath)('card scope views', () => {
       function sample() {
         frames.push(controls.map(({ element, rect }) => {
           const next = element.getBoundingClientRect();
-          return { opacity: Number(getComputedStyle(element).opacity), connected: element.isConnected,
+          return { opacity: Number(getComputedStyle(element).opacity), owner: element.classList.contains('card-preview-owner-shortcut'), connected: element.isConnected,
             stable: JSON.stringify(rect) === JSON.stringify([next.x, next.y, next.width, next.height]) };
         }));
         if (!document.querySelector('.card-quick-settings')) {
@@ -160,7 +167,8 @@ describe.skipIf(!browserPath)('card scope views', () => {
       requestAnimationFrame(sample);
     })`) as PlateMeasurement;
     expect(measurement.frames.length).toBeGreaterThan(3);
-    expect(measurement.frames.flat().every(frame => frame.opacity === 1 && frame.connected && frame.stable), JSON.stringify(measurement.frames)).toBe(true);
+    expectStablePlate(measurement.frames);
+    await until(`getComputedStyle(document.querySelector('.card-preview-owner-shortcut')).opacity === '1'`);
     expect(measurement.label).toBe('Priority: Medium');
     await click('.card-preview-tools button');
     await until(`!document.querySelector('.card-preview-header')`);
@@ -366,7 +374,7 @@ describe.skipIf(!browserPath)('card scope views', () => {
     await until(`document.querySelectorAll('.card-preview .markdown input[type="checkbox"]:not(:disabled)').length === 3`);
     expect(await page.evaluate(`document.querySelector('.card-preview-owner-shortcut').getAttribute('aria-label')`)).toBe(label(1));
     expect(await rings()).toBe(0);
-    // A save updates both medallions in place: the same elements, the same boxes, no fade.
+    // A save updates both medallions in place: the same elements and the same boxes.
     const saved = await page.evaluate(`new Promise((resolve, reject) => {
       const selectors = [${JSON.stringify(medallion)}, '.card-preview-owner-shortcut'];
       const originals = selectors.map(selector => document.querySelector(selector));
@@ -378,7 +386,8 @@ describe.skipIf(!browserPath)('card scope views', () => {
         frames.push(originals.map((element, index) => {
           const r = element.getBoundingClientRect();
           return { connected: element.isConnected && element === document.querySelector(selectors[index]),
-            stable: JSON.stringify([r.x, r.y, r.width, r.height]) === JSON.stringify(boxes[index]), opacity: Number(getComputedStyle(element).opacity) };
+            stable: JSON.stringify([r.x, r.y, r.width, r.height]) === JSON.stringify(boxes[index]), opacity: Number(getComputedStyle(element).opacity),
+            owner: element.classList.contains('card-preview-owner-shortcut') };
         }));
         if (document.querySelector('.card-preview-owner-shortcut').title === ${JSON.stringify(label(2))}
           && document.querySelectorAll('.card-preview .markdown input[type="checkbox"]:not(:disabled)').length === 3) {
@@ -386,9 +395,10 @@ describe.skipIf(!browserPath)('card scope views', () => {
         } else requestAnimationFrame(sample);
       }
       requestAnimationFrame(sample);
-    })`) as Array<Array<{ connected: boolean; stable: boolean; opacity: number }>>;
+    })`) as PlateFrame[][];
     expect(saved.length).toBeGreaterThan(0);
-    expect(saved.flat().every(frame => frame.connected && frame.stable && frame.opacity === 1), JSON.stringify(saved)).toBe(true);
+    expectStablePlate(saved);
+    await until(`getComputedStyle(document.querySelector('.card-preview-owner-shortcut')).opacity === '1'`);
     expect(await title(medallion)).toBe(label(2));
     await click('.card-preview .markdown li:last-child input[type="checkbox"]');
     await until(`document.querySelector('.card-preview-owner-shortcut').title === ${JSON.stringify(label(3))}`);

@@ -183,14 +183,16 @@ jobs:
             }
           }
       - name: Build and sign the Windows installer
-        working-directory: desktop/src-tauri
+        # 2026-11-14: from src-tauri, Tauri looks for package.json downward and takes the staged resources/deckmate
+        # package as the frontend root, so beforeBuildCommand runs in the wrong folder; desktop/ is the shell's root.
+        working-directory: desktop
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: |
           # Updater artifacts are CI-only; a local npm run dist stays unsigned.
           # tauri-cli merges this flag over tauri.release.conf.json.
-          node ../node_modules/@tauri-apps/cli/tauri.js build --config tauri.release.conf.json --config '{"bundle":{"createUpdaterArtifacts":true}}'
+          node node_modules/@tauri-apps/cli/tauri.js build --config src-tauri/tauri.release.conf.json --config '{"bundle":{"createUpdaterArtifacts":true}}'
           if ($LASTEXITCODE -ne 0) { throw "Tauri build exited with code $LASTEXITCODE." }
       - name: Self-test the unpacked release build
         run: |

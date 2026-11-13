@@ -851,6 +851,7 @@ export async function createApp(config: ServerConfig, options: { deferStartup?: 
     } finally {
       try { await settle((await settle(registration))?.()); }
       catch { /* 2026-11-12: stale discovery data must not prevent the remaining shutdown hooks. */ }
+      if (process.platform === 'win32') (await import('./windows-access.ts')).closeWindowsAccess();
     }
   });
   if (!options.deferStartup) {

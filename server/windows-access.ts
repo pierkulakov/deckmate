@@ -3,6 +3,11 @@ import path from 'node:path';
 
 interface AccessRequest { resolve: () => void; reject: (error: Error) => void; timer: ReturnType<typeof setTimeout> }
 let worker: ChildProcessWithoutNullStreams | undefined;
+// 2026-11-13: a cold Windows PowerShell under parallel load (four test workers, a busy CI runner) can need well over
+// five seconds before its first answer; once it has answered, a slow reply means a stuck helper.
+let workerAnswered = false;
+const coldReplyMs = 20_000;
+const warmReplyMs = 5_000;
 let sequence = 0;
 const pending = new Map<number, AccessRequest>();
 
@@ -82,6 +87,7 @@ function accessWorker(): ChildProcessWithoutNullStreams {
   const env = Object.fromEntries(Object.entries(process.env).filter(([name]) => name.toLowerCase() !== 'psmodulepath'));
   const child = spawn(executable, ['-NoLogo', '-NoProfile', '-NonInteractive', '-Command', script], { windowsHide: true, env });
   worker = child;
+  workerAnswered = false;
   let received = '';
   child.stdout.setEncoding('utf8');
   child.stdout.on('data', (chunk: string) => {
@@ -94,6 +100,7 @@ function accessWorker(): ChildProcessWithoutNullStreams {
       received = received.slice(newline + 1);
       const match = /^(\d+):(ok|denied)(?::([A-Za-z0-9-]{0,80}))?$/u.exec(line);
       if (!match) { failWorker(child); return; }
+      if (worker === child) workerAnswered = true;
       const id = Number(match[1]);
       const request = pending.get(id);
       if (!request) continue;
@@ -115,12 +122,17 @@ function accessWorker(): ChildProcessWithoutNullStreams {
   return child;
 }
 
+/** 2026-11-13: a closing server must not stay alive for a pending cold check; other writers in the process keep theirs. */
+export function closeWindowsAccess(): void {
+  for (const request of pending.values()) request.timer.unref();
+}
+
 export function checkWindowsAccess(filename: string, parent: string | undefined, restrict: boolean): Promise<void> {
   if (pending.size >= 256) return Promise.reject(new Error('Windows access check queue is full'));
   const child = accessWorker();
   const id = ++sequence;
   return new Promise<void>((resolve, reject) => {
-    const timer = setTimeout(() => failWorker(child), 5000);
+    const timer = setTimeout(() => failWorker(child), workerAnswered ? warmReplyMs : coldReplyMs);
     pending.set(id, { resolve, reject, timer });
     child.stdin.write(JSON.stringify({ id, filename, parent, restrict }) + '\n');
   });

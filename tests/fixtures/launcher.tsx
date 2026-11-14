@@ -27,7 +27,7 @@ const project = (name: string, extra = {}) => ({ path: `D:\\Projects\\${name}`, 
 const initial: DesktopState = {
   ok: true, current: null, lastProject: project('Last').path, recent: [project('Last'), project('Other')],
   projects: [project('Pinned'), project('Missing', { missing: true })],
-  version: '0.8.1', deckmateVersion: '0.8.1', language: 'en', theme: 'light', locale: 'en-US',
+  version: '0.8.2', deckmateVersion: '0.8.2', language: 'en', theme: 'light', locale: 'en-US',
 };
 let snapshot = structuredClone(initial);
 const calls: { method: string; args: unknown[] }[] = [];

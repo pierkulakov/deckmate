@@ -52,7 +52,7 @@ describe.skipIf(!browserPath)('React desktop start screen', () => {
       .toEqual([[path('Last')], [path('Other')], [path('Pinned'), path('Missing')]]);
     expect(await evaluate(`document.querySelector('#actions').firstElementChild.querySelector('button').id`)).toBe('open-folder');
     expect(await active()).toBe('open-folder');
-    expect(await text('#version')).toBe('Deckmate 0.8.1');
+    expect(await text('#version')).toBe('Deckmate 0.8.2');
   });
   it('makes Create first on first run and explains Markdown ownership and the demo/template boundary', async () => {
     await render({ empty: true });

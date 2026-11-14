@@ -659,6 +659,85 @@ describe.skipIf(!browserPath)('open card first UX batch (real browser)', () => {
     expect(await page.evaluate(`getComputedStyle(document.activeElement).outlineStyle`)).toBe('none');
   });
 
+  it.each([false, true])('keeps a %s stashed text draft editable and saves after unrelated manifest refreshes', async stashed => {
+    await render();
+    await click('.card-content-edit-action');
+    await until(`Boolean(document.querySelector('.card-edit-text'))`);
+    await page.send('Input.insertText', { text: 'Human draft ' });
+    const draft = await page.evaluate(`document.querySelector('.card-edit-text').value`);
+    if (stashed) {
+      await click('.card-edit-link.is-cancel');
+      await until(`Boolean(document.querySelector('.card-draft-banner'))`);
+    }
+    await page.evaluate(`(() => {
+      window.firstBatch.refreshCatalog();
+      return new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    })()`);
+    if (stashed) {
+      await until(`document.querySelector('.card-content-save-status')?.textContent === 'Draft in this browser — not saved to file'`);
+      await click('.card-draft-banner-actions button');
+      await until(`Boolean(document.querySelector('.card-edit-text'))`);
+    }
+    expect(await page.evaluate(`Boolean(document.querySelector('.card-content-conflict'))`)).toBe(false);
+    expect(await page.evaluate(`document.querySelector('.card-edit-text').value`)).toBe(draft);
+    expect(await page.evaluate(`document.querySelector('.card-edit-save').disabled`)).toBe(false);
+    await click('.card-edit-save');
+    await until(`!document.querySelector('.card-edit-text')`);
+    expect(await page.evaluate('window.firstBatch.requests')).toEqual([{
+      action: 'update-card-content', cardId: 'card:preview', title: 'Human draft Review the work',
+      markdown: 'Card text remains visible.', sourceHash: 'card-hash', manifestHash: 'manifest-hash',
+    }]);
+    await until(`document.querySelector('.card-preview-title')?.textContent === 'Human draft Review the work'`);
+  });
+
+  it('does not turn an unconfirmed save into a content conflict when only the manifest changed in flight', async () => {
+    await render();
+    await click('.card-content-edit-action');
+    await page.send('Input.insertText', { text: 'Keep this draft ' });
+    const draft = await page.evaluate(`document.querySelector('.card-edit-text').value`);
+    await page.evaluate(`window.firstBatch.holdEdit(); window.firstBatch.failEdit('unconfirmed')`);
+    await click('.card-edit-save');
+    await until('window.firstBatch.requests.length === 1');
+    await page.evaluate(`(() => {
+      window.firstBatch.refreshCatalog();
+      return new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    })()`);
+    await page.evaluate('window.firstBatch.finishEdit()');
+    await until(`document.querySelector('.card-content-notice')?.textContent.includes('Changes not confirmed')`);
+    expect(await page.evaluate(`Boolean(document.querySelector('.card-content-conflict'))`)).toBe(false);
+    expect(await page.evaluate(`document.querySelector('.card-edit-text').value`)).toBe(draft);
+    expect(await page.evaluate(`document.querySelector('.card-edit-save').disabled`)).toBe(false);
+    await page.evaluate('window.firstBatch.failEdit(null)');
+    await click('.card-edit-save');
+    await until(`!document.querySelector('.card-edit-text')`);
+    expect(await page.evaluate('window.firstBatch.requests.length')).toBe(2);
+  });
+
+  it('conflicts on a changed card file without losing the draft and loads its new title and body on cancel', async () => {
+    await render();
+    await click('.card-content-edit-action');
+    await page.send('Input.insertText', { text: 'Human draft ' });
+    const draft = await page.evaluate(`document.querySelector('.card-edit-text').value`);
+    await page.evaluate(`window.firstBatch.updateCard({ title: 'External title', markdown: 'External body.' })`);
+    await until(`document.querySelector('.card-content-conflict-columns > section:last-child pre')?.textContent === ${JSON.stringify('External title\n\nExternal body.')}`);
+    expect(await page.evaluate(`document.querySelector('.card-edit-text').value`)).toBe(draft);
+    expect(await page.evaluate(`document.querySelector('.card-edit-save').disabled`)).toBe(true);
+    expect(await page.evaluate('window.firstBatch.requests')).toEqual([]);
+    await click('.card-edit-link.is-cancel');
+    await until(`document.querySelector('.card-preview-title')?.textContent === 'External title'`);
+    expect(await page.evaluate(`document.querySelector('.card-preview-document').textContent`)).toContain('External body.');
+    await click('.card-draft-banner-actions button');
+    await until(`Boolean(document.querySelector('.card-content-conflict'))`);
+    expect(await page.evaluate(`document.querySelector('.card-edit-text').value`)).toBe(draft);
+    await click('.card-edit-link.is-cancel');
+    await until(`Boolean(document.querySelector('.card-draft-banner'))`);
+    await click('.card-draft-banner-actions button:last-child');
+    await click('.card-content-edit-action');
+    await until(`document.querySelector('.card-edit-text')?.value === ${JSON.stringify('External title\n\nExternal body.')}`);
+    expect(await page.evaluate(`Boolean(document.querySelector('.card-content-conflict'))`)).toBe(false);
+    await click('.card-edit-link.is-cancel');
+  });
+
   it.each(['light', 'dark'])('shows keyboard focus on the scrolling questions panel in %s', async theme => {
     await page.send('Emulation.setDeviceMetricsOverride', { width: 1000, height: 500, deviceScaleFactor: 1, mobile: false });
     await page.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: 'reduce' }] });

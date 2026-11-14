@@ -1271,7 +1271,7 @@ export function CardPreview({ card, catalog, snapshot, writable, pending, onClos
     </div>
     {activePanel === 'attachments' && <div ref={attachmentsContainer} id={panelId + '-attachments'} className="card-properties-slot" tabIndex={-1} aria-label={t.attachmentsPanel}>
       {mobile && <Button type="button" variant="ghost" size="sm" className="card-panel-close" onClick={closePanel}>{t.contentPanel}</Button>}
-      <AttachmentsPanel key={card.id} resource={attachments} card={currentCard ?? card} catalog={catalog} writable={exists && writable && !navigationLocked} onEdit={onEdit} />
+      <AttachmentsPanel key={card.id} resource={attachments} token={token} card={currentCard ?? card} catalog={catalog} writable={exists && writable && !navigationLocked} onEdit={onEdit} />
     </div>}
     {(activePanel === 'dependencies' || activePanel === 'history' || activePanel === 'questions') && <div ref={relatedContainer} id={panelId + '-' + activePanel} className="card-properties-slot card-related-slot" tabIndex={-1} aria-label={activePanel === 'history' ? t.historyPanel : activePanel === 'questions' ? t.questionsPanel : t.dependenciesPanel}>
       {activePanel === 'questions' && <><div className="card-questions-panel-heading"><h2>{t.questionsPanel}</h2><Button type="button" variant="ghost" size="icon" disabled={openQuestionsActive} aria-label={t.contentPanel} onClick={closePanel}><X size={18} /></Button></div>

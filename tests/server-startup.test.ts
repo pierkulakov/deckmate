@@ -7,8 +7,10 @@ import { createApp } from '../server/app.ts';
 import { Repository } from '../server/repository.ts';
 import { CatalogService } from '../server/catalog-service.ts';
 import { ProjectIndex } from '../server/project-index.ts';
+import { Boards } from '../server/boards.ts';
 import * as fileEvents from '../server/file-events.ts';
 import * as discovery from '../server/server-discovery.ts';
+import * as projectCache from '../server/project-cache.ts';
 import type { ServerConfig } from '../server/config.ts';
 
 vi.mock('../server/package-path.ts', async importOriginal => {
@@ -229,13 +231,68 @@ it('registers a writable server after listening and awaits late registration cle
   expect(response.status).toBe(200);
   await response.json();
   await vi.waitFor(() => expect(register).toHaveBeenCalledTimes(1));
-  expect(register).toHaveBeenCalledWith(expect.objectContaining({ editMode: 'direct' }), config.dataRoot, Number(new URL(address).port), expect.any(String));
+  expect(register).toHaveBeenCalledWith(expect.objectContaining({ editMode: 'direct' }), config.dataRoot,
+    Number(new URL(address).port), expect.any(String), expect.any(AbortSignal));
   let closed = false;
   const closing = app.close().then(() => { closed = true; });
   expect(closed).toBe(false);
   registration.release();
   await closing;
   expect(cleanup).toHaveBeenCalledTimes(1);
+});
+
+it('cancels unpublished discovery without waiting for a cold access check or publishing after close', async () => {
+  const config = await fixture();
+  const access = gate();
+  const prepare = vi.spyOn(projectCache, 'prepareCoordinationDirectory').mockImplementationOnce(() => access.promise);
+  const publish = vi.spyOn(projectCache, 'publishCoordinationFile');
+  const register = discovery.registerRunningServer;
+  let cancelled = false;
+  vi.spyOn(discovery, 'registerRunningServer').mockImplementationOnce(async (...args) => {
+    try { return await register(...args); }
+    catch (error) { cancelled = (error as Error).name === 'AbortError'; throw error; }
+  });
+  const app = await createApp({ ...config, editMode: 'direct', writeRoot: config.dataRoot }, { deferStartup: true });
+  apps.push(app);
+  await app.listen({ host: '127.0.0.1', port: 0 });
+  await vi.waitFor(() => expect(prepare).toHaveBeenCalledTimes(1));
+  await app.close();
+  expect(cancelled).toBe(true);
+  access.release();
+  await access.promise;
+  expect(publish).not.toHaveBeenCalled();
+  await expect(readFile(await projectCache.projectCacheFile(config.dataRoot, 'server'))).rejects.toMatchObject({ code: 'ENOENT' });
+});
+
+it('drains catalog and board writes together and waits for both before closing', async () => {
+  const config = await fixture();
+  const app = await createApp(config);
+  apps.push(app);
+  const catalogWrite = gate(), boardWrite = gate();
+  const catalogClose = vi.spyOn(CatalogService.prototype, 'close').mockImplementationOnce(() => catalogWrite.promise);
+  const boardClose = vi.spyOn(Boards.prototype, 'close').mockImplementationOnce(() => boardWrite.promise);
+  let closed = false;
+  const closing = app.close().then(() => { closed = true; });
+  await vi.waitFor(() => {
+    expect(catalogClose).toHaveBeenCalledOnce();
+    expect(boardClose).toHaveBeenCalledOnce();
+  });
+  expect(closed).toBe(false);
+  catalogWrite.release();
+  await catalogWrite.promise;
+  expect(closed).toBe(false);
+  boardWrite.release();
+  await closing;
+});
+
+it('reports a failed catalog close after draining the other stores', async () => {
+  const config = await fixture();
+  const app = await createApp(config);
+  const failure = new Error('Index close failed');
+  vi.spyOn(CatalogService.prototype, 'close').mockRejectedValueOnce(failure);
+  const boardClose = vi.spyOn(Boards.prototype, 'close');
+  await expect(app.close()).rejects.toBe(failure);
+  expect(boardClose).toHaveBeenCalledOnce();
 });
 
 it('falls back to fresh catalog reads after the initial watcher scan fails', async () => {

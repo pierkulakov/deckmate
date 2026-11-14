@@ -2,6 +2,7 @@
 // port under the cache folder keyed by the project's root identity, so two open projects never answer for each other.
 import type { ServerConfig } from './config.ts';
 import { randomUUID } from 'node:crypto';
+import { addAbortListener } from 'node:events';
 import { unlink, writeFile } from 'node:fs/promises';
 import { prepareCoordinationDirectory, processIsAlive, projectCacheFile, readCoordinationFile } from './project-cache.ts';
 import { withProjectWriteLock } from './write-lock.ts';
@@ -37,16 +38,36 @@ export async function removeRunningServer(root: string, expected: RunningServer)
   }, { timeoutMs: 0 });
 }
 
-export async function registerRunningServer(config: ServerConfig, root: string, port: number, version: string): Promise<() => Promise<void>> {
+async function prepareRegistration(signal?: AbortSignal): Promise<void> {
+  signal?.throwIfAborted();
+  if (!signal) return prepareCoordinationDirectory();
+  let listener: ReturnType<typeof addAbortListener> | undefined;
+  try {
+    // 2026-11-14: cold Windows ACL preparation can outlive the server. Until a write lock is acquired,
+    // discovery has nothing to publish or remove; stop waiting without cancelling other users of the shared check.
+    await new Promise<void>((resolve, reject) => {
+      listener = addAbortListener(signal, () => reject(signal.reason));
+      void prepareCoordinationDirectory().then(resolve, reject);
+    });
+  } finally { listener?.[Symbol.dispose](); }
+}
+
+export async function registerRunningServer(config: ServerConfig, root: string, port: number, version: string,
+  signal?: AbortSignal): Promise<() => Promise<void>> {
   if (config.editMode === 'read-only' || !config.writeRoot) return async () => {};
+  signal?.throwIfAborted();
   const filename = await projectCacheFile(root, 'server');
-  await prepareCoordinationDirectory();
+  await prepareRegistration(signal);
+  signal?.throwIfAborted();
   const registration: RunningServer = { port, pid: process.pid, startedAt: new Date().toISOString(), version };
   const temporary = `${filename}.${randomUUID()}.tmp`;
   await withProjectWriteLock(root, async () => {
+    signal?.throwIfAborted();
     await readRegistration(filename);
+    signal?.throwIfAborted();
     try {
       await writeFile(temporary, JSON.stringify(registration), { flag: 'wx', mode: 0o600 });
+      signal?.throwIfAborted();
       await renameChecked(temporary, filename);
     } finally {
       await unlink(temporary).catch((error: NodeJS.ErrnoException) => { if (error.code !== 'ENOENT') throw error; });

@@ -115,7 +115,7 @@ kbd { display: inline-flex; align-items: center; justify-content: center; text-a
 .error-banner { display: flex; flex-wrap: wrap; gap: 8px; justify-content: space-between; align-items: center; color: var(--danger); }
 .notice { border-radius: var(--glass-radius); padding: var(--space-3) var(--space-4); margin-bottom: var(--space-4); }
 .markdown { line-height: 1.72; font-size: 14px; overflow-wrap: anywhere; }
-.markdown p { margin: 0 0 10px; }
+.markdown p { margin: 0 0 10px; white-space: pre-line; }
 .markdown strong { font-weight: 600; }
 .markdown ul, .markdown ol { margin: 7px 0 14px; padding-left: 23px; }
 .markdown ul { list-style-type: disc; }
@@ -228,10 +228,15 @@ kbd { display: inline-flex; align-items: center; justify-content: center; text-a
 .deck-state-review > .deck-card-band { --metal-base: var(--review-metal); --card-metal-ink: var(--review-metal-ink); }
 /* 2026-11-10: the outline belongs to the whole tile, not a second frame around only the title. */
 .deck-card-open:focus-visible { outline: none; }
-.deck-card > .card-family-trigger { --material-position: absolute; position: absolute; z-index: 5; top: 0; inset-inline: 0; width: 100%; max-width: none; height: 18px; min-height: 18px; padding: 2px 2px 2px 5px; border: 0; border-radius: 4px 4px 0 0; color: var(--hero-ink); font-size: 9.5px; font-weight: 600; line-height: 14px; letter-spacing: 0; }
+.deck-card > .card-family-trigger { --material-position: relative; position: relative; z-index: 5; width: 100%; max-width: none; min-height: 18px; padding: 2px 2px 2px 5px; border: 0; border-radius: 4px 4px 0 0; color: var(--hero-ink); font-size: 9.5px; font-weight: 600; line-height: 14px; letter-spacing: 0; }
+.deck-card:has(> .card-family-trigger) { display: grid; grid-template-rows: auto minmax(0, 1fr) auto; }
+.deck-card:has(> .card-family-trigger) > .card-family-trigger { grid-row: 1; }
+.deck-card:has(> .card-family-trigger) > .deck-card-face { grid-row: 2; min-width: 0; }
+.deck-card:has(> .card-family-trigger) > .deck-card-band { grid-row: 3; }
+.deck-card > .card-family-trigger > .card-family-trigger-label { display: flex; align-items: center; min-width: 0; white-space: normal; }
+.deck-card > .card-family-trigger .card-family-trigger-label > span:last-child { display: -webkit-box; min-width: 0; overflow: hidden; overflow-wrap: anywhere; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
 /* 2026-11-11: the 14px checkbox at −8px ends 6px inside the card; the inset keeps affiliation clear in every state. */
 .deck-card:has(> .catalog-card-checkbox) > .card-family-trigger { padding-left: 6px; }
-.deck-card:has(> .card-family-trigger) .deck-card-open { padding-top: 24px; }
 @media (max-width: 760px) { .deck-view { padding: 27px 20px 40px; } .deck-heading { align-items: start; flex-direction: column; gap: 18px; } }
 @media (prefers-reduced-motion: reduce) { .deck-card { transform: none !important; } .deck-card > .card-family-trigger { transition: none; } }
 .inline-error { color: var(--danger); padding: 8px 12px; font-size: 12px; }

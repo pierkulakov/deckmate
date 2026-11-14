@@ -25,11 +25,10 @@ import { memberIdPattern } from '../src/members.ts';
 import type { PlanningEdit } from '../src/planning-files.ts';
 import { registerRequestLang } from './i18n.ts';
 import { registerProjectTemplatesRoute } from './project-templates-route.ts';
+import type { FileLauncher, ProjectFileAction } from './project-file-links.ts';
 
 const messages = defineText({
-  attachmentsChanged: "Attachments changed in the files. Refresh the panel and try again.",
-  attachmentsPartSaved: "The attachment change was partially saved.",
-  attachmentFailed: "Could not save the attachment.",
+  linkedFileMissing: 'Linked project file not found or unavailable.',
   invalidHost: "Invalid server address.",
   invalidOrigin: "Requests from another site are not allowed.",
   reload: "The page is out of date. Reload Deckmate before saving.",
@@ -49,9 +48,7 @@ const messages = defineText({
   importChanged: "The source changed in the files. Refresh the catalog and import again.",
   pageMissing: "Page not found. Run npm run build.",
 }, {
-  attachmentsChanged: "Вложения изменились в файлах. Обновите панель и повторите действие.",
-  attachmentsPartSaved: "Часть изменения вложений сохранена.",
-  attachmentFailed: "Не удалось сохранить вложение.",
+  linkedFileMissing: 'Прикреплённый файл проекта не найден или недоступен.',
   invalidHost: "Недопустимый адрес сервера.",
   invalidOrigin: "Запрос с другого сайта запрещён.",
   reload: "Страница устарела. Перезагрузите Deckmate перед сохранением.",
@@ -97,22 +94,13 @@ function servableRequestPath(value: unknown): value is string {
 }
 
 /** 2026-11-05: attachments use the same write policy as the catalog and their own module queue. */
-async function runAttachmentEdit(catalog: CatalogService, config: ServerConfig, edit: AttachmentEditAction & { source: DataSource }): Promise<CatalogView> {
-  const { applyAttachmentEdit } = await import('./attachments.ts');
-  const root = await assertWritable(config, edit.source);
-  try {
-    await applyAttachmentEdit(root, edit);
-  } catch (error) {
-    if (error instanceof Error && error.message === 'ATTACHMENTS_CONFLICT') throw new CatalogError(409, serverText(messages).attachmentsChanged);
-    if (error && typeof error === 'object' && 'saved' in error && error.saved === true) {
-      throw new CatalogError(503, error instanceof Error ? error.message : serverText(messages).attachmentsPartSaved, true);
-    }
-    throw new CatalogError(422, error instanceof Error ? error.message : serverText(messages).attachmentFailed);
-  }
+async function runAttachmentEdit(catalog: CatalogService, config: ServerConfig, edit: AttachmentEditAction & { source: DataSource }, actor: string | null): Promise<CatalogView> {
+  const { writeAttachmentEdit } = await import('./attachments.ts');
+  await writeAttachmentEdit(config, edit.source, edit, actor);
   return catalog.get('sandbox');
 }
 
-export async function createApp(config: ServerConfig, options: { deferStartup?: boolean; onStartupError?: (error: unknown) => void } = {}) {
+export async function createApp(config: ServerConfig, options: { deferStartup?: boolean; onStartupError?: (error: unknown) => void; fileLauncher?: FileLauncher } = {}) {
   if (process.platform === 'win32') void import('./windows-access.ts').then(module => module.warmWindowsAccess(), () => {});
   const app = Fastify({ logger: false, bodyLimit: 512 * 1024,
     // 2026-11-07: malformed URLs bypass request hooks but still need the same-origin framing policy.
@@ -206,6 +194,7 @@ export async function createApp(config: ServerConfig, options: { deferStartup?: 
   // 2026-11-09: the running package's version; the literal here said 0.1.0 since the first release.
   const packageVersion = readFile(packagePath('package.json'), 'utf8')
     .then(text => (JSON.parse(text) as { version: string }).version, () => 'unknown');
+  const discoveryCancellation = new AbortController();
   let registration: Promise<(() => Promise<void>) | undefined> | undefined;
   app.addHook('onListen', async () => {
     const address = app.server.address();
@@ -221,7 +210,7 @@ export async function createApp(config: ServerConfig, options: { deferStartup?: 
     // 2026-11-12: discovery is optional; an inaccessible cache must not break serving or graceful shutdown.
     registration = packageVersion.then(async version => {
       const { registerRunningServer } = await import('./server-discovery.ts');
-      return registerRunningServer(config, config.writeRoot!, address.port, version);
+      return registerRunningServer(config, config.writeRoot!, address.port, version, discoveryCancellation.signal);
     })
       .catch(() => undefined);
   });
@@ -458,6 +447,8 @@ export async function createApp(config: ServerConfig, options: { deferStartup?: 
     'create-track': ['title', 'description'], 'assign-deck': ['cardId', 'deckId'], 'set-tracks': ['cardId', 'trackIds'],
     'upload-attachment': ['cardId', 'attachmentsHash', 'dataUrl'],
     'remove-attachment': ['cardId', 'attachmentsHash', 'file'],
+    'attach-project-file': ['cardId', 'attachmentsHash', 'file'],
+    'detach-project-file': ['cardId', 'attachmentsHash', 'file'],
     'update-card-content': ['cardId', 'title', 'markdown', 'sourceHash'],
     'add-card-report': ['cardId', 'markdown', 'sourceHash'],
     // Apply the starter project template through the project-template module (2026-11-05).
@@ -551,7 +542,7 @@ export async function createApp(config: ServerConfig, options: { deferStartup?: 
       attachmentsHash: { type: 'string', pattern: '^(?:[0-9a-f]{64})?$' },
       fileName: { type: ['string', 'null'], maxLength: 200 },
       addedBy: { type: ['string', 'null'], maxLength: 80 },
-      file: { type: 'string', minLength: 1, maxLength: 300 },
+      file: { type: 'string', minLength: 1, maxLength: 1000 },
       journeyId: { type: ['string', 'null'], maxLength: 100 }, journeyHash: { type: ['string', 'null'], pattern: '^[0-9a-f]{64}$' },
       templateId: { type: 'string', minLength: 1, maxLength: 60, pattern: '^[a-z0-9][a-z0-9-]{0,59}$' },
       templateSource: { type: 'string', enum: ['bundled', 'project'] },
@@ -621,7 +612,7 @@ export async function createApp(config: ServerConfig, options: { deferStartup?: 
       // Use the request actor as the uploader; addedBy is a fallback for API calls without an actor.
       const attachmentEdit = request.body as AttachmentEditAction & { source: DataSource };
       const actor = actorOf(request.headers['x-deckmate-actor']);
-      return runAttachmentEdit(catalog, config, attachmentEdit.action === 'upload-attachment' && actor ? { ...attachmentEdit, addedBy: actor } : attachmentEdit);
+      return runAttachmentEdit(catalog, config, attachmentEdit, actor);
     }
     return catalog.edit(request.body, request.body.source, actorOf(request.headers['x-deckmate-actor']));
   });
@@ -704,6 +695,29 @@ export async function createApp(config: ServerConfig, options: { deferStartup?: 
       throw error;
     }
   });
+  for (const action of ['open', 'reveal'] as const satisfies readonly ProjectFileAction[]) {
+    app.post<{ Body: { source: DataSource; cardId: string; file: string } }>(`/api/attachments/${action}`, {
+      schema: { body: { type: 'object', additionalProperties: false, required: ['source', 'cardId', 'file'], properties: {
+        source: { type: 'string', enum: ['live', 'sandbox'] },
+        cardId: { type: 'string', minLength: 1, maxLength: 1000 },
+        file: { type: 'string', minLength: 1, maxLength: 1000 },
+      } } },
+    }, async (request, reply) => {
+      const { source, cardId, file } = request.body;
+      const view = await catalog.get(source);
+      if (!view.cards.some(card => card.id === cardId)) throw new CatalogError(404, serverText(messages).cardMissing);
+      const { readCardAttachments } = await import('./attachments.ts');
+      const { launchProjectFile, UnsafeProjectFileTypeError } = await import('./project-file-links.ts');
+      const attachments = await readCardAttachments(catalog.root(source), cardId);
+      if (!attachments.projectFiles?.some(entry => entry.file === file && !entry.missing)) throw new CatalogError(404, serverText(messages).linkedFileMissing);
+      try { await launchProjectFile(catalog.root(source), file, action, options.fileLauncher); }
+      catch (error) {
+        if (error instanceof UnsafeProjectFileTypeError) return reply.code(422).send({ code: error.code, message: error.message });
+        throw new CatalogError(422, error instanceof Error ? error.message : serverText(messages).actionFailed);
+      }
+      return { ok: true };
+    });
+  }
   app.get<{ Querystring: { path: string; source?: DataSource; from?: string; to?: string } }>('/api/file', async (request, reply) => {
     const relative = request.query.path ?? '';
     // 2026-11-06: traversal segments, absolute paths, NUL bytes and repeated query values are refused here;
@@ -859,6 +873,7 @@ export async function createApp(config: ServerConfig, options: { deferStartup?: 
   // 2026-11-05: upgraded browser sockets must close before Fastify waits for the HTTP server.
   app.addHook('preClose', async () => {
     closing = true;
+    discoveryCancellation.abort();
     clearInterval(historyTimer);
     clearInterval(runScheduleTimer);
     // 2026-11-12: active API requests may await the initial scan; close it before Fastify drains those requests.
@@ -870,22 +885,23 @@ export async function createApp(config: ServerConfig, options: { deferStartup?: 
     await new Promise<void>((resolve, reject) => sockets.close(error => error ? reject(error) : resolve()));
   });
   app.addHook('onClose', async () => {
-    // 2026-11-13: a cold Windows PowerShell for the coordination ACL check can take seconds on a slow machine, and the
-    // desktop shell kills a server that has not stopped within its own deadline. Deferred startup and discovery
-    // therefore get a bounded wait; a registration left behind names a dead process and the next discovery removes it.
-    const deadline = Date.now() + 1_500;
-    const settle = <Value>(promise: Promise<Value> | undefined) => new Promise<Value | undefined>(resolve => {
-      const timer = setTimeout(() => resolve(undefined), Math.max(0, deadline - Date.now()));
-      timer.unref();
-      void Promise.resolve(promise).then(value => { clearTimeout(timer); resolve(value); }, () => { clearTimeout(timer); resolve(undefined); });
-    });
     try {
-      await settle(projectStartup);
-      await settle(catalog?.close());
-      await settle(boards?.close());
+      // 2026-11-14: project writes and SQLite must really finish before a successful exit; discovery's
+      // optional cache cleanup must not consume their drain budget or turn a failed close into success.
+      await projectStartup?.catch(() => {});
+      const drained = await Promise.allSettled([catalog?.close(), boards?.close()]);
+      const failed = drained.find(result => result.status === 'rejected');
+      if (failed?.status === 'rejected') throw failed.reason;
     } finally {
-      try { await settle((await settle(registration))?.()); }
-      catch { /* 2026-11-12: stale discovery data must not prevent the remaining shutdown hooks. */ }
+      // 2026-11-14: unpublished discovery is cancelled in preClose. An already acquired lock still needs
+      // its normal release; a stale registration after this bounded cleanup is reaped by the next discovery.
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      try {
+        await Promise.race([
+          registration?.then(cleanup => cleanup?.()).catch(() => {}),
+          new Promise<void>(resolve => { timer = setTimeout(resolve, 1_500); timer.unref(); }),
+        ]);
+      } finally { clearTimeout(timer); }
       if (process.platform === 'win32') (await import('./windows-access.ts')).closeWindowsAccess();
     }
   });

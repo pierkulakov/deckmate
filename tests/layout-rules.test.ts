@@ -25,11 +25,12 @@ it('keeps the assembled AGENTS.md block within 700 estimated tokens', async () =
   expect(tokens).toBeLessThanOrEqual(700);
 });
 
-it('carries the layout hint in create_cards and one initialize instruction line', () => {
+it('carries the layout hint once in create_cards and keeps initialize instructions compact', () => {
   expect(agentToolDefinitions.find(tool => tool.name === 'create_cards')?.description).toContain(layoutToolHint);
   expect(agentToolDefinitions.find(tool => tool.name === 'organize')?.inputSchema).toMatchObject({
     type: 'object', properties: { about: { type: 'string' } },
   });
-  expect(agentInstructions).toContain(`Layout: ${layoutToolHint}; organize checks placement.`);
+  expect(agentInstructions).toContain('organize checks placement.');
+  expect(agentInstructions).not.toContain(layoutToolHint);
   expect(agentInstructions).not.toMatch(/[\r\n]/u);
 });

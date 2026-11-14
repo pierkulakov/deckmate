@@ -257,9 +257,13 @@ it('saves native card content by patching only the title scalar and the body ran
   const catalog = await readProjectCatalog(root);
   const native = catalog.cards.find(card => card.id === 'card:' + uuid)!;
   expect(native).toMatchObject({ effort: 3.5, priority: 'high', deckId: 'sound', trackIds: ['release'] });
+  await editProjectCatalog(root, { action: 'create-space', title: 'Agent work', manifestHash });
+  const changedManifest = await readFile(path.join(root, 'tasks/deckmate.md'));
   await editProjectCatalog(root, { action: 'update-card-content', cardId: 'card:' + uuid, sourceHash: content.sourceHash,
     title: 'Новое: название с двоеточием', markdown: 'Обновлённое тело.\r\n', manifestHash });
   const after = (await readFile(path.join(root, relative))).toString('utf8');
+  expect(after).toBe('﻿---\r\n' + yamlHeader.replace('Старое название 👣', '"Новое: название с двоеточием"') + '---\r\nОбновлённое тело.\r\n');
+  expect(await readFile(path.join(root, 'tasks/deckmate.md'))).toEqual(changedManifest);
   expect(after).toContain('title: "Новое: название с двоеточием" # комментарий названия');
   expect(after).toContain('# верхний комментарий');
   expect(after).toContain('deckmate: card # тип записи');
@@ -289,15 +293,44 @@ it('performs zero writes for a no-op round trip of every card kind', async () =>
   }
 });
 
-it('refuses stale whole-file and manifest hashes without touching the file', async () => {
+it.each([heroId, taskId, docId, mechanicDocId, 'doc:tasks/notes.md'])('saves %s against its source even after an unrelated manifest edit', async cardId => {
+  const root = await fixture();
+  await writeFile(path.join(root, 'tasks/notes.md'), '﻿# Заметки\r\nТекст заметок.\nХвост.\r\n');
+  const manifestHash = (await readProjectCatalog(root)).manifestHash;
+  const content = await readCardContent(root, cardId);
+  const filename = path.join(root, cardId.slice(cardId.indexOf(':') + 1).split('#')[0]);
+  const before = await readFile(filename, 'utf8');
+  await editProjectCatalog(root, { action: 'create-space', title: 'Agent work', manifestHash });
+  const changedManifest = await readFile(path.join(root, 'tasks/deckmate.md'));
+  expect((await readProjectCatalog(root)).manifestHash).not.toBe(manifestHash);
+  await editProjectCatalog(root, { action: 'update-card-content', ...content, title: content.title + ' revised', manifestHash });
+  expect(await readFile(filename)).toEqual(Buffer.from(before.replace(content.title, content.title + ' revised')));
+  expect(await readFile(path.join(root, 'tasks/deckmate.md'))).toEqual(changedManifest);
+});
+
+it('refuses a stale whole-file hash without touching the file, even with an unrelated stale manifest', async () => {
   const root = await fixture();
   const catalog = await readProjectCatalog(root);
   const content = await readCardContent(root, heroId);
   const before = await readFile(path.join(root, 'features/match.md'));
   const edit = { action: 'update-card-content' as const, cardId: heroId, title: 'Другое', markdown: 'Другое вступление.\r\n' };
   await expect(editProjectCatalog(root, { ...edit, sourceHash: '0'.repeat(64), manifestHash: catalog.manifestHash })).rejects.toThrow('CARD_CONFLICT');
-  await expect(editProjectCatalog(root, { ...edit, sourceHash: content.sourceHash, manifestHash: 'stale' })).rejects.toThrow('CATALOG_CONFLICT');
   expect(await readFile(path.join(root, 'features/match.md'))).toEqual(before);
+  const external = Buffer.from(before.toString('utf8').replace('Вторая строка вступления.', 'Внешняя правка.'));
+  await writeFile(path.join(root, 'features/match.md'), external);
+  await editProjectCatalog(root, { action: 'create-space', title: 'Agent work', manifestHash: catalog.manifestHash });
+  await expect(editProjectCatalog(root, { ...edit, sourceHash: content.sourceHash, manifestHash: catalog.manifestHash })).rejects.toThrow('CARD_CONFLICT');
+  expect(await readFile(path.join(root, 'features/match.md'))).toEqual(external);
+});
+
+it('still rejects stale manifest-writing actions when their target changed', async () => {
+  const root = await fixture();
+  const manifestHash = (await readProjectCatalog(root)).manifestHash;
+  const edit = { action: 'update-space' as const, spaceId: 'work', title: 'New title', kind: 'custom' as const, icon: 'box', manifestHash };
+  await editProjectCatalog(root, edit);
+  const before = await readFile(path.join(root, 'tasks/deckmate.md'));
+  await expect(editProjectCatalog(root, { ...edit, title: 'Stale title' })).rejects.toThrow('CATALOG_CONFLICT');
+  expect(await readFile(path.join(root, 'tasks/deckmate.md'))).toEqual(before);
 });
 
 // 2026-11-10: API validation and saved content do not depend on an optional board rebuild succeeding.
@@ -332,6 +365,7 @@ it('serves card content over the API with validation, read-only live source and 
   expect((await app.inject({ method: 'POST', url: '/api/catalog', headers, payload })).statusCode).toBe(403);
   const conflict = await app.inject({ method: 'POST', url: '/api/catalog', headers: authorized, payload: { ...payload, sourceHash: '0'.repeat(64) } });
   expect(conflict.statusCode).toBe(409);
+  await editProjectCatalog(root, { action: 'create-space', title: 'Agent work', manifestHash: payload.manifestHash });
   const saved = await app.inject({ method: 'POST', url: '/api/catalog', headers: authorized, payload });
   expect(saved.statusCode, saved.body).toBe(200);
   const fresh = await app.inject({ url: '/api/card-content?cardId=' + encodeURIComponent(heroId), headers });

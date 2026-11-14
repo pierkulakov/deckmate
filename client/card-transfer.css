@@ -62,7 +62,7 @@ tbody.is-drop-over > tr.catalog-table-group > th { box-shadow: inset 0 2px 0 var
 @media (max-width: 600px) { .card-transfer-targets { bottom: 8px; width: calc(100vw - 16px); padding: 10px; } .card-transfer-help { display: none; } .card-transfer-target, .card-transfer-thumb { width: 84px; } .card-transfer-thumb { height: 52px; } }
 @media (prefers-reduced-motion: reduce) { .card-transfer-overlay, .card-transfer-handle, .card-transfer-target, .card-transfer-thumb, .card-transfer-targets, .card-transfer-destination strong, .is-card-transfer-active .deck-card { animation: none; transition: none; } }
 
-.deck-card:has(> .card-family-trigger) > .card-transfer-handle { top: 23px; }
+.deck-card:has(> .card-family-trigger) > .card-transfer-handle { grid-row: 2; top: 5px; }
 
 /* 2026-11-11: drop feedback uses the same mark and surfaces as other selected controls in either theme. */
 .is-card-pointer-transfer [data-card-transfer-source="true"] { opacity: 1; background: color-mix(in srgb, var(--muted) 20%, var(--ground)); border-radius: 5px; box-shadow: none; }

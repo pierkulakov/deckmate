@@ -17,6 +17,7 @@ describe.skipIf(!browserPath)('Vision popover dismissal (browser)', () => {
     throw new Error('Timed out: ' + expression + '\n' + page.consoleErrors.join('\n'));
   }
   async function click(selector: string) {
+    await until(`Boolean(document.querySelector(${JSON.stringify(selector)}))`);
     const point = await page.callFunction(`selector => {
       const element = document.querySelector(selector);
       element.scrollIntoView({ block: 'nearest' });
@@ -97,9 +98,18 @@ describe.skipIf(!browserPath)('Vision popover dismissal (browser)', () => {
           await page.send('Input.insertText', { text: 'aabbcc' });
           await until(`document.querySelector('.color-picker-input')?.value === 'aabbcc'`);
         } else if (tool === 'text') {
+          const font = await page.evaluate(`[...document.querySelectorAll('.properties-content button[value]')].find(button => button.textContent.trim() === 'Nunito').value`);
+          await click(`.properties-content button[value="${font}"]`);
+          await until(`!document.querySelector('${content}')`);
+          await click(trigger);
+          await until(`Boolean(document.querySelector('.properties-content button[value="${font}"].dropdown-menu-item--selected'))`);
+          // 2026-11-14: keep the selected font in the results; Excalidraw 0.18.1 updates its parent during render otherwise.
           await click('.properties-content input');
+          await until(`document.activeElement === document.querySelector('.properties-content input')`);
           await page.send('Input.insertText', { text: 'Nunito' });
-          await until(`document.querySelector('.properties-content input')?.value === 'Nunito'`);
+          await until(`document.querySelector('.properties-content input')?.value === 'Nunito'
+            && document.querySelectorAll('.properties-content button[value]').length === 1
+            && Boolean(document.querySelector('.properties-content button[value="${font}"].dropdown-menu-item--selected'))`);
         } else {
           await click('.picker-option[aria-label="Triangle"]');
           await until(`document.querySelector('.picker-option[aria-label="Triangle"]')?.classList.contains('active')`);

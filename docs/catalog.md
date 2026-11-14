@@ -380,18 +380,42 @@ CSV is generated from selected visible cards and selected columns: UTF-8 BOM, `;
 
 The server validates the full set and prepares all candidates, including sidecars, then rechecks sources before each publication. State changes to several legacy slices in one file use one patch; membership uses one manifest replacement. A no-op neither writes files nor creates an event. There is no cross-file transaction: `bulkOutcome` distinguishes `applied`, `unchanged`, `pending`, `created`, and `warnings`. After partial I/O, published files remain; retrying requires a fresh catalog and hashes. An action whose copy file exists but whose selected CardOptions are not yet saved remains pending until both publications complete. Index refresh failure does not undo Markdown.
 
-### Card attachments — 2026-11-09
+### Card attachments — 2026-11-14
 
-`GET /api/attachments?source=sandbox&cardId=<id>` returns `{ hash, files, warnings }`; `live` reads are also available. The registry and binary UUID files live in `tasks/deckmate-assets/cards/<key>/`. PNG/JPEG/WebP/GIF/PDF files are allowed up to 10 MiB each, with a maximum of 500 registry entries per card.
+`GET /api/attachments?source=sandbox&cardId=<id>` returns `{ hash, files, projectFiles?, warnings }`; `live` reads are also available. The registry and uploaded binary UUID files live in `tasks/deckmate-assets/cards/<key>/`. PNG/JPEG/WebP/GIF/PDF uploads are allowed up to 10 MiB each. The combined maximum is 500 uploads and project-file links per card.
 
 `POST /api/catalog` actions send token, `source: "sandbox"`, `manifestHash`, `cardId`, and `attachmentsHash`:
 
 - `upload-attachment`: `dataUrl`, optional `fileName` and `addedBy`; the `x-deckmate-actor` member takes precedence over `addedBy`.
 - `remove-attachment`: `file`; updates the registry and deletes the binary file.
+- `attach-project-file`: `file`, optional `addedBy`; links an existing regular file without copying it. The request actor takes precedence over `addedBy`.
+- `detach-project-file`: `file`; removes only the link, never the original file, including when it is missing.
 
-Card covers were removed on 2026-11-09. Existing registries still read, but legacy `cover` entries are opaque data: never returned or shown, never validated as active attachments, and preserved byte for byte during uploads and removals, even when their image is removed. Only the `files` block changes; BOM, line endings, other metadata, comments and Markdown body remain unchanged. New registries omit `cover`. Deck, Run and Milestone covers and Vision images remain separate features.
+Project-file links use the optional `projectFiles` sequence in the same schema-1 registry. `files` retains its original upload-only format, so old clients do not mistake project links for uploaded PDFs or delete their targets. Older registry writers preserve the additional sequence as opaque metadata. Old registries without `projectFiles` still read unchanged. Example frontmatter:
 
-Each attachment row offers **Copy link for the card text**: Markdown relative to the card file, embedding images and linking PDFs, with short copied feedback. It is available in read-only views too.
+```yaml
+schema: 1
+card: card:ca1d0000-0000-4000-8000-000000000001
+files: []
+projectFiles:
+  - file: ArtSource/Props/Birch/Birch.blend
+    name: Birch.blend
+    kind: project-file
+    mime: application/octet-stream
+    bytes: 33554432
+    addedAt: 2026-11-14T12:00:00.000Z
+    addedBy: null
+```
+
+`file` is a clean, forward-slash path relative to the selected data-project root (up to 1000 characters), not to the card or registry. Any extension and size, including an empty file, are permitted. Absolute paths, traversal segments, backslashes, drive/stream separators, missing files, directories, symlinks and junctions are refused. Each ancestor is guarded even for links that stay inside the project. `bytes` is the size at attachment time; API reads report the current size without rewriting the registry, or `missing: true` with a warning if the target is absent or unsafe. The UI shows its name, size and path, with Open / Show in folder actions; missing targets have no launch buttons.
+
+`POST /api/attachments/open` and `/api/attachments/reveal` accept `{ source, cardId, file }`, only for an existing project-file link of that card. Both use the shared Host/Origin and snapshot-token checks and recheck the guarded path immediately before launching. They are available in read-only mode; attaching/detaching is not. Windows uses `explorer.exe` (reveal: `/select,<absolute path>`), macOS `open` / `open -R`, Linux `xdg-open` (reveal opens the parent directory). Commands use literal argument arrays with `shell: false`. Success acknowledges dispatch, not application completion. The Tauri board loads the same loopback page and uses the same authenticated fetch requests; no shell bridge is required.
+
+Agents can use `deckmate project attach <c-ref> --file ArtSource/Props/Birch/Birch.blend` and `detach` with the same arguments; optional `--member` attributes the attachment. MCP `update_card` accepts `attach` and `detach` path strings. Agent wrappers read the current attachment hash and use the ordinary server-discovery/offline write policy, never launch programs.
+
+Card covers were removed on 2026-11-09. Existing registries still read, but legacy `cover` entries are opaque data: never returned or shown, never validated as active attachments, and preserved byte for byte during uploads and removals, even when their image is removed. Only the affected `files` or `projectFiles` item changes (the latter field is inserted when first needed); BOM, line endings, other metadata, comments and Markdown body remain unchanged. New registries omit `cover`. Deck, Run and Milestone covers and Vision images remain separate features.
+
+Each uploaded attachment row offers **Copy link for the card text**: Markdown relative to the card file, embedding images and linking PDFs, with short copied feedback. It is available in read-only views too.
 In the card text editor, the paperclip menu can insert the same attachment Markdown directly.
 
 `attachmentsHash` protects the registry revision: an empty string means no file; a stale hash returns 409. This API branch requires `manifestHash` in the request shape but does not check its freshness or `sourceHash`: writes follow a separate path guarded by token, edit mode, and attachment hash; the branch is checked in `sandbox` mode. The shared catalog queue and activity event writing do not apply to attachment operations. The card body is not rewritten.

@@ -68,6 +68,32 @@ describe.skipIf(!browserPath)('CardPreview Quick Settings (browser)', () => {
     await session.close();
   }, 20000);
 
+  it.each([1440, 375])('renders soft line breaks in the card preview at %s px in both themes', async width => {
+    await send('Emulation.setDeviceMetricsOverride', { width, height: 900, deviceScaleFactor: 1, mobile: false });
+    try {
+      for (const dark of [false, true]) {
+        await call('function(dark) { document.documentElement.classList.toggle("dark", dark); }', dark);
+        await call('function(markdown) { window.previewTest.render("task", { card: { markdown }, lang: "ru" }); }', 'Кол-во бойцов: 6\nУлучшения:\n- ППШ');
+        await until(`Boolean([...document.querySelectorAll('[data-panel="content"] .markdown p')].find(p => p.textContent.includes('Улучшения:')))`);
+        const lines = await evaluate(`(() => {
+          const p = [...document.querySelectorAll('[data-panel="content"] .markdown p')].find(p => p.textContent.includes('Улучшения:'));
+          const text = p.firstChild, split = text.textContent.indexOf('\\n');
+          const range = document.createRange();
+          range.setStart(text, 0); range.setEnd(text, split); const first = range.getBoundingClientRect();
+          range.setStart(text, split + 1); range.setEnd(text, text.length); const second = range.getBoundingClientRect();
+          return { whiteSpace: getComputedStyle(p).whiteSpace, separate: second.top > first.top, list: p.nextElementSibling?.textContent };
+        })()`);
+        expect(lines).toEqual({ whiteSpace: 'pre-line', separate: true, list: 'ППШ' });
+        if (process.env.DECKMATE_MARKDOWN_AUDIT) {
+          const dir = process.env.DECKMATE_MARKDOWN_AUDIT;
+          await mkdir(dir, { recursive: true });
+          const shot = await send('Page.captureScreenshot', { format: 'png' });
+          await writeFile(path.join(dir, `${dark ? 'dark' : 'light'}-${width}.png`), Buffer.from(shot.data, 'base64'));
+        }
+      }
+    } finally { await send('Emulation.clearDeviceMetricsOverride'); }
+  });
+
   it.each([1440, 375])('keeps long tile estimates clear of the owner and priority at %s px in both themes', async width => {
     await send('Emulation.setDeviceMetricsOverride', { width, height: 900, deviceScaleFactor: 1, mobile: false });
     try {

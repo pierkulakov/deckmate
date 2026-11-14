@@ -21,6 +21,12 @@ describe.skipIf(!browserPath)('shared interface states and recovery (browser)', 
     await until('Boolean(window.statesTest) && document.hasFocus()');
     await page.evaluate(`statesTest.setLang('en');localStorage.setItem('deckmate-current-member','builder');statesTest.state.fail=${JSON.stringify(fail)};statesTest.state.hold=${JSON.stringify(hold)};statesTest.render(${JSON.stringify(screen)})`);
   }
+  async function openCalendar() {
+    await reset('planning-probe');
+    await until('Boolean(window.planningTest)');
+    await page.evaluate(`planningTest.setMode('calendar')`);
+    await until(`document.activeElement.closest('[data-date]')?.dataset.date === '2026-11-23'`);
+  }
   beforeAll(async () => {
     // 2026-11-10: recovery tests reuse built fixtures; per-file dependency optimization adds no coverage.
     page = await openHeadlessBrowser({ width: 1280, height: 1000, scale: 1 });
@@ -302,20 +308,23 @@ describe.skipIf(!browserPath)('shared interface states and recovery (browser)', 
     }
   });
 
-  it('planning: the calendar starts at today with one date Tab stop and exposes every Milestone of a day', async () => {
-    await reset('planning-probe');
-    await page.evaluate(`planningTest.setMode('calendar')`);
-    await until(`Boolean(document.querySelector('.planning-calendar-panel'))`);
-    expect(await page.evaluate(`document.activeElement.closest('[data-date]')?.dataset.date`)).toBe('2026-11-23');
+  // 2026-11-14: each date change renders a three-year grid; independent cases keep the keyboard matrix within its budget.
+  it.each([
+    ['PageDown', '2026-11-23', '2026-12-23'], ['End', '2026-12-23', '2026-12-27'],
+    ['PageUp', '2026-12-27', '2026-11-27'], ['Home', '2026-11-27', '2026-11-23'],
+    ['ArrowRight', '2026-11-23', '2026-11-24'], ['Home', '2026-11-24', '2026-11-23'],
+  ])('planning: calendar %s moves from %s to %s with one date Tab stop', async (key, from, to) => {
+    await openCalendar();
+    await page.evaluate(`document.querySelector('[data-date="${from}"] button').focus()`);
+    await until(`document.activeElement.closest('[data-date]')?.dataset.date === '${from}' && document.activeElement.tabIndex === 0`);
+    await page.evaluate(`document.activeElement.dispatchEvent(new KeyboardEvent('keydown',{key:'${key}',bubbles:true,cancelable:true}))`);
+    await until(`document.activeElement.closest('[data-date]')?.dataset.date === '${to}' && document.activeElement.tabIndex === 0`);
     expect(await page.evaluate(`Array.from(document.querySelectorAll('[data-date] button')).filter(b=>b.tabIndex===0).length`)).toBe(1);
-    for (const [key, date] of [['PageDown', '2026-12-23'], ['End', '2026-12-27'], ['PageUp', '2026-11-27'], ['Home', '2026-11-23']]) {
-      await page.evaluate(`document.activeElement.dispatchEvent(new KeyboardEvent('keydown',{key:'${key}',bubbles:true,cancelable:true}))`);
-      await until(`document.activeElement.closest('[data-date]')?.dataset.date === '${date}'`);
-    }
-    await page.evaluate(`document.activeElement.dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowRight',bubbles:true,cancelable:true}))`);
-    await until(`document.activeElement.closest('[data-date]')?.dataset.date === '2026-11-24'`);
-    await page.evaluate(`document.activeElement.dispatchEvent(new KeyboardEvent('keydown',{key:'Home',bubbles:true,cancelable:true}))`);
-    await until(`document.activeElement.closest('[data-date]')?.dataset.date === '2026-11-23'`);
+  });
+
+  it('planning: the calendar starts at today with one date Tab stop and exposes every Milestone of a day', async () => {
+    await openCalendar();
+    expect(await page.evaluate(`Array.from(document.querySelectorAll('[data-date] button')).filter(b=>b.tabIndex===0).length`)).toBe(1);
     await page.send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13 });
     await page.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13 });
     await until(`document.querySelectorAll('.timeline-cluster-menu [role="menuitem"]').length === 4`);

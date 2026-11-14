@@ -115,6 +115,9 @@ export interface AgentUpdateCardInput {
   deck?: string | null;
   tracks?: string[];
   parent?: string | null;
+  /** Link/unlink existing project files; never upload or delete their bytes. */
+  attach?: string;
+  detach?: string;
   member?: string;
 }
 export interface AgentUpdateCardOutput { card: AgentCardHead; changed: string[]; warnings?: string[] }
@@ -210,8 +213,8 @@ export class AgentToolError extends Error {
 }
 
 /** Sent once in the MCP initialize result; replaces reading the skill for the everyday route. */
-export const agentInstructions = 'next: decisions; answer: chat. '
-  + `Layout: ${layoutToolHint}; organize checks placement.`;
+// 2026-11-14: create_cards already carries the layout hint; avoid charging for it twice in every MCP session.
+export const agentInstructions = 'next: decisions; answer: chat. organize checks placement.';
 
 // 2026-11-11: schemas carry types only; ranges, defaults and unknown fields are checked by the operations core,
 // whose errors name the fix. Field names explain themselves; a description is kept where a name cannot.
@@ -239,7 +242,8 @@ export const agentToolDefinitions: readonly AgentToolDefinition[] = [
   { name: 'update_card', description: 'Edit.',
     inputSchema: object({ ref: text, rev: text, member: text, state: text, reason: text, owner: nullableText,
       priority: { enum: ['high', 'medium', 'low', null] }, effort: { type: ['number', 'null'] },
-      deck: nullableText, tracks: { type: 'array', items: text }, parent: nullableText }, ['ref']) },
+      deck: nullableText, tracks: { type: 'array', items: text }, parent: nullableText,
+      attach: text, detach: text }, ['ref']) },
   { name: 'report', description: 'Report.',
     inputSchema: object({ ref: text, rev: text, member: text, text, file: text, state: text }, ['ref']) },
   { name: 'ask', description: 'Ask.',

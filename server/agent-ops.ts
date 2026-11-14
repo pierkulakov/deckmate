@@ -530,7 +530,7 @@ function validateInput<Name extends AgentToolName>(name: Name, input: unknown): 
     return { cards: value.cards.map(validateNewCard), member: stringValue(value, 'member') } as AgentToolInputs[Name];
   }
   if (name === 'update_card') {
-    const fields = ['ref', 'rev', 'state', 'reason', 'owner', 'priority', 'effort', 'deck', 'tracks', 'parent', 'member'] as const;
+    const fields = ['ref', 'rev', 'state', 'reason', 'owner', 'priority', 'effort', 'deck', 'tracks', 'parent', 'attach', 'detach', 'member'] as const;
     const value = objectInput(input, fields, ['ref']);
     return {
       ref: stringValue(value, 'ref', true), rev: revValue(value), state: stringValue(value, 'state'),
@@ -538,6 +538,7 @@ function validateInput<Name extends AgentToolName>(name: Name, input: unknown): 
       priority: enumValue(value, 'priority', priorities, true), effort: numberValue(value, 'effort', { min: 0, nullable: true }),
       deck: stringValue(value, 'deck', false, true), tracks: stringArray(value, 'tracks'),
       parent: stringValue(value, 'parent', false, true), member: stringValue(value, 'member'),
+      attach: stringValue(value, 'attach'), detach: stringValue(value, 'detach'),
     } as AgentToolInputs[Name];
   }
   if (name === 'report') {
@@ -749,6 +750,16 @@ async function updateAgentCard(project: AgentProject, initial: CatalogView, inpu
       changed.push('state');
       catalog = await readProjectCatalog(project.root);
       card = catalog.cards.find(candidate => candidate.id === card.id) ?? card;
+    } catch (error) { throw partialWriteFailure(error, changed); }
+  }
+  for (const field of ['attach', 'detach'] as const) {
+    const file = input[field];
+    if (file === undefined) continue;
+    try {
+      const { readCardAttachments } = await import('./attachments.ts');
+      const attachments = await readCardAttachments(project.root, card.id);
+      await apply([field], manifestHash => ({ action: field === 'attach' ? 'attach-project-file' : 'detach-project-file',
+        manifestHash, cardId: card.id, attachmentsHash: attachments.hash, file, addedBy: actor }));
     } catch (error) { throw partialWriteFailure(error, changed); }
   }
   return { card: cardHead(catalog, card), changed, ...(warnings.length ? { warnings } : {}) };

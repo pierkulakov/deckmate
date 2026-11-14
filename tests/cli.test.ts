@@ -9,6 +9,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { stringify } from 'yaml';
 import { shortReference } from '../src/references.ts';
 import { appendActivity } from '../server/activity.ts';
+import { readCardAttachments } from '../server/attachments.ts';
 
 const execute = promisify(execFile);
 const workspace = fileURLToPath(new URL('../', import.meta.url));
@@ -150,6 +151,24 @@ async function files(root: string): Promise<Record<string, string>> {
   await visit(root);
   return result;
 }
+
+it('runs attach/detach from the project CLI without copying the file and respects --read-only', async () => {
+  const project = await fixture();
+  await mkdir(path.join(project.root, 'ArtSource'));
+  const relative = 'ArtSource/Birch.blend';
+  await writeFile(path.join(project.root, relative), 'BLENDER');
+  const before = await readFile(path.join(project.root, 'features/audio.md'));
+  const ref = shortReference('c', taskId);
+  const attached = await run(project, ['attach', ref, '--file', relative, '--member', 'glm']);
+  expect(attached.value).toMatchObject({ action: 'attach', file: relative, via: 'files' });
+  expect((await readCardAttachments(project.root, taskId)).projectFiles![0]).toMatchObject({ file: relative, addedBy: 'glm', bytes: 7 });
+  await expect(run(project, ['detach', ref, '--file', relative, '--read-only'])).rejects.toThrow(/read-only|только для чтения/u);
+  const detached = await run(project, ['detach', ref, '--file', relative]);
+  expect(detached.value.action).toBe('detach');
+  expect((await readCardAttachments(project.root, taskId)).projectFiles).toBeUndefined();
+  expect(await readFile(path.join(project.root, relative), 'utf8')).toBe('BLENDER');
+  expect(await readFile(path.join(project.root, 'features/audio.md'))).toEqual(before);
+}, 30000);
 
 afterEach(async () => {
   for (const base of fixtures.splice(0)) {

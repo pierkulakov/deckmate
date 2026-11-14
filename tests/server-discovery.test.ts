@@ -12,6 +12,7 @@ import type { ServerConfig } from '../server/config.ts';
 import { prepareCoordinationDirectory, projectCacheDirectory, projectCoordinationDirectory, projectCacheFile } from '../server/project-cache.ts';
 import { findRunningServer, registerRunningServer } from '../server/server-discovery.ts';
 import * as discovery from '../server/server-discovery.ts';
+import * as projectCache from '../server/project-cache.ts';
 import { installShutdownHandlers } from '../server/shutdown.ts';
 
 let directory: string;
@@ -84,6 +85,24 @@ it('registers the writable sandbox rather than the original project', async () =
   await listen(config);
   expect(await findRunningServer(live.root)).toBeNull();
   expect(await findRunningServer(sandbox.root)).toMatchObject({ pid: process.pid });
+});
+
+it('releases an acquired write lock when discovery is cancelled without replacing an existing registration', async () => {
+  const { root, config } = await fixture();
+  const cleanup = await registerRunningServer(config, root, 4393, 'existing');
+  const filename = await projectCacheFile(root, 'server');
+  const before = await readFile(filename);
+  const cancellation = new AbortController();
+  const publish = projectCache.publishCoordinationFile;
+  vi.spyOn(projectCache, 'publishCoordinationFile').mockImplementationOnce(async (...args) => {
+    const identity = await publish(...args);
+    cancellation.abort();
+    return identity;
+  });
+  await expect(registerRunningServer(config, root, 4394, 'cancelled', cancellation.signal)).rejects.toMatchObject({ name: 'AbortError' });
+  expect(await readFile(filename)).toEqual(before);
+  await expect(readFile(await projectCacheFile(root, 'write'))).rejects.toMatchObject({ code: 'ENOENT' });
+  await cleanup();
 });
 
 it('deletes a dead PID registration and treats EPERM as a live owner', async () => {

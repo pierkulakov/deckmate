@@ -56,6 +56,8 @@ const commandSpecs: Record<string, CommandSpec> = {
   answer: { args: '<c-ref#N> "<answer>"', options: ['as', 'member', 'rev'], example: 'deckmate project answer c-1a2b3c4d5e#1 "60 FPS" --as human --member agent --rev 0123456789ab' },
   apply: { args: '<c-ref> <index>', options: ['note', 'rev'], example: 'deckmate project apply c-1a2b3c4d5e 0 --rev 0123456789ab --note "Rules updated"' },
   report: { args: '<c-ref>', options: ['file', 'member', 'state'], example: 'deckmate project report c-1a2b3c4d5e --file report.md --member agent --state review' },
+  attach: { args: '<c-ref>', options: ['file', 'member'], example: 'deckmate project attach c-1a2b3c4d5e --file ArtSource/Props/Birch/Birch.blend' },
+  detach: { args: '<c-ref>', options: ['file', 'member'], example: 'deckmate project detach c-1a2b3c4d5e --file ArtSource/Props/Birch/Birch.blend' },
   state: { args: '<c-ref> <state>', options: ['member', 'reason'], example: 'deckmate project state c-1a2b3c4d5e done --member reviewer' },
   create: { args: '[title]', options: ['file', 'deck', 'kind', 'owner', 'priority', 'effort', 'parent', 'key', 'body-file', 'member'], example: 'deckmate project create "Check audio" --deck inbox --member agent' },
   update: { args: '<c-ref>', options: ['state', 'reason', 'owner', 'priority', 'effort', 'deck', 'tracks', 'parent', 'rev', 'member'], example: 'deckmate project update c-1a2b3c4d5e --owner agent --state started --rev 0123456789ab' },

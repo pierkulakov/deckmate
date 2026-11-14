@@ -22,10 +22,11 @@ describe.skipIf(!browserPath)('card attachment insertion (headless CDP)', () => 
     await delay(40);
   }
   async function edit(options: object = {}) {
-    await evaluate(`window.attachmentEditorTest.render(${JSON.stringify(options)})`);
-    await until(`Boolean(document.querySelector('.card-content-edit-action:not(:disabled)'))`);
+    // 2026-11-14: the enabled Edit button can still belong to the previous keyed editor.
+    await evaluate(`window.previousEditor = document.querySelector('.card-content-reading'); window.attachmentEditorTest.render(${JSON.stringify(options)})`);
+    await until(`document.querySelector('.card-content-reading') !== window.previousEditor && Boolean(document.querySelector('.card-content-edit-action:not(:disabled)'))`);
     await evaluate(`document.querySelector('.card-content-edit-action').click()`);
-    await until(`Boolean(document.querySelector('.card-edit-text'))`);
+    await until(`Boolean(document.querySelector('.card-edit-text')) && document.activeElement === document.querySelector('.card-edit-text')`);
   }
   async function open(keyName = 'Enter') {
     await evaluate(`document.querySelector('.card-edit-insert').focus()`);

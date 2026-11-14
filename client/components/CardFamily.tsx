@@ -1171,7 +1171,7 @@ export function CardFamilyPopover({ hero, children: allChildren, disabled, membe
   }}>
     <DropdownMenu.Trigger asChild><button ref={trigger} type="button" className="card-family-trigger" disabled={unavailable} aria-label={t.parentStrip(hero.title)}>
       <span className="card-material-glare" aria-hidden="true" />
-      <span><TagTitlePrefix tags={hero.tags} definitions={projectTags} />{hero.title}</span>
+      <span className="card-family-trigger-label"><TagTitlePrefix tags={hero.tags} definitions={projectTags} /><span>{hero.title}</span></span>
     </button></DropdownMenu.Trigger>
     <DropdownMenu.Portal><DropdownMenu.Content className="card-family-popover" side={side} align="start" sideOffset={6} collisionPadding={12} aria-label={t.subCardsOf(hero.title)}>
       <DropdownMenu.Arrow className="card-family-popover-arrow" width={12} height={7} />

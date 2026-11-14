@@ -23,6 +23,48 @@ describe.skipIf(!browserPath)('card proportions in the real workbench', () => {
     await page.until(`Boolean(document.querySelector('.card-preview-document .check-item'))`);
     await waitForLayout(page.evaluate, '.deck-card, .card-preview-sheet, .card-preview-dock');
   }
+  it('centers the Hero affiliation title and its tag glyph', async () => {
+    const results: unknown[] = [];
+    for (const width of [1440, 375]) for (const theme of ['dark', 'light']) {
+      await page.send('Emulation.setDeviceMetricsOverride', { width, height: 900, deviceScaleFactor: 1, mobile: false });
+      await open('&order=manual&theme=' + theme);
+      await page.evaluate(`document.querySelector('.deck-overview-collapse')?.click()`);
+      await page.evaluate(`document.querySelector('.card-family-trigger').scrollIntoView({ block: 'center', behavior: 'instant' })`);
+      for (const title of ['Т-34', 'Длинное название Hero с цифрой 34', 'English title 123']) for (const icon of [true, false]) for (const size of [115, 150, 200]) {
+        await page.callFunction(`size => document.querySelector('.deck-card > .card-family-trigger').parentElement.style.setProperty('--tile-width', size + 'px')`, size);
+        await page.callFunction(`(title, icon) => {
+          const label = document.querySelector('.deck-card > .card-family-trigger > span:not(.card-material-glare)');
+          label.replaceChildren();
+          if (icon) { const tags = document.createElement('span'); tags.className = 'card-title-tags';
+            tags.innerHTML = '<svg class="card-tag-icon" viewBox="0 0 24 24"><path fill="currentColor" d="M12 2l3 6 7 1-5 5 1 7-6-3-6 3 1-7-5-5 7-1z"/></svg>'; label.append(tags); }
+          const text = document.createElement('span'); text.textContent = title; label.append(text);
+        }`, title, icon);
+        const result = await page.evaluate(`(() => {
+          const band = document.querySelector('.deck-card > .card-family-trigger');
+          const label = band.querySelector('span:not(.card-material-glare)');
+          const range = document.createRange(); range.selectNodeContents(label.lastChild);
+          const b = band.getBoundingClientRect(), t = range.getBoundingClientRect(), i = band.querySelector('.card-tag-icon')?.getBoundingClientRect();
+          const face = band.parentElement.querySelector('.deck-card-face').getBoundingClientRect();
+          const grip = band.parentElement.querySelector('.card-transfer-handle')?.getBoundingClientRect();
+          return { band: b.toJSON(), text: t.toJSON(), icon: i?.toJSON(), top: t.top - b.top, bottom: b.bottom - t.bottom,
+            faceTop: face.top, gripTop: grip?.top };
+        })()`);
+        results.push({ width, theme, title, hasIcon: icon, size, ...result });
+        expect(Math.abs(result.top - result.bottom), `${width} ${theme} ${title} ${size}`).toBeLessThanOrEqual(1);
+        if (icon) expect(Math.abs((result.icon.top + result.icon.bottom - result.text.top - result.text.bottom) / 2)).toBeLessThanOrEqual(1);
+        expect(result.faceTop).toBeGreaterThanOrEqual(result.band.bottom);
+        if (result.gripTop != null) expect(result.gripTop).toBeGreaterThanOrEqual(result.band.bottom);
+        if (title.startsWith('Длинное') && size === 115) expect(result.text.height).toBe(28);
+        if (process.env.DECKMATE_TITLE_AUDIT && icon && size === 115 && title !== 'English title 123') {
+          const out = path.resolve('.deckmate/audit/card-title-center');
+          await mkdir(out, { recursive: true });
+          const shot = await page.send('Page.captureScreenshot', { format: 'png' });
+          await writeFile(path.join(out, `${process.env.DECKMATE_TITLE_AUDIT}-${theme}-${width}-${title === 'Т-34' ? 'short' : 'long'}.png`), Buffer.from(shot.data, 'base64'));
+        }
+      }
+    }
+    if (process.env.DECKMATE_TITLE_AUDIT) await writeFile(path.resolve('.deckmate/audit/card-title-center', `${process.env.DECKMATE_TITLE_AUDIT}.json`), JSON.stringify(results, null, 2));
+  }, 60000);
   async function measure() {
     return page.evaluate(`(() => {
       const box = selector => { const r = document.querySelector(selector)?.getBoundingClientRect(); return r && { x: r.x, y: r.y, width: r.width, height: r.height, bottom: r.bottom }; };

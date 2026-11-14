@@ -2525,6 +2525,9 @@ async function addCardReport(root: string, source: ManifestSource,
 /** Apply a catalog action and return rewritten project files for board rebuilding. */
 export async function editProjectCatalog(root: string, edit: CatalogEdit, actorMemberId: string | null = null,
   templateOptions: import('./project-templates.ts').ProjectTemplateOptions = {}): Promise<string[]> {
+  // 2026-11-14: content edits patch only the card's source file, guarded again at publication by sourceHash.
+  // Native titles live in card YAML; legacy titles live in their page/mechanic, never in the catalog manifest.
+  if (edit.action === 'update-card-content') return updateCardContent(root, edit);
   if (edit.action === 'bulk-edit-cards') return (await (await import('./catalog-bulk.ts')).editCatalogBulk(root, edit, actorMemberId)).changedPaths;
   // 2026-11-05: tags have an independent registry; only tagsHash guards their contents.
   if (edit.action === 'save-project-tag') {
@@ -2552,7 +2555,6 @@ export async function editProjectCatalog(root: string, edit: CatalogEdit, actorM
   if (edit.action === 'set-card-state' || edit.action === 'set-card-properties') return setCardAttributes(root, source, edit, actorMemberId);
   if (edit.action === 'reorder-hand') return reorderHand(root, edit);
   if (edit.action === 'bulk-assign-deck' || edit.action === 'bulk-add-track') return bulkMembership(root, source, edit);
-  if (edit.action === 'update-card-content') return updateCardContent(root, edit, () => verifyManifestHash(root, edit.manifestHash));
   if (edit.action === 'create-card') return createCard(root, edit, source);
   if (edit.action === 'set-deck-zones') return setDeckZones(root, source, edit);
   if (edit.action === 'move-cards-in-deck') return moveCardsInDeck(root, source, edit);

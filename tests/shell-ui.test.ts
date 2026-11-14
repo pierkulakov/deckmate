@@ -657,7 +657,7 @@ describe.skipIf(!browserPath)('application shell (browser)', () => {
     await key('Enter');
     await until(`new URLSearchParams(location.search).get('deck') === 'neighbors' && Boolean(document.querySelector('.is-deck-open'))`);
     expect(await evaluate('window.searchNavigationMarker')).toBe('same-document');
-    expect(await evaluate(`document.activeElement !== document.body`)).toBe(true);
+    await until(`document.activeElement !== document.body`);
     expect(await evaluate(`new URLSearchParams(location.search).get('catalogSource')`)).toBe('sandbox');
     await evaluate('history.back()');
     await until(view === 'deck' ? `new URLSearchParams(location.search).get('deck') === 'tasks'` : `new URLSearchParams(location.search).get('view') === 'hand'`);
@@ -707,7 +707,7 @@ describe.skipIf(!browserPath)('application shell (browser)', () => {
     }
   });
 
-  it('keeps every server state identifiable without color or motion and names its visible label', async () => {
+  it.each(['en', 'ru'])('keeps every server state identifiable without color or motion and names its visible label (%s)', async lang => {
     const labels: Record<string, Record<string, [string, string]>> = {
       en: { live: ['Live', 'Live'], saving: ['Saving…', 'Saving changes…'], saved: ['Saved', 'Saved'],
         reconnecting: ['Connecting…', 'Reconnecting…'], offline: ['Offline', 'Server stopped'] },
@@ -724,45 +724,43 @@ describe.skipIf(!browserPath)('application shell (browser)', () => {
         } else await until(`Boolean(document.querySelector('.breadcrumb .server-status'))`);
         for (const theme of ['light', 'dark']) {
           await evaluate(`document.documentElement.classList.toggle('dark', ${theme === 'dark'})`);
-          for (const lang of ['en', 'ru']) {
-            const [chip, detail] = labels[lang][state];
-            const name = chip === detail ? chip : `${chip} — ${detail}`;
-            await evaluate(`window.shellTest.setLang(${JSON.stringify(lang)})`);
-            // 2026-11-13: "Saved" lasts 1.6 s, shorter than sixteen layout checks on a slow runner; restart it per check.
-            if (state === 'saved') {
-              await evaluate('window.shellTest.startSave(0)');
-              await until(`Boolean(document.querySelector('.server-status.is-saved'))`);
-            }
-            await until(`document.querySelector('.server-status')?.getAttribute('aria-label') === ${JSON.stringify(name)}`);
-            const result = await evaluate(`(() => {
-              const button = document.querySelector('.server-status');
-              const label = button.querySelector('.server-status-labels .is-active');
-              const box = button.getBoundingClientRect(), text = label.getBoundingClientRect();
-              const tabs = document.querySelector('.global-tabs'), canvas = document.createElement('canvas').getContext('2d');
-              const tabsFit = tabs.scrollWidth <= tabs.clientWidth && [...tabs.querySelectorAll('button')].every(tab => {
-                const style = getComputedStyle(tab); canvas.font = style.font;
-                return canvas.measureText(tab.textContent).width <= tab.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
-              });
-              return { state: button.classList.contains('is-${state}'), name: button.getAttribute('aria-label'),
-                live: document.querySelector('.server-status-slot [role="status"]').textContent,
-                label: label.textContent, shown: text.width > 0 && getComputedStyle(label).opacity === '1',
-                fits: box.left >= 0 && box.right <= innerWidth && (!text.width || text.left >= box.left && text.right <= box.right),
-                tabsFit, overflow: document.documentElement.scrollWidth > innerWidth };
-            })()`);
-            expect(result).toEqual({ state: true, name, live: detail, label: chip,
-              shown: width === 1280 || width === 375 || state !== 'live', fits: true, tabsFit: true, overflow: false });
-            if (width === 1280 && theme === 'dark') {
-              const document = await send('DOM.getDocument');
-              const button = await send('DOM.querySelector', { nodeId: document.root.nodeId, selector: '.server-status' });
-              const tree = await send('Accessibility.getPartialAXTree', { nodeId: button.nodeId, fetchRelatives: false });
-              expect(tree.nodes.find((node: { role?: { value: string } }) => node.role?.value === 'button')?.name?.value).toBe(name);
-            }
-            if ([900, 1280].includes(width) && lang === 'ru' && ['live', 'reconnecting', 'offline'].includes(state) && process.env.DECKMATE_A11Y_SHOTS) {
-              await waitForLayout(evaluate, '.server-status');
-              mkdirSync(process.env.DECKMATE_A11Y_SHOTS, { recursive: true });
-              const image = await send('Page.captureScreenshot', { format: 'png' });
-              writeFileSync(path.join(process.env.DECKMATE_A11Y_SHOTS, `status-${state}-${theme}-${width}.png`), Buffer.from(image.data, 'base64'));
-            }
+          const [chip, detail] = labels[lang][state];
+          const name = chip === detail ? chip : `${chip} — ${detail}`;
+          await evaluate(`window.shellTest.setLang(${JSON.stringify(lang)})`);
+          // 2026-11-14: "Saved" lasts 1.6 s, shorter than the layout matrix on a slow runner; restart it per check.
+          if (state === 'saved') {
+            await evaluate('window.shellTest.startSave(0)');
+            await until(`Boolean(document.querySelector('.server-status.is-saved'))`);
+          }
+          await until(`document.querySelector('.server-status')?.getAttribute('aria-label') === ${JSON.stringify(name)}`);
+          const result = await evaluate(`(() => {
+            const button = document.querySelector('.server-status');
+            const label = button.querySelector('.server-status-labels .is-active');
+            const box = button.getBoundingClientRect(), text = label.getBoundingClientRect();
+            const tabs = document.querySelector('.global-tabs'), canvas = document.createElement('canvas').getContext('2d');
+            const tabsFit = tabs.scrollWidth <= tabs.clientWidth && [...tabs.querySelectorAll('button')].every(tab => {
+              const style = getComputedStyle(tab); canvas.font = style.font;
+              return canvas.measureText(tab.textContent).width <= tab.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
+            });
+            return { state: button.classList.contains('is-${state}'), name: button.getAttribute('aria-label'),
+              live: document.querySelector('.server-status-slot [role="status"]').textContent,
+              label: label.textContent, shown: text.width > 0 && getComputedStyle(label).opacity === '1',
+              fits: box.left >= 0 && box.right <= innerWidth && (!text.width || text.left >= box.left && text.right <= box.right),
+              tabsFit, overflow: document.documentElement.scrollWidth > innerWidth };
+          })()`);
+          expect(result).toEqual({ state: true, name, live: detail, label: chip,
+            shown: width === 1280 || width === 375 || state !== 'live', fits: true, tabsFit: true, overflow: false });
+          if (width === 1280 && theme === 'dark') {
+            const document = await send('DOM.getDocument');
+            const button = await send('DOM.querySelector', { nodeId: document.root.nodeId, selector: '.server-status' });
+            const tree = await send('Accessibility.getPartialAXTree', { nodeId: button.nodeId, fetchRelatives: false });
+            expect(tree.nodes.find((node: { role?: { value: string } }) => node.role?.value === 'button')?.name?.value).toBe(name);
+          }
+          if ([900, 1280].includes(width) && lang === 'ru' && ['live', 'reconnecting', 'offline'].includes(state) && process.env.DECKMATE_A11Y_SHOTS) {
+            await waitForLayout(evaluate, '.server-status');
+            mkdirSync(process.env.DECKMATE_A11Y_SHOTS, { recursive: true });
+            const image = await send('Page.captureScreenshot', { format: 'png' });
+            writeFileSync(path.join(process.env.DECKMATE_A11Y_SHOTS, `status-${state}-${theme}-${width}.png`), Buffer.from(image.data, 'base64'));
           }
         }
         if (width === 375) await click('.mission-control-head button');
@@ -775,9 +773,11 @@ describe.skipIf(!browserPath)('application shell (browser)', () => {
       await render('app', {}, 900);
       await until(`Boolean(document.querySelector('.server-status.is-live'))`);
       await checkState('live');
-      await evaluate('window.shellTest.startSave(4000)');
+      // 2026-11-14: the layout matrix must finish before the simulated write settles.
+      await evaluate('window.finishStatusSave = window.shellTest.startSave(null)');
       await until(`Boolean(document.querySelector('.server-status.is-saving'))`);
       await checkState('saving');
+      await evaluate('window.finishStatusSave()');
       await until(`Boolean(document.querySelector('.server-status.is-saved'))`);
       await checkState('saved');
       await until(`Boolean(document.querySelector('.server-status.is-live'))`);
@@ -787,6 +787,7 @@ describe.skipIf(!browserPath)('application shell (browser)', () => {
       await until(`Boolean(document.querySelector('.server-status.is-offline'))`, 220);
       await checkState('offline');
     } finally {
+      await evaluate('window.finishStatusSave?.(); delete window.finishStatusSave');
       await send('Emulation.setEmulatedMedia', { features: [] });
     }
   }, 45000);
@@ -1565,9 +1566,8 @@ describe.skipIf(!browserPath)('application shell (browser)', () => {
     expect(await evaluate(`document.documentElement.scrollHeight === innerHeight`)).toBe(true);
   });
 
-  it('keeps composer band labels and priority icon within their controls', async () => {
-    const results = [];
-    for (const width of [375, 1280]) for (const theme of ['light', 'dark']) for (const lang of ['en', 'ru']) {
+  it.each([375, 1280].flatMap(width => ['light', 'dark'].flatMap(theme => ['en', 'ru'].map(lang => ({ width, theme, lang })))))
+    ('keeps composer band labels and priority icon within their controls ($width px, $theme, $lang)', async ({ width, theme, lang }) => {
       await render('app', { deck: true, theme, lang }, width);
       await click(`.deck-action-rail button[aria-label="${lang === 'ru' ? 'Новая карточка' : 'New card'}"]`);
       await until(`Boolean(document.querySelector('.card-composer-band'))`);
@@ -1591,15 +1591,12 @@ describe.skipIf(!browserPath)('application shell (browser)', () => {
       await click('.card-composer-band button:last-child');
       await until(`Boolean(document.querySelector('.card-composer-settings:not([hidden]) select'))`);
       await evaluate(`(() => { const select = [...document.querySelectorAll('.card-composer-settings select')].find(e => [...e.options].some(o => o.value === 'high')); select.value = 'high'; select.dispatchEvent(new Event('change', { bubbles: true })); })()`);
+      await until(`document.querySelector('.card-composer-band button:last-child svg path')?.getAttribute('d') === 'M3 2.5l5 3 5-3'`);
       const high = await measure();
-      results.push({ width, theme, lang, unset, high });
       await evaluate(`(() => { const select = [...document.querySelectorAll('.card-composer-settings select')].find(e => [...e.options].some(o => o.value === 'high')); select.value = ''; select.dispatchEvent(new Event('change', { bubbles: true })); })()`);
       await until(`document.querySelector('.card-composer-band button:last-child svg path')?.getAttribute('d') === 'M5 8h6'`);
-    }
-    for (const result of results) {
-      expect(result, JSON.stringify(result)).toMatchObject({ unset: { labels: [true, true], separated: true, icon: 'M5 8h6', extraValue: false }, high: { labels: [true, true], separated: true, icon: 'M3 2.5l5 3 5-3', extraValue: false } });
-    }
-  });
+      expect({ unset, high }).toMatchObject({ unset: { labels: [true, true], separated: true, icon: 'M5 8h6', extraValue: false }, high: { labels: [true, true], separated: true, icon: 'M3 2.5l5 3 5-3', extraValue: false } });
+    });
 
   it.each([375, 1280])('L-02/L-03/L-08: composer controls and deck search fit at %s px', async width => {
     for (const theme of ['light', 'dark']) for (const lang of ['ru', 'en']) {

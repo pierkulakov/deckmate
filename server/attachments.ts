@@ -4,15 +4,18 @@ import { lstat, open, rename, unlink } from 'node:fs/promises';
 import path from 'node:path';
 import type { BigIntStats } from 'node:fs';
 import { isDeepStrictEqual } from 'node:util';
-import { isMap, isScalar, isSeq, parseDocument, stringify, type YAMLSeq } from 'yaml';
+import { isMap, isNode, isScalar, isSeq, parseDocument, stringify, type YAMLSeq } from 'yaml';
 import type { CardAttachment, CardAttachments, CatalogEdit } from '../src/catalog-contracts.ts';
 import type { FormatLanguage } from '../src/format-vocabulary.ts';
-import { containedFile } from './config.ts';
+import { assertWritable, containedFile, type ServerConfig } from './config.ts';
 import { projectLanguage } from './project-language.ts';
 import { resolveDataPath } from './data-paths.ts';
 import { decodeAssetDataUrl } from './asset-data-url.ts';
 import { checkDirectories, checkGuardedFile, guardedDirectory, sameIdentity, writeGuardedNewFile, type DirectoryGuard } from './guarded-files.ts';
 import { isPlainRecord } from './yaml-front-matter.ts';
+import { checkedProjectFile, isProjectFilePath, projectFileOpenPolicy } from './project-file-links.ts';
+import type { DataSource } from '../src/workspace-contracts.ts';
+import { CatalogError } from './catalog-error.ts';
 
 const messages = defineText({
   missingAttachment: (filename: string) => `Attachment file not found: ${filename}`,
@@ -53,6 +56,9 @@ const messages = defineText({
   attachmentNotFound: "Attachment not found.",
   attachmentNotListed: "Attachment not found in the card list.",
   attachmentFileBusy: "The attachment was removed from the card list, but its file is in use and could not be removed. Delete it manually.",
+  attachmentsChanged: 'Attachments changed in the files. Refresh the panel and try again.',
+  cardMissing: 'Card not found.',
+  editFailed: 'Could not save the attachment.',
 }, {
   missingAttachment: (filename: string) => `Файл вложения не найден: ${filename}`,
   invalidAttachmentId: "Недопустимый ID карточки для вложений.",
@@ -92,6 +98,9 @@ const messages = defineText({
   attachmentNotFound: "Вложение не найдено.",
   attachmentNotListed: "Вложение не найдено в списке карточки.",
   attachmentFileBusy: "Вложение удалено из списка карточки, но файл на диске занят и не удалён. Удалите его вручную.",
+  attachmentsChanged: 'Вложения изменились в файлах. Обновите панель и повторите действие.',
+  cardMissing: 'Карточка не найдена.',
+  editFailed: 'Не удалось сохранить вложение.',
 });
 
 
@@ -110,14 +119,14 @@ const nativeCardIdPattern = /^card:([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]
 const registryHeadPattern = /^(?:﻿)?---(\r?\n)([\s\S]*?)^---[ \t]*(?:\r?\n|$)/mu;
 const digest = (bytes: Buffer) => createHash('sha256').update(bytes).digest('hex');
 
-export type AttachmentEditAction = Extract<CatalogEdit, { action: 'upload-attachment' | 'remove-attachment' }>;
+export type AttachmentEditAction = Extract<CatalogEdit, { action: 'upload-attachment' | 'remove-attachment' | 'attach-project-file' | 'detach-project-file' }>;
 // ReadonlySet<string> lets app.ts validate any catalog action against this set.
-export const attachmentEditActions: ReadonlySet<string> = new Set<AttachmentEditAction['action']>(['upload-attachment', 'remove-attachment']);
+export const attachmentEditActions: ReadonlySet<string> = new Set<AttachmentEditAction['action']>(['upload-attachment', 'remove-attachment', 'attach-project-file', 'detach-project-file']);
 
 interface RegistryEntry extends Record<string, unknown> {
   file: string;
   name: string;
-  kind: 'image' | 'pdf';
+  kind: CardAttachment['kind'];
   mime: string;
   bytes: number;
   addedAt: string;
@@ -128,6 +137,7 @@ interface RegistryData extends Record<string, unknown> {
   schema: 1;
   card: string;
   files: RegistryEntry[];
+  projectFiles?: RegistryEntry[];
 }
 interface ParsedRegistry {
   data: RegistryData;
@@ -135,7 +145,9 @@ interface ParsedRegistry {
   bytes: Buffer;
   yaml: string;
   yamlStart: number;
-  files: YAMLSeq;
+  files: YAMLSeq | null;
+  listName: 'files' | 'projectFiles';
+  mapAppendOffset: number;
   mapFlow: boolean;
   filesIndent: string;
   emptyIndent: string;
@@ -238,9 +250,21 @@ function validateRegistry(value: unknown, cardId: string): asserts value is Regi
     return entry.file;
   });
   if (new Set(filePaths).size !== filePaths.length) throw new Error(serverText(messages).duplicateAttachments);
+  if (value.projectFiles !== undefined) {
+    if (!Array.isArray(value.projectFiles) || value.projectFiles.length + filesValue.length > maximumRegistryEntries) throw new Error(serverText(messages).invalidAttachmentList);
+    const paths = value.projectFiles.map(entry => {
+      if (!isPlainRecord(entry) || !isProjectFilePath(entry.file)) throw new Error(serverText(messages).invalidRegistryPath);
+      if (!boundedText(entry.name, 200) || entry.kind !== 'project-file' || entry.mime !== 'application/octet-stream') throw new Error(serverText(messages).registryFileMismatch);
+      if (typeof entry.bytes !== 'number' || !Number.isSafeInteger(entry.bytes) || entry.bytes < 0) throw new Error(serverText(messages).invalidRegistrySize);
+      if (!validAddedAt(entry.addedAt)) throw new Error(serverText(messages).invalidRegistryDate);
+      if (entry.addedBy !== null && !boundedText(entry.addedBy, 80)) throw new Error(serverText(messages).invalidRegistryAuthor);
+      return entry.file;
+    });
+    if (new Set([...filePaths, ...paths]).size !== filePaths.length + paths.length) throw new Error(serverText(messages).duplicateAttachments);
+  }
 }
 
-function parseRegistry(bytes: Buffer, cardId: string): ParsedRegistry {
+function parseRegistry(bytes: Buffer, cardId: string, listName: 'files' | 'projectFiles' = 'files'): ParsedRegistry {
   let text: string;
   try { text = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(bytes); }
   catch { throw new Error(serverText(messages).invalidAttachmentList); }
@@ -253,13 +277,16 @@ function parseRegistry(bytes: Buffer, cardId: string): ParsedRegistry {
   try { value = document.toJS({ maxAliasCount: 0 }); }
   catch { throw new Error(serverText(messages).invalidAttachmentList); }
   validateRegistry(value, cardId);
-  const files = document.get('files', true);
-  const key = document.contents.items.find(pair => isScalar(pair.key) && pair.key.value === 'files')?.key;
-  if (!isSeq(files) || !files.range || !files.srcToken || !isScalar(key) || !key.range) throw new Error(serverText(messages).invalidAttachmentList);
+  const files = document.get(listName, true);
+  const key = document.contents.items.find(pair => isScalar(pair.key) && pair.key.value === listName)?.key ?? document.contents.items[0]?.key;
+  if ((files !== undefined && (!isSeq(files) || !files.range || !files.srcToken)) || !isScalar(key) || !key.range) throw new Error(serverText(messages).invalidAttachmentList);
   const keyColumn = key.range[0] - (yaml.lastIndexOf('\n', key.range[0] - 1) + 1);
   const emptyIndent = ' '.repeat(keyColumn + 2);
-  const filesIndent = files.srcToken.type === 'block-seq' ? ' '.repeat(files.srcToken.indent) : emptyIndent;
-  return { data: value, hash: digest(bytes), bytes, yaml, files, filesIndent, emptyIndent, newline: match[1],
+  const filesIndent = isSeq(files) && files.srcToken?.type === 'block-seq' ? ' '.repeat(files.srcToken.indent) : emptyIndent;
+  const lastValue = document.contents.items.at(-1)?.value;
+  const mapAppendOffset = isNode(lastValue) && lastValue.range ? lastValue.range[1] : document.contents.range![1] - 1;
+  return { data: value, hash: digest(bytes), bytes, yaml, files: isSeq(files) ? files : null, listName,
+    mapAppendOffset, filesIndent, emptyIndent, newline: match[1],
     mapFlow: document.contents.flow ?? false, yamlStart: Buffer.byteLength(text.slice(0, text.indexOf('\n') + 1)) };
 }
 
@@ -279,6 +306,7 @@ function registryLineEnd(yaml: string, offset: number): number {
 }
 
 function blockItemRange(previous: ParsedRegistry, index: number): [number, number] {
+  if (!previous.files) throw new Error(serverText(messages).invalidAttachmentList);
   const token = previous.files.srcToken;
   const item = previous.files.items[index];
   const marker = token?.type === 'block-seq'
@@ -292,6 +320,15 @@ function blockItemRange(previous: ParsedRegistry, index: number): [number, numbe
 
 function appendRegistryItem(previous: ParsedRegistry, entry: RegistryEntry): RegistryTextEdit[] {
   const { files, yaml, newline, filesIndent } = previous;
+  if (!files) {
+    if (previous.mapFlow) {
+      const value = stringify({ [previous.listName]: [entry] }, { collectionStyle: 'flow', lineWidth: 0 }).trimEnd();
+      return [{ start: previous.mapAppendOffset, end: previous.mapAppendOffset, text: ', ' + value.slice(1, -1).trim() }];
+    }
+    const indent = previous.emptyIndent.slice(2);
+    const block = stringify({ [previous.listName]: [entry] }, { lineWidth: 0 }).trimEnd().replace(/\n/gu, newline + indent);
+    return [{ start: yaml.length, end: yaml.length, text: indent + block + newline }];
+  }
   const token = files.srcToken;
   if (!files.range || !token) throw new Error(serverText(messages).invalidAttachmentList);
   if (token.type === 'flow-collection' && (files.items.length || previous.mapFlow)) {
@@ -323,6 +360,7 @@ function appendRegistryItem(previous: ParsedRegistry, entry: RegistryEntry): Reg
 
 function removeRegistryItem(previous: ParsedRegistry, index: number): RegistryTextEdit[] {
   const { files } = previous;
+  if (!files) throw new Error(serverText(messages).invalidAttachmentList);
   const token = files.srcToken;
   const item = files.items[index];
   if (!isMap(item) || !item.range || !token) throw new Error(serverText(messages).invalidAttachmentList);
@@ -343,10 +381,14 @@ function removeRegistryItem(previous: ParsedRegistry, index: number): RegistryTe
 
 function renderRegistry(data: RegistryData, previous: ParsedRegistry | null, body: string): Buffer {
   if (!previous) return Buffer.from('---\n' + stringify(data, { lineWidth: 0 }) + '---\n' + body, 'utf8');
+  const listName = isDeepStrictEqual(data.projectFiles, previous.data.projectFiles) ? 'files' : 'projectFiles';
+  if (previous.listName !== listName) previous = parseRegistry(previous.bytes, data.card, listName);
+  const nextFiles = data[listName] ?? [];
+  const oldFiles = previous.data[listName] ?? [];
   let edits: RegistryTextEdit[];
-  if (data.files.length === previous.data.files.length + 1) edits = appendRegistryItem(previous, data.files.at(-1)!);
-  else if (data.files.length === previous.data.files.length - 1) {
-    const removedIndex = previous.data.files.findIndex(entry => !data.files.some(file => file.file === entry.file));
+  if (nextFiles.length === oldFiles.length + 1) edits = appendRegistryItem(previous, nextFiles.at(-1)!);
+  else if (nextFiles.length === oldFiles.length - 1) {
+    const removedIndex = oldFiles.findIndex(entry => !nextFiles.some(file => file.file === entry.file));
     edits = removeRegistryItem(previous, removedIndex);
   } else throw new Error(serverText(messages).registryRewriteChangesData);
   // 2026-11-09: source offsets are UTF-16 positions; only the changed spans are encoded and spliced into the original bytes.
@@ -442,7 +484,18 @@ export async function readCardAttachments(root: string, cardId: string): Promise
     const { file, name, kind, mime, bytes, addedAt, addedBy } = entry;
     files.push({ file, name, kind, mime, bytes, addedAt, addedBy, ...(missing ? { missing: true } : {}) });
   }
-  return { hash: registry.parsed.hash, files, warnings };
+  const projectFiles: CardAttachment[] = [];
+  for (const entry of registry.parsed.data.projectFiles ?? []) {
+    const { file, name, kind, mime, bytes, addedAt, addedBy } = entry;
+    try {
+      const current = await checkedProjectFile(root, file);
+      projectFiles.push({ file, name, kind, mime, bytes: current.bytes, addedAt, addedBy, ...projectFileOpenPolicy(file) });
+    } catch {
+      projectFiles.push({ file, name, kind, mime, bytes, addedAt, addedBy, missing: true, canOpen: false, openBlockedReason: 'FILE_UNAVAILABLE' });
+      warnings.push(serverText(messages).missingAttachment(name));
+    }
+  }
+  return { hash: registry.parsed.hash, files, ...(projectFiles.length ? { projectFiles } : {}), warnings };
 }
 
 function requireRegistryHash(edit: AttachmentEditAction): void {
@@ -471,7 +524,7 @@ async function uploadAttachment(root: string, edit: Extract<AttachmentEditAction
   try {
     const registry = await readRegistry(guard, edit.cardId);
     const previous = registry?.parsed.data ?? { schema: 1 as const, card: edit.cardId, files: [] };
-    if (previous.files.length >= maximumRegistryEntries) throw new Error(serverText(messages).tooManyAttachments);
+    if (previous.files.length + (previous.projectFiles?.length ?? 0) >= maximumRegistryEntries) throw new Error(serverText(messages).tooManyAttachments);
     const entry: RegistryEntry = { file: asset.relativePath, name: await displayFileName(root, edit.fileName, decoded.extension),
       kind: decoded.kind, mime: decoded.mime, bytes: decoded.bytes.length, addedAt: new Date().toISOString(), addedBy };
     const data = { ...previous, files: [...previous.files, entry] };
@@ -505,12 +558,54 @@ async function removeAttachment(root: string, edit: Extract<AttachmentEditAction
 
 let queuedWrite: Promise<unknown> = Promise.resolve();
 
+async function editProjectFile(root: string, edit: Extract<AttachmentEditAction, { action: 'attach-project-file' | 'detach-project-file' }>): Promise<void> {
+  requireRegistryHash(edit);
+  if (!isProjectFilePath(edit.file)) throw new Error(serverText(messages).invalidAttachmentPath);
+  const key = attachmentKey(edit.cardId);
+  const guard = await attachmentDirectory(root, key, edit.action === 'attach-project-file');
+  if (!guard) throw new Error(serverText(messages).attachmentNotFound);
+  const registry = await readRegistry(guard, edit.cardId);
+  if ((registry?.parsed.hash ?? '') !== edit.attachmentsHash) throw new Error('ATTACHMENTS_CONFLICT');
+  const previous = registry?.parsed.data ?? { schema: 1 as const, card: edit.cardId, files: [] };
+  let projectFiles = previous.projectFiles ?? [];
+  if (edit.action === 'attach-project-file') {
+    const current = await checkedProjectFile(root, edit.file);
+    if ([...previous.files, ...projectFiles].some(entry => entry.file === edit.file)) throw new Error(serverText(messages).duplicateAttachments);
+    if (previous.files.length + projectFiles.length >= maximumRegistryEntries) throw new Error(serverText(messages).tooManyAttachments);
+    projectFiles = [...projectFiles, { file: edit.file, name: path.posix.basename(edit.file).slice(0, 200), kind: 'project-file',
+      mime: 'application/octet-stream', bytes: current.bytes, addedAt: new Date().toISOString(), addedBy: edit.addedBy?.trim().slice(0, 80) || null }];
+  } else {
+    if (!projectFiles.some(entry => entry.file === edit.file)) throw new Error(serverText(messages).attachmentNotListed);
+    projectFiles = projectFiles.filter(entry => entry.file !== edit.file);
+  }
+  await publishRegistry(guard, edit.cardId, edit.attachmentsHash, { ...previous, projectFiles }, registry?.parsed ?? null);
+}
+
 /** Serialize attachment edits through one queue to prevent registry races. */
 export function applyAttachmentEdit(root: string, edit: AttachmentEditAction): Promise<void> {
   const operation = queuedWrite.then(async () => {
     if (edit.action === 'upload-attachment') return uploadAttachment(root, edit);
     if (edit.action === 'remove-attachment') return removeAttachment(root, edit);
+    return editProjectFile(root, edit);
   });
   queuedWrite = operation.catch(() => {});
   return operation;
+}
+
+/** HTTP and offline agent writes share the same policy and conflict status (2026-11-14). */
+export async function writeAttachmentEdit(config: ServerConfig, source: DataSource, edit: AttachmentEditAction, actor: string | null = null): Promise<void> {
+  const root = await assertWritable(config, source);
+  if (edit.action === 'attach-project-file' || edit.action === 'detach-project-file') {
+    const { readProjectCatalog } = await import('./catalog.ts');
+    const catalog = await readProjectCatalog(root);
+    if (!catalog.cards.some(card => card.id === edit.cardId)) throw new CatalogError(404, serverText(messages).cardMissing);
+  }
+  const attributed = (edit.action === 'upload-attachment' || edit.action === 'attach-project-file') && actor
+    ? { ...edit, addedBy: actor } : edit;
+  try { await applyAttachmentEdit(root, attributed); }
+  catch (error) {
+    if (error instanceof Error && error.message === 'ATTACHMENTS_CONFLICT') throw new CatalogError(409, serverText(messages).attachmentsChanged);
+    const saved = error !== null && typeof error === 'object' && 'saved' in error && error.saved === true;
+    throw new CatalogError(saved ? 503 : 422, error instanceof Error ? error.message : serverText(messages).editFailed, saved);
+  }
 }

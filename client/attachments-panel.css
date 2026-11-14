@@ -31,6 +31,12 @@
 
 .attachments-message { margin: 0; color: var(--edit-hint); font-size: 12px; line-height: 16px; overflow-wrap: anywhere; }
 .attachments-message.is-error { color: var(--danger); }
+.attachments-project-form, .attachments-project-form label { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.attachments-project-form input { width: 100%; min-width: 0; padding: 8px; border: var(--control-hairline) solid var(--control-line); border-radius: var(--control-radius); color: var(--ink); background: var(--ground); font: inherit; }
+.attachments-project-form input:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.attachments-project-form > button { align-self: flex-start; max-width: 100%; }
+.attachments-project-path { margin: 0; color: var(--muted); overflow-wrap: anywhere; line-height: 16px; }
+.attachments-project-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 /* Asked only when the file is inserted in the card text; sits right under the row it belongs to. */
 .attachments-confirm { display: flex; flex-direction: column; gap: 8px; padding: 12px; border: 1px solid var(--edit-line); border-radius: var(--glass-radius); background: var(--edit-bg); }
 .attachments-confirm p { margin: 0; color: var(--ink); font-size: 13px; line-height: 18px; overflow-wrap: anywhere; }

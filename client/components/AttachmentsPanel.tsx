@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
-import { ArrowDownUp, Check, Copy, Download, Eye, FileText, Filter, Image as ImageIcon, LoaderCircle, Trash2 } from 'lucide-react';
+import { ArrowDownUp, Check, Copy, Download, Eye, File, FileText, Filter, FolderOpen, Image as ImageIcon, LoaderCircle, ExternalLink, Trash2 } from 'lucide-react';
 import type { CardAttachment, CardAttachments, CatalogCard, CatalogView } from '../../src/catalog-contracts.ts';
 import type { CatalogAction } from '../useCatalog.ts';
 import { Button } from './ui/button.tsx';
@@ -66,6 +66,16 @@ const text = defineText({
   addAttachments: 'Add attachments',
   dropAttachmentOr: 'Drop attachment or',
   browse: 'browse',
+  projectFile: 'Project file',
+  projectFiles: 'Project files',
+  projectPath: 'Path relative to the project root',
+  attachFile: 'Attach link',
+  openFile: 'Open',
+  revealFile: 'Show in folder',
+  detachFile: 'Detach link',
+  fileNotFound: 'File not found',
+  openFailed: 'Could not open the project file.',
+  unsafeFileType: 'Opening this file type is blocked; use Show in folder instead.',
 }, {
   loadFailed: 'Не удалось загрузить вложения.',
   loading: 'Загружаем вложения…',
@@ -112,6 +122,16 @@ const text = defineText({
   addAttachments: 'Добавить вложения',
   dropAttachmentOr: 'Перетащите вложение или',
   browse: 'выберите файл',
+  projectFile: 'Файл проекта',
+  projectFiles: 'Файлы проекта',
+  projectPath: 'Путь от корня проекта',
+  attachFile: 'Прикрепить ссылку',
+  openFile: 'Открыть',
+  revealFile: 'Показать в папке',
+  detachFile: 'Открепить ссылку',
+  fileNotFound: 'Файл не найден',
+  openFailed: 'Не удалось открыть файл проекта.',
+  unsafeFileType: 'Открытие этого типа заблокировано; доступно «Показать в папке».',
 });
 
 interface AttachmentsPanelProps {
@@ -120,6 +140,7 @@ interface AttachmentsPanelProps {
   writable: boolean;
   onEdit: (action: CatalogAction) => Promise<boolean>;
   resource?: ReturnType<typeof useCardAttachments>;
+  token?: string;
 }
 
 type UploadOrigin = 'browse' | 'drop' | 'paste';
@@ -145,7 +166,7 @@ export function useCardAttachments(cardId: string, source = attachmentSource(), 
     try {
       const next = await fetchCardAttachments(source, cardId);
       if (epoch !== loadEpoch.current || currentIdentity.current !== identity) return;
-      if (!next || !Array.isArray(next.files) || !Array.isArray(next.warnings) || typeof next.hash !== 'string') {
+      if (!next || !Array.isArray(next.files) || (next.projectFiles !== undefined && !Array.isArray(next.projectFiles)) || !Array.isArray(next.warnings) || typeof next.hash !== 'string') {
         throw new Error(textNow(text).loadFailed);
       }
       viewRef.current = next;
@@ -179,7 +200,7 @@ export function useCardAttachments(cardId: string, source = attachmentSource(), 
   return { view: loadedIdentity === identity ? view : null, listFailure, loading, setLoading, viewRef, operationInFlight, reloadPending, loadEpoch, load, source };
 }
 
-export function AttachmentsPanel({ card, catalog, writable, onEdit, resource }: AttachmentsPanelProps) {
+export function AttachmentsPanel({ card, catalog, writable, onEdit, resource, token }: AttachmentsPanelProps) {
   const local = useCardAttachments(card.id, undefined, !resource);
   const { view, listFailure, loading, setLoading, viewRef, operationInFlight, reloadPending, loadEpoch, load, source } = resource ?? local;
   const t = useText(text);
@@ -191,14 +212,16 @@ export function AttachmentsPanel({ card, catalog, writable, onEdit, resource }: 
   const [dragActive, setDragActive] = useState(false);
   const [viewerIndex, setViewerIndex] = useState<number | null>(null);
   const [pendingRemoval, setPendingRemoval] = useState<{ file: string; count: number } | null>(null);
+  const [projectFile, setProjectFile] = useState('');
   const fileInput = useRef<HTMLInputElement>(null);
   const panel = useRef<HTMLElement>(null);
-  const sortedFiles = view ? sortAttachmentFiles(view.files, sortOrder) : [];
+  const sortedFiles = view ? sortAttachmentFiles([...view.files, ...(view.projectFiles ?? [])], sortOrder) : [];
   const images = sortedFiles.filter(file => file.kind === 'image' && !file.missing);
   const visibleFiles = sortedFiles.filter(file => filter === 'all' || file.kind === filter);
   const members = catalog.members ?? [];
   const filterOptions: { key: AttachmentTypeFilter; label: string }[] = [
     { key: 'all', label: t.allFiles }, { key: 'image', label: t.images }, { key: 'pdf', label: t.documents },
+    { key: 'project-file', label: t.projectFiles },
   ];
   const sortOptions: { key: AttachmentSortOrder; label: string }[] = [
     { key: 'newest', label: t.newestFirst }, { key: 'oldest', label: t.oldestFirst },
@@ -252,6 +275,7 @@ export function AttachmentsPanel({ card, catalog, writable, onEdit, resource }: 
   /** An attachment inserted into the card text asks first: deleting it alone would leave a broken image there. */
   function requestRemoval(file: CardAttachment) {
     if (!view || operationInFlight.current) return;
+    if (file.kind === 'project-file') { void removeAttachment(file.file, false); return; }
     const { count } = removeAttachmentLinks(card.markdown, card.path, file.file);
     if (count) setPendingRemoval({ file: file.file, count });
     else void removeAttachment(file.file, false);
@@ -272,7 +296,8 @@ export function AttachmentsPanel({ card, catalog, writable, onEdit, resource }: 
         const cleaned = await onEdit({ action: 'update-card-content', cardId: card.id, sourceHash: card.sourceHash, title: card.title, markdown });
         if (!cleaned) { setError(t.linksNotRemoved); return; }
       }
-      const saved = await onEdit({ action: 'remove-attachment', cardId: card.id, attachmentsHash: view.hash, file });
+      const action = view.projectFiles?.some(entry => entry.file === file) ? 'detach-project-file' : 'remove-attachment';
+      const saved = await onEdit({ action, cardId: card.id, attachmentsHash: view.hash, file });
       if (saved) await load();
       else setError(t.notRemoved);
     } finally { finishOperation(); }
@@ -281,6 +306,40 @@ export function AttachmentsPanel({ card, catalog, writable, onEdit, resource }: 
   function changeSortOrder(next: AttachmentSortOrder) {
     setSortOrder(next);
     writeAttachmentSortOrder(next);
+  }
+
+  async function attachProjectFile() {
+    if (!writable || !view || operationInFlight.current || !projectFile.trim()) return;
+    operationInFlight.current = true;
+    loadEpoch.current += 1;
+    setBusy(true);
+    setError('');
+    try {
+      const saved = await onEdit({ action: 'attach-project-file', cardId: card.id, attachmentsHash: view.hash,
+        file: projectFile.trim().replaceAll('\\', '/') });
+      if (saved) { setProjectFile(''); await load(); }
+      else setError(t.notSaved(projectFile));
+    } finally { finishOperation(); }
+  }
+
+  async function openProjectFile(file: string, action: 'open' | 'reveal') {
+    if (!token || operationInFlight.current) return;
+    operationInFlight.current = true;
+    setBusy(true);
+    setError('');
+    try {
+      const response = await fetch(`/api/attachments/${action}`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json', 'x-deckmate-token': token },
+        body: JSON.stringify({ source, cardId: card.id, file }),
+      });
+      if (!response.ok) {
+        const result = await response.json().catch(() => null) as { message?: string } | null;
+        throw new Error(result?.message || t.openFailed);
+      }
+    } catch (failure) {
+      setError(failureMessage(failure, t.openFailed));
+      await load();
+    } finally { finishOperation(); }
   }
 
   useEffect(() => {
@@ -328,6 +387,11 @@ export function AttachmentsPanel({ card, catalog, writable, onEdit, resource }: 
           title={t.uploadHint(formatShortcut({ key: 'KeyV', modifiers: ['primary'] }).display)} onClick={() => fileInput.current?.click()}>{t.browse}</button></span>
         {busy && <LoaderCircle size={14} className="spin attachments-busy" aria-label={t.saving} />}
       </div>}
+      {writable && <form className="attachments-project-form" onSubmit={event => { event.preventDefault(); void attachProjectFile(); }}>
+        <label><span>{t.projectFile}</span><input value={projectFile} maxLength={1000} spellCheck={false} placeholder={t.projectPath} disabled={uploadDisabled}
+          onChange={event => setProjectFile(event.target.value)} /></label>
+        <Button type="submit" variant="outline" size="sm" disabled={uploadDisabled || !view || !projectFile.trim()}>{t.attachFile}</Button>
+      </form>}
       {error && <p className="attachments-message is-error" role="alert">{error}</p>}
       {notice && <p className="attachments-message" role="status">{notice}</p>}
       {view !== null && view.warnings.length > 0 && <p className="attachments-message" role="status">{view.warnings.join(' · ')}</p>}
@@ -339,6 +403,9 @@ export function AttachmentsPanel({ card, catalog, writable, onEdit, resource }: 
       {visibleFiles.map(file => {
         const viewable = file.kind === 'image' && !file.missing;
         const author = attachmentAddedByLabel(catalog, file.addedBy);
+        let fileIcon = <FileText size={16} />;
+        if (file.kind === 'image') fileIcon = <ImageIcon size={16} />;
+        if (file.kind === 'project-file') fileIcon = <File size={16} />;
         return <li key={file.file} className="attachments-row">
           <div className="attachments-row-head">
             <CardOwnerAvatar owner={file.addedBy} members={members} />
@@ -348,9 +415,9 @@ export function AttachmentsPanel({ card, catalog, writable, onEdit, resource }: 
             <div className="attachments-row-actions">
               {viewable && <Button type="button" variant="ghost" size="icon" aria-label={t.view(file.name)} title={t.view(file.name)}
                 onClick={() => setViewerIndex(images.indexOf(file))}><Eye size={16} /></Button>}
-              <AttachmentCopyButton cardPath={card.path} attachment={file} />
-              {!file.missing && <a className="ui-button button-ghost button-size-icon" href={attachmentFileUrl(source, file.file)} download={file.name} aria-label={t.download(file.name)} title={t.download(file.name)}><Download size={16} /></a>}
-              {writable && <Button type="button" variant="ghost" size="icon" className="attachments-remove" aria-label={t.remove(file.name)} title={t.removeAttachment} disabled={busy} onClick={() => requestRemoval(file)}><Trash2 size={16} /></Button>}
+              {file.kind !== 'project-file' && <AttachmentCopyButton cardPath={card.path} attachment={file} />}
+              {!file.missing && file.kind !== 'project-file' && <a className="ui-button button-ghost button-size-icon" href={attachmentFileUrl(source, file.file)} download={file.name} aria-label={t.download(file.name)} title={t.download(file.name)}><Download size={16} /></a>}
+              {writable && <Button type="button" variant="ghost" size="icon" className="attachments-remove" aria-label={file.kind === 'project-file' ? t.detachFile : t.remove(file.name)} title={file.kind === 'project-file' ? t.detachFile : t.removeAttachment} disabled={busy} onClick={() => requestRemoval(file)}><Trash2 size={16} /></Button>}
             </div>
           </div>
           {pendingRemoval?.file === file.file && <div className="attachments-confirm" role="alertdialog" aria-label={t.removeAttachment}>
@@ -363,7 +430,15 @@ export function AttachmentsPanel({ card, catalog, writable, onEdit, resource }: 
           </div>}
           {viewable
             ? <button type="button" className="attachments-preview" aria-label={t.view(file.name)} title={file.name} onClick={() => setViewerIndex(images.indexOf(file))}><DecodedImage src={attachmentFileUrl(source, file.file)} alt="" loading="lazy" /></button>
-            : <div className="attachments-file">{file.kind === 'image' ? <ImageIcon size={16} /> : <FileText size={16} />}<span title={file.name}>{file.name}</span>{file.missing && <small>{t.missing}</small>}</div>}
+            : <div className="attachments-file">{fileIcon}<span title={file.name}>{file.name}</span>{file.missing && <small>{file.kind === 'project-file' ? t.fileNotFound : t.missing}</small>}</div>}
+          {file.kind === 'project-file' && <>
+            <p className="attachments-project-path">{file.file}</p>
+            {!file.missing && <div className="attachments-project-actions">
+              {file.canOpen === true && <Button type="button" variant="outline" size="sm" disabled={busy || !token} onClick={() => void openProjectFile(file.file, 'open')}><ExternalLink size={14} />{t.openFile}</Button>}
+              <Button type="button" variant="outline" size="sm" disabled={busy || !token} onClick={() => void openProjectFile(file.file, 'reveal')}><FolderOpen size={14} />{t.revealFile}</Button>
+            </div>}
+            {!file.missing && file.canOpen !== true && <p className="attachments-message">{t.unsafeFileType}</p>}
+          </>}
         </li>;
       })}
     </ul>

@@ -39,6 +39,27 @@ Keep the canonical `cardId`; use `POST /api/catalog` with the shared fields and 
 
 `find` hides Archive/Trash. Restore an archived/deleted card in the UI's Archive/Trash first, then reread its ID and hashes; never recreate it as a replacement.
 
+## Card attachments and project-file links
+
+Prefer `deckmate project attach <c-ref> --file ArtSource/Props/Birch/Birch.blend --data <project>` and `deckmate project detach <c-ref> --file <same-path>`. Optional `--member <id>` attributes the link. MCP `update_card` accepts `attach: "ArtSource/Props/Birch/Birch.blend"` or `detach: "<same-path>"` with the ordinary `ref` and `member`. Both wrappers read the current registry hash, route through the running project server when present, and otherwise use the same guarded file writer. Read-only restrictions still apply. These operations do not launch applications.
+
+For HTTP clients, read `GET /api/attachments?source=sandbox&cardId=<canonical-ID>` → `{ hash, files, projectFiles?, warnings }`. `files` remains the upload list; `projectFiles` entries have `kind: "project-file"`, `file`, `name`, `mime: "application/octet-stream"`, `bytes`, `addedAt`, `addedBy`, optional `missing: true`, and computed `canOpen` / `openBlockedReason`. The reason is stable across languages: `null` when allowed, `"UNSAFE_FILE_TYPE"` for a blocked extension, or `"FILE_UNAVAILABLE"` for a missing/filesystem-unsafe target (taking precedence over type). Current size is read from disk; unavailable targets retain their stored path and size with a warning. Launch policy fields are never written to the registry.
+
+Send `POST /api/catalog` with shared fields, `cardId`, `attachmentsHash: <hash>`, and:
+- `attach-project-file`: `file`, a forward-slash path relative to the data project root, not the card's directory. The file must already exist and be regular with exactly one hardlink (`nlink === 1`); any extension/size may be attached because no bytes are copied, but opening is restricted separately. Absolute paths, traversal, symlinks and junctions (even internal ones), hardlinks and directories are rejected. The filesystem checks also apply to read/open/reveal. Links live in `projectFiles` in the card's existing schema-1 `attachments.md` registry; never edit it by hand.
+- `detach-project-file`: `file`; removes the registry link without deleting the original, even when the target is missing.
+- `upload-attachment`: `dataUrl` (PNG/JPEG/WebP/GIF/PDF, ≤10 MiB), optional `fileName` / `addedBy`; `remove-attachment`: uploaded `file` (deletes those managed bytes). Do not upload a generated `.blend` copy: link its original path instead.
+
+The shared registry hash guards all four actions; stale writes return 409. The combined limit is 500 entries. Actor headers override `addedBy`. Card Markdown, unrelated registry bytes and original project-file bytes remain untouched.
+
+For a person's explicit request to inspect a linked file, `POST /api/attachments/open` or `/api/attachments/reveal` with token header and `{ source, cardId, file }` launches the default application or reveals its folder on the server's machine. These are local side effects, not downloads or previews: do not call them merely to attach a result. They require the existing link and a fresh guarded-path check, reject foreign origins and missing tokens, and are allowed in read-only mode; missing/filesystem-unsafe/unattached targets return 404. The Desktop board uses the same endpoints. Success confirms dispatch, not that the application opened the file.
+
+The server permits `open` only for the last, case-insensitive extension in `.txt .md .markdown .json .jsonc .csv .tsv .yaml .yml .toml .png .jpg .jpeg .webp .gif .pdf .blend .fbx .obj .gltf .glb .wav .mp3 .ogg .flac .mp4 .webm`. Every other type, unknown extension, extensionless file and double extension ending in an executable type (such as `invoice.pdf.exe`) returns 422 `UNSAFE_FILE_TYPE`. No confirmation bypass is offered. `reveal` is allowed for any valid regular, singly-linked file, including blocked open types. The UI hides blocked Open actions and gives a localized Show in folder explanation. Allowed formats may still contain scripts or exploit their parser; this is not a content safety guarantee.
+
+System launchers use only absolute, existing regular-file paths and a trusted launcher-directory `cwd`, never project cwd or inherited PATH: Windows `%SystemRoot%\explorer.exe` (unset variable defaults to `C:\Windows`; non-absolute values fail), macOS `/usr/bin/open`, Linux `/usr/bin/xdg-open`, `/bin/xdg-open`, then `/usr/local/bin/xdg-open`. Windows passes `"<absolute path>"` or `/select,"<absolute path>"` with `windowsVerbatimArguments: true`; macOS uses a literal path, with `-R` for reveal; Linux reveals the parent directory. All use `shell: false`; missing launchers fail without a fallback.
+
+Before dispatch, ancestors are rechecked and a final bigint `lstat` must still match device/inode/size/mtime and `nlink === 1`. A concurrent replacement after this check can still affect the pathname opened by the OS. Eliminating that remaining TOCTOU risk requires a handle-based OS broker; do not treat these checks as atomic.
+
 ## Hand membership and order
 
 These `POST /api/catalog` actions change CardOptions, not Owner, and never launch an agent.

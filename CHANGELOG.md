@@ -4,6 +4,20 @@ Notable changes are grouped by version using [Keep a Changelog](https://keepacha
 
 ## [Unreleased]
 
+## [0.8.2] - 2026-11-14
+
+### Cards
+
+- **Project files in a card.** A card can link a file that already lives in the project, such as a Blender `.blend` model, without copying it. The attachments panel shows its name, size and path; **Reveal** opens the file manager at the file, and **Open** starts the default program for documents, images, 3D models and media. Executables, scripts, shortcuts and unknown types can only be revealed. Agents link files with `deckmate project attach <card> --file <path>` or the MCP `update_card` tool.
+- **Editing while agents work.** Saving a card's text now checks only that card's own file, so an agent creating cards or moving decks no longer pushes an open draft into a conflict. A change to the card's own file still stops the save and keeps the draft.
+- **Line breaks.** A single line break inside a paragraph is shown as a new line, as it is written.
+- **Alignment.** The Add deck label and the Hero ribbon title are centred again; long Hero names wrap to a second line.
+
+### Reliability
+
+- **Faster stop.** The server stops in about 10 ms instead of waiting up to 3 seconds for project discovery, so the desktop shell no longer has to end it forcibly.
+- **Release build.** The Windows installer is built from the desktop folder, matching the local release build.
+
 ## [0.8.1] - 2026-11-13
 
 ### Desktop shell
@@ -327,7 +341,8 @@ First public release.
 - Third-party notices: `dist/client/third-party-licenses.md` now carries full license texts for bundled packages that ship no license file and for code embedded in prebuilt packages (Chevrotain, Langium, the vscode-languageserver libraries and lodash-es inside `@mermaid-js/parser`, js-yaml inside `mermaid`); the build fails on an empty section or on undeclared embedded code.
 - Source-checkout instructions also open the demo, and the `/deckmate` analyze and audit workflows move new cards to `discussing` after creating them.
 
-[Unreleased]: https://github.com/pierkulakov/deckmate/compare/v0.8.1...HEAD
+[Unreleased]: https://github.com/pierkulakov/deckmate/compare/v0.8.2...HEAD
+[0.8.2]: https://github.com/pierkulakov/deckmate/compare/v0.8.1...v0.8.2
 [0.8.1]: https://github.com/pierkulakov/deckmate/compare/v0.8.0...v0.8.1
 [0.8.0]: https://github.com/pierkulakov/deckmate/compare/v0.7.1...v0.8.0
 [0.7.1]: https://github.com/pierkulakov/deckmate/compare/v0.7.0...v0.7.1

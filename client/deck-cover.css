@@ -101,6 +101,8 @@
 /* An empty dashed slot ends each panel; it is also the drop target after the last deck. A space with no decks keeps
    its panel and shows only this slot, so a space just created from the menu is visible and invites its first deck (2026-11-10). */
 .catalog-add-deck { position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--space-2); width: var(--cover-width); height: var(--cover-height); padding: var(--space-3); border: 1px dashed color-mix(in srgb, var(--muted) 45%, transparent); border-radius: var(--cover-radius); background: transparent; color: var(--muted); font-size: 14px; line-height: 20px; }
+/* 2026-11-14: the label reserves the longer translation; its words stay centred inside that width. */
+.catalog-add-deck .reserved-text { text-align: center; }
 .catalog-add-deck::before { content: ''; position: absolute; inset: 0; border-radius: inherit; background: var(--add-deck-tint); opacity: 0; pointer-events: none; transition: opacity var(--control-hover-duration) ease-out; }
 .catalog-add-deck:focus-visible:where(:root[data-tab-focus] *)::before { opacity: 1; }
 .catalog-add-deck:focus-visible:where(:root[data-tab-focus] *) { color: var(--ink); }

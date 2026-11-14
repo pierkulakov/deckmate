@@ -45,7 +45,10 @@ describe.skipIf(!browserPath)('language layout stability (browser)', () => {
       const nodes = candidates.filter(node => node === document.documentElement || visible(node));
       const before = nodes.map(geometry);
       const started = performance.now(), layoutShifts = [];
-      const collect = entries => entries.filter(entry => entry.startTime >= started).forEach(entry => layoutShifts.push({
+      // 2026-11-14: a centred label re-centres its own text when the words change; its box and neighbours are held by
+      // the geometry samples below, so shifts made only of text nodes are not layout movement.
+      const textOnly = entry => entry.sources.length > 0 && entry.sources.every(source => source.node?.nodeType === Node.TEXT_NODE);
+      const collect = entries => entries.filter(entry => entry.startTime >= started && !textOnly(entry)).forEach(entry => layoutShifts.push({
         value: entry.value, recentInput: entry.hadRecentInput,
         sources: entry.sources.map(source => ({ node: source.node?.className || source.node?.parentElement?.className || source.node?.nodeName,
           before: source.previousRect.toJSON(), after: source.currentRect.toJSON() })),

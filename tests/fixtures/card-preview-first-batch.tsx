@@ -25,10 +25,12 @@ let historyFails = false;
 let holdHistory = false;
 let finishHistory: (() => void) | undefined;
 let instance = 0;
-let editFailure: 'conflict' | 'network' | null = null;
+let editFailure: 'conflict' | 'network' | 'unconfirmed' | null = null;
 let holdEdit = false;
 let finishEdit: (() => void) | undefined;
 let refreshCard: (() => void) | undefined;
+let refreshCatalog: (() => void) | undefined;
+let updateCard: ((changes: Partial<CatalogCard>) => void) | undefined;
 let removeQuestion: (() => void) | undefined;
 let updateQuestions: ((questions: Question[]) => void) | undefined;
 interface Options { deckLayout?: boolean; backlinks?: number; journey?: boolean; tags?: number; title?: string; owner?: string; markdown?: string; dependencies?: boolean; archived?: boolean; deleted?: boolean; writable?: boolean; pending?: boolean; lang?: 'en' | 'ru'; theme?: 'light' | 'dark'; family?: boolean; kind?: CatalogCard['kind']; state?: CatalogCard['state']; people?: number; agents?: boolean; questions?: Question[]; decisions?: Decision[]; pool?: boolean }
@@ -54,6 +56,7 @@ window.fetch = async (input, init) => {
 };
 
 function Fixture({ options }: { options: Options }) {
+  const [manifestRevision, setManifestRevision] = useState(0);
   const [card, setCard] = useState<CatalogCard>({ id: 'card:preview', kind: options.kind ?? 'task', title: options.title ?? 'Review the work', markdown: options.markdown ?? 'Card text remains visible.', path: 'cards/preview.md', range: null, version: null,
     state: options.state === undefined ? 'review' : options.state, owner: options.owner ?? 'Maya Chen', sourceHash: options.markdown === undefined ? 'card-hash' : 'content-' + options.markdown, deckId: null, trackIds: [], parentId: null, effort: 2, priority: 'medium',
     openQuestions: options.questions ?? parseOpenQuestions(options.markdown ?? 'Card text remains visible.').questions,
@@ -63,7 +66,7 @@ function Fixture({ options }: { options: Options }) {
     ...(options.journey ? { journey: { journeyId: 'pipeline', instanceId: 'instance', stepId: 'step', version: 1 } } : {}) });
   current = card;
   const child = { ...card, id: 'card:child', parentId: card.id, kind: 'task', title: 'Полное название Sub Card '.repeat(20), state: 'started', journey: undefined } as CatalogCard;
-  const catalog: CatalogView = { rootIdentity: 'first-batch', documents: [], cards: options.family ? [card, child] : [card], spaces: [], decks: [], tracks: [], warnings: [], formatLanguage: 'en', manifestHash: 'manifest-hash', optionsHash: 'options-hash', configured: true, indexedAt: '',
+  const catalog: CatalogView = { rootIdentity: 'first-batch', documents: [], cards: options.family ? [card, child] : [card], spaces: [], decks: [], tracks: [], warnings: [], formatLanguage: 'en', manifestHash: manifestRevision ? 'manifest-hash-' + manifestRevision : 'manifest-hash', optionsHash: 'options-hash', configured: true, indexedAt: '',
     members: [{ id: 'maya', label: 'Maya Chen', kind: 'human', aliases: [] }, { id: 'lee', label: 'Lee', kind: 'human', aliases: [] }].slice(0, options.people ?? 1) as CatalogView['members'], runs: [], milestones: [] };
   if (options.dependencies) catalog.cards.push({ ...card, id: 'card:dependency', title: 'Завершить подготовку', state: 'not-started', dependsOn: [] });
   if (options.agents) catalog.members!.push({ id: 'build-agent', label: 'Build Agent', kind: 'agent', aliases: [] });
@@ -81,6 +84,8 @@ function Fixture({ options }: { options: Options }) {
   if (options.journey) catalog.journeys = [{ id: 'pipeline', title: 'Pipeline', version: 1, deckId: 'assets', path: 'tasks/journeys/pipeline/index.md', fileHash: 'journey-hash',
     steps: [{ id: 'step', title: 'Step', markdown: '', deckId: 'work', owner: null, dependsOn: [] }] }];
   refreshCard = () => setCard(previous => ({ ...previous, sourceHash: previous.sourceHash + '-refreshed' }));
+  refreshCatalog = () => setManifestRevision(previous => previous + 1);
+  updateCard = changes => setCard(previous => ({ ...previous, ...changes, sourceHash: previous.sourceHash + '-refreshed' }));
   removeQuestion = () => setCard(previous => ({ ...previous, openQuestions: [], sourceHash: previous.sourceHash + '-refreshed' }));
   updateQuestions = questions => setCard(previous => ({ ...previous, openQuestions: questions, sourceHash: previous.sourceHash + '-refreshed' }));
   async function edit(action: CatalogAction) {
@@ -88,6 +93,7 @@ function Fixture({ options }: { options: Options }) {
     if (holdEdit) await new Promise<void>(resolve => { finishEdit = resolve; });
     if (editFailure === 'network') throw new TypeError('Offline');
     if (editFailure === 'conflict') { refreshCard?.(); return false; }
+    if (editFailure === 'unconfirmed') return false;
     if (action.action === 'set-card-state') setCard(previous => ({ ...previous, state: action.state as CatalogCard['state'] }));
     if (action.action === 'update-card-content') setCard(previous => ({ ...previous, title: action.title, markdown: action.markdown, sourceHash: previous.sourceHash + '-saved' }));
     if (action.action === 'bulk-edit-cards' && action.change.kind === 'options') {
@@ -119,5 +125,5 @@ function render(options: Options = {}) {
   document.documentElement.classList.toggle('dark', options.theme === 'dark');
   root.render(<Fixture key={++instance} options={options} />);
 }
-Object.assign(window, { firstBatch: { render, requests, selections, tagSearches, historyCursors, removeQuestion: () => removeQuestion?.(), updateQuestions: (questions: Question[]) => updateQuestions?.(questions), failEdit: (failure: typeof editFailure) => { editFailure = failure; }, holdEdit: () => { holdEdit = true; }, finishEdit: () => { holdEdit = false; finishEdit?.(); }, outerEscapes: () => outerEscapes, failHistory: (fail: boolean) => { historyFails = fail; }, holdHistory: () => { holdHistory = true; }, finishHistory: () => { holdHistory = false; finishHistory?.(); } } });
+Object.assign(window, { firstBatch: { render, requests, selections, tagSearches, historyCursors, refreshCatalog: () => refreshCatalog?.(), updateCard: (changes: Partial<CatalogCard>) => updateCard?.(changes), removeQuestion: () => removeQuestion?.(), updateQuestions: (questions: Question[]) => updateQuestions?.(questions), failEdit: (failure: typeof editFailure) => { editFailure = failure; }, holdEdit: () => { holdEdit = true; }, finishEdit: () => { holdEdit = false; finishEdit?.(); }, outerEscapes: () => outerEscapes, failHistory: (fail: boolean) => { historyFails = fail; }, holdHistory: () => { holdHistory = true; }, finishHistory: () => { holdHistory = false; finishHistory?.(); } } });
 render();

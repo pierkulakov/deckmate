@@ -48,7 +48,7 @@ const text = defineText({
   retry: 'Retry loading',
   empty: 'Add a card description in Markdown using Edit.',
   conflict: 'Content conflict',
-  conflictDescription: 'The file or catalog changed. Your draft is preserved. File changes will not be merged automatically. Compare and combine the text before continuing; the next save will replace the file text with your draft.',
+  conflictDescription: 'The card file changed. Your draft is preserved. File changes will not be merged automatically. Compare and combine the text before continuing; the next save will replace the file text with your draft.',
   yourDraft: 'Your draft',
   currentText: 'Current text',
   useCurrentBase: 'Continue with my draft',
@@ -82,7 +82,7 @@ const text = defineText({
   retry: 'Повторить загрузку',
   empty: 'Добавьте описание карточки в Markdown через «Правку».',
   conflict: 'Конфликт содержимого',
-  conflictDescription: 'Файл или каталог изменился. Черновик сохранён. Изменения из файла не добавятся автоматически. Сравните и объедините текст перед продолжением: следующее сохранение заменит текст в файле вашим черновиком.',
+  conflictDescription: 'Файл карточки изменился. Черновик сохранён. Изменения из файла не добавятся автоматически. Сравните и объедините текст перед продолжением: следующее сохранение заменит текст в файле вашим черновиком.',
   yourDraft: 'Ваш черновик',
   currentText: 'Текущий текст',
   useCurrentBase: 'Продолжить с моим текстом',
@@ -199,8 +199,8 @@ export function CardContentEditor({ card, catalog, snapshot, writable, pending, 
   }, [readingMarkdown, questionsShown]);
   const base = baseline.current;
   const contentDirty = editing && base !== null && draft !== composeDraft(base.title, base.markdown);
-  const revisionChanged = editing && base !== null
-    && (base.sourceHash !== card.sourceHash || base.manifestHash !== catalog.manifestHash);
+  // 2026-11-14: title and body share the source file; unrelated catalog changes do not invalidate a text draft.
+  const revisionChanged = editing && base !== null && base.sourceHash !== card.sourceHash;
   const hasConflict = editing && (conflict || revisionChanged);
   // 2026-11-10: reading already has the indexed file text; only a slow refresh deserves a visible or spoken status.
   let saveStatus = loadFailure ? '' : t.savedToFile;
@@ -409,7 +409,7 @@ export function CardContentEditor({ card, catalog, snapshot, writable, pending, 
         // 2026-11-03: a failed quick checkbox edit becomes an explicit draft instead of disappearing.
         setEditing(true);
         const latest = latestRevision.current;
-        if (latest.sourceHash !== base.sourceHash || latest.manifestHash !== base.manifestHash) setConflict(true);
+        if (latest.sourceHash !== base.sourceHash) setConflict(true);
         else setNotice(t.notConfirmed);
       }
     } catch {

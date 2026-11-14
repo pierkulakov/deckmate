@@ -133,7 +133,7 @@ export function hasMatchingQuestion(questions: readonly CatalogOpenQuestion[],
 
 // Attachment files live in the data project. Their list is stored
 // alongside them in the managed attachments.md file (server/attachments.ts).
-export type AttachmentKind = 'image' | 'pdf';
+export type AttachmentKind = 'image' | 'pdf' | 'project-file';
 export interface CardAttachment {
   file: string;
   name: string;
@@ -144,8 +144,11 @@ export interface CardAttachment {
   addedBy: string | null;
   /** The registry entry exists, but its file is missing from disk. */
   missing?: boolean;
+  /** Project-file links only: current launch policy, never persisted in the registry. */
+  canOpen?: boolean;
+  openBlockedReason?: 'UNSAFE_FILE_TYPE' | 'FILE_UNAVAILABLE' | null;
 }
-export interface CardAttachments { hash: string; files: CardAttachment[]; warnings: string[] }
+export interface CardAttachments { hash: string; files: CardAttachment[]; projectFiles?: CardAttachment[]; warnings: string[] }
 
 export interface CatalogJourneyStep {
   id: string;
@@ -551,4 +554,6 @@ export type CatalogEdit = { manifestHash: string; sourceHash?: string } & (
   // attachmentsHash is the card's attachment registry hash ('' before any attachments); conflicts return 409.
   | { action: 'upload-attachment'; cardId: string; attachmentsHash: string; dataUrl: string; fileName: string | null; addedBy: string | null }
   | { action: 'remove-attachment'; cardId: string; attachmentsHash: string; file: string }
+  | { action: 'attach-project-file'; cardId: string; attachmentsHash: string; file: string; addedBy?: string | null }
+  | { action: 'detach-project-file'; cardId: string; attachmentsHash: string; file: string }
 );

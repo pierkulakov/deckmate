@@ -114,4 +114,71 @@ describe.skipIf(!browserPath)('attachment row actions (browser)', () => {
     expect(await evaluate(`document.querySelector('.attachments-message.is-error').hidden`)).toBe(true);
     expect(errors).toEqual([]);
   });
+
+  it.each([
+    { theme: 'light', writable: false }, { theme: 'dark', writable: false },
+    { theme: 'light', writable: true }, { theme: 'dark', writable: true },
+  ])('shows project files at 375px: $theme, writable=$writable, and opens/reveals without a catalog edit', async ({ theme, writable }) => {
+    await session.send('Emulation.setDeviceMetricsOverride', { width: 375, height: 1000, deviceScaleFactor: 1, mobile: false });
+    await evaluate(`window.attachmentsTest.render({ links: true, writable: ${writable}, lang: 'ru', theme: ${JSON.stringify(theme)} })`);
+    await until(`document.querySelectorAll('.attachments-row').length === 5`);
+    expect(await evaluate(`document.querySelector('.attachments-project-path').textContent`)).toBe('ArtSource/Props/Birch/Birch.blend');
+    expect(await evaluate(`document.querySelector('.attachments-row-size').textContent`)).toBe('32,0 МБ');
+    expect(await evaluate(`document.querySelectorAll('.attachments-row')[1].textContent.includes('Файл не найден')`)).toBe(true);
+    expect(await evaluate(`document.querySelectorAll('.attachments-row')[1].querySelectorAll('.attachments-project-actions button').length`)).toBe(0);
+    for (const index of [0, 1]) {
+      await evaluate(`document.querySelectorAll('.attachments-project-actions button')[${index}].click()`);
+      await until(`window.attachmentsTest.state.requests.length === ${index + 1} && !document.querySelector('.attachments-panel').getAttribute('aria-busy').includes('true')`);
+    }
+    expect(await evaluate('window.attachmentsTest.state.requests')).toEqual(['open', 'reveal'].map(action => ({
+      url: `/api/attachments/${action}`, headers: { 'content-type': 'application/json', 'x-deckmate-token': 'test-token' },
+      body: { source: 'sandbox', cardId: 'card:test', file: 'ArtSource/Props/Birch/Birch.blend' },
+    })));
+    expect(await evaluate(`document.documentElement.scrollWidth <= innerWidth`)).toBe(true);
+    expect(await evaluate(`Array.from(document.querySelectorAll('.attachments-project-path, .attachments-project-actions button, .attachments-project-form input'), element => element.getBoundingClientRect().right <= innerWidth).every(Boolean)`)).toBe(true);
+    expect(errors).toEqual([]);
+  });
+
+  it('attaches a project path through the catalog action, without uploading bytes', async () => {
+    await render({ lang: 'ru' });
+    await evaluate(`(() => { const input = document.querySelector('.attachments-project-form input');
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(input, 'ArtSource/Props/Birch/Birch.blend');
+      input.dispatchEvent(new Event('input', { bubbles: true })); })()`);
+    await until(`!document.querySelector('.attachments-project-form button').disabled`);
+    await evaluate(`document.querySelector('.attachments-project-form button').click()`);
+    await until(`window.attachmentsTest.state.actions.length === 1`);
+    expect(await evaluate('window.attachmentsTest.state.actions')).toEqual([{
+      action: 'attach-project-file', cardId: 'card:test', attachmentsHash: 'attachment-hash', file: 'ArtSource/Props/Birch/Birch.blend',
+    }]);
+  });
+
+  it.each([
+    { lang: 'ru', reveal: 'Показать в папке', message: 'Открытие этого типа заблокировано; доступно «Показать в папке».' },
+    { lang: 'en', reveal: 'Show in folder', message: 'Opening this file type is blocked; use Show in folder instead.' },
+  ])('hides unsafe open, explains the policy and keeps reveal without a confirmation: $lang', async options => {
+    await evaluate(`window.attachmentsTest.render({ links: true, blocked: true, writable: false, lang: ${JSON.stringify(options.lang)} })`);
+    await until(`document.querySelectorAll('.attachments-row').length === 6`);
+    const row = `Array.from(document.querySelectorAll('.attachments-row')).find(row => row.querySelector('.attachments-project-path')?.textContent === 'ArtSource/invoice.pdf.exe')`;
+    expect(await evaluate(`(() => { const row = ${row}; return { buttons: Array.from(row.querySelectorAll('.attachments-project-actions button'), button => [button.textContent, button.disabled]),
+      message: row.querySelector('.attachments-message').textContent }; })()`)).toEqual({ buttons: [[options.reveal, false]], message: options.message });
+    await evaluate(`(${row}).querySelector('.attachments-project-actions button').click()`);
+    await until(`window.attachmentsTest.state.requests.length === 1 && !document.querySelector('.attachments-panel').getAttribute('aria-busy').includes('true')`);
+    expect(await evaluate(`window.attachmentsTest.state.requests[0].url`)).toBe('/api/attachments/reveal');
+    expect(await evaluate(`window.attachmentsTest.state.requests[0].body.file`)).toBe('ArtSource/invoice.pdf.exe');
+    expect(await evaluate(`document.querySelectorAll('[role="alertdialog"]').length`)).toBe(0);
+    expect(await evaluate('window.attachmentsTest.state.actions')).toEqual([]);
+    expect(await evaluate(`document.documentElement.scrollWidth <= innerWidth`)).toBe(true);
+    expect(errors).toEqual([]);
+  });
+
+  it('refreshes a disappeared project file after a failed open and removes its launch buttons', async () => {
+    await evaluate(`window.attachmentsTest.render({ links: true, lang: 'ru' })`);
+    await until(`document.querySelectorAll('.attachments-row').length === 5`);
+    await evaluate(`window.attachmentsTest.state.launchMissing = true; document.querySelector('.attachments-project-actions button').click()`);
+    await until(`document.querySelectorAll('.attachments-project-actions button').length === 0`);
+    expect(await evaluate(`document.querySelector('.attachments-message.is-error').textContent`)).toContain('File not found');
+    await evaluate(`document.querySelector('.attachments-row button[aria-label="Открепить ссылку"]').click()`);
+    await until(`window.attachmentsTest.state.actions.length === 1`);
+    expect(await evaluate(`window.attachmentsTest.state.actions[0].action`)).toBe('detach-project-file');
+  });
 });

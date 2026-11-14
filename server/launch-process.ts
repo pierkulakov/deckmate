@@ -7,10 +7,12 @@ const messages = defineText({
   notFound: (name: string, executable: string) => `Launcher ${name}: executable ${JSON.stringify(executable)} not found. Check run[0] and PATH.`,
   newline: (name: string) => `Launcher ${name}: Windows arguments must not contain CR or LF.`,
   batchArgument: (name: string, value: string) => `Launcher ${name}: .cmd/.bat paths and arguments must not contain CR, LF, %, ! or "; refused ${JSON.stringify(value)}.`,
+  systemLauncherMissing: 'A system file launcher was not found in a trusted absolute directory.',
 }, {
   notFound: (name: string, executable: string) => `Запуск ${name}: исполняемый файл ${JSON.stringify(executable)} не найден. Проверьте run[0] и PATH.`,
   newline: (name: string) => `Запуск ${name}: аргументы Windows не должны содержать CR или LF.`,
   batchArgument: (name: string, value: string) => `Запуск ${name}: пути и аргументы .cmd/.bat не должны содержать CR, LF, %, ! или "; отклонено значение ${JSON.stringify(value)}.`,
+  systemLauncherMissing: 'Системная программа открытия файлов не найдена в доверенном абсолютном каталоге.',
 });
 
 export type LauncherInvocation =
@@ -29,18 +31,42 @@ async function isFile(filename: string): Promise<boolean> {
   }
 }
 
+async function findExecutable(candidates: readonly string[]): Promise<string | null> {
+  for (const candidate of candidates) {
+    if (await isFile(candidate)) return candidate;
+  }
+  return null;
+}
+
 async function windowsExecutable(executable: string, cwd: string, name: string): Promise<string> {
   const hasPath = /[\\/]/u.test(executable) || /^[a-z]:/iu.test(executable);
   // 2026-11-07: untrusted projects may plant executables, so only explicit paths may implicitly resolve against cwd.
   const locations = hasPath ? [''] : (process.env.PATH ?? '').split(';').map(location => location.replace(/^"(.*)"$/u, '$1')).filter(Boolean);
   const extensions = path.extname(executable) ? [''] : (process.env.PATHEXT || '.COM;.EXE;.BAT;.CMD').split(';').filter(Boolean);
-  for (const location of locations) {
-    const base = path.resolve(cwd, location, executable);
-    for (const extension of extensions) {
-      if (await isFile(base + extension)) return base + extension;
+  const candidates = locations.flatMap(location => extensions.map(extension => path.resolve(cwd, location, executable) + extension));
+  const resolved = await findExecutable(candidates);
+  if (!resolved) throw notFound(name, executable);
+  return resolved;
+}
+
+/** 2026-11-14: project file actions must never resolve a launcher through project cwd or inherited PATH. */
+export async function resolveSystemFileLauncher(platform: NodeJS.Platform = process.platform): Promise<string> {
+  let candidates: string[];
+  if (platform === 'win32') {
+    const root = process.env.SystemRoot ?? 'C:\\Windows';
+    // A root-relative Windows path still depends on the current drive, even though isAbsolute accepts it.
+    if (!path.win32.isAbsolute(root) || path.win32.parse(root).root.length <= 1) {
+      throw new Error(serverText(messages).systemLauncherMissing);
     }
+    candidates = [path.win32.join(root, 'explorer.exe')];
+  } else if (platform === 'darwin') {
+    candidates = ['/usr/bin/open'];
+  } else {
+    candidates = ['/usr/bin/xdg-open', '/bin/xdg-open', '/usr/local/bin/xdg-open'];
   }
-  throw notFound(name, executable);
+  const resolved = await findExecutable(candidates);
+  if (!resolved) throw new Error(serverText(messages).systemLauncherMissing);
+  return resolved;
 }
 
 function quoteArgument(value: string): string {

@@ -89,6 +89,12 @@ async function postCatalog(session: HttpSession, route: string, body: ResponseBo
 }
 
 async function writeFiles(config: ServerConfig, source: DataSource, edit: CatalogEdit, actor: string | null): Promise<CliWriteResult> {
+  const { attachmentEditActions, writeAttachmentEdit } = await import('./attachments.ts');
+  if (attachmentEditActions.has(edit.action)) {
+    const attachment = edit as import('./attachments.ts').AttachmentEditAction;
+    await writeAttachmentEdit(config, source, attachment, actor);
+    return { warnings: [], via: 'files' };
+  }
   // 2026-11-12: offline agent writes must not execute the project's board renderer.
   const service = new CatalogService(config, ':memory:', { skipBoardRebuild: true });
   try {

@@ -25,11 +25,10 @@ import { memberIdPattern } from '../src/members.ts';
 import type { PlanningEdit } from '../src/planning-files.ts';
 import { registerRequestLang } from './i18n.ts';
 import { registerProjectTemplatesRoute } from './project-templates-route.ts';
+import type { FileLauncher, ProjectFileAction } from './project-file-links.ts';
 
 const messages = defineText({
-  attachmentsChanged: "Attachments changed in the files. Refresh the panel and try again.",
-  attachmentsPartSaved: "The attachment change was partially saved.",
-  attachmentFailed: "Could not save the attachment.",
+  linkedFileMissing: 'Linked project file not found or unavailable.',
   invalidHost: "Invalid server address.",
   invalidOrigin: "Requests from another site are not allowed.",
   reload: "The page is out of date. Reload Deckmate before saving.",
@@ -49,9 +48,7 @@ const messages = defineText({
   importChanged: "The source changed in the files. Refresh the catalog and import again.",
   pageMissing: "Page not found. Run npm run build.",
 }, {
-  attachmentsChanged: "Вложения изменились в файлах. Обновите панель и повторите действие.",
-  attachmentsPartSaved: "Часть изменения вложений сохранена.",
-  attachmentFailed: "Не удалось сохранить вложение.",
+  linkedFileMissing: 'Прикреплённый файл проекта не найден или недоступен.',
   invalidHost: "Недопустимый адрес сервера.",
   invalidOrigin: "Запрос с другого сайта запрещён.",
   reload: "Страница устарела. Перезагрузите Deckmate перед сохранением.",
@@ -97,22 +94,13 @@ function servableRequestPath(value: unknown): value is string {
 }
 
 /** 2026-11-05: attachments use the same write policy as the catalog and their own module queue. */
-async function runAttachmentEdit(catalog: CatalogService, config: ServerConfig, edit: AttachmentEditAction & { source: DataSource }): Promise<CatalogView> {
-  const { applyAttachmentEdit } = await import('./attachments.ts');
-  const root = await assertWritable(config, edit.source);
-  try {
-    await applyAttachmentEdit(root, edit);
-  } catch (error) {
-    if (error instanceof Error && error.message === 'ATTACHMENTS_CONFLICT') throw new CatalogError(409, serverText(messages).attachmentsChanged);
-    if (error && typeof error === 'object' && 'saved' in error && error.saved === true) {
-      throw new CatalogError(503, error instanceof Error ? error.message : serverText(messages).attachmentsPartSaved, true);
-    }
-    throw new CatalogError(422, error instanceof Error ? error.message : serverText(messages).attachmentFailed);
-  }
+async function runAttachmentEdit(catalog: CatalogService, config: ServerConfig, edit: AttachmentEditAction & { source: DataSource }, actor: string | null): Promise<CatalogView> {
+  const { writeAttachmentEdit } = await import('./attachments.ts');
+  await writeAttachmentEdit(config, edit.source, edit, actor);
   return catalog.get('sandbox');
 }
 
-export async function createApp(config: ServerConfig, options: { deferStartup?: boolean; onStartupError?: (error: unknown) => void } = {}) {
+export async function createApp(config: ServerConfig, options: { deferStartup?: boolean; onStartupError?: (error: unknown) => void; fileLauncher?: FileLauncher } = {}) {
   if (process.platform === 'win32') void import('./windows-access.ts').then(module => module.warmWindowsAccess(), () => {});
   const app = Fastify({ logger: false, bodyLimit: 512 * 1024,
     // 2026-11-07: malformed URLs bypass request hooks but still need the same-origin framing policy.
@@ -459,6 +447,8 @@ export async function createApp(config: ServerConfig, options: { deferStartup?: 
     'create-track': ['title', 'description'], 'assign-deck': ['cardId', 'deckId'], 'set-tracks': ['cardId', 'trackIds'],
     'upload-attachment': ['cardId', 'attachmentsHash', 'dataUrl'],
     'remove-attachment': ['cardId', 'attachmentsHash', 'file'],
+    'attach-project-file': ['cardId', 'attachmentsHash', 'file'],
+    'detach-project-file': ['cardId', 'attachmentsHash', 'file'],
     'update-card-content': ['cardId', 'title', 'markdown', 'sourceHash'],
     'add-card-report': ['cardId', 'markdown', 'sourceHash'],
     // Apply the starter project template through the project-template module (2026-11-05).
@@ -552,7 +542,7 @@ export async function createApp(config: ServerConfig, options: { deferStartup?: 
       attachmentsHash: { type: 'string', pattern: '^(?:[0-9a-f]{64})?$' },
       fileName: { type: ['string', 'null'], maxLength: 200 },
       addedBy: { type: ['string', 'null'], maxLength: 80 },
-      file: { type: 'string', minLength: 1, maxLength: 300 },
+      file: { type: 'string', minLength: 1, maxLength: 1000 },
       journeyId: { type: ['string', 'null'], maxLength: 100 }, journeyHash: { type: ['string', 'null'], pattern: '^[0-9a-f]{64}$' },
       templateId: { type: 'string', minLength: 1, maxLength: 60, pattern: '^[a-z0-9][a-z0-9-]{0,59}$' },
       templateSource: { type: 'string', enum: ['bundled', 'project'] },
@@ -622,7 +612,7 @@ export async function createApp(config: ServerConfig, options: { deferStartup?: 
       // Use the request actor as the uploader; addedBy is a fallback for API calls without an actor.
       const attachmentEdit = request.body as AttachmentEditAction & { source: DataSource };
       const actor = actorOf(request.headers['x-deckmate-actor']);
-      return runAttachmentEdit(catalog, config, attachmentEdit.action === 'upload-attachment' && actor ? { ...attachmentEdit, addedBy: actor } : attachmentEdit);
+      return runAttachmentEdit(catalog, config, attachmentEdit, actor);
     }
     return catalog.edit(request.body, request.body.source, actorOf(request.headers['x-deckmate-actor']));
   });
@@ -705,6 +695,29 @@ export async function createApp(config: ServerConfig, options: { deferStartup?: 
       throw error;
     }
   });
+  for (const action of ['open', 'reveal'] as const satisfies readonly ProjectFileAction[]) {
+    app.post<{ Body: { source: DataSource; cardId: string; file: string } }>(`/api/attachments/${action}`, {
+      schema: { body: { type: 'object', additionalProperties: false, required: ['source', 'cardId', 'file'], properties: {
+        source: { type: 'string', enum: ['live', 'sandbox'] },
+        cardId: { type: 'string', minLength: 1, maxLength: 1000 },
+        file: { type: 'string', minLength: 1, maxLength: 1000 },
+      } } },
+    }, async (request, reply) => {
+      const { source, cardId, file } = request.body;
+      const view = await catalog.get(source);
+      if (!view.cards.some(card => card.id === cardId)) throw new CatalogError(404, serverText(messages).cardMissing);
+      const { readCardAttachments } = await import('./attachments.ts');
+      const { launchProjectFile, UnsafeProjectFileTypeError } = await import('./project-file-links.ts');
+      const attachments = await readCardAttachments(catalog.root(source), cardId);
+      if (!attachments.projectFiles?.some(entry => entry.file === file && !entry.missing)) throw new CatalogError(404, serverText(messages).linkedFileMissing);
+      try { await launchProjectFile(catalog.root(source), file, action, options.fileLauncher); }
+      catch (error) {
+        if (error instanceof UnsafeProjectFileTypeError) return reply.code(422).send({ code: error.code, message: error.message });
+        throw new CatalogError(422, error instanceof Error ? error.message : serverText(messages).actionFailed);
+      }
+      return { ok: true };
+    });
+  }
   app.get<{ Querystring: { path: string; source?: DataSource; from?: string; to?: string } }>('/api/file', async (request, reply) => {
     const relative = request.query.path ?? '';
     // 2026-11-06: traversal segments, absolute paths, NUL bytes and repeated query values are refused here;

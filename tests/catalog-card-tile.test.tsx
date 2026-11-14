@@ -297,7 +297,7 @@ it('shows a known parent in the gold affiliation strip without putting it inside
   const noop = () => {};
   const html = renderToStaticMarkup(<CatalogCardTile card={child} lookups={buildCatalogLookups([hero, child])} members={[]}
     selected={false} checked={false} selectionActive={false} disabled={false} onOpen={noop} onToggle={noop} onFamilyOpen={noop} />);
-  expect(html).toMatch(/class="card-family-trigger"[^>]*>.*<span>Combat Arena<\/span><\/button>/);
+  expect(html).toMatch(/class="card-family-trigger"[^>]*>.*<span class="card-family-trigger-label"><span>Combat Arena<\/span><\/span><\/button>/);
   expect(html).toContain('class="deck-card-title">Create Room Art Assets</span>');
 });
 

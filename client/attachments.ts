@@ -31,7 +31,7 @@ const attachmentAcceptedTypes = ['image/png', 'image/jpeg', 'image/webp', 'image
 const sortOrderStorageKey = 'deckmate.attachments.sort';
 
 export type AttachmentSortOrder = 'newest' | 'oldest';
-export type AttachmentTypeFilter = 'all' | 'image' | 'pdf';
+export type AttachmentTypeFilter = 'all' | 'image' | 'pdf' | 'project-file';
 
 /** The panel gets its source from the URL updated on navigation; the default is sandbox. */
 export function attachmentSource(): DataSource {
